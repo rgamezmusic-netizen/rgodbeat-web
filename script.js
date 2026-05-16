@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
             offlineMsg.style.borderRadius = '5px';
             offlineMsg.style.zIndex = '1000';
             offlineMsg.style.fontSize = '12px';
-            offlineMsg.textContent = 'Modo Demo (Sin Servidor)';
+            offlineMsg.textContent = 'Demo Mode (Server Offline)';
             document.body.appendChild(offlineMsg);
             setTimeout(() => offlineMsg.remove(), 5000);
         }
