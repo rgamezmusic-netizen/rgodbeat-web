@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Gestión de Tickets | Antigravity Producer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --color-bg: #0a0a0a;
+            --color-accent: #6c03a8;
+            --color-accent-hover: #de91fa;
+            --color-text: #FFFFFF;
+            --color-text-dim: #CCCCCC;
+            --color-carbon-dark: #111111;
+            --color-success: #00ff00;
+            --color-error: #ff0044;
+            --font-heading: 'Orbitron', sans-serif;
+            --font-body: 'Rajdhani', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            font-family: var(--font-body);
+            min-height: 100vh;
+            background-image:
+                linear-gradient(45deg, rgba(188, 19, 254, 0.05) 25%, transparent 25%, transparent 75%, rgba(46, 46, 254, 0.05) 75%),
+                linear-gradient(45deg, rgba(46, 46, 254, 0.05) 25%, transparent 25%, transparent 75%, rgba(188, 19, 254, 0.05) 75%);
+            background-position: 0 0, 10px 10px;
+            background-size: 20px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-family: var(--font-heading);
+            font-size: 2.5rem;
+            color: var(--color-accent);
+            text-shadow: 0 0 20px rgba(108, 3, 168, 0.3);
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--color-text-dim);
+            font-size: 1.1rem;
+        }
+
+        /* Login Section */
+        .login-section {
+            max-width: 400px;
+            margin: 0 auto;
+            background: rgba(20, 20, 20, 0.8);
+            padding: 2rem;
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
+
+        .admin-panel {
+            display: none;
+        }
+
+        .admin-panel.active {
+            display: block;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--color-accent);
+            font-weight: 600;
+        }
+
+        input,
+        select {
+            width: 100%;
+            background: rgba(30, 30, 30, 0.8);
+            border: 1px solid #444;
+            padding: 0.8rem;
+            color: var(--color-text);
+            font-family: var(--font-body);
+            font-size: 1rem;
+            outline: none;
+            transition: 0.3s;
+            border-radius: 4px;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: var(--color-accent);
+            box-shadow: 0 0 10px rgba(108, 3, 168, 0.2);
+        }
+
+        button {
+            padding: 0.8rem 2rem;
+            background: var(--color-accent);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-family: var(--font-heading);
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            background: var(--color-accent-hover);
+            box-shadow: 0 0 20px rgba(222, 145, 250, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #333;
+            margin-left: 1rem;
+        }
+
+        .btn-secondary:hover {
+            background: #555;
+        }
+
+        /* Cards */
+        .card {
+            background: rgba(20, 20, 20, 0.8);
+            padding: 2rem;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+
+        .card h2 {
+            font-family: var(--font-heading);
+            color: var(--color-accent);
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+        }
+
+        /* Tickets Table */
+        .tickets-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th,
+        td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #333;
+        }
+
+        th {
+            background: rgba(108, 3, 168, 0.2);
+            color: var(--color-accent);
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+        }
+
+        tr:hover {
+            background: rgba(108, 3, 168, 0.05);
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: rgba(0, 255, 0, 0.2);
+            color: var(--color-success);
+            border: 1px solid var(--color-success);
+        }
+
+        .status-used {
+            background: rgba(255, 0, 68, 0.2);
+            color: var(--color-error);
+            border: 1px solid var(--color-error);
+        }
+
+        .ticket-code {
+            font-family: 'Courier New', monospace;
+            background: rgba(108, 3, 168, 0.1);
+            padding: 0.3rem 0.8rem;
+            border-radius: 4px;
+            color: var(--color-accent-hover);
+            font-weight: 700;
+        }
+
+        /* Messages */
+        .message {
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-success {
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid var(--color-success);
+            color: var(--color-success);
+        }
+
+        .message-error {
+            background: rgba(255, 0, 68, 0.1);
+            border: 1px solid var(--color-error);
+            color: var(--color-error);
+        }
+
+        .logout-btn {
+            float: right;
+            background: #ff0044;
+        }
+
+        .logout-btn:hover {
+            background: #cc0033;
+        }
+
+        .no-tickets {
+            text-align: center;
+            padding: 2rem;
+            color: var(--color-text-dim);
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Login Section -->
+        <div id="loginSection" class="login-section">
+            <header>
+                <h1>🎛️ Admin Panel</h1>
+                <p class="subtitle">Gestión de Tickets de Beats</p>
+            </header>
+
+            <div id="loginMessage"></div>
+
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="adminPassword">Contraseña de Administrador</label>
+                    <input type="password" id="adminPassword" required autocomplete="current-password">
+                </div>
+                <button type="submit">🔐 Acceder</button>
+            </form>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="adminPanel" class="admin-panel">
+            <header>
+                <h1>🎛️ Panel de Administración</h1>
+                <p class="subtitle">Gestión de Tickets de Beats</p>
+                <button class="logout-btn" onclick="logout()">🚪 Cerrar Sesión</button>
+            </header>
+
+            <!-- Generate Ticket Form -->
+            <div class="card">
+                <h2>✨ Generar Nuevo Ticket</h2>
+                <div id="generateMessage"></div>
+
+                <form id="generateForm">
+                    <div class="form-group">
+                        <label for="ticketType">Tipo de Ticket *</label>
+                        <select id="ticketType" required>
+                            <option value="">-- Selecciona --</option>
+                            <option value="free">🎁 Gratis (100% descuento)</option>
+                            <option value="percentage">📊 Descuento Porcentual</option>
+                            <option value="fixed">💰 Descuento Fijo</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="discountValueGroup" style="display: none;">
+                        <label for="discountValue">Valor del Descuento *</label>
+                        <input type="number" id="discountValue" min="1" placeholder="Ej: 50 para 50% o $10">
+                        <small style="color: var(--color-text-dim);" id="discountHint"></small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="specificBeat">Beat Específico (opcional)</label>
+                        <input type="text" id="specificBeat" placeholder="Dejar vacío = válido para cualquier beat">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="expirationDate">Fecha de Expiración (opcional)</label>
+                        <input type="date" id="expirationDate">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="maxUses">Usos Máximos</label>
+                        <input type="number" id="maxUses" min="1" value="1">
+                    </div>
+
+                    <button type="submit">🎫 Generar Ticket</button>
+                </form>
+            </div>
+
+            <!-- Tickets List -->
+            <div class="card">
+                <h2>📋 Tickets Generados</h2>
+                <button onclick="loadTickets()" class="btn-secondary">🔄 Recargar</button>
+
+                <div class="tickets-container">
+                    <table id="ticketsTable">
+                        <thead>
+                            <tr>
+                                <th>Código</th>
+                                <th>Tipo</th>
+                                <th>Descuento</th>
+                                <th>Beat Específico</th>
+                                <th>Usos</th>
+                                <th>Estado</th>
+                                <th>Creado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ticketsTableBody">
+                            <tr>
+                                <td colspan="7" class="no-tickets">Cargando tickets...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPassword = '';
+
+        // Handle ticket type change
+        document.getElementById('ticketType').addEventListener('change', (e) => {
+            const value = e.target.value;
+            const discountGroup = document.getElementById('discountValueGroup');
+            const discountInput = document.getElementById('discountValue');
+            const discountHint = document.getElementById('discountHint');
+
+            if (value === 'free') {
+                discountGroup.style.display = 'none';
+                discountInput.value = 100;
+                discountInput.required = false;
+            } else if (value === 'percentage') {
+                discountGroup.style.display = 'block';
+                discountInput.required = true;
+                discountInput.max = 100;
+                discountHint.textContent = 'Ingresa un porcentaje entre 1 y 100 (ej: 50 para 50% de descuento)';
+            } else if (value === 'fixed') {
+                discountGroup.style.display = 'block';
+                discountInput.required = true;
+                discountInput.max = 30;
+                discountHint.textContent = 'Ingresa cantidad en dólares (ej: 10 para $10 de descuento)';
+            }
+        });
+
+        // Login
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const password = document.getElementById('adminPassword').value;
+
+            try {
+                // Test password by trying to fetch tickets
+                const response = await fetch('http://localhost:3000/api/admin/tickets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ adminPassword: password })
+                });
+
+                if (response.ok) {
+                    currentPassword = password;
+                    document.getElementById('loginSection').style.display = 'none';
+                    document.getElementById('adminPanel').classList.add('active');
+                    loadTickets();
+                } else {
+                    showMessage('loginMessage', 'Contraseña incorrecta', 'error');
+                }
+            } catch (error) {
+                showMessage('loginMessage', 'Error de conexión con el servidor', 'error');
+            }
+        });
+
+        // Generate Ticket
+        document.getElementById('generateForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const ticketData = {
+                adminPassword: currentPassword,
+                ticketType: document.getElementById('ticketType').value,
+                discountValue: parseInt(document.getElementById('discountValue').value) || 100,
+                specificBeat: document.getElementById('specificBeat').value || null,
+                expirationDate: document.getElementById('expirationDate').value || null,
+                maxUses: parseInt(document.getElementById('maxUses').value) || 1
+            };
+
+            try {
+                const response = await fetch('http://localhost:3000/api/admin/generate-ticket', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(ticketData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('generateMessage',
+                        `✅ Ticket generado exitosamente: <strong class="ticket-code">${data.ticketCode}</strong>`,
+                        'success'
+                    );
+                    document.getElementById('generateForm').reset();
+                    loadTickets();
+                } else {
+                    showMessage('generateMessage', `❌ Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showMessage('generateMessage', '❌ Error de conexión con el servidor', 'error');
+            }
+        });
+
+        // Load Tickets
+        async function loadTickets() {
+            try {
+                const response = await fetch('http://localhost:3000/api/admin/tickets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ adminPassword: currentPassword })
+                });
+
+                const data = await response.json();
+                const tbody = document.getElementById('ticketsTableBody');
+
+                if (data.tickets && data.tickets.length > 0) {
+                    tbody.innerHTML = data.tickets.map(ticket => `
+                        <tr>
+                            <td><span class="ticket-code">${ticket.code}</span></td>
+                            <td>${getTicketTypeLabel(ticket.type)}</td>
+                            <td>${getDiscountLabel(ticket.type, ticket.discountValue)}</td>
+                            <td>${ticket.specificBeat || '<em style="color: #666;">Cualquiera</em>'}</td>
+                            <td>${ticket.currentUses} / ${ticket.maxUses}</td>
+                            <td><span class="status-badge status-${ticket.status}">${ticket.status.toUpperCase()}</span></td>
+                            <td>${new Date(ticket.createdAt).toLocaleDateString('es-ES')}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="7" class="no-tickets">No hay tickets generados aún</td></tr>';
+                }
+            } catch (error) {
+                console.error('Error loading tickets:', error);
+            }
+        }
+
+        function getTicketTypeLabel(type) {
+            const labels = {
+                'free': '🎁 Gratis',
+                'percentage': '📊 Porcentaje',
+                'fixed': '💰 Fijo'
+            };
+            return labels[type] || type;
+        }
+
+        function getDiscountLabel(type, value) {
+            if (type === 'free') return '100%';
+            if (type === 'percentage') return `${value}%`;
+            if (type === 'fixed') return `$${value}`;
+            return value;
+        }
+
+        function showMessage(containerId, message, type) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = `<div class="message message-${type}">${message}</div>`;
+            setTimeout(() => {
+                container.innerHTML = '';
+            }, 5000);
+        }
+
+        function logout() {
+            currentPassword = '';
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('adminPanel').classList.remove('active');
+            document.getElementById('adminPassword').value = '';
+        }
+    </script>
+</body>
+
+</html>
