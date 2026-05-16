@@ -510,15 +510,24 @@ a {
 
 /* Bio */
 .bio-content {
-    text-align: center;
-    font-size: 1.2rem;
-    max-width: 800px;
+    text-align: left; /* Changed to left for better readability of long text */
+    font-size: 1.1rem;
+    max-width: 850px;
     margin: 0 auto;
     color: var(--color-text-dim);
-    background: rgba(20, 20, 20, 0.8);
-    padding: 2rem;
-    border: 1px solid #333;
-    border-radius: 5px;
+    background: rgba(20, 20, 20, 0.6);
+    padding: 3rem;
+    border: 1px solid rgba(188, 19, 254, 0.2);
+    border-radius: 12px;
+    line-height: 1.8;
+}
+
+.bio-content p {
+    margin-bottom: 1.5rem;
+}
+
+.bio-content p:last-child {
+    margin-bottom: 0;
 }
 
 

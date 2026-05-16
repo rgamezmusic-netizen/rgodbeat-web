@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     bpm: '94 BPM',
                     key: 'Em',
                     price: 30,
-                    cover: 'imagenes/RGCARBON.JPG',
+                    cover: 'imagenes/beat1.png',
                     audio: 'BEATS/reggaeton/dm2025_94_em.wav'
                 },
                 {
@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     bpm: '160 BPM',
                     key: 'G#m',
                     price: 30,
-                    cover: 'imagenes/RGCARBON.JPG',
+                    cover: 'imagenes/beat2.png',
                     audio: 'BEATS/reggaeton/chrisms_whattt_160_gsm.wav'
                 },
                 {
@@ -109,7 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     bpm: '145 BPM',
                     key: 'A#m',
                     price: 30,
-                    cover: 'imagenes/RGCARBON.JPG',
+                    cover: 'imagenes/beat3.png',
                     audio: 'BEATS/trap/gotshi_145_asm.wav'
                 }
             ];
