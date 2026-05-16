@@ -115,7 +115,7 @@ a {
     width: 100%;
     height: 100%;
     /* Overlay to blend carbon with space */
-    background: radial-gradient(circle at center, transparent 0%, #000 100%), url('https://s3-us-west-2.amazonaws.com/s.cdpn.io/1231630/stars.png') repeat;
+    background: radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.7) 100%), url('https://s3-us-west-2.amazonaws.com/s.cdpn.io/1231630/stars.png') repeat;
     z-index: -2;
     animation: move-stars 200s linear infinite;
 }
@@ -169,21 +169,22 @@ a {
 }
 
 .hero-bg-image {
-    position: absolute;
+    position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 80%;
-    height: 80%;
+    width: 100vw;
+    height: 100vh;
     background: url('imagenes/RGCARBON.JPG') no-repeat center center;
-    background-size: contain;
-    opacity: 0.4;
+    background-size: cover;
+    opacity: 0.35;
     mix-blend-mode: screen;
     /* Blend with stars */
-    mask-image: radial-gradient(circle, black 30%, transparent 70%);
-    -webkit-mask-image: radial-gradient(circle, black 30%, transparent 70%);
-    z-index: -1;
-    animation: pulse-bg 5s infinite alternate;
+    mask-image: radial-gradient(circle, black 40%, transparent 80%);
+    -webkit-mask-image: radial-gradient(circle, black 40%, transparent 80%);
+    z-index: -5;
+    pointer-events: none;
+    transition: transform 0.1s ease-out; /* Smooth JS updates */
 }
 
 @keyframes pulse-bg {
@@ -464,8 +465,10 @@ a {
 .section {
     padding: 6rem 2rem;
     border-bottom: 1px solid rgba(108, 3, 168, 0.05);
-    background: rgba(10, 10, 10, 0.8);
-    /* Semi-transparent to show texture */
+    background: rgba(10, 10, 10, 0.4); /* Much more transparent to see the background image */
+    backdrop-filter: blur(5px);
+    position: relative;
+    z-index: 1;
 }
 
 .container {

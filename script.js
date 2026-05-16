@@ -9,15 +9,33 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Navbar scroll effect
+    // Navbar & Parallax scroll effect
     const navbar = document.querySelector('.navbar');
+    const heroBg = document.querySelector('.hero-bg-image');
+    
     window.addEventListener('scroll', () => {
-        if (window.scrollY > 50) {
+        const scrollY = window.scrollY;
+
+        // Navbar effect
+        if (scrollY > 50) {
             navbar.style.background = 'rgba(0, 0, 0, 0.95)';
             navbar.style.padding = '0.5rem 0';
         } else {
             navbar.style.background = 'rgba(0, 0, 0, 0.8)';
             navbar.style.padding = '1rem 0';
+        }
+
+        // Parallax Background effect
+        if (heroBg) {
+            // Scale slightly as we scroll
+            const scale = 1 + (scrollY * 0.0004);
+            // Move slightly to create depth
+            const translateY = scrollY * 0.1;
+            heroBg.style.transform = `translate(-50%, calc(-50% + ${translateY}px)) scale(${scale})`;
+            
+            // Adjust opacity slightly as we scroll deeper
+            const opacity = 0.35 - (scrollY * 0.0001);
+            heroBg.style.opacity = Math.max(0.1, opacity);
         }
     });
 
