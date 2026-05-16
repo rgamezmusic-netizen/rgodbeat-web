@@ -20,6 +20,10 @@
     {
       "src": "BEATS/**/*",
       "use": "@vercel/static"
+    },
+    {
+      "src": "imagenes/**/*",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
