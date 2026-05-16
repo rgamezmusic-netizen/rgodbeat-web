@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antigravity Cover Generator</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            background-color: #0a0a0a;
+            color: #fff;
+            font-family: 'Helvetica Neue', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #00ff88;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 30px;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 40px;
+            justify-content: center;
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .controls {
+            background: #1a1a1a;
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid #333;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #888;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="file"] {
+            width: 100%;
+            padding: 12px;
+            background: #0f0f0f;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus {
+            border-color: #00ff88;
+            outline: none;
+        }
+
+        .btn {
+            background: #00ff88;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            cursor: pointer;
+            width: 100%;
+            border-radius: 6px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
+        }
+
+        .preview-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            max-width: 100%;
+            height: auto;
+            border: 2px solid #333;
+            border-radius: 8px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .note {
+            margin-top: 20px;
+            color: #555;
+            font-size: 0.8rem;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Beat Cover Generator</h1>
+
+    <div class="container">
+        <div class="controls">
+            <div class="input-group">
+                <label>1. Imagen de Fondo</label>
+                <input type="file" id="imageInput" accept="image/*">
+            </div>
+
+            <div class="input-group">
+                <label>2. Título del Beat</label>
+                <input type="text" id="beatName" placeholder="Ej: ETERNAL">
+            </div>
+
+            <div class="input-group">
+                <label>3. BPM</label>
+                <input type="number" id="bpm" placeholder="Ej: 140">
+            </div>
+
+            <div class="input-group">
+                <label>4. Tonalidad (Key)</label>
+                <input type="text" id="key" placeholder="Ej: C Minor">
+            </div>
+
+            <button class="btn" id="downloadBtn">Descargar Cover</button>
+
+            <p class="note">Recomendado: Usar imágenes cuadradas (1080x1080) o 16:9.</p>
+        </div>
+
+        <div class="preview-area">
+            <canvas id="canvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const imageInput = document.getElementById('imageInput');
+        const beatNameInput = document.getElementById('beatName');
+        const bpmInput = document.getElementById('bpm');
+        const keyInput = document.getElementById('key');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let currentImage = null;
+
+        // Default canvas size
+        canvas.width = 1080;
+        canvas.height = 1080;
+
+        // Initial draw
+        draw();
+
+        // Event Listeners
+        imageInput.addEventListener('change', handleImageUpload);
+        beatNameInput.addEventListener('input', draw);
+        bpmInput.addEventListener('input', draw);
+        keyInput.addEventListener('input', draw);
+        downloadBtn.addEventListener('click', downloadImage);
+
+        function handleImageUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    const img = new Image();
+                    img.onload = function () {
+                        currentImage = img;
+                        // Resize canvas to match image aspect ratio but keep width 1080
+                        const aspectRatio = img.height / img.width;
+                        canvas.width = 1080;
+                        canvas.height = 1080 * aspectRatio;
+                        draw();
+                    }
+                    img.src = event.target.result;
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function draw() {
+            // 1. Fill Background
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 2. Draw Image
+            if (currentImage) {
+                ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+
+                // Add Dark Overlay for readability
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+
+            // 3. Draw Text
+            const beatName = beatNameInput.value.toUpperCase();
+            const bpm = bpmInput.value ? `${bpmInput.value} BPM` : '';
+            const key = keyInput.value;
+
+            // Center everything
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Title Style
+            ctx.textAlign = 'center';
+            ctx.shadowColor = 'rgba(0,0,0,0.8)';
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 10;
+
+            // Draw Title
+            if (beatName) {
+                ctx.font = 'bold 120px Helvetica, Arial, sans-serif';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(beatName, centerX, centerY);
+            }
+
+            // Draw Info (BPM | Key)
+            if (bpm || key) {
+                const infoText = `${bpm} ${bpm && key ? '|' : ''} ${key}`;
+                ctx.font = 'bold 60px Helvetica, Arial, sans-serif';
+                ctx.fillStyle = '#00ff88'; // Neon Green
+                ctx.fillText(infoText, centerX, centerY + 100);
+            }
+
+            // Watermark (Optional)
+            ctx.font = '30px Helvetica, Arial, sans-serif';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fillText('PROD. BY RGODBEAT', centerX, canvas.height - 50);
+        }
+
+        function downloadImage() {
+            const link = document.createElement('a');
+            const name = beatNameInput.value || 'beat';
+            link.download = `Cover_${name.replace(/\s+/g, '_')}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+    </script>
+</body>
+
+</html>
