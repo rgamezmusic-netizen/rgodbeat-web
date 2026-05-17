@@ -723,10 +723,22 @@ a {
 /* Contact Cards */
 .contact-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 2rem;
-    max-width: 900px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.5rem;
+    max-width: 1100px;
     margin: 0 auto;
+}
+
+@media (max-width: 992px) {
+    .contact-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 576px) {
+    .contact-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .contact-card {
@@ -791,6 +803,14 @@ a {
     border-color: #0088cc;
 }
 .telegram-card:hover { border-color: #0088cc; }
+
+.email-card:hover .contact-icon {
+    background: #00d2ff; /* Glowing cyan email hover */
+    color: #fff;
+    box-shadow: 0 0 20px #00d2ff;
+    border-color: #00d2ff;
+}
+.email-card:hover { border-color: #00d2ff; }
 
 .contact-card h3 {
     font-size: 1.2rem;
