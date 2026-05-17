@@ -48,6 +48,7 @@
 
     <!-- Social Sidebar -->
     <aside class="social-sidebar">
+        <div class="sidebar-logo">RGODBEAT</div>
         <a href="https://www.tiktok.com/@rgodbeat" target="_blank" aria-label="TikTok">
             <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"></path></svg>
         </a>
@@ -66,24 +67,33 @@
     </aside>
 
         <div class="hero-content">
+            <p class="subtitle" style="margin-bottom: 2.5rem; font-size: 1.6rem; letter-spacing: 8px; text-shadow: 0 0 15px rgba(188,19,254,0.6);">SOUNDS OF THE FUTURE</p>
+            
+            <div class="hero-cta-container">
+                <!-- Beat Session Card -->
+                <div class="hero-cta-card beat-card-cta">
+                    <div class="hero-cta-icon">
+                        <svg viewBox="0 0 24 24" width="28" height="28" stroke="var(--color-purple)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                    </div>
+                    <h3>BEAT SHOP</h3>
+                    <p>Exclusive beats and production sessions ready to record.</p>
+                    <a href="#portfolio" class="hero-card-button">BUY BEATS & SESSIONS</a>
+                </div>
 
-
-            <p class="subtitle">SOUNDS OF THE FUTURE</p>
-            <a href="#portfolio" class="cta-button">EXPLORE UNIVERSE</a>
-        </div>
-    </section>
-
-    <!-- Bio Section -->
-    <section id="bio" class="section">
-        <div class="container">
-            <h2 class="section-title">BIOGRAPHY</h2>
-            <div class="divider"></div>
-            <div class="bio-content">
-                <p>Rafael Gamez, son of César Gamez and Alicia Ramos, grew up in Ciudad Jardín, Venezuela, surrounded by music from an early age. Vallenato, salsa, merengue, ballads, and many different genres filled his home and shaped the way he connected with emotion through sound.</p>
-                <p>His older brother had a deep appreciation for classic salsa, which naturally made salsa a big part of his life growing up. At the same time, Rafael found himself drawn toward American music and culture, developing a strong connection with artists like Eminem, Chris Brown, and Rihanna.</p>
-                <p>After discovering Vico C and the raw emotion behind his music, Rafael connected deeply with Puerto Rican urban culture through artists like Tego Calderón, Jowell & Randy, and many others who helped shape his musical identity.</p>
-                <p>When MTV entered his world, music became more than sound — it became visuals, emotions, atmosphere, and storytelling. The combination of music videos, lyrics, and melodies inspired him to create music capable of making people feel something real.</p>
-                <p>Today, as RGodBeat, he blends his Venezuelan roots with modern urban sounds, emotional melodies, and creative energy to build music with identity and purpose. His vision is to inspire people, connect cultures, and show the younger generation that music can be a positive force for creativity, growth, and self-expression.</p>
+                <!-- Mentorship Card -->
+                <div class="hero-cta-card mentorship-card-cta">
+                    <div class="hero-cta-icon">
+                        <svg viewBox="0 0 24 24" width="28" height="28" stroke="var(--color-blue)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                        </svg>
+                    </div>
+                    <h3>THE PARK</h3>
+                    <p>Private mentorship, studio access, and artist community.</p>
+                    <a href="#plaza" class="hero-card-button join-btn">JOIN MENTORSHIP</a>
+                </div>
             </div>
         </div>
     </section>
@@ -284,6 +294,33 @@
             <p style="text-align: center; color: var(--color-text-dim); margin-top: 2rem; font-size: 0.9rem;">
                 * You can also contact me by scanning my WhatsApp or Telegram QR codes from your mobile.
             </p>
+        </div>
+    </section>
+
+    <!-- Bio Section -->
+    <section id="bio" class="section bio-section">
+        <div class="container">
+            <h2 class="section-title">BIOGRAPHY</h2>
+            <div class="divider"></div>
+            
+            <!-- Sleek Trigger Button -->
+            <div class="bio-trigger-container">
+                <button class="bio-toggle-btn" id="bioToggleBtn">
+                    <span>EXPLORE RAFAEL'S STORY</span>
+                    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" class="chevron-icon"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+            </div>
+
+            <!-- Collapsible Wrapper -->
+            <div class="bio-collapse-wrapper" id="bioCollapseWrapper">
+                <div class="bio-content">
+                    <p>Rafael Gamez, son of César Gamez and Alicia Ramos, grew up in Ciudad Jardín, Venezuela, surrounded by music from an early age. Vallenato, salsa, merengue, ballads, and many different genres filled his home and shaped the way he connected with emotion through sound.</p>
+                    <p>His older brother had a deep appreciation for classic salsa, which naturally made salsa a big part of his life growing up. At the same time, Rafael found himself drawn toward American music and culture, developing a strong connection with artists like Eminem, Chris Brown, and Rihanna.</p>
+                    <p>After discovering Vico C and the raw emotion behind his music, Rafael connected deeply with Puerto Rican urban culture through artists like Tego Calderón, Jowell & Randy, and many others who helped shape his musical identity.</p>
+                    <p>When MTV entered his world, music became more than sound — it became visuals, emotions, atmosphere, and storytelling. The combination of music videos, lyrics, and melodies inspired him to create music capable of making people feel something real.</p>
+                    <p>Today, as RGodBeat, he blends his Venezuelan roots with modern urban sounds, emotional melodies, and creative energy to build music with identity and purpose. His vision is to inspire people, connect cultures, and show the younger generation that music can be a positive force for creativity, growth, and self-expression.</p>
+                </div>
+            </div>
         </div>
     </section>
 

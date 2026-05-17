@@ -142,26 +142,47 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        beatsToRender.forEach(beat => {
+        beatsToRender.forEach((beat, index) => {
             const card = document.createElement('div');
-            card.className = 'beat-card';
+            card.className = 'beat-card'; // Keeps backward compatibility with filter and playing JS
             card.setAttribute('data-genre', beat.genre);
 
             // Create unique ID for audio element
             const audioId = `audio_${beat.id}`;
+            
+            // Track numbers: 01, 02, etc.
+            const displayIndex = String(index + 1).padStart(2, '0');
 
             card.innerHTML = `
+                <div class="beat-row-index">${displayIndex}</div>
                 <div class="beat-cover">
                     <img src="${beat.cover}" alt="${beat.title} Cover" onerror="this.src='BEATS/imagen/empty.png'">
                     <div class="beat-overlay">
                         <button class="play-btn-large" data-audio="${audioId}">▶</button>
                     </div>
                 </div>
-                <div class="beat-info">
-                    <h3>${beat.title}</h3>
-                    <p>${beat.bpm} | ${beat.key}</p>
+                <div class="beat-details-group">
+                    <div class="beat-title-block">
+                        <h3>${beat.title}</h3>
+                        <span class="beat-genre-tag">${beat.genre.toUpperCase()}</span>
+                    </div>
+                    <div class="beat-meta-tags">
+                        <span class="beat-meta-tag bpm-tag">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" class="tag-icon"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            ${beat.bpm}
+                        </span>
+                        <span class="beat-meta-tag key-tag">
+                            <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none" class="tag-icon"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                            KEY: ${beat.key}
+                        </span>
+                    </div>
+                </div>
+                <div class="beat-price-action">
                     <div class="beat-price">$${beat.price}.00</div>
-                    <button class="buy-btn" onclick="openCheckout('${beat.title.replace(/'/g, "\\'")}', ${beat.price})">BUY NOW</button>
+                    <button class="buy-btn" onclick="openCheckout('${beat.title.replace(/'/g, "\\'")}', ${beat.price})">
+                        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" class="cart-icon" style="margin-right: 6px;"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>
+                        BUY NOW
+                    </button>
                 </div>
                 <audio id="${audioId}" src="${beat.audio}" preload="none"></audio>
             `;
@@ -459,4 +480,49 @@ filterButtons.forEach(btn => {
 });
 
 // --- YOUTUBE BACKGROUND MUSIC PLAYER ---
+
+
+// --- COLLAPSIBLE BIOGRAPHY LOGIC ---
+document.addEventListener('DOMContentLoaded', () => {
+    const bioToggleBtn = document.getElementById('bioToggleBtn');
+    const bioCollapseWrapper = document.getElementById('bioCollapseWrapper');
+    const bioTriggerContainer = bioToggleBtn ? bioToggleBtn.parentElement : null;
+
+    if (bioToggleBtn && bioCollapseWrapper) {
+        bioToggleBtn.addEventListener('click', () => {
+            const isExpanded = bioCollapseWrapper.classList.contains('expanded');
+            
+            if (!isExpanded) {
+                // Expand
+                bioCollapseWrapper.classList.add('expanded');
+                bioToggleBtn.classList.add('active');
+                if (bioTriggerContainer) bioTriggerContainer.classList.add('active');
+                
+                // Get the scrollHeight of the inner content and set max-height dynamically
+                const contentHeight = bioCollapseWrapper.scrollHeight;
+                bioCollapseWrapper.style.maxHeight = contentHeight + 'px';
+                
+                // Update button text
+                const textSpan = bioToggleBtn.querySelector('span');
+                if (textSpan) textSpan.textContent = 'COLLAPSE STORY';
+                
+                // Smoothly scroll to the expanded content
+                setTimeout(() => {
+                    bioCollapseWrapper.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 300);
+            } else {
+                // Collapse
+                bioCollapseWrapper.classList.remove('expanded');
+                bioToggleBtn.classList.remove('active');
+                if (bioTriggerContainer) bioTriggerContainer.classList.remove('active');
+                
+                bioCollapseWrapper.style.maxHeight = '0';
+                
+                // Update button text
+                const textSpan = bioToggleBtn.querySelector('span');
+                if (textSpan) textSpan.textContent = 'EXPLORE RAFAEL\'S STORY';
+            }
+        });
+    }
+});
 
