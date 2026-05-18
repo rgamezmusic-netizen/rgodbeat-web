@@ -218,6 +218,15 @@ a {
     transition: transform 0.1s ease-out; /* Smooth JS updates */
 }
 
+@media (max-width: 768px) {
+    .hero-bg-image {
+        background-size: contain;
+        mask-image: radial-gradient(circle, black 70%, transparent 95%);
+        -webkit-mask-image: radial-gradient(circle, black 70%, transparent 95%);
+    }
+}
+
+
 @keyframes pulse-bg {
     0% {
         opacity: 0.3;
