@@ -6,6 +6,29 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const multer = require('multer');
+
+// Configuration for file upload vault
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir);
+}
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+        // Safe filename: timestamp + sanitized original name
+        const safeName = Date.now() + '_' + file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+        cb(null, safeName);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 100 * 1024 * 1024 } // Limit: 100MB
+});
 
 const app = express();
 const PORT = 3000;
@@ -51,10 +74,19 @@ const initializeTicketsDB = () => {
     }
 };
 
+const initializeSharedFilesDB = () => {
+    const db = readDB();
+    if (!db.sharedFiles) {
+        db.sharedFiles = [];
+        writeDB(db);
+    }
+};
+
 // --- ROUTES ---
 
-// Initialize tickets database
+// Initialize databases
 initializeTicketsDB();
+initializeSharedFilesDB();
 
 // 1. Admin: Generate Ticket
 app.post('/api/admin/generate-ticket', (req, res) => {
@@ -534,6 +566,179 @@ app.post('/api/sign-contract', async (req, res) => {
         console.error('Error generating contract:', error);
         res.status(500).json({ error: 'Internal Server Error' });
     }
+});
+
+// --- SHARED FILES VAULT ENDPOINTS ---
+
+// 1. Admin: Upload Shared File
+app.post('/api/admin/upload-file', upload.single('sharedFile'), (req, res) => {
+    const { adminPassword, customCode } = req.body;
+
+    if (adminPassword !== ADMIN_PASSWORD) {
+        if (req.file) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+        }
+        return res.status(401).json({ error: 'Contraseña de administrador incorrecta' });
+    }
+
+    if (!req.file) {
+        return res.status(400).json({ error: 'No se subió ningún archivo' });
+    }
+
+    let fileCode = customCode ? customCode.trim() : '';
+
+    if (fileCode && !/^\d+$/.test(fileCode)) {
+        try { fs.unlinkSync(req.file.path); } catch (e) {}
+        return res.status(400).json({ error: 'El código de descarga debe ser puramente numérico.' });
+    }
+
+    const db = readDB();
+    
+    if (fileCode) {
+        const existing = (db.sharedFiles || []).find(f => f.code === fileCode);
+        if (existing) {
+            try { fs.unlinkSync(req.file.path); } catch (e) {}
+            return res.status(400).json({ error: 'Este código ya está en uso' });
+        }
+    } else {
+        let isUnique = false;
+        while (!isUnique) {
+            fileCode = Math.floor(100000 + Math.random() * 900000).toString();
+            if (!(db.sharedFiles || []).some(f => f.code === fileCode)) {
+                isUnique = true;
+            }
+        }
+    }
+
+    const newFile = {
+        code: fileCode,
+        originalName: req.file.originalname,
+        filename: req.file.filename,
+        path: req.file.path,
+        size: req.file.size,
+        uploadedAt: new Date().toISOString()
+    };
+
+    if (!db.sharedFiles) db.sharedFiles = [];
+    db.sharedFiles.push(newFile);
+    writeDB(db);
+
+    console.log(`[FILE SHARED] Code: ${fileCode} - File: ${req.file.originalname}`);
+
+    res.json({
+        success: true,
+        code: fileCode,
+        fileDetails: {
+            originalName: newFile.originalName,
+            size: newFile.size,
+            uploadedAt: newFile.uploadedAt
+        }
+    });
+});
+
+// 2. Admin: Get List of Shared Files
+app.post('/api/admin/shared-files', (req, res) => {
+    const { adminPassword } = req.body;
+
+    if (adminPassword !== ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Contraseña de administrador incorrecta' });
+    }
+
+    const db = readDB();
+    const sharedFiles = (db.sharedFiles || []).map(f => ({
+        code: f.code,
+        originalName: f.originalName,
+        size: f.size,
+        uploadedAt: f.uploadedAt
+    })).sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+
+    res.json({ sharedFiles });
+});
+
+// 3. Admin: Delete Shared File
+app.post('/api/admin/delete-file', (req, res) => {
+    const { adminPassword, code } = req.body;
+
+    if (adminPassword !== ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Contraseña de administrador incorrecta' });
+    }
+
+    const db = readDB();
+    const fileIndex = (db.sharedFiles || []).findIndex(f => f.code === code);
+
+    if (fileIndex === -1) {
+        return res.status(404).json({ error: 'Archivo no encontrado' });
+    }
+
+    const fileInfo = db.sharedFiles[fileIndex];
+
+    try {
+        if (fs.existsSync(fileInfo.path)) {
+            fs.unlinkSync(fileInfo.path);
+        }
+    } catch (err) {
+        console.error(`Error deleting physical file ${fileInfo.path}:`, err);
+    }
+
+    db.sharedFiles.splice(fileIndex, 1);
+    writeDB(db);
+
+    console.log(`[FILE DELETED] Code: ${code} - File: ${fileInfo.originalName}`);
+
+    res.json({ success: true, message: 'Archivo eliminado exitosamente' });
+});
+
+// 4. Public: Check Vault Download Code
+app.get('/api/check-code', (req, res) => {
+    const { code } = req.query;
+    if (!code) {
+        return res.json({ valid: false, error: 'Código requerido' });
+    }
+
+    const db = readDB();
+    const fileInfo = (db.sharedFiles || []).find(f => f.code === code.trim());
+
+    if (!fileInfo) {
+        return res.json({ valid: false, error: 'El código ingresado no existe' });
+    }
+
+    res.json({
+        valid: true,
+        originalName: fileInfo.originalName,
+        size: fileInfo.size
+    });
+});
+
+// 5. Public: Download File by Code
+app.get('/api/download-file', (req, res) => {
+    const { code } = req.query;
+    if (!code) {
+        return res.status(400).send('Código requerido');
+    }
+
+    const db = readDB();
+    const fileInfo = (db.sharedFiles || []).find(f => f.code === code.trim());
+
+    if (!fileInfo) {
+        return res.status(404).send('Archivo no encontrado para este código');
+    }
+
+    const absolutePath = path.resolve(fileInfo.path);
+
+    if (!fs.existsSync(absolutePath)) {
+        return res.status(404).send('El archivo ya no existe físicamente en el servidor');
+    }
+
+    res.download(absolutePath, fileInfo.originalName, (err) => {
+        if (err) {
+            console.error(`Error delivering download for code ${code}:`, err);
+            if (!res.headersSent) {
+                res.status(500).send('Error al descargar el archivo');
+            }
+        } else {
+            console.log(`[FILE DOWNLOADED] Code: ${code} - File: ${fileInfo.originalName}`);
+        }
+    });
 });
 
 app.listen(PORT, () => {

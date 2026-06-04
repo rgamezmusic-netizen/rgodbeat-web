@@ -440,6 +440,80 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.disabled = false;
         }
     });
+
+    // --- DOWNLOAD VAULT LOGIC ---
+    const downloadVaultModal = document.getElementById('downloadVaultModal');
+    const downloadVaultForm = document.getElementById('downloadVaultForm');
+
+    window.openDownloadVaultModal = () => {
+        const feedbackDiv = document.getElementById('downloadFeedback');
+        if (feedbackDiv) feedbackDiv.innerHTML = '';
+        if (downloadVaultForm) downloadVaultForm.reset();
+        if (downloadVaultModal) downloadVaultModal.style.display = 'flex';
+    };
+
+    window.closeDownloadVaultModal = () => {
+        if (downloadVaultModal) downloadVaultModal.style.display = 'none';
+    };
+
+    // Close download vault modal on click outside
+    window.addEventListener('click', (e) => {
+        if (e.target === downloadVaultModal) {
+            downloadVaultModal.style.display = 'none';
+        }
+    });
+
+    // Handle Vault Download Submission
+    window.handleVaultDownload = async (e) => {
+        e.preventDefault();
+
+        const codeInput = document.getElementById('vaultCode');
+        const feedbackDiv = document.getElementById('downloadFeedback');
+        const btn = document.getElementById('downloadVaultBtn');
+
+        if (!codeInput || !feedbackDiv || !btn) return;
+
+        const code = codeInput.value.trim();
+
+        if (!code) {
+            feedbackDiv.innerHTML = '<span style="color: #ff0044;">⚠️ Ingresa un código</span>';
+            return;
+        }
+
+        feedbackDiv.innerHTML = '<span style="color: #cccccc;">⏳ Verificando código...</span>';
+        btn.disabled = true;
+
+        try {
+            // Step 1: Verify code via API
+            const response = await fetch(`/api/check-code?code=${encodeURIComponent(code)}`);
+            const result = await response.json();
+
+            if (result.valid) {
+                feedbackDiv.innerHTML = `<span style="color: #00ff00;">✅ ¡Código válido! Iniciando descarga de "${result.originalName}"...</span>`;
+                
+                // Step 2: Trigger download by navigating
+                const downloadUrl = `/api/download-file?code=${encodeURIComponent(code)}`;
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.setAttribute('download', result.originalName);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                // Auto-close modal after 2.5 seconds on success
+                setTimeout(() => {
+                    window.closeDownloadVaultModal();
+                }, 2500);
+            } else {
+                feedbackDiv.innerHTML = `<span style="color: #ff0044;">❌ ${result.error || 'Código incorrecto'}</span>`;
+            }
+        } catch (error) {
+            console.error('Error in vault download:', error);
+            feedbackDiv.innerHTML = '<span style="color: #ff0044;">❌ Error de conexión al verificar el código</span>';
+        } finally {
+            btn.disabled = false;
+        }
+    };
 });
 
 // --- GENRE FILTER LOGIC ---

@@ -60,5 +60,15 @@
       "createdAt": "2025-12-03T14:55:09.345Z",
       "status": "active"
     }
+  ],
+  "sharedFiles": [
+    {
+      "code": "12345",
+      "originalName": "dummy_project.rar",
+      "filename": "1780604349752_dummy_project.rar",
+      "path": "/Volumes/RGodbeat XXX/Paginas Web/antigravity-producer/uploads/1780604349752_dummy_project.rar",
+      "size": 55,
+      "uploadedAt": "2026-06-04T20:19:09.754Z"
+    }
   ]
 }
