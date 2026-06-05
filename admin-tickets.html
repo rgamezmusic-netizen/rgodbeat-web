@@ -468,60 +468,75 @@
                     showMessage('loginMessage', 'Contraseña incorrecta', 'error');
                 }
             } catch (error) {
-                showMessage('loginMessage', 'Error de conexión con el servidor', 'error');
-            }
+                showMessage('loginMessage', 'Error de c// Upload Shared File Form Handler (S3)
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const fileInput = document.getElementById('sharedFile');
+    const customCodeInput = document.getElementById('customCode');
+    const uploadBtn = document.getElementById('uploadBtn');
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showMessage('uploadMessage', '❌ Selecciona un archivo primero.', 'error');
+        return;
+    }
+
+    const file = fileInput.files[0];
+    const customCode = customCodeInput.value.trim();
+
+    if (customCode && !/^\d+$/.test(customCode)) {
+        showMessage('uploadMessage', '❌ El código de descarga debe contener solo números.', 'error');
+        return;
+    }
+
+    uploadBtn.textContent = '⏳ Obteniendo URL...';
+    uploadBtn.disabled = true;
+
+    try {
+        // 1. Request signed upload URL and generated code from backend
+        const signRes = await fetch('/api/admin/get-upload-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                adminPassword: currentPassword,
+                originalName: file.name,
+                size: file.size
+            })
         });
 
-        // Upload Shared File Form Handler
-        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
+        if (!signRes.ok) {
+            const err = await signRes.json();
+            throw new Error(err.error || 'Error al obtener URL de subida');
+        }
 
-            const fileInput = document.getElementById('sharedFile');
-            const customCodeInput = document.getElementById('customCode');
-            const uploadBtn = document.getElementById('uploadBtn');
+        const { uploadUrl, code } = await signRes.json();
 
-            if (!fileInput.files || fileInput.files.length === 0) {
-                showMessage('uploadMessage', '❌ Selecciona un archivo primero.', 'error');
-                return;
-            }
+        // 2. Upload the file directly to S3 using the signed URL
+        uploadBtn.textContent = '⏳ Subiendo a S3...';
+        const uploadRes = await fetch(uploadUrl, {
+            method: 'PUT',
+            body: file
+        });
 
-            const customCode = customCodeInput.value.trim();
-            if (customCode && !/^\d+$/.test(customCode)) {
-                showMessage('uploadMessage', '❌ El código de descarga debe contener solo números.', 'error');
-                return;
-            }
+        if (!uploadRes.ok) {
+            throw new Error('Error al subir el archivo a S3');
+        }
 
-            const formData = new FormData();
-            formData.append('sharedFile', fileInput.files[0]);
-            formData.append('adminPassword', currentPassword);
-            formData.append('customCode', customCode);
-
-            uploadBtn.textContent = '⏳ Subiendo archivo...';
-            uploadBtn.disabled = true;
-
-            try {
-                const response = await fetch('/api/admin/upload-file', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    showMessage('uploadMessage', 
-                        `✅ Archivo subido exitosamente. Código de descarga: <strong class="ticket-code">${data.code}</strong>`, 
-                        'success'
-                    );
-                    document.getElementById('uploadForm').reset();
-                    loadSharedFiles();
-                } else {
-                    showMessage('uploadMessage', `❌ Error: ${data.error || 'No se pudo subir el archivo'}`, 'error');
-                }
-            } catch (error) {
-                console.error(error);
-                showMessage('uploadMessage', '❌ Error de conexión con el servidor', 'error');
-            } finally {
-                uploadBtn.textContent = '📁 Subir y Registrar';
+        // 3. Show success message with the generated download code
+        showMessage('uploadMessage',
+            `✅ Archivo subido exitosamente. Código de descarga: <strong class="ticket-code">${code}</strong>`,
+            'success'
+        );
+        document.getElementById('uploadForm').reset();
+        loadSharedFiles();
+    } catch (error) {
+        console.error(error);
+        showMessage('uploadMessage', `❌ ${error.message}`, 'error');
+    } finally {
+        uploadBtn.textContent = '📁 Subir y Registrar';
+        uploadBtn.disabled = false;
+    }
+});� Subir y Registrar';
                 uploadBtn.disabled = false;
             }
         });

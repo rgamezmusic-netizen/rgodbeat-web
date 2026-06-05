@@ -6,7 +6,8 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
-const multer = require('multer');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 // Configuration for file upload vault
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -568,9 +569,60 @@ app.post('/api/sign-contract', async (req, res) => {
     }
 });
 
-// --- SHARED FILES VAULT ENDPOINTS ---
+// --- SHARED FILES VAULT ENDPOINTS
+// 1. Admin: Get Signed URL for Upload (S3)
+app.post('/api/admin/get-upload-url', async (req, res) => {
+    const { adminPassword, originalName, size } = req.body;
 
-// 1. Admin: Upload Shared File
+    if (adminPassword !== ADMIN_PASSWORD) {
+        return res.status(401).json({ error: 'Contraseña de administrador incorrecta' });
+    }
+
+    // Generate a unique code for the file (numeric)
+    const generateCode = () => {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    };
+    const code = generateCode();
+
+    // Prepare S3 client
+    const s3 = new S3Client({
+        region: process.env.AWS_REGION,
+        credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+        }
+    });
+
+    const key = `uploads/${code}_${originalName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    const command = new PutObjectCommand({
+        Bucket: process.env.AWS_S3_BUCKET,
+        Key: key,
+        ContentType: 'application/octet-stream',
+        // Optional: you can enforce a max size via conditions in client
+    });
+
+    try {
+        const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 900 }); // 15 min
+        // Save metadata in DB
+        const db = readDB();
+        if (!db.sharedFiles) db.sharedFiles = [];
+        db.sharedFiles.push({
+            code,
+            originalName,
+            size,
+            s3Key: key,
+            uploadedAt: new Date().toISOString()
+        });
+        writeDB(db);
+
+        res.json({ success: true, uploadUrl, code });
+    } catch (err) {
+        console.error('Error generating signed URL', err);
+        res.status(500).json({ error: 'Error generating upload URL' });
+    }
+});
+
+// 2. Admin: Upload Shared File
 app.post('/api/admin/upload-file', upload.single('sharedFile'), (req, res) => {
     const { adminPassword, customCode } = req.body;
 
