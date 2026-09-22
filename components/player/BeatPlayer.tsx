@@ -48,11 +48,21 @@ export function BeatPlayer() {
           {/* Cover Avatar */}
           <Link
             href={`/beats/${currentBeat.slug}`}
-            className={`relative w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-gradient-to-br ${currentBeat.cover} shrink-0 border border-white/10 flex items-center justify-center overflow-hidden group`}
+            className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-lg shrink-0 border border-white/10 flex items-center justify-center overflow-hidden group bg-[#151520]"
           >
-            <span className="w-1.5 h-3 bg-purple-400 rounded-full group-hover:scale-110 transition-transform" />
-            <span className="w-1.5 h-5 bg-white rounded-full mx-1 group-hover:scale-110 transition-transform delay-75" />
-            <span className="w-1.5 h-3.5 bg-blue-400 rounded-full group-hover:scale-110 transition-transform delay-100" />
+            {currentBeat.cover && (currentBeat.cover.startsWith("http") || currentBeat.cover.startsWith("/")) ? (
+              <img
+                src={currentBeat.cover}
+                alt={currentBeat.title}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+              />
+            ) : (
+              <div className={`w-full h-full bg-gradient-to-br ${currentBeat.cover} flex items-center justify-center`}>
+                <span className="w-1.5 h-3 bg-purple-400 rounded-full group-hover:scale-110 transition-transform" />
+                <span className="w-1.5 h-5 bg-white rounded-full mx-1 group-hover:scale-110 transition-transform delay-75" />
+                <span className="w-1.5 h-3.5 bg-blue-400 rounded-full group-hover:scale-110 transition-transform delay-100" />
+              </div>
+            )}
           </Link>
 
           {/* Title & Artist */}
