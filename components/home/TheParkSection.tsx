@@ -94,7 +94,7 @@ export function TheParkSection() {
 
                 <div className="space-y-2">
                   <div className="text-2xl font-bold text-white tracking-tight">The Park Residency</div>
-                  <div className="text-xs text-zinc-400 font-normal">Houston, TX • Hybrid In-Person & Remote</div>
+                  <div className="text-xs text-zinc-400 font-normal">Austin, TX • Hybrid In-Person & Remote</div>
                 </div>
 
                 <div className="space-y-3 pt-2 text-xs text-zinc-300">

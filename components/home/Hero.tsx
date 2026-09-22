@@ -69,7 +69,7 @@ export function Hero() {
           PROD. BY RGODBEAT
           <span className="w-1 h-1 rounded-full bg-blue-400" />
         </span>
-        <span>HOUSTON, TX • WORLDWIDE</span>
+        <span>AUSTIN, TX • WORLDWIDE</span>
         <span>CATALOG ARCHIVE // 2.0</span>
       </div>
 

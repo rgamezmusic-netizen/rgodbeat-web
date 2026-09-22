@@ -18,7 +18,7 @@ export function Footer() {
               Modern instrumentals, multi-track licensing, and creative direction for worldwide artists.
             </p>
             <div className="pt-2 text-[11px] font-mono text-zinc-500">
-              Houston, TX • Global Delivery
+              Austin, TX • Global Delivery
             </div>
           </div>
 
