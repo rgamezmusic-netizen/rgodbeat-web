@@ -7,6 +7,8 @@ import { formatCurrency } from "@/lib/utils";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useCart } from "@/contexts/CartContext";
 
+import { useAtmosphere } from "@/components/atmosphere";
+
 interface BeatCardProps {
   beat: Beat;
 }
@@ -15,14 +17,24 @@ export function BeatCard({ beat }: BeatCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const { currentBeat, isPlaying, togglePlay } = usePlayer();
   const { addToCart } = useCart();
+  const { setHoverState } = useAtmosphere();
 
   const isCurrentTrack = currentBeat?.id === beat.id;
   const isCurrentPlaying = isCurrentTrack && isPlaying;
 
   return (
     <article
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={(e) => {
+        setIsHovered(true);
+        setHoverState({ active: true, x: e.clientX, y: e.clientY });
+      }}
+      onMouseMove={(e) => {
+        setHoverState({ active: true, x: e.clientX, y: e.clientY });
+      }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setHoverState({ active: false });
+      }}
       className={`group relative flex flex-col bg-[#0b0b10] border transition-all duration-300 rounded-xl overflow-hidden ${
         isCurrentTrack
           ? "border-purple-500/50 shadow-[0_8px_30px_rgba(168,85,247,0.18)]"

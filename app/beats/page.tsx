@@ -35,7 +35,7 @@ export default async function BeatsPage() {
   return (
     <div className="relative min-h-screen bg-[#08080a] text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
       {/* Decoupled Atmospheric Background System */}
-      <AtmosphericBackground intensity="medium" accentColor="purple" />
+      <AtmosphericBackground theme="beats" intensity="medium" animate={true} />
 
       <Navbar />
 
