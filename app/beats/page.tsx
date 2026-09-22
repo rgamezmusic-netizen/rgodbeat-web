@@ -1,6 +1,7 @@
 import React from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { BeatsShopClient } from "@/components/beats";
+import { AtmosphericBackground } from "@/components/atmosphere";
 import { getPublishedBeats } from "@/lib/data/beats";
 import { getCategories } from "@/lib/data/categories";
 import { Beat } from "@/types";
@@ -32,10 +33,13 @@ export default async function BeatsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#08080a] text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
+    <div className="relative min-h-screen bg-[#08080a] text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
+      {/* Decoupled Atmospheric Background System */}
+      <AtmosphericBackground intensity="medium" accentColor="purple" />
+
       <Navbar />
 
-      <main className="flex-1 pt-28 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+      <main className="relative z-10 flex-1 pt-28 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
         {/* Editorial Beat Shop Header */}
         <div className="max-w-3xl mb-12 sm:mb-14 space-y-4">
           <div className="flex items-center gap-2">
