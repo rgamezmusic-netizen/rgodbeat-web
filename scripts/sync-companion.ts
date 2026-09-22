@@ -76,7 +76,7 @@ interface LocalSyncReport {
 }
 
 export function ensureLibraryStructure(): string {
-  if (!fs.existsSync(MASTER_LIBRARY_ROOT)) {
+  if (!fs.existsSync(/*turbopackIgnore: true*/ MASTER_LIBRARY_ROOT)) {
     fs.mkdirSync(MASTER_LIBRARY_ROOT, { recursive: true });
   }
   return MASTER_LIBRARY_ROOT;
@@ -226,8 +226,8 @@ export async function packageBeatLocally(beat: any, baseDir: string, client?: an
   ];
 
   subfolders.forEach((sub) => {
-    const subDir = path.join(beatDir, sub);
-    if (!fs.existsSync(subDir)) fs.mkdirSync(subDir, { recursive: true });
+    const subDir = path.join(/*turbopackIgnore: true*/ beatDir, sub);
+    if (!fs.existsSync(/*turbopackIgnore: true*/ subDir)) fs.mkdirSync(subDir, { recursive: true });
   });
 
   // 1. Download Master WAV into 01_MASTER
