@@ -1,4 +1,6 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useRef, useState } from "react";
 
 export type AtmosphereIntensity = "subtle" | "medium" | "high";
 export type AtmosphereAccent = "purple" | "blue" | "cyber" | "neutral";
@@ -11,7 +13,7 @@ export interface AtmosphericBackgroundProps {
   accentColor?: AtmosphereAccent;
   /** Global master opacity multiplier (0 to 1) */
   opacity?: number;
-  /** Reserved for future animation phases (disabled in Part 1) */
+  /** Whether ambient motion and parallax are active (defaults to true) */
   animate?: boolean;
   /** Mobile viewport behavior */
   mobileIntensity?: MobileIntensity;
@@ -20,29 +22,32 @@ export interface AtmosphericBackgroundProps {
 }
 
 /**
- * AtmosphericBackground (RGODBEAT 2.0)
+ * AtmosphericBackground (RGODBEAT 2.0 - PART 2: Ambient Motion & Parallax)
  * 
- * Independent, reusable visual foundation component representing
- * "An underground futuristic music studio at night."
+ * An independent atmospheric layer simulating an underground futuristic music studio at night.
  * 
- * Features:
- * - 100% pointer-events-none (never captures clicks, gestures, or interferes with audio)
- * - Pure CSS & inline SVG (zero external assets, zero heavy images, zero video)
- * - 5 decoupled layers:
- *   1. Dark Base
- *   2. Large Blurred Radial Ambient Lights
- *   3. Abstract Dotted Sound-Field
- *   4. Subtle Studio Particles / Dust Motes
- *   5. Cinematic Micro-Grain Texture
+ * Performance & Architecture:
+ * - 100% pointer-events-none (never captures clicks, scrolling, or gestures)
+ * - Pure hardware-accelerated GPU transforms (translate3d, scale3d)
+ * - Zero CPU churn: RAF loop automatically sleeps when mouse rests
+ * - Full prefers-reduced-motion accessibility compliance
+ * - Zero external assets, zero heavy WebGL, zero video
  */
 export function AtmosphericBackground({
   intensity = "medium",
   accentColor = "purple",
   opacity = 1,
-  animate = false,
+  animate = true,
   mobileIntensity = "reduced",
   className = "",
 }: AtmosphericBackgroundProps) {
+  // Layer DOM refs for silky GPU parallax without re-renders
+  const lightsLayerRef = useRef<HTMLDivElement>(null);
+  const soundfieldLayerRef = useRef<HTMLDivElement>(null);
+  const particlesLayerRef = useRef<HTMLDivElement>(null);
+
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
   // Intensity multipliers
   const intensityMap: Record<AtmosphereIntensity, { lightOpacity: string; dotOpacity: string; particleOpacity: string }> = {
     subtle: {
@@ -62,7 +67,7 @@ export function AtmosphericBackground({
     },
   };
 
-  // Accent color themes
+  // Accent color palettes
   const accentLightMap: Record<AtmosphereAccent, { primary: string; secondary: string; tertiary: string }> = {
     purple: {
       primary: "rgba(147, 51, 234, 0.12)",   // Deep electric purple
@@ -96,12 +101,185 @@ export function AtmosphericBackground({
     ? "[@media(max-width:768px)]:opacity-50"
     : "";
 
+  // -------------------------------------------------------------
+  // DESKTOP SUBTLE PARALLAX SYSTEM (Controlled by requestAnimationFrame)
+  // -------------------------------------------------------------
+  useEffect(() => {
+    // Check user preference for reduced motion
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(motionQuery.matches);
+
+    const handleMotionChange = (e: MediaQueryListEvent) => {
+      setPrefersReducedMotion(e.matches);
+    };
+
+    if (motionQuery.addEventListener) {
+      motionQuery.addEventListener("change", handleMotionChange);
+    }
+
+    if (!animate || motionQuery.matches) {
+      return () => {
+        if (motionQuery.removeEventListener) {
+          motionQuery.removeEventListener("change", handleMotionChange);
+        }
+      };
+    }
+
+    // Only enable mouse parallax on devices with fine pointer (mouse)
+    const isFinePointer = window.matchMedia("(pointer: fine)").matches;
+    if (!isFinePointer) return;
+
+    let targetX = 0;
+    let targetY = 0;
+    let currentX = 0;
+    let currentY = 0;
+    let rafId: number | null = null;
+    let isRunning = false;
+
+    const onMouseMove = (e: MouseEvent) => {
+      const { innerWidth, innerHeight } = window;
+      if (!innerWidth || !innerHeight) return;
+
+      // Normalized coordinates from -1 to 1 centered at screen middle
+      targetX = (e.clientX / innerWidth - 0.5) * 2;
+      targetY = (e.clientY / innerHeight - 0.5) * 2;
+
+      if (!isRunning) {
+        isRunning = true;
+        rafId = requestAnimationFrame(animateLoop);
+      }
+    };
+
+    const animateLoop = () => {
+      // Smooth exponential easing factor
+      const ease = 0.04;
+      const dx = targetX - currentX;
+      const dy = targetY - currentY;
+
+      currentX += dx * ease;
+      currentY += dy * ease;
+
+      // Multi-layer depth parallax offsets
+      // Layer 2: Ambient lights move gently (8px max)
+      if (lightsLayerRef.current) {
+        lightsLayerRef.current.style.transform = `translate3d(${(-currentX * 10).toFixed(2)}px, ${(-currentY * 8).toFixed(2)}px, 0)`;
+      }
+
+      // Layer 3: Acoustic sound-field moves at medium depth (18px max)
+      if (soundfieldLayerRef.current) {
+        soundfieldLayerRef.current.style.transform = `translate3d(${(-currentX * 18).toFixed(2)}px, ${(-currentY * 15).toFixed(2)}px, 0)`;
+      }
+
+      // Layer 4: Ambient particles move closest to viewer (28px max)
+      if (particlesLayerRef.current) {
+        particlesLayerRef.current.style.transform = `translate3d(${(-currentX * 28).toFixed(2)}px, ${(-currentY * 22).toFixed(2)}px, 0)`;
+      }
+
+      // If almost reached resting target, pause loop to save 100% CPU
+      if (Math.abs(dx) > 0.0005 || Math.abs(dy) > 0.0005) {
+        rafId = requestAnimationFrame(animateLoop);
+      } else {
+        isRunning = false;
+        rafId = null;
+      }
+    };
+
+    window.addEventListener("mousemove", onMouseMove, { passive: true });
+
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      if (rafId) cancelAnimationFrame(rafId);
+      if (motionQuery.removeEventListener) {
+        motionQuery.removeEventListener("change", handleMotionChange);
+      }
+    };
+  }, [animate]);
+
+  const shouldAnimate = animate && !prefersReducedMotion;
+
   return (
     <div
       aria-hidden="true"
       style={{ opacity }}
       className={`fixed inset-0 pointer-events-none select-none overflow-hidden -z-10 bg-[#060608] ${mobileClass} ${className}`}
     >
+      {/* Dynamic Keyframe Injections for Organic Ambient Drift */}
+      <style jsx global>{`
+        @keyframes rgod-ambient-drift-1 {
+          0% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          50% {
+            transform: translate3d(55px, 40px, 0) scale(1.08);
+          }
+          100% {
+            transform: translate3d(-20px, 15px, 0) scale(0.96);
+          }
+        }
+
+        @keyframes rgod-ambient-drift-2 {
+          0% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          50% {
+            transform: translate3d(-45px, -35px, 0) scale(0.94);
+          }
+          100% {
+            transform: translate3d(25px, -15px, 0) scale(1.05);
+          }
+        }
+
+        @keyframes rgod-ambient-drift-3 {
+          0% {
+            transform: translate3d(0, 0, 0) scale(1);
+          }
+          50% {
+            transform: translate3d(35px, -25px, 0) scale(1.06);
+          }
+          100% {
+            transform: translate3d(-15px, 20px, 0) scale(0.98);
+          }
+        }
+
+        @keyframes rgod-soundfield-morph {
+          0% {
+            transform: perspective(1000px) rotateX(12deg) scale(1) translateY(0);
+          }
+          50% {
+            transform: perspective(1000px) rotateX(16deg) scale(1.03) translateY(-12px);
+          }
+          100% {
+            transform: perspective(1000px) rotateX(12deg) scale(1) translateY(0);
+          }
+        }
+
+        @keyframes rgod-particles-drift {
+          0% {
+            transform: translate3d(0, 0, 0);
+            opacity: 0.85;
+          }
+          50% {
+            transform: translate3d(14px, -18px, 0);
+            opacity: 1;
+          }
+          100% {
+            transform: translate3d(-8px, -32px, 0);
+            opacity: 0.75;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .rgod-animate-drift-1,
+          .rgod-animate-drift-2,
+          .rgod-animate-drift-3,
+          .rgod-animate-soundfield,
+          .rgod-animate-particles {
+            animation: none !important;
+            transform: none !important;
+          }
+        }
+      `}</style>
+
       {/* ========================================================
           LAYER 1: DARK BASE
           Deep underground studio palette: charcoal, deep navy, midnight
@@ -111,68 +289,97 @@ export function AtmosphericBackground({
       />
 
       {/* ========================================================
-          LAYER 2: AMBIENT LIGHT LAYER
-          Large blurred radial lights creating subtle studio depth
+          LAYER 2: AMBIENT LIGHT LAYER (With Slow 15s–30s Drift & Depth)
           ======================================================== */}
-      <div className={`absolute inset-0 transition-opacity duration-700 ${selectedIntensity.lightOpacity}`}>
-        {/* Top-left primary aura (Key light) */}
+      <div
+        ref={lightsLayerRef}
+        className={`absolute inset-0 transition-opacity duration-700 will-change-transform ${selectedIntensity.lightOpacity}`}
+      >
+        {/* Top-left primary aura (Key light - 24s slow ease) */}
         <div
-          className="absolute -top-[15%] -left-[10%] w-[65vw] h-[65vw] max-w-[900px] max-h-[900px] rounded-full blur-[130px] sm:blur-[160px]"
-          style={{ background: `radial-gradient(circle, ${selectedAccent.primary} 0%, transparent 70%)` }}
+          className={`absolute -top-[15%] -left-[10%] w-[65vw] h-[65vw] max-w-[900px] max-h-[900px] rounded-full blur-[130px] sm:blur-[160px] ${
+            shouldAnimate ? "rgod-animate-drift-1" : ""
+          }`}
+          style={{
+            background: `radial-gradient(circle, ${selectedAccent.primary} 0%, transparent 70%)`,
+            animation: shouldAnimate ? "rgod-ambient-drift-1 24s ease-in-out infinite alternate" : "none",
+          }}
         />
 
-        {/* Right-center secondary aura (Rim light) */}
+        {/* Right-center secondary aura (Rim light - 28s slow ease) */}
         <div
-          className="absolute top-[25%] -right-[15%] w-[60vw] h-[60vw] max-w-[850px] max-h-[850px] rounded-full blur-[140px] sm:blur-[180px]"
-          style={{ background: `radial-gradient(circle, ${selectedAccent.secondary} 0%, transparent 65%)` }}
+          className={`absolute top-[25%] -right-[15%] w-[60vw] h-[60vw] max-w-[850px] max-h-[850px] rounded-full blur-[140px] sm:blur-[180px] ${
+            shouldAnimate ? "rgod-animate-drift-2" : ""
+          }`}
+          style={{
+            background: `radial-gradient(circle, ${selectedAccent.secondary} 0%, transparent 65%)`,
+            animation: shouldAnimate ? "rgod-ambient-drift-2 28s ease-in-out infinite alternate" : "none",
+          }}
         />
 
-        {/* Bottom subtle baseline reflection */}
+        {/* Bottom subtle baseline reflection (20s slow ease) */}
         <div
-          className="absolute -bottom-[20%] left-[20%] w-[70vw] h-[50vw] max-w-[1000px] max-h-[700px] rounded-full blur-[150px]"
-          style={{ background: `radial-gradient(ellipse, ${selectedAccent.tertiary} 0%, transparent 70%)` }}
+          className={`absolute -bottom-[20%] left-[20%] w-[70vw] h-[50vw] max-w-[1000px] max-h-[700px] rounded-full blur-[150px] ${
+            shouldAnimate ? "rgod-animate-drift-3" : ""
+          }`}
+          style={{
+            background: `radial-gradient(ellipse, ${selectedAccent.tertiary} 0%, transparent 70%)`,
+            animation: shouldAnimate ? "rgod-ambient-drift-3 20s ease-in-out infinite alternate" : "none",
+          }}
         />
       </div>
 
       {/* ========================================================
-          LAYER 3: SOUND-FIELD LAYER
-          Abstract acoustic matrix pattern with radial falloff mask
+          LAYER 3: SOUND-FIELD LAYER (Abstract Organic Acoustic Morphing)
           ======================================================== */}
       <div 
-        className={`absolute inset-0 transition-opacity duration-700 ${selectedIntensity.dotOpacity}`}
+        ref={soundfieldLayerRef}
+        className={`absolute inset-0 transition-opacity duration-700 will-change-transform ${selectedIntensity.dotOpacity}`}
         style={{
           maskImage: "radial-gradient(circle at 50% 35%, black 20%, transparent 75%)",
           WebkitMaskImage: "radial-gradient(circle at 50% 35%, black 20%, transparent 75%)",
         }}
       >
-        <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern
-              id="soundfield-pattern"
-              x="0"
-              y="0"
-              width="44"
-              height="44"
-              patternUnits="userSpaceOnUse"
-            >
-              {/* Primary sound-field matrix point */}
-              <circle cx="22" cy="22" r="1.1" fill="rgba(255, 255, 255, 0.16)" />
-              {/* Harmonic secondary node */}
-              <circle cx="44" cy="44" r="0.65" fill="rgba(168, 85, 247, 0.14)" />
-              <circle cx="0" cy="0" r="0.65" fill="rgba(59, 130, 246, 0.12)" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#soundfield-pattern)" />
-        </svg>
+        <div
+          className="w-full h-full"
+          style={{
+            animation: shouldAnimate ? "rgod-soundfield-morph 24s ease-in-out infinite alternate" : "none",
+          }}
+        >
+          <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern
+                id="soundfield-pattern-v2"
+                x="0"
+                y="0"
+                width="44"
+                height="44"
+                patternUnits="userSpaceOnUse"
+              >
+                {/* Primary sound-field matrix point */}
+                <circle cx="22" cy="22" r="1.1" fill="rgba(255, 255, 255, 0.16)" />
+                {/* Harmonic secondary nodes */}
+                <circle cx="44" cy="44" r="0.65" fill="rgba(168, 85, 247, 0.14)" />
+                <circle cx="0" cy="0" r="0.65" fill="rgba(59, 130, 246, 0.12)" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#soundfield-pattern-v2)" />
+          </svg>
+        </div>
       </div>
 
       {/* ========================================================
-          LAYER 4: PARTICLE / ATMOSPHERE LAYER
-          Static floating studio micro-motes / ambient dust particles
+          LAYER 4: PARTICLE / ATMOSPHERE LAYER (Subtle Floating Studio Motes)
           ======================================================== */}
-      <div className={`absolute inset-0 transition-opacity duration-700 ${selectedIntensity.particleOpacity}`}>
+      <div
+        ref={particlesLayerRef}
+        className={`absolute inset-0 transition-opacity duration-700 will-change-transform ${selectedIntensity.particleOpacity}`}
+        style={{
+          animation: shouldAnimate ? "rgod-particles-drift 32s ease-in-out infinite alternate" : "none",
+        }}
+      >
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-          {/* Constellation of carefully balanced atmospheric particles */}
+          {/* Constellation of atmospheric particles */}
           <circle cx="12%" cy="18%" r="1.4" fill="rgba(255, 255, 255, 0.22)" filter="drop-shadow(0 0 4px rgba(168, 85, 247, 0.4))" />
           <circle cx="28%" cy="14%" r="0.9" fill="rgba(255, 255, 255, 0.14)" />
           <circle cx="45%" cy="22%" r="1.6" fill="rgba(147, 197, 253, 0.25)" filter="drop-shadow(0 0 6px rgba(59, 130, 246, 0.5))" />
@@ -197,7 +404,7 @@ export function AtmosphericBackground({
 
       {/* ========================================================
           LAYER 5: FINE CINEMATIC GRAIN / NOISE
-          Ultra-fine procedural noise generating tactile studio film aesthetic
+          Tactile analogue film grain overlay
           ======================================================== */}
       <div 
         className="absolute inset-0 opacity-[0.022] mix-blend-screen"
