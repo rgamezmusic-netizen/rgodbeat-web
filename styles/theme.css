@@ -1,0 +1,35 @@
+/**
+ * RGODBEAT 2.0 - Centralized Design Token System
+ * Mature, cinematic, dark luxury music brand identity
+ */
+
+:root {
+  /* Surface colors */
+  --bg-base: #08080a;
+  --bg-surface: #0f0f13;
+  --bg-surface-elevated: #15151b;
+  --bg-surface-hover: #1c1c24;
+  --bg-glass: rgba(15, 15, 19, 0.75);
+  
+  /* Border colors */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.14);
+  --border-accent: rgba(168, 85, 247, 0.35);
+  --border-blue: rgba(59, 130, 246, 0.35);
+
+  /* Brand Accents */
+  --accent-purple: #a855f7;
+  --accent-purple-vibrant: #bc13fe;
+  --accent-purple-glow: rgba(168, 85, 247, 0.18);
+  --accent-blue: #3b82f6;
+  --accent-blue-glow: rgba(59, 130, 246, 0.18);
+
+  /* Typography / Text colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-faint: #475569;
+
+  /* Focus & highlights */
+  --highlight-gradient: linear-gradient(135deg, rgba(168, 85, 247, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%);
+}

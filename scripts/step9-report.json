@@ -1,0 +1,31 @@
+{
+  "pass": true,
+  "report": {
+    "beatId": "1bb31ff4-8b51-4ea3-aa7b-349415488dba",
+    "slug": "rgodbeat-test-001",
+    "supabaseRecordStatus": "published: true, ranking: new",
+    "storageFilesCreated": [
+      "rgodbeat-public/covers/1bb31ff4-8b51-4ea3-aa7b-349415488dba/cover.jpg",
+      "rgodbeat-public/previews/1bb31ff4-8b51-4ea3-aa7b-349415488dba/preview.mp3",
+      "rgodbeat-private/beats/1bb31ff4-8b51-4ea3-aa7b-349415488dba/wav/FM 3-808 EXPLOSIVO LORY JAMES (2).wav"
+    ],
+    "localSyncStatusBefore": "pending",
+    "localFolderPath": "/Volumes/RGodbeat XXX/RGODBEAT 23 SALE/rgodbeat-test-001",
+    "sevenFoldersCreated": true,
+    "foldersList": [
+      "01_MASTER",
+      "02_MP3",
+      "03_ARTWORK",
+      "04_METADATA",
+      "05_YOUTUBE",
+      "06_BEATSTARS",
+      "07_LICENSE"
+    ],
+    "metadataFileCreated": true,
+    "beatIdInsideMetadata": "1bb31ff4-8b51-4ea3-aa7b-349415488dba",
+    "localSyncStatusAfter": "synced",
+    "lastSyncedAt": "2026-09-20T15:18:45.59+00:00",
+    "secondRunDuplicatesCreated": false,
+    "errors": []
+  }
+}
