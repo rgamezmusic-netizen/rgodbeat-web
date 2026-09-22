@@ -77,6 +77,11 @@ export function Footer() {
                 </a>
               </li>
               <li>
+                <a href="https://soundcloud.com/rafael-gamez-443960876" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  SoundCloud
+                </a>
+              </li>
+              <li>
                 <a href="https://discord.gg/p7mxUXW8A" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
                   Discord (The Park)
                 </a>
