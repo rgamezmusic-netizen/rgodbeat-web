@@ -7,7 +7,7 @@ import { AtmosphericBackground } from "@/components/atmosphere";
 import { useCart } from "@/contexts/CartContext";
 
 export default function CartPage() {
-  const { openCart, items, total, removeFromCart } = useCart();
+  const { openCart, items, totalAmount, removeFromCart } = useCart();
 
   useEffect(() => {
     // Automatically trigger cart slideover
@@ -59,20 +59,20 @@ export default function CartPage() {
             <div className="rounded-3xl bg-[#0c0c12]/70 border border-white/[0.08] backdrop-blur-2xl p-6 sm:p-8 space-y-4">
               {items.map((item) => (
                 <div
-                  key={`${item.beatId}-${item.licenseType}`}
+                  key={item.id}
                   className="flex items-center justify-between gap-4 py-4 border-b border-white/[0.06] last:border-0"
                 >
                   <div>
-                    <h3 className="text-base font-bold text-white">{item.title}</h3>
+                    <h3 className="text-base font-bold text-white">{item.beat.title}</h3>
                     <p className="text-xs text-purple-400 uppercase font-mono tracking-wider">
-                      Licencia: {item.licenseType}
+                      Licencia: {item.licenseName || item.licenseTier}
                     </p>
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="text-sm font-bold text-white">${item.price.toFixed(2)}</span>
                     <button
                       type="button"
-                      onClick={() => removeFromCart(item.beatId, item.licenseType)}
+                      onClick={() => removeFromCart(item.id)}
                       className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
                     >
                       Eliminar
@@ -83,7 +83,7 @@ export default function CartPage() {
 
               <div className="pt-4 flex items-center justify-between border-t border-white/[0.08]">
                 <span className="text-sm font-bold uppercase tracking-wider text-zinc-400">Total:</span>
-                <span className="text-xl font-extrabold text-white">${total.toFixed(2)}</span>
+                <span className="text-xl font-extrabold text-white">${totalAmount.toFixed(2)}</span>
               </div>
             </div>
 
