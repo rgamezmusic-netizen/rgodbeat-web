@@ -109,6 +109,11 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
     minute: "2-digit",
   });
 
+  const { getStemRequestByPurchase, isTierEligibleForStems } = await import("@/lib/stems/tickets");
+  const { RequestStemsButton } = await import("@/components/stems/RequestStemsButton");
+  const isEligibleForStems = isTierEligibleForStems(tier);
+  const stemTicket = isEligibleForStems ? await getStemRequestByPurchase(purchase.id) : null;
+
   return (
     <div className="min-h-screen bg-[#070709] text-white pt-24 pb-20 px-4 sm:px-6 selection:bg-purple-500/30 selection:text-white">
       <div className="max-w-xl mx-auto space-y-6">
@@ -211,6 +216,28 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
               {conceptExplanation}
             </p>
           </div>
+
+          {/* Stems Entitlement Box (UNLIMITED & EXCLUSIVE ONLY) */}
+          {isEligibleForStems && (
+            <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-mono text-purple-400 uppercase tracking-widest block font-bold">
+                  STEMS AGRUPADOS (INCLUIDOS BAJO SOLICITUD)
+                </span>
+                <span className="text-xs text-zinc-300">
+                  {stemTicket
+                    ? `Ticket activo: ${stemTicket.ticketId} (${stemTicket.status})`
+                    : "Disponible: Puedes solicitar los 4 grupos de stems (.wav) en cualquier momento."}
+                </span>
+              </div>
+              <RequestStemsButton
+                purchaseId={purchase.id}
+                beatTitle={beat?.title}
+                initialTicketId={stemTicket?.ticketId}
+                initialStatus={stemTicket?.status}
+              />
+            </div>
+          )}
 
           {/* Client & Licensor Breakdown */}
           <div className="grid grid-cols-2 gap-4 text-xs font-mono">

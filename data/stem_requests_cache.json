@@ -1,0 +1,128 @@
+{
+  "RG-STEM-2026-000101": {
+    "id": "pur_unl_test_1001",
+    "ticketId": "RG-STEM-2026-000101",
+    "purchaseId": "pur_unl_test_1001",
+    "customerId": "cust_test_1",
+    "customerName": "Producer Alpha",
+    "customerEmail": "alpha@studio.com",
+    "beatId": "beat_divina_uuid",
+    "beatTitle": "DIVINA",
+    "licenseId": "RG-UNL-2026-000101",
+    "licenseTier": "unlimited",
+    "orderId": "ord_stripe_unl_101",
+    "contractVersion": "NE-v1.0",
+    "status": "Closed",
+    "adminNotes": "Ticket cerrado tras entrega confirmada",
+    "stemFiles": {
+      "01_MELODIES": {
+        "fileName": "01_MELODIES.wav",
+        "storagePath": "stems/RG-STEM-2026-000101/01_MELODIES.wav",
+        "sizeBytes": 15420000,
+        "uploadedAt": "2026-09-23T23:28:27.220Z"
+      },
+      "02_DRUMS": {
+        "fileName": "02_DRUMS.wav",
+        "storagePath": "stems/RG-STEM-2026-000101/02_DRUMS.wav",
+        "sizeBytes": 15420000,
+        "uploadedAt": "2026-09-23T23:28:27.401Z"
+      },
+      "03_BASS": {
+        "fileName": "03_BASS.wav",
+        "storagePath": "stems/RG-STEM-2026-000101/03_BASS.wav",
+        "sizeBytes": 15420000,
+        "uploadedAt": "2026-09-23T23:28:27.571Z"
+      },
+      "04_FX": {
+        "fileName": "04_FX.wav",
+        "storagePath": "stems/RG-STEM-2026-000101/04_FX.wav",
+        "sizeBytes": 15420000,
+        "uploadedAt": "2026-09-23T23:28:27.746Z"
+      }
+    },
+    "createdAt": "2026-09-23T23:28:26.598Z",
+    "updatedAt": "2026-09-23T23:28:28.106Z"
+  },
+  "by_purchase_pur_unl_test_1001": {
+    "id": "pur_unl_test_1001",
+    "ticketId": "RG-STEM-2026-000101",
+    "purchaseId": "pur_unl_test_1001",
+    "customerId": "cust_test_1",
+    "customerName": "Producer Alpha",
+    "customerEmail": "alpha@studio.com",
+    "beatId": "beat_divina_uuid",
+    "beatTitle": "DIVINA",
+    "licenseId": "RG-UNL-2026-000101",
+    "licenseTier": "unlimited",
+    "orderId": "ord_stripe_unl_101",
+    "contractVersion": "NE-v1.0",
+    "status": "Closed",
+    "adminNotes": "Ticket cerrado tras entrega confirmada",
+    "stemFiles": {
+      "01_MELODIES": {
+        "fileName": "01_MELODIES.wav",
+        "storagePath": "stems/RG-STEM-2026-000101/01_MELODIES.wav",
+        "sizeBytes": 15420000,
+        "uploadedAt": "2026-09-23T23:28:27.220Z"
+      },
+      "02_DRUMS": {
+        "fileName": "02_DRUMS.wav",
+        "storagePath": "stems/RG-STEM-2026-000101/02_DRUMS.wav",
+        "sizeBytes": 15420000,
+        "uploadedAt": "2026-09-23T23:28:27.401Z"
+      },
+      "03_BASS": {
+        "fileName": "03_BASS.wav",
+        "storagePath": "stems/RG-STEM-2026-000101/03_BASS.wav",
+        "sizeBytes": 15420000,
+        "uploadedAt": "2026-09-23T23:28:27.571Z"
+      },
+      "04_FX": {
+        "fileName": "04_FX.wav",
+        "storagePath": "stems/RG-STEM-2026-000101/04_FX.wav",
+        "sizeBytes": 15420000,
+        "uploadedAt": "2026-09-23T23:28:27.746Z"
+      }
+    },
+    "createdAt": "2026-09-23T23:28:26.598Z",
+    "updatedAt": "2026-09-23T23:28:28.106Z"
+  },
+  "RG-STEM-2026-000102": {
+    "id": "pur_exc_test_2002",
+    "ticketId": "RG-STEM-2026-000102",
+    "purchaseId": "pur_exc_test_2002",
+    "customerId": "cust_test_2",
+    "customerName": "Major Label Buyer",
+    "customerEmail": "aandrinvestments@label.com",
+    "beatId": "beat_divina_uuid",
+    "beatTitle": "DIVINA",
+    "licenseId": "RG-EXC-2026-000102",
+    "licenseTier": "exclusive",
+    "orderId": "ord_stripe_exc_202",
+    "contractVersion": "EX-v1.0",
+    "status": "Pending",
+    "adminNotes": "",
+    "stemFiles": {},
+    "createdAt": "2026-09-23T23:28:26.861Z",
+    "updatedAt": "2026-09-23T23:28:26.861Z"
+  },
+  "by_purchase_pur_exc_test_2002": {
+    "id": "pur_exc_test_2002",
+    "ticketId": "RG-STEM-2026-000102",
+    "purchaseId": "pur_exc_test_2002",
+    "customerId": "cust_test_2",
+    "customerName": "Major Label Buyer",
+    "customerEmail": "aandrinvestments@label.com",
+    "beatId": "beat_divina_uuid",
+    "beatTitle": "DIVINA",
+    "licenseId": "RG-EXC-2026-000102",
+    "licenseTier": "exclusive",
+    "orderId": "ord_stripe_exc_202",
+    "contractVersion": "EX-v1.0",
+    "status": "Pending",
+    "adminNotes": "",
+    "stemFiles": {},
+    "createdAt": "2026-09-23T23:28:26.861Z",
+    "updatedAt": "2026-09-23T23:28:26.861Z"
+  }
+}

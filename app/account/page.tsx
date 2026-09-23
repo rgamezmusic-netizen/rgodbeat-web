@@ -7,6 +7,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency } from "@/lib/utils";
 import { extractLicenseMetadata } from "@/lib/commerce/contracts";
+import { listStemRequestsForCustomer, isTierEligibleForStems } from "@/lib/stems/tickets";
+import { RequestStemsButton } from "@/components/stems/RequestStemsButton";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +55,10 @@ export default async function AccountPage() {
 
     purchases = customerPurchases || [];
   }
+
+  // Fetch any active or delivered stem requests for this customer
+  const customerEmail = customer?.email || user.email || "";
+  const existingStemTickets = customerEmail ? await listStemRequestsForCustomer(customerEmail) : [];
 
   const displayName = customer?.name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Artista";
   const hasPurchases = purchases.length > 0;
@@ -214,16 +220,18 @@ export default async function AccountPage() {
                         CONTRATO PDF
                       </a>
 
-                      {/* Grouped Stems Access Upon Request (Unlimited & Exclusive) */}
-                      {(purchase.license_tier === "unlimited" || purchase.license_tier === "exclusive") && (
-                        <a
-                          href={`mailto:rgodbeat@gmail.com?subject=Solicitud de Stems Agrupados - Beat: ${encodeURIComponent(beat?.title || "Beat")} (Orden ${purchase.id.slice(0, 8)})`}
-                          className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-mono font-bold tracking-wider uppercase bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-300 transition-colors text-center"
-                          title="Acceso a stems agrupados bajo solicitud para licencias Unlimited y Exclusive"
-                        >
-                          SOLICITAR STEMS
-                        </a>
-                      )}
+                      {/* Grouped Stems Access Upon Request (UNLIMITED & EXCLUSIVE ONLY) */}
+                      {isTierEligibleForStems(purchase.license_tier) && (() => {
+                        const matchingTicket = existingStemTickets.find((t) => t.purchaseId === purchase.id);
+                        return (
+                          <RequestStemsButton
+                            purchaseId={purchase.id}
+                            beatTitle={beat?.title}
+                            initialTicketId={matchingTicket?.ticketId}
+                            initialStatus={matchingTicket?.status}
+                          />
+                        );
+                      })()}
                     </div>
                   </div>
                 );

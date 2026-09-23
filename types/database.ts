@@ -527,6 +527,66 @@ export interface Database {
         };
         Relationships: [];
       };
+      stem_requests: {
+        Row: {
+          id: string;
+          ticket_id: string;
+          purchase_id: string;
+          customer_id: string | null;
+          customer_name: string;
+          customer_email: string;
+          beat_id: string | null;
+          beat_title: string;
+          license_id: string;
+          license_tier: "unlimited" | "exclusive";
+          order_id: string | null;
+          contract_version: string;
+          status: "Pending" | "Contacted" | "Delivered" | "Closed";
+          admin_notes: string | null;
+          stem_files: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          ticket_id: string;
+          purchase_id: string;
+          customer_id?: string | null;
+          customer_name: string;
+          customer_email: string;
+          beat_id?: string | null;
+          beat_title: string;
+          license_id: string;
+          license_tier: "unlimited" | "exclusive";
+          order_id?: string | null;
+          contract_version: string;
+          status?: "Pending" | "Contacted" | "Delivered" | "Closed";
+          admin_notes?: string | null;
+          stem_files?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          ticket_id?: string;
+          purchase_id?: string;
+          customer_id?: string | null;
+          customer_name?: string;
+          customer_email?: string;
+          beat_id?: string | null;
+          beat_title?: string;
+          license_id?: string;
+          license_tier?: "unlimited" | "exclusive";
+          order_id?: string | null;
+          contract_version?: string;
+          status?: "Pending" | "Contacted" | "Delivered" | "Closed";
+          admin_notes?: string | null;
+          stem_files?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
