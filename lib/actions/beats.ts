@@ -12,6 +12,7 @@ import {
   PRIVATE_STORAGE_BUCKET,
   getPrivateBeatWavPath,
 } from "@/lib/storage/private";
+import { isR2Configured, uploadToR2 } from "@/lib/storage/r2";
 
 export interface CreateBeatResponse {
   success: boolean;
@@ -146,20 +147,47 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
       }
     }
 
-    // 7. Upload WAV Master Audio (rgodbeat-private)
+    // 7. Upload WAV Master Audio (Prioritizing Cloudflare R2 to preserve Supabase quota)
     if (wavFile && wavFile.size > 0) {
       const wavPath = getPrivateBeatWavPath(beatId, wavFile.name);
       const wavBuffer = Buffer.from(await wavFile.arrayBuffer());
+      let finalStoragePath = wavPath;
 
-      const { error: wavUploadError } = await supabase.storage
-        .from(PRIVATE_STORAGE_BUCKET)
-        .upload(wavPath, wavBuffer, {
+      if (isR2Configured()) {
+        console.log(`[CreateBeat] Storing WAV in Cloudflare R2 (10GB tier): ${wavPath}`);
+        const r2Result = await uploadToR2({
+          key: wavPath,
+          body: wavBuffer,
           contentType: wavFile.type || "audio/wav",
-          upsert: true,
         });
 
-      if (wavUploadError) {
-        throw new Error(`Master WAV upload failed: ${wavUploadError.message}`);
+        if (!r2Result.success) {
+          console.warn(`[CreateBeat] Cloudflare R2 upload failed (${r2Result.error}). Falling back to Supabase Storage...`);
+          const { error: fallbackError } = await supabase.storage
+            .from(PRIVATE_STORAGE_BUCKET)
+            .upload(wavPath, wavBuffer, {
+              contentType: wavFile.type || "audio/wav",
+              upsert: true,
+            });
+
+          if (fallbackError) {
+            throw new Error(`Master WAV upload failed on both R2 and Supabase: ${fallbackError.message}`);
+          }
+        } else {
+          finalStoragePath = `r2:${wavPath}`;
+        }
+      } else {
+        console.log(`[CreateBeat] Cloudflare R2 not configured. Storing WAV in Supabase Storage: ${wavPath}`);
+        const { error: wavUploadError } = await supabase.storage
+          .from(PRIVATE_STORAGE_BUCKET)
+          .upload(wavPath, wavBuffer, {
+            contentType: wavFile.type || "audio/wav",
+            upsert: true,
+          });
+
+        if (wavUploadError) {
+          throw new Error(`Master WAV upload failed: ${wavUploadError.message}`);
+        }
       }
 
       // Record in beat_files
@@ -168,7 +196,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
         .insert({
           beat_id: beatId,
           file_type: "wav",
-          storage_path: wavPath,
+          storage_path: finalStoragePath,
           file_name: wavFile.name,
           mime_type: wavFile.type || "audio/wav",
           file_size: wavFile.size,

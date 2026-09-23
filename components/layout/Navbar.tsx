@@ -4,10 +4,12 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { useCart } from "@/contexts/CartContext";
+import { getBrowserUser } from "@/lib/auth/client";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
   const { openCart, itemCount } = useCart();
 
   useEffect(() => {
@@ -15,6 +17,7 @@ export function Navbar() {
       setIsScrolled(window.scrollY > 20);
     };
     window.addEventListener("scroll", handleScroll);
+    getBrowserUser().then(setCurrentUser).catch(() => {});
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
@@ -86,20 +89,30 @@ export function Navbar() {
             </svg>
           </Link>
 
-          {/* Account Button */}
-          <Button variant="ghost" size="sm" className="text-zinc-300 hover:text-white">
-            <svg
-              className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            <span className="hidden md:inline tracking-wider">ACCOUNT</span>
-          </Button>
+          {/* Account / User Portal Button */}
+          <Link
+            href={currentUser ? "/account" : "/login"}
+            aria-label={currentUser ? "Mi Cuenta" : "Acceso Artistas"}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono text-zinc-300 hover:text-white hover:bg-white/[0.05] border border-white/[0.08] transition-colors"
+          >
+            {currentUser ? (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+            ) : (
+              <svg
+                className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+              >
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            )}
+            <span className="hidden md:inline tracking-wider uppercase font-semibold">
+              {currentUser ? "MI CUENTA" : "ACCESO ARTISTAS"}
+            </span>
+          </Link>
 
           {/* Cart Button */}
           <Button
@@ -206,14 +219,14 @@ export function Navbar() {
           </div>
 
           <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3">
-            <Button
-              variant="secondary"
-              size="md"
-              className="w-full justify-center"
+            <Link
+              href={currentUser ? "/account" : "/login"}
+              className="w-full py-2.5 rounded-lg text-xs font-mono font-bold tracking-wider uppercase text-center bg-white/[0.05] border border-white/10 text-zinc-200 hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center gap-2"
               onClick={() => setMobileMenuOpen(false)}
             >
-              ACCOUNT
-            </Button>
+              {currentUser && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+              <span>{currentUser ? "MI CUENTA" : "ACCESO ARTISTAS"}</span>
+            </Link>
             <Button
               variant="primary"
               size="md"

@@ -6,6 +6,39 @@ export interface SignInResult {
   error: AuthError | null;
 }
 
+export interface SignUpResult {
+  user: User | null;
+  session: any | null;
+  error: AuthError | null;
+}
+
+/**
+ * Sign up a new customer/artist account using email and password.
+ */
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+  fullName?: string
+): Promise<SignUpResult> {
+  const supabase = createClient();
+  const { data, error } = await supabase.auth.signUp({
+    email: email.trim(),
+    password,
+    options: {
+      data: {
+        full_name: fullName?.trim() || "",
+        role: "customer",
+      },
+    },
+  });
+
+  return {
+    user: data.user,
+    session: data.session,
+    error,
+  };
+}
+
 /**
  * Sign in using email and password on the client.
  */

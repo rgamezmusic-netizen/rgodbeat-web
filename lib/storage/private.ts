@@ -11,6 +11,8 @@
 
 export const PRIVATE_STORAGE_BUCKET = "rgodbeat-private";
 
+import { getR2SignedDownloadUrl } from "./r2";
+
 export type PrivateFileType = "wav" | "stems" | "exclusive" | "contract";
 
 /**
@@ -216,12 +218,23 @@ export async function resolvePrivateDownloadUrl({
   }
 
   // 4. Generate Short-Lived Signed URL
-  const { data: signedData, error: signError } = await supabase.storage
-    .from(targetBucket)
-    .createSignedUrl(targetStoragePath, expiresInSeconds);
+  let downloadUrl: string | null = null;
 
-  if (signError || !signedData?.signedUrl) {
-    throw new Error(`Failed to generate secure download link: ${signError?.message || "Storage error"}`);
+  if (targetStoragePath.startsWith("r2:")) {
+    const r2Key = targetStoragePath.replace(/^r2:/, "");
+    downloadUrl = await getR2SignedDownloadUrl(r2Key, expiresInSeconds);
+    if (!downloadUrl) {
+      throw new Error("Failed to generate secure download link from Cloudflare R2.");
+    }
+  } else {
+    const { data: signedData, error: signError } = await supabase.storage
+      .from(targetBucket)
+      .createSignedUrl(targetStoragePath, expiresInSeconds);
+
+    if (signError || !signedData?.signedUrl) {
+      throw new Error(`Failed to generate secure download link: ${signError?.message || "Storage error"}`);
+    }
+    downloadUrl = signedData.signedUrl;
   }
 
   // 5. Audit Log in download_records
@@ -241,7 +254,7 @@ export async function resolvePrivateDownloadUrl({
   const fileName = targetStoragePath.split("/").pop() || `${beat?.title || "beat"}_${fileType}`;
 
   return {
-    downloadUrl: signedData.signedUrl,
+    downloadUrl: downloadUrl!,
     expiresAt,
     fileName,
   };
