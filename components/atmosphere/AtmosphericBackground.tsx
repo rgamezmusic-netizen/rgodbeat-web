@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useAtmosphere } from "./AtmosphereContext";
+import { ProceduralStarfield } from "./ProceduralStarfield";
 import {
   AtmosphericBackgroundProps,
   AtmosphereTheme,
@@ -92,6 +93,10 @@ export function AtmosphericBackground({
   intensity = "medium",
   ambientIntensity,
   soundFieldIntensity,
+  enableStars = true,
+  starDensity = "medium",
+  starOpacity = 0.85,
+  starTint = "cosmic",
   accentColor,
   opacity = 1,
   animate = true,
@@ -422,6 +427,20 @@ export function AtmosphericBackground({
       <div className="absolute top-0 inset-x-0 h-44 bg-gradient-to-b from-[#040406] via-[#040406]/70 to-transparent pointer-events-none" />
       {/* Subtle bottom edge gradient for fixed audio player separation */}
       <div className="absolute bottom-0 inset-x-0 h-48 bg-gradient-to-t from-[#040406] via-[#040406]/80 to-transparent pointer-events-none" />
+
+      {/* ========================================================
+          PROCEDURAL STARFIELD LAYER (Dynamic Code-Generated Stars)
+          Zero static images - 100% Canvas math, depth tiers, shimmering
+          ======================================================== */}
+      {enableStars && (
+        <ProceduralStarfield
+          density={starDensity}
+          animate={shouldAnimate}
+          playing={isPlaying}
+          opacity={starOpacity}
+          tint={starTint}
+        />
+      )}
 
       {/* ========================================================
           LAYER 2: AMBIENT LIGHT LAYER (With 15s–30s Drift & Beat Breathing)

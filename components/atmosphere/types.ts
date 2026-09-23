@@ -38,6 +38,14 @@ export interface AtmosphericBackgroundProps extends AudioReactivityMetrics {
   ambientIntensity?: AtmosphereIntensity | number;
   /** Granular soundfield matrix intensity override */
   soundFieldIntensity?: AtmosphereIntensity | number;
+  /** Whether procedural starfield is active (defaults to true) */
+  enableStars?: boolean;
+  /** Star density ('low' | 'medium' | 'high') */
+  starDensity?: "low" | "medium" | "high";
+  /** Procedural starfield opacity (0 to 1) */
+  starOpacity?: number;
+  /** Starfield tint palette */
+  starTint?: "cosmic" | "violet" | "neutral";
   /** Primary atmospheric accent hue (overrides theme preset if provided) */
   accentColor?: AtmosphereAccent;
   /** Global master opacity multiplier (0 to 1) */
