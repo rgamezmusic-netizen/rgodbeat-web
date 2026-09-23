@@ -1,0 +1,35 @@
+================================================================================
+RGODBEAT MUSIC PRODUCTION
+RGODBEAT NON-EXCLUSIVE BEAT LICENSE AGREEMENT
+VERSION: {{CONTRACT_VERSION}}
+LICENSE ID: {{LICENSE_ID}}
+================================================================================
+
+ORDER IDENTIFIER:  {{ORDER_ID}}
+DATE OF EXECUTION: {{PURCHASE_DATE}}
+
+1. PARTIES
+   - LICENSOR: RGODBEAT (Official Producer & Catalog Rights Holder)
+   - LICENSEE: {{CUSTOMER_NAME}} ({{CUSTOMER_EMAIL}})
+
+2. LICENSED WORK & CONSIDERATION
+   - BEAT TITLE:      "{{BEAT_NAME}}"
+   - BEAT CATALOG ID: {{BEAT_ID}}
+   - LICENSE TYPE:    NON-EXCLUSIVE
+   - LICENSE TIER:    {{LICENSE_TIER}}
+   - CONSIDERATION:   {{PURCHASE_PRICE}} (PAID IN FULL)
+
+3. PURCHASED DELIVERABLES
+   - {{DELIVERABLES}}
+
+4. OFFICIAL LICENSE TERMS & USAGE LIMITATIONS
+   [OFFICIAL LEGAL TEXT PENDING FINAL EXECUTION]
+   The official terms, distribution permissions, and usage limitations of the
+   RGODBEAT Non-Exclusive Beat License Agreement govern the master recording
+   derived from this production upon official legal finalization.
+
+================================================================================
+Licensor: RGODBEAT
+Contact:  rgodbeat@gmail.com
+Status:   OFFICIAL PURCHASE ENTITLEMENT CONFIRMED
+================================================================================

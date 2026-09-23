@@ -6,6 +6,7 @@ import { getCurrentUser, signOutAdmin } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency } from "@/lib/utils";
+import { extractLicenseMetadata } from "@/lib/commerce/contracts";
 
 export const dynamic = "force-dynamic";
 
@@ -177,7 +178,10 @@ export default async function AccountPage() {
                           <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold uppercase">
                             {licenseName}
                           </span>
-                          {beat?.bpm && <span>{beat.bpm} BPM</span>}
+                          <span className="text-[10px] font-mono text-zinc-400">
+                            {extractLicenseMetadata(purchase).licenseId}
+                          </span>
+                          {beat?.bpm && <span>• {beat.bpm} BPM</span>}
                           {beat?.musical_key && <span>• {beat.musical_key}</span>}
                         </div>
                       </div>

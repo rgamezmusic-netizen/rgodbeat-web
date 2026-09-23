@@ -26,61 +26,81 @@ export async function GET(
     const ipAddress = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || undefined;
     const userAgent = req.headers.get("user-agent") || undefined;
 
-    // Deliver License Contract: Resolves official PDF agreement if available, fallback to text certification
+    // Deliver Official License Agreement (Personalized Vector PDF generated on demand from Master Template)
     if (fileType === "contract") {
       const { createAdminClient } = await import("@/lib/supabase/admin");
-      const { resolveContractAsset } = await import("@/lib/commerce/contracts");
+      const { extractLicenseMetadata, generateContractPdfBuffer } = await import("@/lib/commerce/contracts");
       const supabase = createAdminClient();
-      const { data: purchase } = await supabase
+
+      const { data: purchase, error: pError } = await supabase
         .from("purchases")
         .select(`
+          id,
+          order_id,
           beat_id,
-          contract_text,
           license_tier,
+          contract_text,
+          created_at,
           beats (
             title
+          ),
+          orders (
+            total_amount,
+            currency,
+            customers (
+              name,
+              email
+            )
           )
         `)
         .eq("id", purchaseId)
         .single();
 
-      if (!purchase || !purchase.contract_text) {
+      if (pError || !purchase) {
         return NextResponse.json({ error: "License agreement not found for this purchase." }, { status: 404 });
       }
 
+      const { licenseId, contractVersion } = extractLicenseMetadata(purchase);
       const beatTitle = (purchase.beats as any)?.title || "RGODBEAT";
-      const asset = await resolveContractAsset({
-        beatId: purchase.beat_id,
-        licenseTier: purchase.license_tier,
-        beatTitle,
-      });
+      const cleanTitle = beatTitle.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const order = purchase.orders as any;
+      const customer = order?.customers as any;
+      const tierUpper = String(purchase.license_tier || "WAV").toUpperCase();
 
-      if (asset.hasPdf) {
-        if (asset.sourceType === "r2" && asset.pdfUrl) {
-          if (redirectMode) {
-            return NextResponse.redirect(asset.pdfUrl, 302);
-          }
-          return NextResponse.json({ downloadUrl: asset.pdfUrl, fileName: asset.fileName });
-        }
+      const format = searchParams.get("format") || "pdf";
 
-        if (asset.sourceType === "local" && asset.pdfPath) {
-          const fs = await import("fs");
-          const fileBuffer = fs.readFileSync(asset.pdfPath);
-          return new NextResponse(fileBuffer, {
-            status: 200,
-            headers: {
-              "Content-Type": "application/pdf",
-              "Content-Disposition": `attachment; filename="${asset.fileName}"`,
-            },
-          });
-        }
+      // Plaintext certificate fallback if explicitly requested (?format=txt)
+      if (format === "txt" && purchase.contract_text) {
+        return new NextResponse(purchase.contract_text, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Disposition": `attachment; filename="${cleanTitle}_${tierUpper}_License_${licenseId}.txt"`,
+          },
+        });
       }
 
-      return new NextResponse(purchase.contract_text, {
+      // Generate official personalized vector PDF dynamically
+      const pdfBytes = await generateContractPdfBuffer({
+        orderId: purchase.order_id,
+        customerName: customer?.name || "Customer",
+        customerEmail: customer?.email || "",
+        beatTitle,
+        beatId: purchase.beat_id,
+        licenseTier: purchase.license_tier,
+        amountPaid: Number(order?.total_amount) || 0,
+        currency: order?.currency || "USD",
+        purchaseDate: purchase.created_at,
+        licenseId,
+        version: contractVersion,
+      });
+
+      return new NextResponse(Buffer.from(pdfBytes), {
         status: 200,
         headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Content-Disposition": `attachment; filename="${asset.fileName}"`,
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="${cleanTitle}_${tierUpper}_License_${licenseId}.pdf"`,
+          "Cache-Control": "private, max-age=3600",
         },
       });
     }

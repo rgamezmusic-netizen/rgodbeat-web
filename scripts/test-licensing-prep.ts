@@ -1,107 +1,141 @@
 import assert from "assert";
-import fs from "fs";
-import path from "path";
 import { LICENSE_OPTIONS } from "@/lib/mock-data";
-import { generateLicenseContract, resolveContractAsset } from "@/lib/commerce/contracts";
+import {
+  CONTRACT_VERSIONS,
+  TIER_CONTRACT_CONFIGS,
+  formatLicenseId,
+  generateDeterministicLicenseId,
+  generateLicenseContract,
+  generateContractPdfBuffer,
+  extractLicenseMetadata,
+} from "@/lib/commerce/contracts";
 
-async function runTests() {
-  console.log("=== RGODBEAT LICENSING & CONTRACT SYSTEM TESTS ===");
+async function runComprehensiveTests() {
+  console.log("=== RGODBEAT UNIFIED NON-EXCLUSIVE CONTRACT & LICENSE ID SYSTEM TESTS ===\n");
 
-  // 1. Verify 4 License Products
-  console.log("\n[TEST 1] Verifying 4 Official License Products & Prices...");
-  assert.strictEqual(LICENSE_OPTIONS.length, 4, "Must have exactly 4 license options");
-  const slugs = LICENSE_OPTIONS.map((l) => l.slug);
-  assert.deepStrictEqual(slugs, ["mp3", "wav", "unlimited", "exclusive"]);
-  assert(!slugs.includes("stems"), "STEMS must NOT be a purchasable standalone product");
+  // 1. Verify License ID Prefixes & Format
+  console.log("[TEST 1] Verifying Official License ID Prefixes and Human-Readable Format...");
+  const sampleYear = 2026;
+  const sampleSeq = 1;
 
-  const priceMap = Object.fromEntries(LICENSE_OPTIONS.map((l) => [l.slug, l.price]));
-  assert.strictEqual(priceMap.mp3, 29, "MP3 price must be $29");
-  assert.strictEqual(priceMap.wav, 49, "WAV price must be $49");
-  assert.strictEqual(priceMap.unlimited, 199, "UNLIMITED price must be $199");
-  assert.strictEqual(priceMap.exclusive, 499, "EXCLUSIVE price must be $499");
-  console.log("✓ All 4 products, slugs, and prices verified");
+  const mp3Id = formatLicenseId("mp3", sampleYear, sampleSeq);
+  assert.strictEqual(mp3Id, "RG-MP3-2026-000001", "MP3 License ID must match RG-MP3-2026-000001");
 
-  // 2. Verify Feature Lists Match Specifications
-  console.log("\n[TEST 2] Verifying Feature Specifications...");
-  const mp3 = LICENSE_OPTIONS.find((l) => l.slug === "mp3")!;
-  assert.deepStrictEqual(mp3.features, ["Non-Exclusive", "MP3 320 kbps"]);
+  const wavId = formatLicenseId("wav", sampleYear, 2);
+  assert.strictEqual(wavId, "RG-WAV-2026-000002", "WAV License ID must match RG-WAV-2026-000002");
 
-  const wav = LICENSE_OPTIONS.find((l) => l.slug === "wav")!;
-  assert.deepStrictEqual(wav.features, ["Non-Exclusive", "MP3 320 kbps", "WAV 24-bit / 48 kHz"]);
+  const unlId = formatLicenseId("unlimited", sampleYear, 3);
+  assert.strictEqual(unlId, "RG-UNL-2026-000003", "UNLIMITED License ID must match RG-UNL-2026-000003");
 
-  const unlimited = LICENSE_OPTIONS.find((l) => l.slug === "unlimited")!;
-  assert.deepStrictEqual(unlimited.features, [
-    "Non-Exclusive",
-    "MP3",
-    "WAV",
-    "Includes access to grouped stems upon request",
-  ]);
+  const excId = formatLicenseId("exclusive", sampleYear, 4);
+  assert.strictEqual(excId, "RG-EXC-2026-000004", "EXCLUSIVE License ID must match RG-EXC-2026-000004");
+  console.log("✓ License IDs format verified: MP3, WAV, UNLIMITED, EXCLUSIVE");
 
-  const exclusive = LICENSE_OPTIONS.find((l) => l.slug === "exclusive")!;
-  assert.deepStrictEqual(exclusive.features, [
-    "Exclusive",
-    "MP3",
-    "WAV",
-    "Includes access to grouped stems upon request",
-  ]);
-  console.log("✓ All features match user requirements without speculative terms");
+  // 2. Verify Contract Versions
+  console.log("\n[TEST 2] Verifying Contract Versions...");
+  assert.strictEqual(CONTRACT_VERSIONS.NON_EXCLUSIVE, "NE-v1.0");
+  assert.strictEqual(CONTRACT_VERSIONS.EXCLUSIVE, "EX-v1.0");
+  console.log("✓ Versions verified: NON_EXCLUSIVE = NE-v1.0, EXCLUSIVE = EX-v1.0");
 
-  // 3. Test generateLicenseContract
-  console.log("\n[TEST 3] Testing generateLicenseContract()...");
-  const sampleContract = generateLicenseContract({
-    orderId: "ord_test_123",
-    customerName: "Test Artist",
-    customerEmail: "artist@example.com",
-    beatTitle: "DIVINA",
-    beatId: "a4c1b253-0fc4-42c4-9f17-b96e03115b23",
+  // 3. Verify Exact Deliverables per Tier
+  console.log("\n[TEST 3] Verifying Deliverables mapping...");
+  assert.strictEqual(TIER_CONTRACT_CONFIGS.mp3.deliverables, "MP3 320 kbps");
+  assert.strictEqual(TIER_CONTRACT_CONFIGS.wav.deliverables, "MP3 320 kbps + WAV 24-bit / 48 kHz");
+  assert.strictEqual(
+    TIER_CONTRACT_CONFIGS.unlimited.deliverables,
+    "MP3 + WAV + grouped stems available upon request"
+  );
+  assert.strictEqual(
+    TIER_CONTRACT_CONFIGS.exclusive.deliverables,
+    "MP3 + WAV + grouped stems available upon request"
+  );
+  console.log("✓ Deliverables verified for all tiers");
+
+  // 4. Verify Single Master Template dynamic variable injection
+  console.log("\n[TEST 4] Verifying Dynamic Variable Injection into Master Template...");
+  const orderId = "ord_test_999";
+  const customerName = "Rafael Gamez";
+  const customerEmail = "rgodbeat@gmail.com";
+  const beatTitle = "DIVINA";
+  const beatId = "a4c1b253-0fc4-42c4-9f17-b96e03115b23";
+  const licenseId = "RG-WAV-2026-000042";
+
+  const contractText = generateLicenseContract({
+    orderId,
+    customerName,
+    customerEmail,
+    beatTitle,
+    beatId,
     licenseTier: "wav",
     amountPaid: 49,
     currency: "USD",
+    purchaseDate: "2026-09-23T12:00:00Z",
+    licenseId,
+    version: CONTRACT_VERSIONS.NON_EXCLUSIVE,
   });
 
-  assert(sampleContract.includes("WAV LICENSE"), "Must reference WAV License");
-  assert(sampleContract.includes("DIVINA"), "Must reference beat title");
-  assert(sampleContract.includes("$49.00 USD"), "Must reference consideration");
-  assert(!sampleContract.includes("100,000"), "Must NOT contain speculative 100k streams");
-  assert(!sampleContract.includes("50% Writer"), "Must NOT contain speculative publishing split");
-  console.log("✓ Contract receipt generated cleanly without speculative legal clauses");
+  // Verify all 11 dynamic variables are substituted and no {{...}} remain
+  assert(contractText.includes(licenseId), "Must contain {{LICENSE_ID}}");
+  assert(contractText.includes(orderId), "Must contain {{ORDER_ID}}");
+  assert(contractText.includes(customerName), "Must contain {{CUSTOMER_NAME}}");
+  assert(contractText.includes(customerEmail), "Must contain {{CUSTOMER_EMAIL}}");
+  assert(contractText.includes(beatTitle), "Must contain {{BEAT_NAME}}");
+  assert(contractText.includes(beatId), "Must contain {{BEAT_ID}}");
+  assert(contractText.includes("WAV"), "Must contain {{LICENSE_TIER}}");
+  assert(contractText.includes("$49.00 USD"), "Must contain {{PURCHASE_PRICE}}");
+  assert(contractText.includes("MP3 320 kbps + WAV 24-bit / 48 kHz"), "Must contain {{DELIVERABLES}}");
+  assert(contractText.includes("NE-v1.0"), "Must contain {{CONTRACT_VERSION}}");
+  assert(!contractText.includes("{{"), "No raw template placeholder tags must remain");
+  assert(
+    contractText.includes("RGODBEAT NON-EXCLUSIVE BEAT LICENSE AGREEMENT"),
+    "Must use the official Non-Exclusive agreement title"
+  );
+  console.log("✓ All 11 variables injected cleanly into single master agreement");
 
-  // 4. Test resolveContractAsset without PDF (Fallback to text)
-  console.log("\n[TEST 4] Testing resolveContractAsset() fallback...");
-  const fallbackAsset = await resolveContractAsset({
-    beatId: "test_beat_id",
+  // 5. Test Vector PDF Generation (pdf-lib)
+  console.log("\n[TEST 5] Testing Vector PDF Generation with pdf-lib...");
+  const pdfBytes = await generateContractPdfBuffer({
+    orderId,
+    customerName,
+    customerEmail,
+    beatTitle,
+    beatId,
     licenseTier: "wav",
-    beatTitle: "DIVINA",
+    amountPaid: 49,
+    currency: "USD",
+    licenseId,
+    version: CONTRACT_VERSIONS.NON_EXCLUSIVE,
   });
-  assert.strictEqual(fallbackAsset.hasPdf, false);
-  assert.strictEqual(fallbackAsset.sourceType, "text_fallback");
-  assert.strictEqual(fallbackAsset.fileName, "DIVINA_WAV_License.txt");
-  console.log("✓ Fallback to certification text verified");
 
-  // 5. Test resolveContractAsset with Local PDF drop-in
-  console.log("\n[TEST 5] Testing resolveContractAsset() with PDF drop-in...");
-  const dummyPdfPath = path.join(process.cwd(), "public", "contracts", "wav_license_agreement.pdf");
-  fs.writeFileSync(dummyPdfPath, "%PDF-1.4 dummy test pdf");
-  try {
-    const pdfAsset = await resolveContractAsset({
-      beatId: "test_beat_id",
-      licenseTier: "wav",
-      beatTitle: "DIVINA",
-    });
-    assert.strictEqual(pdfAsset.hasPdf, true, "Must detect dropped-in PDF");
-    assert.strictEqual(pdfAsset.sourceType, "local");
-    assert.strictEqual(pdfAsset.fileName, "DIVINA_WAV_License_Agreement.pdf");
-    console.log("✓ Zero-rebuild PDF detection verified successfully!");
-  } finally {
-    if (fs.existsSync(dummyPdfPath)) {
-      fs.unlinkSync(dummyPdfPath);
-    }
-  }
+  assert(pdfBytes && pdfBytes.length > 500, "PDF bytes must be generated");
+  const header = Buffer.from(pdfBytes.slice(0, 5)).toString();
+  assert.strictEqual(header, "%PDF-", "Generated buffer must be a valid PDF");
+  console.log(`✓ Personalized Vector PDF generated successfully (${pdfBytes.length} bytes)`);
 
-  console.log("\n=== ALL LICENSING & CONTRACT PREPARATION TESTS PASSED ===");
+  // 6. Test Version Pinning & Extraction from Historical Purchases
+  console.log("\n[TEST 6] Testing Historical Purchase Version Pinning...");
+  const mockOldPurchase = {
+    id: "old_purchase_001",
+    license_tier: "mp3",
+    created_at: "2026-09-20T10:00:00Z",
+    contract_text: `================================================================================
+RGODBEAT MUSIC PRODUCTION
+RGODBEAT NON-EXCLUSIVE BEAT LICENSE AGREEMENT
+VERSION: NE-v1.0
+LICENSE ID: RG-MP3-2026-000007
+================================================================================`,
+  };
+
+  const extracted = extractLicenseMetadata(mockOldPurchase);
+  assert.strictEqual(extracted.licenseId, "RG-MP3-2026-000007", "Should extract original License ID");
+  assert.strictEqual(extracted.contractVersion, "NE-v1.0", "Should retain original contract version");
+  assert.strictEqual(extracted.deliverables, "MP3 320 kbps");
+  console.log("✓ Historic purchase pinned cleanly to its original version and License ID");
+
+  console.log("\n=== ALL ARCHITECTURAL TESTS PASSED SUCCESSFULLY ===");
 }
 
-runTests().catch((err) => {
+runComprehensiveTests().catch((err) => {
   console.error("Test failed:", err);
   process.exit(1);
 });

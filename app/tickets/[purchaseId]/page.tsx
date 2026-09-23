@@ -98,7 +98,9 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
       "Licencia no exclusiva que incluye archivo de audio MP3 a 320 kbps. Sujeta a los términos del Contrato Oficial de Licencia RGODBEAT.";
   }
 
-  const ticketFolio = `RGB-${tier.toUpperCase()}-${purchase.id.slice(0, 8).toUpperCase()}`;
+  const { extractLicenseMetadata } = await import("@/lib/commerce/contracts");
+  const { licenseId, contractVersion } = extractLicenseMetadata(purchase);
+  const ticketFolio = licenseId;
   const purchaseDate = new Date(purchase.created_at).toLocaleDateString("es-ES", {
     year: "numeric",
     month: "long",
@@ -248,7 +250,7 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
             href={`/api/download/${purchase.id}?fileType=contract`}
             className="w-full sm:flex-1 py-3 rounded-xl text-xs font-mono font-bold tracking-wider uppercase text-center bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-zinc-200 hover:text-white transition-colors"
           >
-            DESCARGAR CONTRATO LEGAL (TXT)
+            DESCARGAR CONTRATO PDF (OFICIAL)
           </a>
         </div>
       </div>

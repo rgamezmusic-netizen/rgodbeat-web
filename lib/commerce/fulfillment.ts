@@ -241,7 +241,22 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
   }
 
   // 5. Create Order Items & Purchases / Entitlements
+  const { formatLicenseId, CONTRACT_VERSIONS } = await import("./contracts");
+  const { count: existingPurchaseCount } = await supabase
+    .from("purchases")
+    .select("*", { count: "exact", head: true });
+  const currentYear = new Date().getFullYear();
+  let itemIndex = 0;
+
   for (const item of authoritativeCart.items) {
+    itemIndex++;
+    const seq = (existingPurchaseCount || 0) + itemIndex;
+    const licenseId = formatLicenseId(item.licenseTier, currentYear, seq);
+    const contractVersion =
+      item.licenseTier === "exclusive"
+        ? CONTRACT_VERSIONS.EXCLUSIVE
+        : CONTRACT_VERSIONS.NON_EXCLUSIVE;
+
     // Upsert Order Item
     const { data: orderItem, error: oiError } = await supabase
       .from("order_items")
@@ -263,7 +278,7 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
       continue;
     }
 
-    // Generate Legal Contract Agreement
+    // Generate Legal Contract Agreement from Master Template
     const contractText = generateLicenseContract({
       orderId,
       customerName,
@@ -273,27 +288,43 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
       licenseTier: item.licenseTier,
       amountPaid: item.unitPrice,
       currency: "USD",
+      licenseId,
+      version: contractVersion,
     });
 
     // Upsert Purchase Entitlement
+    const basePurchaseRow: any = {
+      order_id: orderId,
+      order_item_id: orderItem.id,
+      customer_id: customerId,
+      beat_id: item.beatId,
+      license_type_id: item.licenseTypeId,
+      license_tier: item.licenseTier,
+      contract_text: contractText,
+      status: "active",
+    };
+
+    // Attempt upsert with dedicated license_id and contract_version columns
     const { error: purchaseError } = await supabase
       .from("purchases")
       .upsert(
         {
-          order_id: orderId,
-          order_item_id: orderItem.id,
-          customer_id: customerId,
-          beat_id: item.beatId,
-          license_type_id: item.licenseTypeId,
-          license_tier: item.licenseTier,
-          contract_text: contractText,
-          status: "active",
+          ...basePurchaseRow,
+          license_id: licenseId,
+          contract_version: contractVersion,
         },
         { onConflict: "order_id, beat_id, license_type_id" }
       );
 
+    // Resilient fallback if migration hasn't been run yet on remote Supabase
     if (purchaseError) {
-      console.error(`[Fulfillment] Error creating purchase entitlement for beat ${item.beatId}:`, purchaseError.message);
+      if (purchaseError.code === "42703") {
+        await supabase
+          .from("purchases")
+          .upsert(basePurchaseRow, { onConflict: "order_id, beat_id, license_type_id" });
+      } else {
+        console.error(`[Fulfillment] Error creating purchase entitlement for beat ${item.beatId}:`, purchaseError.message);
+      }
     }
 
     // If Exclusive Rights purchased: retire beat from active store catalog!
