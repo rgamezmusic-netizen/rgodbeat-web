@@ -93,6 +93,7 @@ export interface CartItem {
   licenseTier: LicenseTier;
   price: number;
   licenseName: string;
+  customPrice?: number;
 }
 
 export type SortOption =

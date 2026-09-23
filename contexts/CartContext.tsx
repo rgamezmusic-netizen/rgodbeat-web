@@ -10,7 +10,7 @@ interface CartContextType {
   openCart: () => void;
   closeCart: () => void;
   toggleCart: () => void;
-  addToCart: (beat: Beat, tier?: LicenseTier) => void;
+  addToCart: (beat: Beat, tier?: LicenseTier, customPrice?: number) => void;
   removeFromCart: (cartItemId: string) => void;
   clearCart: () => void;
   totalAmount: number;
@@ -27,23 +27,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const closeCart = () => setIsCartOpen(false);
   const toggleCart = () => setIsCartOpen((prev) => !prev);
 
-  const addToCart = (beat: Beat, tier: LicenseTier = "mp3") => {
+  const addToCart = (beat: Beat, tier: LicenseTier = "mp3", customPrice?: number) => {
     const licenseConfig = LICENSE_OPTIONS.find((l) => l.id === tier) || LICENSE_OPTIONS[0];
     const cartItemId = `${beat.id}_${tier}`;
 
+    // If exclusive and customPrice is provided, enforce minimum of 200
+    let resolvedPrice = beat.pricing[tier] || licenseConfig.price;
+    if (tier === "exclusive" && customPrice !== undefined) {
+      resolvedPrice = Math.max(200, Number(customPrice));
+    }
+
     setItems((prev) => {
-      // Check if this beat with this license is already in cart
-      const exists = prev.some((item) => item.id === cartItemId);
-      if (exists) return prev;
+      // Replace existing item if price changed, or skip if identical
+      const filtered = prev.filter((item) => item.id !== cartItemId);
 
       return [
-        ...prev,
+        ...filtered,
         {
           id: cartItemId,
           beat,
           licenseTier: tier,
-          price: beat.pricing[tier] || licenseConfig.price,
+          price: resolvedPrice,
           licenseName: licenseConfig.name,
+          customPrice: tier === "exclusive" && customPrice ? resolvedPrice : undefined,
         },
       ];
     });

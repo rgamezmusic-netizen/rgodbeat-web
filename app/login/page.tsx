@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 const ADMIN_EMAILS = [
   "admin@rgodbeat.com",
   "rgamezmusic@gmail.com",
+  "rgodbeat@gmail.com",
 ];
 
 function AuthForm() {

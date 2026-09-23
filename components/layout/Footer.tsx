@@ -17,8 +17,17 @@ export function Footer() {
               Premium independent music production house founded by Rafael Gámez. 
               Modern instrumentals, multi-track licensing, and creative direction for worldwide artists.
             </p>
-            <div className="pt-2 text-[11px] font-mono text-zinc-500">
-              Austin, TX • Global Delivery
+            <div className="pt-2 text-[11px] font-mono text-zinc-500 space-y-1">
+              <div>Austin, TX • Global Delivery</div>
+              <div className="pt-1">
+                <span className="text-zinc-400">Contacto Directo: </span>
+                <a
+                  href="mailto:rgodbeat@gmail.com"
+                  className="text-purple-400 hover:text-purple-300 font-semibold transition-colors"
+                >
+                  rgodbeat@gmail.com
+                </a>
+              </div>
             </div>
           </div>
 

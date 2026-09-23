@@ -75,6 +75,7 @@ export interface DownloadRecord {
 export interface CheckoutItemPayload {
   beatId: string;
   licenseTier: LicenseTier;
+  customPrice?: number;
 }
 
 export interface CheckoutPayload {

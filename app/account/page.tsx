@@ -185,6 +185,15 @@ export default async function AccountPage() {
 
                     {/* Action Download Buttons */}
                     <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                      {/* View Official License Ticket */}
+                      <Link
+                        href={`/tickets/${purchase.id}`}
+                        className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-mono font-bold tracking-wider uppercase bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 transition-colors text-center flex items-center justify-center gap-1.5"
+                      >
+                        <span>🎫</span>
+                        <span>TICKET OFICIAL</span>
+                      </Link>
+
                       {/* Download Master Audio */}
                       <a
                         href={`/api/download/${purchase.id}?fileType=${isWavEligible ? "wav" : "mp3"}`}

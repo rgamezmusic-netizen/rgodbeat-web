@@ -104,6 +104,15 @@ export async function resolveAuthoritativeCart(
       }
     }
 
+    // Special: Exclusive rights custom offer support (Minimum $200 USD)
+    if (item.licenseTier === "exclusive") {
+      if (item.customPrice && !isNaN(Number(item.customPrice))) {
+        finalPrice = Math.max(200, Math.round(Number(item.customPrice) * 100) / 100);
+      } else {
+        finalPrice = Math.max(200, finalPrice);
+      }
+    }
+
     items.push({
       beatId: beat.id,
       beatTitle: beat.title,

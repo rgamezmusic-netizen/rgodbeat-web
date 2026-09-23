@@ -144,7 +144,7 @@ export function generateYouTubePackage(beat: any): string {
   }
 
   lines.push(
-    `📧 Contact: info@rgodbeat.com`,
+    `📧 Contact: rgodbeat@gmail.com`,
     `------------------------------------------------------------------`,
     `TAGS: ${tags.join(", ")}`,
     `------------------------------------------------------------------`,

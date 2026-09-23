@@ -203,6 +203,15 @@ export default async function CheckoutSuccessPage({ searchParams }: SuccessPageP
 
                     {/* Download Actions */}
                     <div className="flex flex-wrap items-center gap-2 pt-2 sm:pt-0">
+                      {/* Official License Ticket (Featured for Premium) */}
+                      <Link
+                        href={`/tickets/${purchase.id}`}
+                        className="px-3.5 py-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-xs font-mono font-bold text-amber-300 transition-colors flex items-center gap-1.5"
+                      >
+                        <span>🎫</span>
+                        <span>TICKET OFICIAL</span>
+                      </Link>
+
                       {/* MP3 Download */}
                       <a
                         href={`/api/download/${purchase.id}?fileType=mp3`}
@@ -241,7 +250,7 @@ export default async function CheckoutSuccessPage({ searchParams }: SuccessPageP
                         rel="noreferrer"
                         className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-300 transition-colors cursor-pointer"
                       >
-                        CONTRACT ↗
+                        CONTRATO ↗
                       </a>
                     </div>
                   </div>

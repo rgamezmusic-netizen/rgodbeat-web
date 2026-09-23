@@ -5,6 +5,7 @@ import { Database } from "@/types/database";
 const ADMIN_EMAILS = [
   "admin@rgodbeat.com",
   "rgamezmusic@gmail.com",
+  "rgodbeat@gmail.com",
 ];
 
 export async function middleware(request: NextRequest) {
