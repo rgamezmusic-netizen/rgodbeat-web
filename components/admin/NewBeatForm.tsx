@@ -433,11 +433,20 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
           {/* Preview Audio */}
           <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3 flex flex-col justify-between">
             <div className="space-y-1">
-              <span className="text-[10px] font-mono text-purple-400 uppercase tracking-wider block">
-                PUBLIC BUCKET
-              </span>
-              <h3 className="text-xs font-bold text-white uppercase">Preview Audio (MP3) <span className="text-[10px] text-zinc-500 font-mono font-normal lowercase">(opcional)</span></h3>
-              <p className="text-[11px] text-zinc-400">Streamable audio file (.mp3). Max 15MB. (Opcional si subes WAV).</p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-mono text-purple-400 uppercase tracking-wider block">
+                  PUBLIC STREAMING
+                </span>
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                  AUTO-CONVERT
+                </span>
+              </div>
+              <h3 className="text-xs font-bold text-white uppercase">Preview Audio (MP3)</h3>
+              <p className="text-[11px] text-zinc-400">
+                {wavState.file && !previewState.file
+                  ? "⚡ Se auto-convertirá de tu WAV a 320kbps automáticamente."
+                  : "Opcional. Si no subes MP3, se generará del WAV automáticamente."}
+              </p>
             </div>
 
             <div className="pt-2">
@@ -456,11 +465,17 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                   className={`p-3 rounded-lg border text-center transition-all ${
                     previewState.file
                       ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                      : wavState.file
+                      ? "bg-purple-500/10 border-purple-500/30 text-purple-300"
                       : "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:border-white/20"
                   }`}
                 >
                   <span className="text-xs font-mono block truncate">
-                    {previewState.file ? `✓ ${previewState.file.name}` : "+ CHOOSE MP3"}
+                    {previewState.file
+                      ? `✓ ${previewState.file.name}`
+                      : wavState.file
+                      ? "⚡ AUTO-GENERAR DE WAV"
+                      : "+ SUBIR MP3 MANUAL (OPCIONAL)"}
                   </span>
                 </div>
               </label>

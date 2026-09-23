@@ -13,6 +13,7 @@ import {
   getPrivateBeatWavPath,
 } from "@/lib/storage/private";
 import { isR2Configured, uploadToR2 } from "@/lib/storage/r2";
+import { convertWavBufferToMp3 } from "@/lib/audio/converter";
 
 export interface CreateBeatResponse {
   success: boolean;
@@ -130,7 +131,15 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
       }
     }
 
+    // Pre-load WAV buffer once for storage and auto-conversion
+    let wavBuffer: Buffer | null = null;
+    if (wavFile && wavFile.size > 0) {
+      wavBuffer = Buffer.from(await wavFile.arrayBuffer());
+    }
+
     // 6. Upload Preview MP3 (rgodbeat-public)
+    // If previewFile is explicitly provided (e.g. with custom voice tag), use it.
+    // Otherwise, automatically convert the Master WAV into a studio-grade 320kbps MP3!
     if (previewFile && previewFile.size > 0) {
       previewPath = getPublicPreviewPath(beatId);
       const previewBuffer = Buffer.from(await previewFile.arrayBuffer());
@@ -145,12 +154,53 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
       if (previewUploadError) {
         throw new Error(`Preview upload failed: ${previewUploadError.message}`);
       }
+
+      // Record in beat_files for MP3 license purchases
+      await supabase.from("beat_files").insert({
+        beat_id: beatId,
+        file_type: "preview",
+        storage_path: previewPath,
+        file_name: previewFile.name,
+        mime_type: "audio/mpeg",
+        file_size: previewFile.size,
+      });
+    } else if (wavBuffer) {
+      // Auto-convert Master WAV to 320kbps MP3
+      try {
+        console.log(`[CreateBeat] Auto-converting Master WAV to 320kbps MP3 for preview and MP3 license...`);
+        const autoMp3Buffer = await convertWavBufferToMp3(wavBuffer, "320k");
+        previewPath = getPublicPreviewPath(beatId);
+
+        const { error: autoMp3UploadError } = await supabase.storage
+          .from(PUBLIC_STORAGE_BUCKET)
+          .upload(previewPath, autoMp3Buffer, {
+            contentType: "audio/mpeg",
+            upsert: true,
+          });
+
+        if (autoMp3UploadError) {
+          console.warn("[CreateBeat] Warning uploading auto-converted MP3:", autoMp3UploadError.message);
+        } else {
+          console.log(`[CreateBeat] Auto-converted MP3 uploaded successfully (${autoMp3Buffer.length} bytes)`);
+
+          // Record in beat_files so it is available for MP3 license purchases
+          await supabase.from("beat_files").insert({
+            beat_id: beatId,
+            file_type: "preview",
+            storage_path: previewPath,
+            file_name: `${slug}-master.mp3`,
+            mime_type: "audio/mpeg",
+            file_size: autoMp3Buffer.length,
+          });
+        }
+      } catch (convErr: any) {
+        console.warn("[CreateBeat] Auto-conversion to MP3 failed:", convErr?.message || convErr);
+      }
     }
 
     // 7. Upload WAV Master Audio (Prioritizing Cloudflare R2 to preserve Supabase quota)
-    if (wavFile && wavFile.size > 0) {
+    if (wavFile && wavFile.size > 0 && wavBuffer) {
       const wavPath = getPrivateBeatWavPath(beatId, wavFile.name);
-      const wavBuffer = Buffer.from(await wavFile.arrayBuffer());
       let finalStoragePath = wavPath;
 
       if (isR2Configured()) {
