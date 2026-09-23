@@ -191,6 +191,20 @@ export function CartDrawer() {
                 <span>Stripe Test Mode Secure</span>
               </div>
 
+              {/* Electronic Acceptance Disclosure */}
+              <div className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06] text-[10px] text-zinc-400 font-mono leading-relaxed">
+                <span className="text-purple-400 font-semibold block mb-0.5">⚖️ ELECTRONIC LICENSE ACCEPTANCE</span>
+                By proceeding to checkout, you agree to the{" "}
+                <a
+                  href="/contracts/templates/non_exclusive_master_v1.html"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-purple-300 underline hover:text-white transition-colors"
+                >
+                  RGODBEAT Non-Exclusive Beat License Agreement (Version NE-v1.0)
+                </a>.
+              </div>
+
               {/* Checkout Button */}
               <Button
                 variant="primary"

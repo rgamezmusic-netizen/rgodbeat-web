@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { PDFDocument, StandardFonts, rgb, grayscale } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { LicenseTier } from "@/types";
 
 export const CONTRACT_VERSIONS = {
@@ -9,6 +9,9 @@ export const CONTRACT_VERSIONS = {
 } as const;
 
 export type ContractVersion = (typeof CONTRACT_VERSIONS)[keyof typeof CONTRACT_VERSIONS];
+
+export const DEFAULT_GOVERNING_LAW = "State of Texas, United States";
+export const DEFAULT_JURISDICTION = "Travis County, Texas, United States";
 
 export interface TierContractConfig {
   licenseType: "NON_EXCLUSIVE" | "EXCLUSIVE";
@@ -37,7 +40,7 @@ export const TIER_CONTRACT_CONFIGS: Record<string, TierContractConfig> = {
     licenseType: "NON_EXCLUSIVE",
     licenseTier: "UNLIMITED",
     prefix: "UNL",
-    deliverables: "MP3 + WAV + grouped stems available upon request",
+    deliverables: "MP3 320 kbps + WAV 24-bit / 48 kHz + grouped stems available upon request",
     version: CONTRACT_VERSIONS.NON_EXCLUSIVE,
   },
   exclusive: {
@@ -82,13 +85,12 @@ export function generateDeterministicLicenseId(params: {
   const d = typeof date === "string" ? new Date(date) : date;
   const year = isNaN(d.getFullYear()) ? new Date().getFullYear() : d.getFullYear();
 
-  // Generate 6-digit numeric hash from UUID
   let hash = 0;
   const cleanUuid = (purchaseId || "").replace(/-/g, "");
   for (let i = 0; i < cleanUuid.length; i++) {
     hash = (hash * 31 + cleanUuid.charCodeAt(i)) >>> 0;
   }
-  const seqNum = (hash % 900000) + 100000; // 6 digits
+  const seqNum = (hash % 900000) + 100000;
 
   return formatLicenseId(tier, year, seqNum);
 }
@@ -105,6 +107,8 @@ export interface ContractVariables {
   PURCHASE_DATE: string;
   DELIVERABLES: string;
   CONTRACT_VERSION: string;
+  GOVERNING_LAW: string;
+  JURISDICTION: string;
 }
 
 /**
@@ -122,76 +126,38 @@ export function getMasterTemplate(version: string = CONTRACT_VERSIONS.NON_EXCLUS
     console.warn(`[Contracts] Warning reading ${templateFileName}:`, err);
   }
 
+  // Fallback to public template if exists
+  const publicTemplatePath = path.join(process.cwd(), "public", "contracts", "templates", "non_exclusive_master_v1.html");
+  try {
+    if (!isExclusive && fs.existsSync(/*turbopackIgnore: true*/ publicTemplatePath)) {
+      const html = fs.readFileSync(/*turbopackIgnore: true*/ publicTemplatePath, "utf-8");
+      // Strip simple html tags for text mode
+      return html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ");
+    }
+  } catch {}
+
   // Safe fallback template
-  if (isExclusive) {
-    return `================================================================================
-RGODBEAT MUSIC PRODUCTION
-RGODBEAT EXCLUSIVE BEAT LICENSE AGREEMENT
-VERSION: {{CONTRACT_VERSION}}
-LICENSE ID: {{LICENSE_ID}}
-================================================================================
-
-ORDER IDENTIFIER:  {{ORDER_ID}}
-DATE OF EXECUTION: {{PURCHASE_DATE}}
-
-1. PARTIES
-   - LICENSOR: RGODBEAT (Producer)
-   - LICENSEE: {{CUSTOMER_NAME}} ({{CUSTOMER_EMAIL}})
-
-2. LICENSED WORK & CONSIDERATION
-   - BEAT TITLE:      "{{BEAT_NAME}}"
-   - BEAT CATALOG ID: {{BEAT_ID}}
-   - LICENSE TYPE:    EXCLUSIVE
-   - LICENSE TIER:    {{LICENSE_TIER}}
-   - CONSIDERATION:   {{PURCHASE_PRICE}} (PAID IN FULL)
-
-3. PURCHASED DELIVERABLES
-   - {{DELIVERABLES}}
-
-4. EXCLUSIVE TERMS & STORE RETIREMENT
-   [OFFICIAL EXCLUSIVE LEGAL TEXT PENDING FINAL EXECUTION]
-
-================================================================================
-Licensor: RGODBEAT
-Contact:  rgodbeat@gmail.com
-Status:   OFFICIAL EXCLUSIVE ENTITLEMENT CONFIRMED
-================================================================================`;
-  }
-
   return `================================================================================
 RGODBEAT MUSIC PRODUCTION
 RGODBEAT NON-EXCLUSIVE BEAT LICENSE AGREEMENT
-VERSION: {{CONTRACT_VERSION}}
-LICENSE ID: {{LICENSE_ID}}
+Contract Version: {{CONTRACT_VERSION}}
+License ID:       {{LICENSE_ID}}
 ================================================================================
 
 ORDER IDENTIFIER:  {{ORDER_ID}}
 DATE OF EXECUTION: {{PURCHASE_DATE}}
 
-1. PARTIES
-   - LICENSOR: RGODBEAT (Official Producer & Catalog Rights Holder)
-   - LICENSEE: {{CUSTOMER_NAME}} ({{CUSTOMER_EMAIL}})
-
-2. LICENSED WORK & CONSIDERATION
-   - BEAT TITLE:      "{{BEAT_NAME}}"
-   - BEAT CATALOG ID: {{BEAT_ID}}
-   - LICENSE TYPE:    NON-EXCLUSIVE
-   - LICENSE TIER:    {{LICENSE_TIER}}
-   - CONSIDERATION:   {{PURCHASE_PRICE}} (PAID IN FULL)
-
-3. PURCHASED DELIVERABLES
-   - {{DELIVERABLES}}
-
-4. OFFICIAL LICENSE TERMS & USAGE LIMITATIONS
-   [OFFICIAL LEGAL TEXT PENDING FINAL EXECUTION]
-   The official terms, distribution permissions, and usage limitations of the
-   RGODBEAT Non-Exclusive Beat License Agreement govern the master recording
-   derived from this production upon official legal finalization.
+1. PARTIES: RGODBEAT ("Licensor") and {{CUSTOMER_NAME}} ({{CUSTOMER_EMAIL}}) ("Licensee").
+2. BEAT IDENTIFICATION: "{{BEAT_NAME}}" (Beat ID: {{BEAT_ID}}).
+3. LICENSE TIER: {{LICENSE_TIER}} ({{PURCHASE_PRICE}} Paid in Full).
+4. PURCHASED DELIVERABLES: {{DELIVERABLES}}.
+5. GRANT: Non-exclusive, worldwide, perpetual license for New Song creation.
+6. CONTENT ID RESTRICTION: No YouTube/Meta Content ID or audio-fingerprinting registration permitted.
+7. FUTURE EXCLUSIVE: A future Exclusive sale does not invalidate this prior valid Non-Exclusive license.
+8. GOVERNING LAW & JURISDICTION: {{GOVERNING_LAW}}, Courts of {{JURISDICTION}}.
 
 ================================================================================
-Licensor: RGODBEAT
-Contact:  rgodbeat@gmail.com
-Status:   OFFICIAL PURCHASE ENTITLEMENT CONFIRMED
+Licensor: RGODBEAT • rgodbeat@gmail.com • Electronically Executed
 ================================================================================`;
 }
 
@@ -219,10 +185,12 @@ export interface GenerateContractParams {
   purchaseDate?: string;
   licenseId?: string;
   version?: ContractVersion | string;
+  governingLaw?: string;
+  jurisdiction?: string;
 }
 
 /**
- * Assembles the full official legal contract using the Single Master Non-Exclusive Template (or Exclusive stub).
+ * Assembles the full official legal contract using the Single Master Non-Exclusive Template (NE-v1.0).
  */
 export function generateLicenseContract({
   orderId,
@@ -236,13 +204,16 @@ export function generateLicenseContract({
   purchaseDate = new Date().toISOString(),
   licenseId,
   version,
+  governingLaw = DEFAULT_GOVERNING_LAW,
+  jurisdiction = DEFAULT_JURISDICTION,
 }: GenerateContractParams): string {
   const cleanTier = licenseTier.toLowerCase();
   const config = TIER_CONTRACT_CONFIGS[cleanTier] || TIER_CONTRACT_CONFIGS.wav;
   const isExclusive = config.licenseType === "EXCLUSIVE";
 
   const effectiveVersion = version || (isExclusive ? CONTRACT_VERSIONS.EXCLUSIVE : CONTRACT_VERSIONS.NON_EXCLUSIVE);
-  const effectiveLicenseId = licenseId || generateDeterministicLicenseId({ tier: cleanTier, purchaseId: orderId, date: purchaseDate });
+  const effectiveLicenseId =
+    licenseId || generateDeterministicLicenseId({ tier: cleanTier, purchaseId: orderId, date: purchaseDate });
 
   const formattedDate = new Date(purchaseDate).toLocaleDateString("en-US", {
     year: "numeric",
@@ -262,6 +233,8 @@ export function generateLicenseContract({
     PURCHASE_DATE: formattedDate,
     DELIVERABLES: config.deliverables,
     CONTRACT_VERSION: effectiveVersion,
+    GOVERNING_LAW: governingLaw,
+    JURISDICTION: jurisdiction,
   };
 
   const rawTemplate = getMasterTemplate(effectiveVersion, isExclusive);
@@ -275,6 +248,8 @@ export function extractLicenseMetadata(purchase: any): {
   licenseId: string;
   contractVersion: string;
   deliverables: string;
+  governingLaw: string;
+  jurisdiction: string;
 } {
   const tier = (purchase.license_tier || "wav").toLowerCase();
   const config = TIER_CONTRACT_CONFIGS[tier] || TIER_CONTRACT_CONFIGS.wav;
@@ -307,11 +282,40 @@ export function extractLicenseMetadata(purchase: any): {
     licenseId,
     contractVersion,
     deliverables: config.deliverables,
+    governingLaw: DEFAULT_GOVERNING_LAW,
+    jurisdiction: DEFAULT_JURISDICTION,
   };
 }
 
 /**
- * Generates an official, publication-quality vector PDF of the license agreement using pdf-lib.
+ * Text wrapping utility for standard letter page widths.
+ */
+function wrapLines(text: string, maxChars = 92): string[] {
+  const out: string[] = [];
+  const lines = text.split("\n");
+  for (const line of lines) {
+    if (line.length <= maxChars) {
+      out.push(line);
+      continue;
+    }
+    const words = line.split(" ");
+    let cur = "";
+    for (const w of words) {
+      if ((cur + " " + w).trim().length <= maxChars) {
+        cur = (cur + " " + w).trim();
+      } else {
+        if (cur) out.push(cur);
+        cur = w;
+      }
+    }
+    if (cur) out.push(cur);
+  }
+  return out;
+}
+
+/**
+ * Generates an official, multi-page vector PDF containing the transaction certificate
+ * and the complete 23 legal sections of the RGODBEAT Non-Exclusive Agreement.
  */
 export async function generateContractPdfBuffer(contractParams: GenerateContractParams): Promise<Uint8Array> {
   const cleanTier = contractParams.licenseTier.toLowerCase();
@@ -320,7 +324,9 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
 
   const fullContractText = generateLicenseContract(contractParams);
   const metadata = {
-    licenseId: contractParams.licenseId || generateDeterministicLicenseId({ tier: cleanTier, purchaseId: contractParams.orderId }),
+    licenseId:
+      contractParams.licenseId ||
+      generateDeterministicLicenseId({ tier: cleanTier, purchaseId: contractParams.orderId }),
     version: contractParams.version || config.version,
     tier: config.licenseTier,
     deliverables: config.deliverables,
@@ -335,215 +341,320 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
       day: "numeric",
     }),
     price: `$${contractParams.amountPaid.toFixed(2)} ${contractParams.currency || "USD"}`,
+    governingLaw: contractParams.governingLaw || DEFAULT_GOVERNING_LAW,
+    jurisdiction: contractParams.jurisdiction || DEFAULT_JURISDICTION,
   };
 
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle(`RGODBEAT License Agreement - ${metadata.licenseId}`);
+  pdfDoc.setTitle(`RGODBEAT License Agreement — ${metadata.licenseId}`);
   pdfDoc.setAuthor("RGODBEAT");
-  pdfDoc.setSubject(`Official ${metadata.tier} License Agreement`);
+  pdfDoc.setSubject(`Official ${metadata.tier} License Agreement (${metadata.version})`);
 
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontMono = await pdfDoc.embedFont(StandardFonts.Courier);
 
-  // Standard Letter dimensions: 612 x 792 pt
-  const page = pdfDoc.addPage([612, 792]);
-  const { width, height } = page.getSize();
+  const pageWidth = 612;
+  const pageHeight = 792;
   const margin = 50;
+  const contentWidth = pageWidth - margin * 2;
 
-  // 1. Top Header Banner
-  page.drawRectangle({
+  // ---------------------------------------------------------------------------
+  // PAGE 1: Official Executive Certificate & License Summary
+  // ---------------------------------------------------------------------------
+  const page1 = pdfDoc.addPage([pageWidth, pageHeight]);
+
+  // Header Banner
+  page1.drawRectangle({
     x: 0,
-    y: height - 80,
-    width,
-    height: 80,
-    color: rgb(0.06, 0.06, 0.08), // #0f0f14
+    y: pageHeight - 85,
+    width: pageWidth,
+    height: 85,
+    color: rgb(0.06, 0.06, 0.08),
   });
 
-  page.drawText("RGODBEAT MUSIC PRODUCTION", {
+  page1.drawText("RGODBEAT MUSIC PRODUCTION", {
     x: margin,
-    y: height - 42,
+    y: pageHeight - 42,
     size: 16,
     font: fontBold,
     color: rgb(0.98, 0.98, 1),
   });
 
-  page.drawText(
+  page1.drawText(
     isExclusive
       ? "OFFICIAL EXCLUSIVE BEAT LICENSE AGREEMENT"
       : "OFFICIAL NON-EXCLUSIVE BEAT LICENSE AGREEMENT",
     {
       x: margin,
-      y: height - 60,
+      y: pageHeight - 62,
       size: 10,
       font: fontRegular,
-      color: rgb(0.66, 0.45, 0.98), // Purple accent
+      color: rgb(0.66, 0.45, 0.98),
     }
   );
 
-  page.drawText(`VERSION: ${metadata.version}`, {
-    x: width - margin - 120,
-    y: height - 52,
+  page1.drawText(`VERSION: ${metadata.version}`, {
+    x: pageWidth - margin - 120,
+    y: pageHeight - 52,
     size: 10,
     font: fontMono,
     color: rgb(0.8, 0.8, 0.85),
   });
 
-  // 2. Official License ID & Key Folio Box
-  const folioY = height - 130;
-  page.drawRectangle({
+  // License Folio Box
+  const folioY = pageHeight - 140;
+  page1.drawRectangle({
     x: margin,
     y: folioY,
-    width: width - margin * 2,
-    height: 38,
+    width: contentWidth,
+    height: 40,
     color: rgb(0.96, 0.96, 0.98),
     borderColor: rgb(0.85, 0.85, 0.9),
     borderWidth: 1,
   });
 
-  page.drawText("OFFICIAL LICENSE IDENTIFIER:", {
+  page1.drawText("OFFICIAL LICENSE IDENTIFIER:", {
     x: margin + 14,
-    y: folioY + 22,
+    y: folioY + 24,
     size: 8,
     font: fontBold,
     color: rgb(0.4, 0.4, 0.45),
   });
 
-  page.drawText(metadata.licenseId, {
+  page1.drawText(metadata.licenseId, {
     x: margin + 14,
-    y: folioY + 8,
+    y: folioY + 9,
     size: 12,
     font: fontBold,
     color: rgb(0.1, 0.1, 0.15),
   });
 
-  page.drawText(`ORDER: ${metadata.orderId.slice(0, 18)}...`, {
-    x: width - margin - 220,
-    y: folioY + 14,
+  page1.drawText(`ORDER: ${metadata.orderId.slice(0, 20)}...`, {
+    x: pageWidth - margin - 220,
+    y: folioY + 16,
     size: 9,
     font: fontMono,
     color: rgb(0.4, 0.4, 0.45),
   });
 
-  // 3. Structured Transaction Summary Table
-  const tableY = folioY - 145;
-  page.drawRectangle({
+  // Transaction Summary Table
+  const tableY = folioY - 175;
+  page1.drawRectangle({
     x: margin,
     y: tableY,
-    width: width - margin * 2,
-    height: 135,
+    width: contentWidth,
+    height: 165,
     color: rgb(1, 1, 1),
     borderColor: rgb(0.9, 0.9, 0.92),
     borderWidth: 1,
   });
 
-  // Table row items
   const rowItems = [
-    ["BEAT TITLE", `"${metadata.beatTitle}" (ID: ${metadata.beatId.slice(0, 12)}...)`],
-    ["LICENSEE", `${metadata.customerName} (${metadata.customerEmail})`],
+    ["BEAT TITLE", `"${metadata.beatTitle}" (Catalog ID: ${metadata.beatId})`],
+    ["LICENSEE (CUSTOMER)", `${metadata.customerName} (${metadata.customerEmail})`],
     ["LICENSE PRODUCT", `${metadata.tier} (${isExclusive ? "Exclusive" : "Non-Exclusive"})`],
-    ["CONSIDERATION", `${metadata.price} (Verified & Paid in Full)`],
-    ["DELIVERABLES", metadata.deliverables],
+    ["TOTAL CONSIDERATION", `${metadata.price} (Verified & Paid in Full)`],
+    ["PURCHASED DELIVERABLES", metadata.deliverables],
     ["DATE OF EXECUTION", metadata.purchaseDate],
+    ["GOVERNING LAW", metadata.governingLaw],
+    ["JURISDICTION", metadata.jurisdiction],
   ];
 
-  let currentY = tableY + 115;
+  let currentY = tableY + 145;
   rowItems.forEach(([label, val]) => {
-    page.drawText(label, {
+    page1.drawText(label, {
       x: margin + 12,
       y: currentY,
-      size: 8,
+      size: 7.5,
       font: fontBold,
       color: rgb(0.35, 0.35, 0.4),
     });
-    page.drawText(val, {
-      x: margin + 145,
+    page1.drawText(val, {
+      x: margin + 155,
       y: currentY,
-      size: 8.5,
+      size: 8,
       font: fontRegular,
       color: rgb(0.15, 0.15, 0.2),
     });
-    currentY -= 19;
+    currentY -= 18;
   });
 
-  // 4. Contract Body Section
-  const bodyY = tableY - 25;
-  page.drawText("TERMS & OPERATIONAL SPECIFICATIONS", {
+  // Preamble & Electronic Acceptance Notice Box
+  const noticeY = tableY - 95;
+  page1.drawRectangle({
     x: margin,
-    y: bodyY,
-    size: 10,
+    y: noticeY,
+    width: contentWidth,
+    height: 80,
+    color: rgb(0.97, 0.97, 1),
+    borderColor: rgb(0.8, 0.75, 0.95),
+    borderWidth: 1,
+  });
+
+  page1.drawText("ELECTRONIC ACCEPTANCE & LEGAL CERTIFICATION", {
+    x: margin + 12,
+    y: noticeY + 62,
+    size: 8.5,
+    font: fontBold,
+    color: rgb(0.35, 0.2, 0.7),
+  });
+
+  const noticeLines = [
+    "By completing the purchase transaction through the RGODBEAT platform and electronically accepting",
+    "the applicable terms, the Licensee explicitly agrees to the full 23-section terms of this Agreement.",
+    "This Agreement grants worldwide, perpetual non-exclusive rights to create and monetize a New Song.",
+    "The full legal agreement text follows on the subsequent pages of this official document.",
+  ];
+  let nY = noticeY + 46;
+  noticeLines.forEach((nl) => {
+    page1.drawText(nl, {
+      x: margin + 12,
+      y: nY,
+      size: 7.5,
+      font: fontRegular,
+      color: rgb(0.2, 0.2, 0.25),
+    });
+    nY -= 12;
+  });
+
+  // Key Rights Highlights Box (Sections 4, 7, 10, 12 highlights)
+  const highlightsY = noticeY - 105;
+  page1.drawText("EXECUTIVE SUMMARY OF KEY TERMS", {
+    x: margin,
+    y: highlightsY + 90,
+    size: 9,
     font: fontBold,
     color: rgb(0.1, 0.1, 0.15),
   });
 
-  // Clean formatted clauses
-  const bodyTextLines = [
-    `1. GRANT OF LICENSE: Licensor hereby grants to Licensee the ${isExclusive ? "exclusive" : "non-exclusive"} rights`,
-    `   to create derivative vocal and sound recording works utilizing the Beat titled "${metadata.beatTitle}".`,
-    `2. DELIVERABLES AUTHORIZATION: Licensee is authorized to receive and utilize:`,
-    `   ${metadata.deliverables}.`,
-    `3. COMPREHENSIVE TERMS GOVERNANCE: The comprehensive legal terms and conditions of the`,
-    `   RGODBEAT ${isExclusive ? "Exclusive" : "Non-Exclusive"} Beat License Agreement govern this production.`,
-    `4. RECORD RETENTION: This Agreement is permanently archived under License ID ${metadata.licenseId}.`,
-    `   Any future modifications to standard licensing terms will not alter the terms of this executed agreement.`,
-    `5. DIGITAL EXECUTION: Rendered legally binding upon verified completion of transaction consideration.`,
+  const highlights = [
+    `• Non-Exclusive Commercial Rights: Perpetual, worldwide license to release and monetize on Spotify, Apple Music, YouTube, etc.`,
+    `• Deliverables: ${metadata.deliverables}. ${cleanTier === "unlimited" ? "Includes right to request grouped stems." : "No stem access included."}`,
+    `• Remix Rights: ${cleanTier === "unlimited" ? "Unlimited tier includes additional remix rights (Section 7)." : "MP3 and WAV do not include additional remix rights."}`,
+    `• Content ID Restriction: Licensee may NOT register original beat with YouTube/Meta Content ID (Section 10).`,
+    `• Future Exclusive Sales: A future Exclusive sale will NEVER revoke or invalidate this prior Non-Exclusive license (Section 12).`,
   ];
-
-  let lineY = bodyY - 22;
-  bodyTextLines.forEach((line) => {
-    page.drawText(line, {
+  let hY = highlightsY + 74;
+  highlights.forEach((hl) => {
+    page1.drawText(hl, {
       x: margin,
-      y: lineY,
-      size: 8.5,
+      y: hY,
+      size: 7.5,
       font: fontRegular,
       color: rgb(0.25, 0.25, 0.3),
     });
-    lineY -= 15;
+    hY -= 14;
   });
 
-  // 5. Official Bottom Verification & Sign-off Block
-  const footerBoxY = 60;
-  page.drawRectangle({
+  // Page 1 Footer
+  page1.drawRectangle({
     x: margin,
-    y: footerBoxY,
-    width: width - margin * 2,
-    height: 48,
+    y: 35,
+    width: contentWidth,
+    height: 32,
     color: rgb(0.97, 0.97, 0.98),
     borderColor: rgb(0.9, 0.9, 0.92),
     borderWidth: 1,
   });
 
-  page.drawText("LICENSOR: RGODBEAT MUSIC PRODUCTION", {
-    x: margin + 14,
-    y: footerBoxY + 30,
-    size: 8.5,
-    font: fontBold,
-    color: rgb(0.15, 0.15, 0.2),
-  });
-
-  page.drawText("Authorized Digital Sign-off: [RGODBEAT VERIFIED TRANSACTION]", {
-    x: margin + 14,
-    y: footerBoxY + 16,
-    size: 8,
-    font: fontMono,
-    color: rgb(0.4, 0.4, 0.45),
-  });
-
-  page.drawText("Contact: rgodbeat@gmail.com", {
-    x: width - margin - 150,
-    y: footerBoxY + 30,
-    size: 8,
-    font: fontRegular,
-    color: rgb(0.4, 0.4, 0.45),
-  });
-
-  page.drawText(`Page 1 of 1 • Version ${metadata.version}`, {
-    x: width - margin - 150,
-    y: footerBoxY + 16,
+  page1.drawText(`License ID: ${metadata.licenseId} • Version: ${metadata.version} • RGODBEAT Official Document`, {
+    x: margin + 12,
+    y: 47,
     size: 7.5,
     font: fontMono,
-    color: rgb(0.55, 0.55, 0.6),
+    color: rgb(0.35, 0.35, 0.4),
   });
+
+  page1.drawText(`Page 1 of Agreement Text Follows`, {
+    x: pageWidth - margin - 170,
+    y: 47,
+    size: 7.5,
+    font: fontRegular,
+    color: rgb(0.5, 0.5, 0.55),
+  });
+
+  // ---------------------------------------------------------------------------
+  // PAGES 2+: Complete 23 Legal Sections (Full Legal Text)
+  // ---------------------------------------------------------------------------
+  // Extract body lines starting after the header separator
+  const textStartIdx = fullContractText.indexOf("1. PARTIES");
+  const contractBodyText = textStartIdx !== -1 ? fullContractText.slice(textStartIdx) : fullContractText;
+  const wrappedLines = wrapLines(contractBodyText, 94);
+
+  const linesPerPage = 58;
+  const totalBodyPages = Math.ceil(wrappedLines.length / linesPerPage);
+  const totalPages = 1 + totalBodyPages;
+
+  for (let pIdx = 0; pIdx < totalBodyPages; pIdx++) {
+    const pageNum = 2 + pIdx;
+    const bodyPage = pdfDoc.addPage([pageWidth, pageHeight]);
+
+    // Running Header
+    bodyPage.drawText("RGODBEAT NON-EXCLUSIVE BEAT LICENSE AGREEMENT", {
+      x: margin,
+      y: pageHeight - 40,
+      size: 8,
+      font: fontBold,
+      color: rgb(0.4, 0.25, 0.7),
+    });
+
+    bodyPage.drawText(`License ID: ${metadata.licenseId} • Version: ${metadata.version}`, {
+      x: pageWidth - margin - 220,
+      y: pageHeight - 40,
+      size: 7.5,
+      font: fontMono,
+      color: rgb(0.4, 0.4, 0.45),
+    });
+
+    bodyPage.drawLine({
+      start: { x: margin, y: pageHeight - 46 },
+      end: { x: pageWidth - margin, y: pageHeight - 46 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.85, 0.9),
+    });
+
+    // Content lines
+    const startLine = pIdx * linesPerPage;
+    const pageLines = wrappedLines.slice(startLine, startLine + linesPerPage);
+    let lineY = pageHeight - 65;
+
+    for (const line of pageLines) {
+      const isHeading = /^\d+\.\s+[A-Z\s—-]+$/.test(line.trim());
+      bodyPage.drawText(line, {
+        x: margin,
+        y: lineY,
+        size: isHeading ? 8 : 7.2,
+        font: isHeading ? fontBold : fontRegular,
+        color: isHeading ? rgb(0.1, 0.1, 0.15) : rgb(0.2, 0.2, 0.25),
+      });
+      lineY -= 11.2;
+    }
+
+    // Running Footer
+    bodyPage.drawLine({
+      start: { x: margin, y: 46 },
+      end: { x: pageWidth - margin, y: 46 },
+      thickness: 0.5,
+      color: rgb(0.85, 0.85, 0.9),
+    });
+
+    bodyPage.drawText("Licensor: RGODBEAT • Austin, TX • Contact: rgodbeat@gmail.com", {
+      x: margin,
+      y: 34,
+      size: 7,
+      font: fontRegular,
+      color: rgb(0.5, 0.5, 0.55),
+    });
+
+    bodyPage.drawText(`Page ${pageNum} of ${totalPages}`, {
+      x: pageWidth - margin - 60,
+      y: 34,
+      size: 7,
+      font: fontMono,
+      color: rgb(0.5, 0.5, 0.55),
+    });
+  }
 
   return await pdfDoc.save();
 }

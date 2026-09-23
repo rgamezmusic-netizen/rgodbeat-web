@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RGODBEAT Non-Exclusive Beat License Agreement — {{LICENSE_ID}}</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 20mm;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #111827;
+      line-height: 1.5;
+      font-size: 11pt;
+      margin: 0;
+      padding: 24px;
+      background: #ffffff;
+    }
+    .header-banner {
+      border-bottom: 2px solid #7c3aed;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    .brand-title {
+      font-size: 20pt;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #0f172a;
+      margin: 0;
+      text-transform: uppercase;
+    }
+    .agreement-title {
+      font-size: 14pt;
+      font-weight: 700;
+      color: #6d28d9;
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+    .version-tag {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 9pt;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+    .summary-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .summary-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .summary-label {
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #64748b;
+      letter-spacing: 0.5px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .summary-value {
+      font-size: 10pt;
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .summary-full {
+      grid-column: span 2;
+    }
+    .preamble {
+      font-size: 10.5pt;
+      font-style: italic;
+      color: #334155;
+      margin-bottom: 24px;
+      border-left: 3px solid #cbd5e1;
+      padding-left: 12px;
+    }
+    h2 {
+      font-size: 11pt;
+      font-weight: 800;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 4px;
+      margin-top: 24px;
+      margin-bottom: 8px;
+    }
+    p, ul {
+      margin-top: 6px;
+      margin-bottom: 10px;
+      font-size: 10pt;
+      color: #334155;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 4px;
+    }
+    .footer {
+      margin-top: 36px;
+      padding-top: 16px;
+      border-top: 1px dashed #cbd5e1;
+      font-size: 8pt;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header-banner">
+    <div class="brand-title">RGODBEAT MUSIC PRODUCTION</div>
+    <div class="agreement-title">RGODBEAT NON-EXCLUSIVE BEAT LICENSE AGREEMENT</div>
+    <div class="version-tag">Contract Version: {{CONTRACT_VERSION}} &bull; License ID: {{LICENSE_ID}}</div>
+  </div>
+
+  <div class="summary-card">
+    <div class="summary-item">
+      <span class="summary-label">License ID</span>
+      <span class="summary-value" style="color: #6d28d9; font-family: ui-monospace, monospace;">{{LICENSE_ID}}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Order Identifier</span>
+      <span class="summary-value" style="font-family: ui-monospace, monospace;">{{ORDER_ID}}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Licensee (Customer)</span>
+      <span class="summary-value">{{CUSTOMER_NAME}} ({{CUSTOMER_EMAIL}})</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Date of Execution</span>
+      <span class="summary-value">{{PURCHASE_DATE}}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Beat Title</span>
+      <span class="summary-value">&ldquo;{{BEAT_NAME}}&rdquo; (ID: {{BEAT_ID}})</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">License Tier & Price</span>
+      <span class="summary-value">{{LICENSE_TIER}} &mdash; {{PURCHASE_PRICE}}</span>
+    </div>
+    <div class="summary-item summary-full">
+      <span class="summary-label">Purchased Deliverables</span>
+      <span class="summary-value">{{DELIVERABLES}}</span>
+    </div>
+  </div>
+
+  <div class="preamble">
+    This RGODBEAT Non-Exclusive Beat License Agreement (&ldquo;Agreement&rdquo;) is entered into between RGODBEAT (&ldquo;Licensor&rdquo;) and the customer identified in the applicable purchase transaction (&ldquo;Licensee&rdquo;).<br><br>
+    By purchasing a Beat License through the RGODBEAT platform and electronically accepting the applicable terms, the Licensee agrees to the terms of this Agreement.
+  </div>
+
+  <h2>1. PARTIES</h2>
+  <p><strong>Licensor:</strong> RGODBEAT</p>
+  <p><strong>Licensee:</strong> The individual or legal entity identified in the applicable purchase transaction ({{CUSTOMER_NAME}}, {{CUSTOMER_EMAIL}}).</p>
+  <p>The Licensee&rsquo;s name and contact information shall be automatically populated from the transaction record.</p>
+
+  <h2>2. BEAT IDENTIFICATION</h2>
+  <p>This Agreement applies to the musical instrumental identified in the applicable transaction.</p>
+  <p>The personalized License record includes:</p>
+  <ul>
+    <li>Beat Name: {{BEAT_NAME}}</li>
+    <li>Beat ID: {{BEAT_ID}}</li>
+    <li>License ID: {{LICENSE_ID}}</li>
+    <li>Order ID: {{ORDER_ID}}</li>
+    <li>Purchase Date: {{PURCHASE_DATE}}</li>
+  </ul>
+  <p>The specific Beat identified in the transaction is the &ldquo;Beat&rdquo; for purposes of this Agreement.</p>
+
+  <h2>3. LICENSE TIER</h2>
+  <p>The Licensee is granted the rights corresponding to the License Tier purchased through RGODBEAT.</p>
+  <p>The available Non-Exclusive License Tiers are:</p>
+  <p><strong>MP3 &mdash; $29</strong><br>Includes: MP3 320 kbps</p>
+  <p><strong>WAV &mdash; $49</strong><br>Includes: MP3 320 kbps, WAV 24-bit / 48 kHz</p>
+  <p><strong>UNLIMITED &mdash; $199</strong><br>Includes: MP3 320 kbps, WAV 24-bit / 48 kHz, Right to request grouped stems, Additional remix rights described in Section 7.</p>
+  <p>The applicable License Tier, price, and deliverables shall be recorded in the Licensee&rsquo;s personalized License record (Purchased: <strong>{{LICENSE_TIER}}</strong> &mdash; <strong>{{DELIVERABLES}}</strong>).</p>
+
+  <h2>4. GRANT OF NON-EXCLUSIVE LICENSE</h2>
+  <p>Subject to the terms of this Agreement and successful payment, RGODBEAT grants the Licensee a non-exclusive, worldwide, perpetual license to use the Beat in connection with the creation, recording, distribution, promotion, performance, and monetization of a new musical work incorporating the Beat (the &ldquo;New Song&rdquo;).</p>
+  <p>This License does not constitute a sale or transfer of ownership of the Beat.</p>
+  <p>RGODBEAT may continue to license the same Beat to other customers under separate licenses.</p>
+
+  <h2>5. PERMITTED USES</h2>
+  <p>The Licensee may use the Beat as part of the New Song for lawful commercial and promotional purposes, including:</p>
+  <ul>
+    <li>Spotify, Apple Music, YouTube, TikTok, Instagram, Facebook</li>
+    <li>Digital downloads and physical sales</li>
+    <li>Music videos and promotional content</li>
+    <li>Live performances and radio airplay</li>
+    <li>Streaming services and other lawful distribution or monetization platforms</li>
+  </ul>
+  <p>The Licensee may commercially release and monetize the New Song subject to the terms of this Agreement.</p>
+  <p>The Licensee may also use the New Song for reasonable artist promotion, social media content, performances, and marketing.</p>
+
+  <h2>6. MODIFICATION OF THE BEAT</h2>
+  <p>The Licensee may modify the Beat as reasonably necessary to create the New Song.</p>
+  <p>Permitted modifications may include cutting sections, removing sections, repeating sections, changing the arrangement, creating different intros or outros, adding vocals, adding instruments, adding effects, editing transitions, changing song structure, mixing, mastering, and other reasonable production modifications made in connection with the New Song.</p>
+  <p>However, the Licensee may not modify the Beat in a manner that creates a substantially different standalone instrumental intended to replace, compete directly with, or substitute for the original Beat as a standalone production asset.</p>
+  <p>Modification rights do not transfer ownership of the Beat.</p>
+
+  <h2>7. UNLIMITED TIER &mdash; REMIX RIGHTS</h2>
+  <p>The Unlimited License ($199) includes additional remix rights.</p>
+  <p>The Licensee may create a remix or substantially rearranged version of the Beat for use in connection with a New Song or remix project. Such remix rights may include substantial changes to arrangement, structure, tempo, transitions, production elements, instrumentation, sound design, and other musical elements.</p>
+  <p>The remix remains subject to this Agreement.</p>
+  <p>The Unlimited License does not transfer ownership of the original Beat or its underlying composition.</p>
+  <p>The MP3 and WAV License Tiers do not include the additional remix rights granted under this Section.</p>
+
+  <h2>8. COMMERCIAL RELEASE AND MONETIZATION</h2>
+  <p>The Licensee may commercially release and monetize the New Song created using the licensed Beat. This includes streaming revenue, digital sales, downloads, YouTube monetization, social media monetization, performance revenue, licensing revenue associated with the New Song, and other lawful revenue generated from the New Song.</p>
+  <p>The Licensee is responsible for complying with the rules, policies, and requirements of the platforms and services used to distribute or monetize the New Song.</p>
+
+  <h2>9. COMPOSITION AND PUBLISHING</h2>
+  <p>The purchase price of the Beat License does not automatically establish or determine ownership or percentage splits of the underlying musical composition or publishing.</p>
+  <p>Any writer, composer, publishing, or ownership splits relating to the Beat or New Song shall be documented separately through a split sheet or other written agreement between the applicable parties.</p>
+  <p>Unless otherwise agreed in writing, the Licensee should not represent that the Licensee owns 100% of the underlying composition solely because the Licensee purchased this Beat License.</p>
+
+  <h2>10. CONTENT ID AND AUDIO FINGERPRINTING</h2>
+  <p>Because the Beat is licensed on a non-exclusive basis, the Licensee may not register the original Beat, the original instrumental, or a substantially identical portion of the Beat with YouTube Content ID, Facebook/Instagram Rights Manager, TikTok fingerprinting systems, or similar automated rights-enforcement or audio-fingerprinting systems without prior written authorization from RGODBEAT.</p>
+  <p>This restriction is intended to prevent automated claims against other valid licensees of the same Beat.</p>
+  <p>The Licensee may monetize the New Song through platforms and services that do not require unauthorized ownership claims over the underlying Beat.</p>
+
+  <h2>11. NON-EXCLUSIVE NATURE</h2>
+  <p>The License is non-exclusive. RGODBEAT retains the right to license the Beat to other customers, sell additional Non-Exclusive Licenses, promote the Beat, distribute the Beat, use the Beat for RGODBEAT promotional purposes, and enter into an Exclusive transaction for the Beat, subject to Section 12.</p>
+  <p>No Licensee shall have exclusive ownership or exclusive control over the Beat solely as a result of purchasing a Non-Exclusive License.</p>
+
+  <h2>12. FUTURE EXCLUSIVE SALE</h2>
+  <p>RGODBEAT may sell an Exclusive License for the Beat in the future.</p>
+  <p><strong>However, a future Exclusive transaction does not retroactively cancel, invalidate, revoke, or terminate any valid Non-Exclusive License issued before the effective date of the Exclusive transaction.</strong></p>
+  <p>Any Licensee who obtained a valid Non-Exclusive License before the effective date of the Exclusive transaction may continue using the Beat and New Song according to the terms of that existing License.</p>
+  <p>After an Exclusive transaction becomes effective, RGODBEAT will not issue new Non-Exclusive Licenses for the Beat unless otherwise agreed in writing.</p>
+  <p>The Exclusive License Agreement shall acknowledge the existence and continuing validity of previously issued Non-Exclusive Licenses.</p>
+
+  <h2>13. STEM DELIVERY &mdash; UNLIMITED TIER</h2>
+  <p>The Unlimited License includes the right to request grouped stems for the licensed Beat.</p>
+  <p>Grouped stems are not included in the initial digital download and are delivered separately upon request through the RGODBEAT Stem Request system associated with the applicable License ID.</p>
+  <p>Where available, grouped stems may include: <code>01_MELODIES.wav</code>, <code>02_DRUMS.wav</code>, <code>03_BASS.wav</code>, <code>04_FX.wav</code>. Grouped stems may contain multiple production elements combined within each category. Individual track-by-track stems are not guaranteed unless otherwise agreed in writing.</p>
+  <p>The Licensee must submit a stem request through the designated RGODBEAT Stem Request system and provide the applicable License ID. RGODBEAT will process the request and provide the applicable grouped stems separately.</p>
+  <p>Stem delivery does not transfer ownership of the Beat or any underlying intellectual property rights.</p>
+  <p><strong>MP3 and WAV Licenses do not include stem access.</strong></p>
+
+  <h2>14. PRODUCER CREDIT</h2>
+  <p>Where commercially and technically reasonable, the Licensee agrees to credit the producer as &ldquo;Produced by RGODBEAT&rdquo; or &ldquo;Prod. by RGODBEAT&rdquo;.</p>
+  <p>The Licensee should include the producer credit in official metadata, digital music platform credits, descriptions, and other reasonable locations where producer credits are customarily provided.</p>
+  <p>A failure by a third-party platform to display, preserve, or support producer credits will not by itself constitute a breach of this Agreement.</p>
+
+  <h2>15. TRANSFER AND SUBLICENSING</h2>
+  <p>This License is granted to the individual or legal entity identified in the applicable transaction and is non-transferable except as expressly permitted by this Agreement.</p>
+  <p>The Licensee may not sell, resell, sublicense, lease, distribute, upload, share, or otherwise make the Beat or its files available to another person or entity as a standalone instrumental or production asset.</p>
+  <p>The Licensee may, however, provide the Beat and/or the resulting New Song to distributors, record labels, publishers, performing rights organizations, collection societies, managers, agents, collaborators, and other service providers as reasonably necessary to create, release, administer, promote, distribute, or monetize the New Song. Such access does not transfer ownership of the Beat or create a separate license to the underlying Beat for the receiving party.</p>
+
+  <h2>16. TERMINATION AND MATERIAL BREACH</h2>
+  <p>This Agreement remains effective for the duration stated in this Agreement unless terminated in accordance with this Section.</p>
+  <p>A material breach of this Agreement may result in termination of the License if the breach is not cured within a reasonable period after written notice from RGODBEAT.</p>
+  <p>Material breaches may include unauthorized resale or sublicensing of the Beat, unauthorized distribution as a standalone instrumental, unauthorized Content ID or audio fingerprint registration, use outside granted rights, fraudulent activity, or material violation of restrictions.</p>
+  <p>Upon valid termination, the Licensee must cease creating new works using the Beat and cease making new uses of the Beat that are not permitted to continue under this Agreement.</p>
+  <p>Nothing in this Section retroactively invalidates a valid use or License that was authorized before termination, except where applicable law provides otherwise.</p>
+
+  <h2>17. COPYRIGHT AND OWNERSHIP</h2>
+  <p>RGODBEAT and/or its applicable rights holders retain all ownership rights, title, and interest in and to the Beat and its underlying musical composition, except for rights expressly granted or separately documented in writing.</p>
+  <p>The purchase of a License does not constitute a sale or transfer of copyright ownership in the Beat.</p>
+  <p>The Licensee retains ownership of the original creative contributions independently created by the Licensee and incorporated into the New Song, subject to the rights granted to RGODBEAT and any other applicable rights holders in the underlying Beat.</p>
+  <p>Any ownership, writer, publishing, or composition splits relating to the Beat or New Song must be established through a separate written agreement, split sheet, or other applicable documentation.</p>
+
+  <h2>18. THIRD-PARTY MATERIALS AND SAMPLES</h2>
+  <p>Unless expressly stated otherwise in writing, this License does not grant the Licensee rights to any third-party copyrighted material, samples, compositions, recordings, trademarks, or other intellectual property that may be incorporated into the Beat.</p>
+  <p>If the Licensee adds third-party material to the Beat or New Song, the Licensee is responsible for obtaining any permissions, licenses, clearances, or consents required for such material. The Licensee may not represent that RGODBEAT has cleared third-party material added by the Licensee.</p>
+
+  <h2>19. LIMITATION OF LIABILITY</h2>
+  <p>To the maximum extent permitted by applicable law, RGODBEAT shall not be liable for indirect, incidental, consequential, special, exemplary, or punitive damages arising out of or relating to the License or the use of the Beat.</p>
+  <p>To the maximum extent permitted by applicable law, RGODBEAT&rsquo;s total aggregate liability arising out of or relating to this Agreement shall not exceed the amount actually paid by the Licensee for the applicable License.</p>
+  <p>Nothing in this Agreement shall exclude or limit liability that cannot legally be excluded or limited under applicable law.</p>
+
+  <h2>20. GOVERNING LAW AND JURISDICTION</h2>
+  <p>This Agreement shall be governed by and construed in accordance with the laws of {{GOVERNING_LAW}}, without regard to conflict-of-law principles, to the extent permitted by applicable law.</p>
+  <p>Any dispute arising out of or relating to this Agreement shall be brought before a court of competent jurisdiction located in {{JURISDICTION}}.</p>
+
+  <h2>21. ENTIRE AGREEMENT</h2>
+  <p>This Agreement, together with the applicable order information, License information, and any documents expressly incorporated by reference, constitutes the entire agreement between the parties concerning the applicable Beat License.</p>
+  <p>It supersedes all prior or contemporaneous discussions, representations, or agreements concerning the same subject matter.</p>
+  <p>Any amendment or modification must be made in writing and accepted by the parties, including through an electronic process expressly authorized by RGODBEAT.</p>
+
+  <h2>22. ELECTRONIC ACCEPTANCE</h2>
+  <p>The Licensee acknowledges that purchasing the Beat License and electronically accepting the applicable terms constitutes the Licensee&rsquo;s electronic acceptance of this Agreement.</p>
+  <p>The Licensee agrees that electronic records, purchase confirmations, License records, and electronically generated copies of this Agreement may be used as evidence of the transaction and the parties&rsquo; acceptance, to the extent permitted by applicable law.</p>
+
+  <h2>23. LICENSE CONFIRMATION</h2>
+  <p>Upon successful completion of the applicable transaction, RGODBEAT generates this personalized License record containing the applicable transaction and License information:</p>
+  <ul>
+    <li>License ID: {{LICENSE_ID}}</li>
+    <li>Order ID: {{ORDER_ID}}</li>
+    <li>Customer Name: {{CUSTOMER_NAME}}</li>
+    <li>Customer Email: {{CUSTOMER_EMAIL}}</li>
+    <li>Beat Name: {{BEAT_NAME}}</li>
+    <li>Beat ID: {{BEAT_ID}}</li>
+    <li>License Tier: {{LICENSE_TIER}}</li>
+    <li>Purchase Price: {{PURCHASE_PRICE}}</li>
+    <li>Purchase Date: {{PURCHASE_DATE}}</li>
+    <li>Deliverables: {{DELIVERABLES}}</li>
+    <li>Contract Version: {{CONTRACT_VERSION}}</li>
+    <li>Governing Law: {{GOVERNING_LAW}}</li>
+    <li>Jurisdiction: {{JURISDICTION}}</li>
+  </ul>
+  <p>The applicable License ID and Contract Version identify the License issued to the Licensee.</p>
+
+  <div class="footer">
+    <div>Licensor: RGODBEAT &bull; rgodbeat@gmail.com</div>
+    <div>Electronically Executed &bull; {{PURCHASE_DATE}}</div>
+    <div>License: {{LICENSE_ID}} &bull; Version: {{CONTRACT_VERSION}}</div>
+  </div>
+
+</body>
+</html>

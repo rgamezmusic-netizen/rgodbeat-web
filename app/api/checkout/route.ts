@@ -66,6 +66,11 @@ export async function POST(req: NextRequest) {
         customerName: customerName || "",
         itemsJson: JSON.stringify(items),
         totalAmount: authoritativeCart.totalAmount.toString(),
+        termsAccepted: "true",
+        termsAcceptedAt: new Date().toISOString(),
+        contractVersion: "NE-v1.0",
+        governingLaw: "State of Texas, United States",
+        jurisdiction: "Travis County, Texas, United States",
       },
     };
 
