@@ -26,14 +26,26 @@ export interface AtmosphereHoverEvent {
 export interface AtmosphericBackgroundProps extends AudioReactivityMetrics {
   /** Page theme preset ('beats' | 'studio' | 'services' | 'park' | 'about') */
   theme?: AtmosphereTheme;
+  /** Environmental background image source path (defaults to '/atmosphere/studio-env.jpg') */
+  backgroundSource?: string | null;
+  /** Opacity of the environmental studio image (0 to 1, default 0.22) */
+  backgroundOpacity?: number;
+  /** Blur radius for environmental silhouettes (default '4px') */
+  backgroundBlur?: string | number;
   /** Overall intensity preset */
   intensity?: AtmosphereIntensity;
+  /** Granular ambient light intensity override */
+  ambientIntensity?: AtmosphereIntensity | number;
+  /** Granular soundfield matrix intensity override */
+  soundFieldIntensity?: AtmosphereIntensity | number;
   /** Primary atmospheric accent hue (overrides theme preset if provided) */
   accentColor?: AtmosphereAccent;
   /** Global master opacity multiplier (0 to 1) */
   opacity?: number;
   /** Whether ambient motion and parallax are active */
   animate?: boolean;
+  /** Alias for animate */
+  animationEnabled?: boolean;
   /** Mobile viewport behavior */
   mobileIntensity?: MobileIntensity;
   /** Whether audio is currently playing */

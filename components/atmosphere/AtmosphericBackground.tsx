@@ -86,10 +86,16 @@ const THEME_CONFIG: Record<
  */
 export function AtmosphericBackground({
   theme = "beats",
+  backgroundSource = "/atmosphere/studio-env.jpg",
+  backgroundOpacity = 0.22,
+  backgroundBlur = "4px",
   intensity = "medium",
+  ambientIntensity,
+  soundFieldIntensity,
   accentColor,
   opacity = 1,
   animate = true,
+  animationEnabled,
   mobileIntensity = "reduced",
   playing: explicitPlaying,
   audioLevel = 0,
@@ -100,7 +106,11 @@ export function AtmosphericBackground({
   hoverState: explicitHoverState,
   className = "",
 }: AtmosphericBackgroundProps) {
+  // Respect animationEnabled alias if passed
+  const isAnimateActive = animationEnabled !== undefined ? animationEnabled : animate;
+
   // Layer DOM refs for GPU transforms
+  const studioLayerRef = useRef<HTMLDivElement>(null);
   const lightsLayerRef = useRef<HTMLDivElement>(null);
   const soundfieldLayerRef = useRef<HTMLDivElement>(null);
   const particlesLayerRef = useRef<HTMLDivElement>(null);
@@ -153,6 +163,19 @@ export function AtmosphericBackground({
 
   const selectedIntensity = intensityMap[intensity];
 
+  // Resolve granular intensity overrides if provided
+  const resolvedLightOpacity = useMemo(() => {
+    if (typeof ambientIntensity === "number") return { opacity: ambientIntensity };
+    if (typeof ambientIntensity === "string") return { className: intensityMap[ambientIntensity]?.lightOpacity || selectedIntensity.lightOpacity };
+    return { className: selectedIntensity.lightOpacity };
+  }, [ambientIntensity, selectedIntensity.lightOpacity]);
+
+  const resolvedSoundfieldOpacity = useMemo(() => {
+    if (typeof soundFieldIntensity === "number") return { opacity: soundFieldIntensity };
+    if (typeof soundFieldIntensity === "string") return { className: intensityMap[soundFieldIntensity]?.dotOpacity || selectedIntensity.dotOpacity };
+    return { className: selectedIntensity.dotOpacity };
+  }, [soundFieldIntensity, selectedIntensity.dotOpacity]);
+
   // Mobile visibility classes
   const mobileClass =
     mobileIntensity === "hidden"
@@ -176,7 +199,7 @@ export function AtmosphericBackground({
       motionQuery.addEventListener("change", handleMotionChange);
     }
 
-    if (!animate || motionQuery.matches) {
+    if (!isAnimateActive || motionQuery.matches) {
       return () => {
         if (motionQuery.removeEventListener) {
           motionQuery.removeEventListener("change", handleMotionChange);
@@ -215,6 +238,11 @@ export function AtmosphericBackground({
       currentX += dx * ease;
       currentY += dy * ease;
 
+      // Layer 1: Cinematic Studio Environment moves with deep subtle parallax (5px max)
+      if (studioLayerRef.current) {
+        studioLayerRef.current.style.transform = `scale(1.04) translate3d(${(-currentX * 5).toFixed(2)}px, ${(-currentY * 4).toFixed(2)}px, 0)`;
+      }
+
       // Layer 2: Ambient lights move gently (8px max)
       if (lightsLayerRef.current) {
         lightsLayerRef.current.style.transform = `translate3d(${(-currentX * 10).toFixed(2)}px, ${(-currentY * 8).toFixed(2)}px, 0)`;
@@ -247,9 +275,9 @@ export function AtmosphericBackground({
         motionQuery.removeEventListener("change", handleMotionChange);
       }
     };
-  }, [animate]);
+  }, [isAnimateActive]);
 
-  const shouldAnimate = animate && !prefersReducedMotion;
+  const shouldAnimate = isAnimateActive && !prefersReducedMotion;
 
   // Audio Reactivity Modifiers (Environmental, gentle breathing)
   const effectiveBass = bassLevel !== undefined ? bassLevel : isPlaying ? 0.35 : audioLevel;
@@ -260,7 +288,7 @@ export function AtmosphericBackground({
     <div
       aria-hidden="true"
       style={{ opacity }}
-      className={`fixed inset-0 pointer-events-none select-none overflow-hidden -z-10 bg-[#060608] ${mobileClass} ${className}`}
+      className={`fixed inset-0 pointer-events-none select-none overflow-hidden z-0 bg-[#060608] ${mobileClass} ${className}`}
     >
       {/* Dynamic Keyframe Injections for Organic Ambient Drift & Rhythmic Beat Breath */}
       <style jsx global>{`
@@ -353,20 +381,56 @@ export function AtmosphericBackground({
       `}</style>
 
       {/* ========================================================
-          LAYER 1: DARK BASE
-          Themed underground studio base gradient
+          LAYER 1: CINEMATIC STUDIO ENVIRONMENT FOUNDATION
+          Subtle silhouette of the futuristic acoustic studio with purple/blue hues
           ======================================================== */}
-      <div 
-        className={`absolute inset-0 bg-gradient-to-b ${currentTheme.baseGradient}`}
+      {backgroundSource && (
+        <div
+          ref={studioLayerRef}
+          className="absolute -inset-4 transition-transform duration-1000 ease-out will-change-transform pointer-events-none"
+          style={{
+            transform: "scale(1.04)",
+          }}
+        >
+          <div
+            className="w-full h-full bg-cover bg-center bg-no-repeat"
+            style={{
+              backgroundImage: `url('${backgroundSource}')`,
+              opacity: backgroundOpacity,
+              filter: `blur(${typeof backgroundBlur === "number" ? `${backgroundBlur}px` : backgroundBlur}) contrast(1.18) brightness(0.68) saturate(1.25)`,
+            }}
+          />
+        </div>
+      )}
+
+      {/* ========================================================
+          LAYER 1.5: DEEP BLACK/CHARCOAL GRADIENT OVERLAYS
+          Guarantees maximum readability of UI, typography & cards
+          ======================================================== */}
+      {/* Central focus vignette: keeps center dark so beat cards & text pop */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: "radial-gradient(ellipse 80% 70% at 50% 45%, rgba(6,6,9,0.85) 0%, rgba(4,4,6,0.95) 60%, #040406 100%)",
+        }}
       />
+      {/* Base themed studio underground gradient */}
+      <div 
+        className={`absolute inset-0 bg-gradient-to-b ${currentTheme.baseGradient} mix-blend-multiply opacity-85 pointer-events-none`}
+      />
+      {/* Subtle top edge gradient for navbar separation */}
+      <div className="absolute top-0 inset-x-0 h-44 bg-gradient-to-b from-[#040406] via-[#040406]/70 to-transparent pointer-events-none" />
+      {/* Subtle bottom edge gradient for fixed audio player separation */}
+      <div className="absolute bottom-0 inset-x-0 h-48 bg-gradient-to-t from-[#040406] via-[#040406]/80 to-transparent pointer-events-none" />
 
       {/* ========================================================
           LAYER 2: AMBIENT LIGHT LAYER (With 15s–30s Drift & Beat Breathing)
           ======================================================== */}
       <div
         ref={lightsLayerRef}
-        className={`absolute inset-0 transition-all duration-700 will-change-transform ${selectedIntensity.lightOpacity}`}
+        className={`absolute inset-0 transition-all duration-700 will-change-transform ${resolvedLightOpacity.className || ""}`}
         style={{
+          opacity: resolvedLightOpacity.opacity,
           filter: `brightness(${audioPulseBrightness})`,
           animation: shouldAnimate && isPlaying ? "rgod-beat-breath 3.5s ease-in-out infinite" : "none",
         }}
@@ -427,8 +491,9 @@ export function AtmosphericBackground({
           ======================================================== */}
       <div 
         ref={soundfieldLayerRef}
-        className={`absolute inset-0 transition-opacity duration-700 will-change-transform ${selectedIntensity.dotOpacity}`}
+        className={`absolute inset-0 transition-opacity duration-700 will-change-transform ${resolvedSoundfieldOpacity.className || ""}`}
         style={{
+          opacity: resolvedSoundfieldOpacity.opacity,
           maskImage: "radial-gradient(circle at 50% 35%, black 20%, transparent 75%)",
           WebkitMaskImage: "radial-gradient(circle at 50% 35%, black 20%, transparent 75%)",
         }}
