@@ -143,7 +143,82 @@ License ID:       RG-MP3-2026-000007
   assert.strictEqual(extracted.deliverables, "MP3 320 kbps");
   console.log("✓ Historic purchase pinned cleanly to its original version NE-v1.0");
 
-  console.log("\n=== ALL OFFICIAL CONTRACT SYSTEM TESTS PASSED SUCCESSFULLY ===");
+  // 7. Test Exclusive Agreement EX-v1.0
+  console.log("\n[TEST 7] Testing Exclusive Beat License Agreement EX-v1.0 (22 Sections)...");
+  const excOrderId = "ord_exc_777";
+  const excLicenseId = "RG-EXC-2026-000777";
+  const excContractText = generateLicenseContract({
+    orderId: excOrderId,
+    customerName: "Exclusive Buyer",
+    customerEmail: "buyer@label.com",
+    beatTitle: "DIVINA",
+    beatId: "a4c1b253-0fc4-42c4-9f17-b96e03115b23",
+    licenseTier: "exclusive",
+    amountPaid: 499,
+    currency: "USD",
+    purchaseDate: "2026-09-23T16:00:00Z",
+    licenseId: excLicenseId,
+    version: CONTRACT_VERSIONS.EXCLUSIVE,
+    governingLaw: DEFAULT_GOVERNING_LAW,
+    jurisdiction: DEFAULT_JURISDICTION,
+  });
+
+  // Verify all 13 variables in EX-v1.0
+  assert(excContractText.includes(excLicenseId), "Must contain Exclusive {{LICENSE_ID}}");
+  assert(excContractText.includes(excOrderId), "Must contain Exclusive {{ORDER_ID}}");
+  assert(excContractText.includes("Exclusive Buyer"), "Must contain {{CUSTOMER_NAME}}");
+  assert(excContractText.includes("buyer@label.com"), "Must contain {{CUSTOMER_EMAIL}}");
+  assert(excContractText.includes("DIVINA"), "Must contain {{BEAT_NAME}}");
+  assert(excContractText.includes("$499.00 USD"), "Must contain {{PURCHASE_PRICE}}");
+  assert(excContractText.includes("EX-v1.0"), "Must contain {{CONTRACT_VERSION}}");
+  assert(!excContractText.includes("{{"), "No raw template placeholder tags must remain in EX-v1.0");
+
+  // Verify all 22 Sections in EX-v1.0
+  assert(excContractText.includes("1. PARTIES"), "EX: Must contain Section 1");
+  assert(excContractText.includes("2. BEAT IDENTIFICATION"), "EX: Must contain Section 2");
+  assert(excContractText.includes("3. EXCLUSIVE LICENSE"), "EX: Must contain Section 3");
+  assert(excContractText.includes("4. GRANT OF EXCLUSIVE LICENSE"), "EX: Must contain Section 4");
+  assert(excContractText.includes("5. EXCLUSIVE NATURE OF THE LICENSE"), "EX: Must contain Section 5");
+  assert(excContractText.includes("6. PREVIOUS NON-EXCLUSIVE LICENSES"), "EX: Must contain Section 6");
+  assert(excContractText.includes("7. PERMITTED USES"), "EX: Must contain Section 7");
+  assert(excContractText.includes("8. MODIFICATION AND REMIX RIGHTS"), "EX: Must contain Section 8");
+  assert(excContractText.includes("9. COMMERCIAL RELEASE AND MONETIZATION"), "EX: Must contain Section 9");
+  assert(excContractText.includes("10. COMPOSITION AND PUBLISHING"), "EX: Must contain Section 10");
+  assert(excContractText.includes("11. CONTENT ID AND AUDIO FINGERPRINTING"), "EX: Must contain Section 11");
+  assert(excContractText.includes("12. STEM DELIVERY"), "EX: Must contain Section 12");
+  assert(excContractText.includes("13. PRODUCER CREDIT"), "EX: Must contain Section 13");
+  assert(excContractText.includes("14. TRANSFER AND SUBLICENSING"), "EX: Must contain Section 14");
+  assert(excContractText.includes("15. TERMINATION AND MATERIAL BREACH"), "EX: Must contain Section 15");
+  assert(excContractText.includes("16. COPYRIGHT AND OWNERSHIP"), "EX: Must contain Section 16");
+  assert(excContractText.includes("17. THIRD-PARTY MATERIALS AND SAMPLES"), "EX: Must contain Section 17");
+  assert(excContractText.includes("18. LIMITATION OF LIABILITY"), "EX: Must contain Section 18");
+  assert(excContractText.includes("19. GOVERNING LAW AND JURISDICTION"), "EX: Must contain Section 19");
+  assert(excContractText.includes("20. ENTIRE AGREEMENT"), "EX: Must contain Section 20");
+  assert(excContractText.includes("21. ELECTRONIC ACCEPTANCE"), "EX: Must contain Section 21");
+  assert(excContractText.includes("22. LICENSE CONFIRMATION"), "EX: Must contain Section 22");
+  console.log("✓ All 22 official legal sections and variables verified in Exclusive Agreement EX-v1.0");
+
+  // 8. Test Exclusive Multi-Page PDF Generation
+  console.log("\n[TEST 8] Testing Exclusive Multi-Page Vector PDF Generation with pdf-lib...");
+  const excPdfBytes = await generateContractPdfBuffer({
+    orderId: excOrderId,
+    customerName: "Exclusive Buyer",
+    customerEmail: "buyer@label.com",
+    beatTitle: "DIVINA",
+    beatId: "a4c1b253-0fc4-42c4-9f17-b96e03115b23",
+    licenseTier: "exclusive",
+    amountPaid: 499,
+    currency: "USD",
+    licenseId: excLicenseId,
+    version: CONTRACT_VERSIONS.EXCLUSIVE,
+  });
+
+  assert(excPdfBytes && excPdfBytes.length > 500, "Exclusive PDF bytes must be generated");
+  const excPdfHeader = Buffer.from(excPdfBytes.slice(0, 5)).toString();
+  assert.strictEqual(excPdfHeader, "%PDF-", "Generated buffer must be a valid PDF");
+  console.log(`✓ Exclusive Vector PDF generated successfully (${excPdfBytes.length} bytes)`);
+
+  console.log("\n=== ALL OFFICIAL CONTRACT SYSTEM TESTS (NE-v1.0 & EX-v1.0) PASSED SUCCESSFULLY ===");
 }
 
 runComprehensiveTests().catch((err) => {

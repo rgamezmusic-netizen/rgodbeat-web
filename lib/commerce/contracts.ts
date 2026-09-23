@@ -47,7 +47,7 @@ export const TIER_CONTRACT_CONFIGS: Record<string, TierContractConfig> = {
     licenseType: "EXCLUSIVE",
     licenseTier: "EXCLUSIVE",
     prefix: "EXC",
-    deliverables: "MP3 + WAV + grouped stems available upon request",
+    deliverables: "MP3 320 kbps + WAV 24-bit / 48 kHz + grouped stems available upon request",
     version: CONTRACT_VERSIONS.EXCLUSIVE,
   },
 };
@@ -115,7 +115,8 @@ export interface ContractVariables {
  * Reads the Master Contract Template file from disk with safe in-memory fallback.
  */
 export function getMasterTemplate(version: string = CONTRACT_VERSIONS.NON_EXCLUSIVE, isExclusive = false): string {
-  const templateFileName = isExclusive ? "exclusive_master_v1.txt" : "non_exclusive_master_v1.txt";
+  const actualIsExclusive = isExclusive || version === CONTRACT_VERSIONS.EXCLUSIVE;
+  const templateFileName = actualIsExclusive ? "exclusive_master_v1.txt" : "non_exclusive_master_v1.txt";
   const templatePath = path.join(process.cwd(), "templates", "contracts", templateFileName);
 
   try {
@@ -127,9 +128,11 @@ export function getMasterTemplate(version: string = CONTRACT_VERSIONS.NON_EXCLUS
   }
 
   // Fallback to public template if exists
-  const publicTemplatePath = path.join(process.cwd(), "public", "contracts", "templates", "non_exclusive_master_v1.html");
+  const publicTemplatePath = actualIsExclusive
+    ? path.join(process.cwd(), "public", "contracts", "templates", "exclusive_master_v1.html")
+    : path.join(process.cwd(), "public", "contracts", "templates", "non_exclusive_master_v1.html");
   try {
-    if (!isExclusive && fs.existsSync(/*turbopackIgnore: true*/ publicTemplatePath)) {
+    if (fs.existsSync(/*turbopackIgnore: true*/ publicTemplatePath)) {
       const html = fs.readFileSync(/*turbopackIgnore: true*/ publicTemplatePath, "utf-8");
       // Strip simple html tags for text mode
       return html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ");
@@ -139,7 +142,7 @@ export function getMasterTemplate(version: string = CONTRACT_VERSIONS.NON_EXCLUS
   // Safe fallback template
   return `================================================================================
 RGODBEAT MUSIC PRODUCTION
-RGODBEAT NON-EXCLUSIVE BEAT LICENSE AGREEMENT
+RGODBEAT ${actualIsExclusive ? "EXCLUSIVE" : "NON-EXCLUSIVE"} BEAT LICENSE AGREEMENT
 Contract Version: {{CONTRACT_VERSION}}
 License ID:       {{LICENSE_ID}}
 ================================================================================
@@ -151,10 +154,9 @@ DATE OF EXECUTION: {{PURCHASE_DATE}}
 2. BEAT IDENTIFICATION: "{{BEAT_NAME}}" (Beat ID: {{BEAT_ID}}).
 3. LICENSE TIER: {{LICENSE_TIER}} ({{PURCHASE_PRICE}} Paid in Full).
 4. PURCHASED DELIVERABLES: {{DELIVERABLES}}.
-5. GRANT: Non-exclusive, worldwide, perpetual license for New Song creation.
-6. CONTENT ID RESTRICTION: No YouTube/Meta Content ID or audio-fingerprinting registration permitted.
-7. FUTURE EXCLUSIVE: A future Exclusive sale does not invalidate this prior valid Non-Exclusive license.
-8. GOVERNING LAW & JURISDICTION: {{GOVERNING_LAW}}, Courts of {{JURISDICTION}}.
+5. GRANT: ${actualIsExclusive ? "Exclusive, worldwide, perpetual license." : "Non-exclusive, worldwide, perpetual license."}
+6. CONTENT ID RESTRICTION: ${actualIsExclusive ? "Original Beat may not be registered as standalone." : "No YouTube/Meta Content ID or audio-fingerprinting registration permitted."}
+7. GOVERNING LAW & JURISDICTION: {{GOVERNING_LAW}}, Courts of {{JURISDICTION}}.
 
 ================================================================================
 Licensor: RGODBEAT • rgodbeat@gmail.com • Electronically Executed
@@ -190,7 +192,8 @@ export interface GenerateContractParams {
 }
 
 /**
- * Assembles the full official legal contract using the Single Master Non-Exclusive Template (NE-v1.0).
+ * Assembles the full official legal contract using the Single Master Non-Exclusive Template (NE-v1.0)
+ * or the Master Exclusive Template (EX-v1.0).
  */
 export function generateLicenseContract({
   orderId,
@@ -209,7 +212,7 @@ export function generateLicenseContract({
 }: GenerateContractParams): string {
   const cleanTier = licenseTier.toLowerCase();
   const config = TIER_CONTRACT_CONFIGS[cleanTier] || TIER_CONTRACT_CONFIGS.wav;
-  const isExclusive = config.licenseType === "EXCLUSIVE";
+  const isExclusive = config.licenseType === "EXCLUSIVE" || version === CONTRACT_VERSIONS.EXCLUSIVE || cleanTier === "exclusive";
 
   const effectiveVersion = version || (isExclusive ? CONTRACT_VERSIONS.EXCLUSIVE : CONTRACT_VERSIONS.NON_EXCLUSIVE);
   const effectiveLicenseId =
@@ -315,12 +318,12 @@ function wrapLines(text: string, maxChars = 92): string[] {
 
 /**
  * Generates an official, multi-page vector PDF containing the transaction certificate
- * and the complete 23 legal sections of the RGODBEAT Non-Exclusive Agreement.
+ * and the complete legal sections of the RGODBEAT Agreement (NE-v1.0 or EX-v1.0).
  */
 export async function generateContractPdfBuffer(contractParams: GenerateContractParams): Promise<Uint8Array> {
   const cleanTier = contractParams.licenseTier.toLowerCase();
   const config = TIER_CONTRACT_CONFIGS[cleanTier] || TIER_CONTRACT_CONFIGS.wav;
-  const isExclusive = config.licenseType === "EXCLUSIVE";
+  const isExclusive = config.licenseType === "EXCLUSIVE" || contractParams.version === CONTRACT_VERSIONS.EXCLUSIVE || cleanTier === "exclusive";
 
   const fullContractText = generateLicenseContract(contractParams);
   const metadata = {
@@ -346,7 +349,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
   };
 
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle(`RGODBEAT License Agreement — ${metadata.licenseId}`);
+  pdfDoc.setTitle(`RGODBEAT ${isExclusive ? "Exclusive" : "Non-Exclusive"} License Agreement — ${metadata.licenseId}`);
   pdfDoc.setAuthor("RGODBEAT");
   pdfDoc.setSubject(`Official ${metadata.tier} License Agreement (${metadata.version})`);
 
@@ -390,7 +393,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
       y: pageHeight - 62,
       size: 10,
       font: fontRegular,
-      color: rgb(0.66, 0.45, 0.98),
+      color: isExclusive ? rgb(0.95, 0.72, 0.22) : rgb(0.66, 0.45, 0.98),
     }
   );
 
@@ -409,8 +412,8 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     y: folioY,
     width: contentWidth,
     height: 40,
-    color: rgb(0.96, 0.96, 0.98),
-    borderColor: rgb(0.85, 0.85, 0.9),
+    color: isExclusive ? rgb(1, 0.98, 0.92) : rgb(0.96, 0.96, 0.98),
+    borderColor: isExclusive ? rgb(0.92, 0.75, 0.4) : rgb(0.85, 0.85, 0.9),
     borderWidth: 1,
   });
 
@@ -419,7 +422,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     y: folioY + 24,
     size: 8,
     font: fontBold,
-    color: rgb(0.4, 0.4, 0.45),
+    color: isExclusive ? rgb(0.6, 0.4, 0.1) : rgb(0.4, 0.4, 0.45),
   });
 
   page1.drawText(metadata.licenseId, {
@@ -487,8 +490,8 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     y: noticeY,
     width: contentWidth,
     height: 80,
-    color: rgb(0.97, 0.97, 1),
-    borderColor: rgb(0.8, 0.75, 0.95),
+    color: isExclusive ? rgb(1, 0.98, 0.93) : rgb(0.97, 0.97, 1),
+    borderColor: isExclusive ? rgb(0.9, 0.78, 0.45) : rgb(0.8, 0.75, 0.95),
     borderWidth: 1,
   });
 
@@ -497,15 +500,23 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     y: noticeY + 62,
     size: 8.5,
     font: fontBold,
-    color: rgb(0.35, 0.2, 0.7),
+    color: isExclusive ? rgb(0.65, 0.4, 0.05) : rgb(0.35, 0.2, 0.7),
   });
 
-  const noticeLines = [
-    "By completing the purchase transaction through the RGODBEAT platform and electronically accepting",
-    "the applicable terms, the Licensee explicitly agrees to the full 23-section terms of this Agreement.",
-    "This Agreement grants worldwide, perpetual non-exclusive rights to create and monetize a New Song.",
-    "The full legal agreement text follows on the subsequent pages of this official document.",
-  ];
+  const noticeLines = isExclusive
+    ? [
+        "By completing the purchase transaction through the RGODBEAT platform and electronically accepting",
+        "the applicable terms, the Licensee explicitly agrees to the full 22-section terms of this Exclusive Agreement.",
+        "This Agreement grants worldwide, perpetual exclusive licensing rights to create and monetize a New Song.",
+        "The full legal agreement text follows on the subsequent pages of this official document.",
+      ]
+    : [
+        "By completing the purchase transaction through the RGODBEAT platform and electronically accepting",
+        "the applicable terms, the Licensee explicitly agrees to the full 23-section terms of this Agreement.",
+        "This Agreement grants worldwide, perpetual non-exclusive rights to create and monetize a New Song.",
+        "The full legal agreement text follows on the subsequent pages of this official document.",
+      ];
+
   let nY = noticeY + 46;
   noticeLines.forEach((nl) => {
     page1.drawText(nl, {
@@ -518,7 +529,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     nY -= 12;
   });
 
-  // Key Rights Highlights Box (Sections 4, 7, 10, 12 highlights)
+  // Key Rights Highlights Box
   const highlightsY = noticeY - 105;
   page1.drawText("EXECUTIVE SUMMARY OF KEY TERMS", {
     x: margin,
@@ -528,13 +539,23 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     color: rgb(0.1, 0.1, 0.15),
   });
 
-  const highlights = [
-    `• Non-Exclusive Commercial Rights: Perpetual, worldwide license to release and monetize on Spotify, Apple Music, YouTube, etc.`,
-    `• Deliverables: ${metadata.deliverables}. ${cleanTier === "unlimited" ? "Includes right to request grouped stems." : "No stem access included."}`,
-    `• Remix Rights: ${cleanTier === "unlimited" ? "Unlimited tier includes additional remix rights (Section 7)." : "MP3 and WAV do not include additional remix rights."}`,
-    `• Content ID Restriction: Licensee may NOT register original beat with YouTube/Meta Content ID (Section 10).`,
-    `• Future Exclusive Sales: A future Exclusive sale will NEVER revoke or invalidate this prior Non-Exclusive license (Section 12).`,
-  ];
+  const highlights = isExclusive
+    ? [
+        `• Exclusive Commercial Rights: Perpetual, worldwide exclusive license to release and monetize on all platforms.`,
+        `• Store Retirement: RGODBEAT ceases offering this Beat for any new licensing transactions (Section 5).`,
+        `• Deliverables: ${metadata.deliverables}.`,
+        `• Remix & Modification Rights: Full rights to edit, transform, rearrange, and remix for the New Song (Section 8).`,
+        `• Pre-Existing Licenses: Valid Non-Exclusive licenses issued prior to this purchase remain valid (Section 6).`,
+        `• Content ID: Authorized New Song may be registered; original beat alone may not be registered (Section 11).`,
+      ]
+    : [
+        `• Non-Exclusive Commercial Rights: Perpetual, worldwide license to release and monetize on Spotify, Apple Music, YouTube, etc.`,
+        `• Deliverables: ${metadata.deliverables}. ${cleanTier === "unlimited" ? "Includes right to request grouped stems." : "No stem access included."}`,
+        `• Remix Rights: ${cleanTier === "unlimited" ? "Unlimited tier includes additional remix rights (Section 7)." : "MP3 and WAV do not include additional remix rights."}`,
+        `• Content ID Restriction: Licensee may NOT register original beat with YouTube/Meta Content ID (Section 10).`,
+        `• Future Exclusive Sales: A future Exclusive sale will NEVER revoke or invalidate this prior Non-Exclusive license (Section 12).`,
+      ];
+
   let hY = highlightsY + 74;
   highlights.forEach((hl) => {
     page1.drawText(hl, {
@@ -575,7 +596,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
   });
 
   // ---------------------------------------------------------------------------
-  // PAGES 2+: Complete 23 Legal Sections (Full Legal Text)
+  // PAGES 2+: Complete Legal Sections (Full Legal Text)
   // ---------------------------------------------------------------------------
   // Extract body lines starting after the header separator
   const textStartIdx = fullContractText.indexOf("1. PARTIES");
@@ -591,13 +612,16 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     const bodyPage = pdfDoc.addPage([pageWidth, pageHeight]);
 
     // Running Header
-    bodyPage.drawText("RGODBEAT NON-EXCLUSIVE BEAT LICENSE AGREEMENT", {
-      x: margin,
-      y: pageHeight - 40,
-      size: 8,
-      font: fontBold,
-      color: rgb(0.4, 0.25, 0.7),
-    });
+    bodyPage.drawText(
+      isExclusive ? "RGODBEAT EXCLUSIVE BEAT LICENSE AGREEMENT" : "RGODBEAT NON-EXCLUSIVE BEAT LICENSE AGREEMENT",
+      {
+        x: margin,
+        y: pageHeight - 40,
+        size: 8,
+        font: fontBold,
+        color: isExclusive ? rgb(0.7, 0.45, 0.1) : rgb(0.4, 0.25, 0.7),
+      }
+    );
 
     bodyPage.drawText(`License ID: ${metadata.licenseId} • Version: ${metadata.version}`, {
       x: pageWidth - margin - 220,
