@@ -2,7 +2,7 @@ import React from "react";
 
 export function AboutSection() {
   return (
-    <section id="about" className="py-24 sm:py-32 px-4 sm:px-6 lg:px-8 bg-[#09090d] border-t border-white/[0.06]">
+    <section id="about" className="py-24 sm:py-32 px-4 sm:px-6 lg:px-8 bg-[#09090d]/60 backdrop-blur-md border-t border-white/[0.06]">
       <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
           {/* Left Column: Visual Portrait Card */}

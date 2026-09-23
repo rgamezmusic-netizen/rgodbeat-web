@@ -5,6 +5,7 @@ import { Hero } from "@/components/home/Hero";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Button } from "@/components/ui/Button";
 import { BeatCard, CategoryCard } from "@/components/beats";
+import { AtmosphericBackground } from "@/components/atmosphere";
 import { TheParkSection } from "@/components/home/TheParkSection";
 import { ServicesSection } from "@/components/home/ServicesSection";
 import { AboutSection } from "@/components/home/AboutSection";
@@ -25,7 +26,10 @@ export default async function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#08080a] text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
+    <div className="relative min-h-screen bg-transparent text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
+      {/* Reusable Cinematic Atmospheric Background with Procedural Stars */}
+      <AtmosphericBackground theme="default" intensity="high" enableStars={true} starDensity="high" animate={true} />
+
       {/* Top Sticky Navigation */}
       <Navbar />
 

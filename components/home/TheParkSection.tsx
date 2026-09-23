@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/Button";
 
 export function TheParkSection() {
   return (
-    <section id="the-park" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 bg-[#0b0b0f] border-y border-white/[0.06] overflow-hidden">
+    <section id="the-park" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 bg-[#0b0b0f]/60 backdrop-blur-md border-y border-white/[0.06] overflow-hidden">
       {/* Background ambient lighting */}
       <div className="absolute -top-24 right-0 w-96 h-96 bg-purple-900/10 blur-[130px] rounded-full pointer-events-none" />
 
