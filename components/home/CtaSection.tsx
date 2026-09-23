@@ -27,7 +27,7 @@ export function CtaSection() {
               EXPLORE BEAT CATALOG
             </Button>
             <Button
-              href="mailto:Rgamezmusic@gmail.com"
+              href="mailto:rgodbeat@gmail.com"
               variant="outline"
               size="lg"
               className="w-full sm:w-auto"

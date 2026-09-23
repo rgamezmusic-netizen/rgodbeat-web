@@ -115,11 +115,19 @@ export function TheParkSection() {
                 <div className="pt-6 border-t border-white/[0.08] flex items-center justify-between">
                   <div>
                     <div className="text-[10px] font-mono text-zinc-500 uppercase">Residency Inquiries</div>
-                    <div className="text-sm font-semibold text-white">Rgamezmusic@gmail.com</div>
+                    <a
+                      href="mailto:rgodbeat@gmail.com"
+                      className="text-sm font-semibold text-white hover:text-purple-300 transition-colors"
+                    >
+                      rgodbeat@gmail.com
+                    </a>
                   </div>
-                  <div className="w-9 h-9 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-300">
+                  <a
+                    href="mailto:rgodbeat@gmail.com"
+                    className="w-9 h-9 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-300 hover:bg-purple-500/20 transition-colors cursor-pointer"
+                  >
                     ↗
-                  </div>
+                  </a>
                 </div>
               </div>
             </div>
