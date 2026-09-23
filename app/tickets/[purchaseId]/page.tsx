@@ -81,25 +81,21 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
   let conceptExplanation = "";
 
   if (tier === "exclusive") {
-    conceptTitle = "DERECHOS EXCLUSIVOS & RETIRO DE MERCADO";
+    conceptTitle = "DERECHOS EXCLUSIVOS (EXCLUSIVE)";
     conceptExplanation =
-      "Adquisición total de propiedad exclusiva sobre la instrumental. Incluye retiro permanente del catálogo público de RGODBEAT, cesión completa de derechos de autor y explotación comercial ilimitada para tu proyecto discográfico conforme a la oferta aceptada.";
+      "Licencia con derechos exclusivos sobre la obra que incluye MP3, WAV Master de estudio, acceso a stems agrupados bajo solicitud y retiro permanente del catálogo público. Sujeta a los términos del Contrato Oficial de Licencia RGODBEAT.";
   } else if (tier === "unlimited") {
-    conceptTitle = "LICENCIA COMERCIAL ILIMITADA";
+    conceptTitle = "LICENCIA ILIMITADA (UNLIMITED)";
     conceptExplanation =
-      "Licencia comercial de por vida sin límites de distribución. Permite streams ilimitados en Spotify, Apple Music, YouTube, videos musicales y presentaciones en vivo monetizadas sin pago de regalías adicionales al productor.";
-  } else if (tier === "stems") {
-    conceptTitle = "LICENCIA TRACKOUT STEMS (PISTAS SEPARADAS)";
-    conceptExplanation =
-      "Entrega completa de pistas separadas (Stems en WAV de 24 bits: bombo, bajo, melodías, efectos) para mezcla y masterización personalizada en estudio, con distribución de hasta 500,000 reproducciones comerciales.";
+      "Licencia no exclusiva que incluye MP3, WAV Master y acceso a stems agrupados bajo solicitud. Sujeta a los términos del Contrato Oficial de Licencia RGODBEAT.";
   } else if (tier === "wav") {
-    conceptTitle = "LICENCIA MASTER WAV";
+    conceptTitle = "LICENCIA PREMIUM WAV";
     conceptExplanation =
-      "Audio master sin comprimir de 24 bits en formato WAV de alta fidelidad para grabación profesional y distribución hasta 100,000 reproducciones comerciales.";
+      "Licencia no exclusiva que incluye archivo MP3 320 kbps y WAV Master sin comprimir de 24-bit / 48 kHz. Sujeta a los términos del Contrato Oficial de Licencia RGODBEAT.";
   } else {
-    conceptTitle = "LICENCIA ESTÁNDAR MP3";
+    conceptTitle = "LICENCIA OFICIAL MP3";
     conceptExplanation =
-      "Audio comprimido MP3 a 320 kbps para distribución digital independiente de hasta 50,000 reproducciones comerciales.";
+      "Licencia no exclusiva que incluye archivo de audio MP3 a 320 kbps. Sujeta a los términos del Contrato Oficial de Licencia RGODBEAT.";
   }
 
   const ticketFolio = `RGB-${tier.toUpperCase()}-${purchase.id.slice(0, 8).toUpperCase()}`;

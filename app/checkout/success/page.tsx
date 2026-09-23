@@ -232,25 +232,25 @@ export default async function CheckoutSuccessPage({ searchParams }: SuccessPageP
                         </a>
                       )}
 
-                      {/* Stems Download */}
-                      {(tier === "stems" || tier === "unlimited" || tier === "exclusive") && (
+                      {/* Grouped Stems Access Upon Request (Unlimited & Exclusive) */}
+                      {(tier === "unlimited" || tier === "exclusive") && (
                         <a
-                          href={`/api/download/${purchase.id}?fileType=stems`}
-                          className="px-3 py-2 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-xs font-mono text-purple-200 transition-colors cursor-pointer"
-                          download
+                          href={`mailto:rgodbeat@gmail.com?subject=Solicitud de Stems Agrupados - Beat: ${encodeURIComponent(beat?.title || "Beat")} (Orden ${purchase.id.slice(0, 8)})`}
+                          className="px-3 py-2 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-xs font-mono text-purple-300 transition-colors"
+                          title="Acceso a stems agrupados bajo solicitud para licencias Unlimited y Exclusive"
                         >
-                          ↓ STEMS ZIP
+                          SOLICITAR STEMS
                         </a>
                       )}
 
-                      {/* License Contract */}
+                      {/* License Contract PDF */}
                       <a
                         href={`/api/download/${purchase.id}?fileType=contract`}
                         target="_blank"
                         rel="noreferrer"
-                        className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-mono text-zinc-300 transition-colors cursor-pointer"
+                        className="px-3 py-2 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/30 text-xs font-mono text-purple-200 transition-colors cursor-pointer"
                       >
-                        CONTRATO ↗
+                        CONTRATO PDF ↗
                       </a>
                     </div>
                   </div>

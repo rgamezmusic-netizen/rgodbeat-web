@@ -13,22 +13,19 @@ interface LicenseSelectorProps {
 
 export function LicenseSelector({ beat }: LicenseSelectorProps) {
   const [selectedTier, setSelectedTier] = useState<LicenseTier>("wav");
-  const [exclusiveOffer, setExclusiveOffer] = useState<string>("200");
   const { addToCart } = useCart();
 
   const currentOption =
     LICENSE_OPTIONS.find((opt) => opt.id === selectedTier) || LICENSE_OPTIONS[1];
 
-  const basePrice = beat.pricing[selectedTier] || currentOption.price;
-  const effectiveExclusivePrice = Math.max(200, parseInt(exclusiveOffer, 10) || 200);
-  const currentPrice = selectedTier === "exclusive" ? effectiveExclusivePrice : basePrice;
+  const currentPrice = beat.pricing[selectedTier] || currentOption.price;
 
   const handleAddToCart = () => {
-    addToCart(beat, selectedTier, selectedTier === "exclusive" ? currentPrice : undefined);
+    addToCart(beat, selectedTier);
   };
 
   const handleBuyNow = () => {
-    addToCart(beat, selectedTier, selectedTier === "exclusive" ? currentPrice : undefined);
+    addToCart(beat, selectedTier);
   };
 
   return (
@@ -54,8 +51,8 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
         </div>
       </div>
 
-      {/* License Tiers Selection Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      {/* License Tiers Selection Grid (4 Official Products) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {LICENSE_OPTIONS.map((opt) => {
           const tier = (opt.slug || opt.id) as LicenseTier;
           const isSelected = selectedTier === tier;
@@ -76,7 +73,7 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
             >
               <div className="flex items-center justify-between w-full mb-1">
                 <span className="text-xs font-mono font-bold uppercase tracking-wider">
-                  {opt.id}
+                  {opt.name}
                 </span>
                 {opt.recommended && (
                   <span className="text-[8px] font-mono px-1.5 py-0.2 rounded bg-purple-500 text-white font-bold tracking-wider">
@@ -122,53 +119,11 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
           ))}
         </div>
 
-        {/* Exclusive Custom Offer Input (Minimum $200) */}
-        {selectedTier === "exclusive" && (
-          <div className="pt-3 border-t border-white/[0.06] space-y-3">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                <span className="text-xs font-mono font-bold text-amber-300 uppercase tracking-wider">
-                  OFERTA POR LICENCIA EXCLUSIVA (MÍNIMO $200 USD)
-                </span>
-              </div>
-              <p className="text-[11px] text-zinc-400">
-                La licencia exclusiva incluye la cesión total de derechos de autor y el retiro permanente del beat. Define tu oferta a partir de $200:
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="relative w-36">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-zinc-400 font-bold">$</span>
-                <input
-                  type="number"
-                  min={200}
-                  step={10}
-                  value={exclusiveOffer}
-                  onChange={(e) => setExclusiveOffer(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 rounded-lg bg-black/60 border border-purple-500/50 text-white font-mono font-bold text-sm focus:outline-none focus:border-purple-400"
-                />
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                {[200, 250, 300, 500].map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setExclusiveOffer(String(preset))}
-                    className={`px-2.5 py-1.5 rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
-                      exclusiveOffer === String(preset)
-                        ? "bg-purple-600 text-white shadow-sm"
-                        : "bg-white/[0.05] hover:bg-white/10 text-zinc-300 border border-white/[0.06]"
-                    }`}
-                  >
-                    ${preset}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* PDF Contract Delivery Notice */}
+        <div className="pt-3 border-t border-white/[0.06] flex items-center gap-2 text-xs text-zinc-400">
+          <span className="text-purple-400 font-mono">📄</span>
+          <span>Official RGODBEAT Beat License Agreement (PDF) is issued upon checkout.</span>
+        </div>
       </div>
 
       {/* Purchase Actions (Primary Dominant BUY NOW — $XX + Secondary ADD TO CART) */}

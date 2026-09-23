@@ -7,55 +7,43 @@ const TIER_METADATA: Record<
   { format: string; features: string[]; recommended?: boolean }
 > = {
   mp3: {
-    format: "Untagged High-Quality MP3 (320kbps)",
+    format: "MP3 (320 kbps)",
     features: [
-      "Untagged stereo audio file",
-      "Up to 100,000 audio streams",
-      "Distribution on Spotify & Apple Music",
-      "1 Non-monetized music video",
+      "Non-Exclusive",
+      "MP3 320 kbps",
     ],
   },
   wav: {
-    format: "Uncompressed 24-Bit Master WAV + MP3",
+    format: "MP3 320 kbps + WAV 24-bit / 48 kHz",
     features: [
-      "Master studio WAV file (24-bit/48kHz)",
-      "Up to 500,000 audio streams",
-      "2 Commercial music videos",
-      "Monetized YouTube streaming allowed",
+      "Non-Exclusive",
+      "MP3 320 kbps",
+      "WAV 24-bit / 48 kHz",
     ],
     recommended: true,
   },
-  stems: {
-    format: "Separated Multitrack WAV Stems + Master WAV",
-    features: [
-      "All individual drum, synth, bass & vocal stems",
-      "Perfect for professional studio mixing & vocal tuning",
-      "Up to 1,000,000 audio streams",
-      "Radio broadcasting rights included",
-    ],
-  },
   unlimited: {
-    format: "Full Master WAV + All Stems (No Caps)",
+    format: "MP3 + WAV + Stems on Request",
     features: [
-      "Unlimited commercial audio streams",
-      "Unlimited physical & digital sales",
-      "Unlimited music videos & radio airplay",
-      "For-profit live performance rights",
+      "Non-Exclusive",
+      "MP3",
+      "WAV",
+      "Includes access to grouped stems upon request",
     ],
   },
   exclusive: {
-    format: "Full Ownership Transfer & Master Copyright",
+    format: "Exclusive Ownership + Full Masters",
     features: [
-      "Sole ownership transferred directly to you",
-      "Beat permanently removed from store",
-      "Unlimited sync, streaming & physical distribution",
-      "Official signed contract agreement",
+      "Exclusive",
+      "MP3",
+      "WAV",
+      "Includes access to grouped stems upon request",
     ],
   },
 };
 
 /**
- * Fetch all active license types from Supabase
+ * Fetch all active license types from Supabase (excluding standalone stems)
  */
 export async function getLicenseTypes(): Promise<LicenseOption[]> {
   try {
@@ -64,6 +52,7 @@ export async function getLicenseTypes(): Promise<LicenseOption[]> {
       .from("license_types")
       .select("id, name, slug, description, price, sort_order, active")
       .eq("active", true)
+      .neq("slug", "stems")
       .order("sort_order", { ascending: true });
 
     if (error) {

@@ -207,8 +207,19 @@ export default async function AccountPage() {
                         href={`/api/download/${purchase.id}?fileType=contract`}
                         className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-mono font-bold tracking-wider uppercase bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/30 text-purple-200 transition-colors text-center"
                       >
-                        CONTRATO PDF/TXT
+                        CONTRATO PDF
                       </a>
+
+                      {/* Grouped Stems Access Upon Request (Unlimited & Exclusive) */}
+                      {(purchase.license_tier === "unlimited" || purchase.license_tier === "exclusive") && (
+                        <a
+                          href={`mailto:rgodbeat@gmail.com?subject=Solicitud de Stems Agrupados - Beat: ${encodeURIComponent(beat?.title || "Beat")} (Orden ${purchase.id.slice(0, 8)})`}
+                          className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg text-xs font-mono font-bold tracking-wider uppercase bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-300 transition-colors text-center"
+                          title="Acceso a stems agrupados bajo solicitud para licencias Unlimited y Exclusive"
+                        >
+                          SOLICITAR STEMS
+                        </a>
+                      )}
                     </div>
                   </div>
                 );

@@ -150,7 +150,7 @@ export function CartDrawer() {
                   <div className="space-y-1">
                     <h3 className="font-semibold text-white text-base">Your cart is empty</h3>
                     <p className="text-xs text-zinc-400 max-w-xs">
-                      Browse the catalog and add master licenses or stems to your cart.
+                      Browse the catalog and select a license to add to your cart.
                     </p>
                   </div>
                   <Button

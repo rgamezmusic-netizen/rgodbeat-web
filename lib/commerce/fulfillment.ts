@@ -33,11 +33,12 @@ export async function resolveAuthoritativeCart(
 
   const supabase = createAdminClient();
 
-  // 1. Fetch license types
+  // 1. Fetch license types (excluding standalone stems)
   const { data: licenseTypes, error: ltError } = await supabase
     .from("license_types")
     .select("id, slug, name, price, active")
-    .eq("active", true);
+    .eq("active", true)
+    .neq("slug", "stems");
 
   if (ltError || !licenseTypes || licenseTypes.length === 0) {
     throw new Error(`Failed to load authoritative license types: ${ltError?.message || "None found"}`);

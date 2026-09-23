@@ -26,13 +26,15 @@ export async function GET(
     const ipAddress = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || undefined;
     const userAgent = req.headers.get("user-agent") || undefined;
 
-    // Deliver License Contract directly from database entitlement
+    // Deliver License Contract: Resolves official PDF agreement if available, fallback to text certification
     if (fileType === "contract") {
       const { createAdminClient } = await import("@/lib/supabase/admin");
+      const { resolveContractAsset } = await import("@/lib/commerce/contracts");
       const supabase = createAdminClient();
       const { data: purchase } = await supabase
         .from("purchases")
         .select(`
+          beat_id,
           contract_text,
           license_tier,
           beats (
@@ -47,13 +49,38 @@ export async function GET(
       }
 
       const beatTitle = (purchase.beats as any)?.title || "RGODBEAT";
-      const cleanFilename = `${beatTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}_${purchase.license_tier.toUpperCase()}_License.txt`;
+      const asset = await resolveContractAsset({
+        beatId: purchase.beat_id,
+        licenseTier: purchase.license_tier,
+        beatTitle,
+      });
+
+      if (asset.hasPdf) {
+        if (asset.sourceType === "r2" && asset.pdfUrl) {
+          if (redirectMode) {
+            return NextResponse.redirect(asset.pdfUrl, 302);
+          }
+          return NextResponse.json({ downloadUrl: asset.pdfUrl, fileName: asset.fileName });
+        }
+
+        if (asset.sourceType === "local" && asset.pdfPath) {
+          const fs = await import("fs");
+          const fileBuffer = fs.readFileSync(asset.pdfPath);
+          return new NextResponse(fileBuffer, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/pdf",
+              "Content-Disposition": `attachment; filename="${asset.fileName}"`,
+            },
+          });
+        }
+      }
 
       return new NextResponse(purchase.contract_text, {
         status: 200,
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
-          "Content-Disposition": `attachment; filename="${cleanFilename}"`,
+          "Content-Disposition": `attachment; filename="${asset.fileName}"`,
         },
       });
     }
