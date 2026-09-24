@@ -294,8 +294,9 @@ export async function analyzeBeatAudio(buffer: AudioBuffer): Promise<BeatAnalysi
 }
 
 /**
- * Detects BPM with sub-sample parabolic interpolation and dual-band transient flux.
- * Accurately handles half-time vs double-time (e.g. 71 vs 142 BPM in urban trap/reggaeton).
+ * Detects BPM with sub-sample parabolic interpolation, dual-band transient flux,
+ * log-normal tempo prior, and intelligent tresillo / 3:2 polyrhythm disambiguation.
+ * Accurately prevents urban beats at ~142 BPM from being trapped at ~95 BPM.
  */
 function detectBpm(mono: Float32Array, sampleRate: number): number {
   const hopSize = 256;
@@ -352,7 +353,7 @@ function detectBpm(mono: Float32Array, sampleRate: number): number {
 
   const corr = new Float32Array(maxLag + 2);
   let bestLag = minLag;
-  let maxCorr = -Infinity;
+  let maxWeightedCorr = -Infinity;
 
   const testLen = Math.min(1400, numHops - maxLag);
 
@@ -362,8 +363,17 @@ function detectBpm(mono: Float32Array, sampleRate: number): number {
       sum += flux[i] * flux[i + lag];
     }
     corr[lag] = sum;
-    if (sum > maxCorr) {
-      maxCorr = sum;
+
+    // Weight raw correlation with a smooth log-normal tempo prior centered at 130 BPM
+    // (Urban standard sweet spot: 120-155 BPM).
+    // In MIR research, this avoids sub-harmonic bias where slower tempos (longer lags)
+    // or syncopated patterns (tresillos) artificially accumulate more cross-multiplications.
+    const bpmAtLag = (60 * envelopeSampleRate) / lag;
+    const prior = Math.exp(-0.5 * Math.pow(Math.log2(bpmAtLag / 130) / 0.65, 2));
+    const weighted = sum * (0.50 + 0.50 * prior);
+
+    if (weighted > maxWeightedCorr) {
+      maxWeightedCorr = weighted;
       bestLag = lag;
     }
   }
@@ -387,20 +397,62 @@ function detectBpm(mono: Float32Array, sampleRate: number): number {
   }
 
   let calculatedBpm = (60 * envelopeSampleRate) / refinedLag;
+  const peakCorr = corr[bestLag] || 1;
 
-  // 5. Intelligent Urban Half-Time vs Double-Time Heuristic:
-  // In trap, drill, hip-hop, reggaeton, and pop, a track produced at 140-150 BPM has kick/snare
-  // periods at 70-75 BPM. If detected BPM is between 64 and 84 BPM, check if halfLag (double tempo)
-  // has substantial energy (over 65% of maxCorr) or if high-frequency hi-hat flux is dense.
+  // 5. Intelligent Urban Polyrhythm & Tresillo Disambiguation (e.g. 95 BPM vs 142 BPM):
+  // In modern urban music (Trap, Drill, Reggaeton, Dembow, Hip-Hop), the 3-eighth-note tresillo
+  // syncopation creates a massive autocorrelation peak at 1.5 * lag (which registers as BPM * (2/3),
+  // e.g. 142 BPM * 2/3 = 94.67 ~ 95 BPM).
+  // If the detected candidate is in the 84-108 BPM range, check if the fundamental beat lag at
+  // 2/3 * refinedLag has a strong local peak (>= 48% of maxCorr). If so, promote to 1.5x tempo (~142 BPM).
+  if (calculatedBpm >= 84 && calculatedBpm <= 108) {
+    const twoThirdsLag = Math.round((refinedLag * 2) / 3);
+    if (twoThirdsLag >= minLag + 1 && twoThirdsLag <= maxLag - 1) {
+      // Find maximum around twoThirdsLag +/- 1
+      let best23Lag = twoThirdsLag;
+      let best23Val = corr[twoThirdsLag] || 0;
+      for (let offset = -1; offset <= 1; offset++) {
+        const val = corr[twoThirdsLag + offset] || 0;
+        if (val > best23Val) {
+          best23Val = val;
+          best23Lag = twoThirdsLag + offset;
+        }
+      }
+
+      // Check if candidate 2/3 lag is a real peak and has substantial energy
+      if (best23Val >= peakCorr * 0.48 || highFluxSum > 8) {
+        // Refine with parabolic interpolation
+        const c0 = corr[best23Lag - 1] || best23Val;
+        const c1 = corr[best23Lag] || best23Val;
+        const c2 = corr[best23Lag + 1] || best23Val;
+        const d = c0 - 2 * c1 + c2;
+        let refined23 = best23Lag;
+        if (Math.abs(d) > 1e-6) {
+          const delta = (0.5 * (c0 - c2)) / d;
+          if (Math.abs(delta) < 1.0) {
+            refined23 = best23Lag + delta;
+          }
+        }
+        const candidateBpm = (60 * envelopeSampleRate) / refined23;
+        if (candidateBpm >= 125 && candidateBpm <= 165) {
+          calculatedBpm = candidateBpm;
+          refinedLag = refined23;
+        }
+      }
+    }
+  }
+
+  // 6. Intelligent Urban Half-Time vs Double-Time Heuristic:
+  // In trap/drill, kick/snare periods at 70-75 BPM are often produced in double-time (140-150 BPM).
+  // If detected BPM is between 64 and 84 BPM, check if halfLag (double tempo) has substantial energy.
   const halfLag = Math.round(refinedLag / 2);
   if (halfLag >= minLag && halfLag <= maxLag) {
     const halfLagCorr = corr[halfLag] || 0;
     if (calculatedBpm >= 64 && calculatedBpm <= 84) {
-      // Very high likelihood of being felt as double tempo (e.g. 71 -> 142)
-      if (halfLagCorr > maxCorr * 0.62 || highFluxSum > 10) {
+      if (halfLagCorr > peakCorr * 0.55 || highFluxSum > 10) {
         calculatedBpm *= 2;
       }
-    } else if (halfLagCorr > maxCorr * 0.85) {
+    } else if (halfLagCorr > peakCorr * 0.82) {
       const candidateDouble = (60 * envelopeSampleRate) / halfLag;
       if (candidateDouble >= 80 && candidateDouble <= 170) {
         calculatedBpm = candidateDouble;
@@ -410,7 +462,7 @@ function detectBpm(mono: Float32Array, sampleRate: number): number {
 
   // Clamp standard range
   if (calculatedBpm < 60) calculatedBpm *= 2;
-  if (calculatedBpm > 210) calculatedBpm /= 2;
+  if (calculatedBpm > 215) calculatedBpm /= 2;
 
   // Integer tempo snapping: almost all modern produced tracks use integer BPMs
   const roundBpm = Math.round(calculatedBpm);

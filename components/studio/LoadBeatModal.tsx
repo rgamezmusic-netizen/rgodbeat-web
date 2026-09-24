@@ -845,7 +845,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                                 setCustomBpm(halved);
                               }
                             }}
-                            className={`px-2 py-0.5 text-[10px] rounded font-mono font-bold transition-all ${
+                            className={`px-1.5 py-0.5 text-[10px] rounded font-mono font-bold transition-all ${
                               lastAnalysis.bpm < 115
                                 ? 'bg-amber-500 text-black font-extrabold shadow-sm'
                                 : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400'
@@ -857,13 +857,27 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                           <button
                             type="button"
                             onClick={() => {
+                              const target = lastAnalysis.bpm <= 112
+                                ? Math.min(300, Math.round(lastAnalysis.bpm * 1.5))
+                                : Math.max(40, Math.round(lastAnalysis.bpm / 1.5));
+                              setLastAnalysis({ ...lastAnalysis, bpm: target });
+                              setCustomBpm(target);
+                            }}
+                            className="px-1.5 py-0.5 text-[10px] rounded font-mono font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-all"
+                            title="Ajuste Tresillo 1.5x (e.g. 95 ⇄ 142 BPM)"
+                          >
+                            1.5x
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
                               if (lastAnalysis.bpm < 115) {
                                 const doubled = Math.min(300, Math.round(lastAnalysis.bpm * 2));
                                 setLastAnalysis({ ...lastAnalysis, bpm: doubled });
                                 setCustomBpm(doubled);
                               }
                             }}
-                            className={`px-2 py-0.5 text-[10px] rounded font-mono font-bold transition-all ${
+                            className={`px-1.5 py-0.5 text-[10px] rounded font-mono font-bold transition-all ${
                               lastAnalysis.bpm >= 115
                                 ? 'bg-amber-500 text-black font-extrabold shadow-sm'
                                 : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400'
@@ -906,13 +920,23 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                           type="button"
                           onClick={() => setCustomBpm((p) => Math.max(40, Math.round(p / 2)))}
                           className="px-1 py-0.2 rounded bg-zinc-800 hover:bg-zinc-700 text-[9px] font-mono text-zinc-300"
+                          title="Dividir a la mitad (/2)"
                         >
                           /2
                         </button>
                         <button
                           type="button"
+                          onClick={() => setCustomBpm((p) => (p <= 112 ? Math.min(300, Math.round(p * 1.5)) : Math.max(40, Math.round(p / 1.5))))}
+                          className="px-1 py-0.2 rounded bg-amber-500/20 hover:bg-amber-500/30 text-[9px] font-mono text-amber-300 border border-amber-500/40"
+                          title="Ajuste Tresillo 1.5x (e.g. 95 ⇄ 142 BPM)"
+                        >
+                          1.5x
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setCustomBpm((p) => Math.min(300, Math.round(p * 2)))}
                           className="px-1 py-0.2 rounded bg-amber-500/20 hover:bg-amber-500/30 text-[9px] font-mono text-amber-300 border border-amber-500/40"
+                          title="Multiplicar por 2 (x2)"
                         >
                           x2
                         </button>

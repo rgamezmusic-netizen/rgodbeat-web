@@ -41,6 +41,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   onChangeBpm,
 }) => {
   const progressBarRef = useRef<HTMLDivElement>(null);
+  const [isEditingBpm, setIsEditingBpm] = React.useState(false);
+  const [tempBpm, setTempBpm] = React.useState('');
 
   const duration = beat ? beat.duration : 0;
   const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
@@ -153,7 +155,49 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                       -
                     </button>
                   )}
-                  <span className="text-amber-400 font-bold px-0.5">{beat?.bpm || 140} BPM</span>
+                  {isEditingBpm ? (
+                    <input
+                      type="number"
+                      min="40"
+                      max="300"
+                      value={tempBpm}
+                      autoFocus
+                      onChange={(e) => setTempBpm(e.target.value)}
+                      onBlur={() => {
+                        const val = parseInt(tempBpm);
+                        if (!isNaN(val) && val >= 40 && val <= 300 && onChangeBpm) {
+                          onChangeBpm(val);
+                        }
+                        setIsEditingBpm(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const val = parseInt(tempBpm);
+                          if (!isNaN(val) && val >= 40 && val <= 300 && onChangeBpm) {
+                            onChangeBpm(val);
+                          }
+                          setIsEditingBpm(false);
+                        } else if (e.key === 'Escape') {
+                          setIsEditingBpm(false);
+                        }
+                      }}
+                      className="w-14 bg-zinc-950 text-amber-400 font-bold text-xs text-center border border-amber-500 rounded px-0.5 py-0 focus:outline-none"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onChangeBpm && beat) {
+                          setTempBpm(String(beat.bpm || 140));
+                          setIsEditingBpm(true);
+                        }
+                      }}
+                      className="text-amber-400 font-bold px-0.5 hover:text-amber-300 hover:underline cursor-pointer select-none"
+                      title="Toca para ingresar el BPM numérico exacto"
+                    >
+                      {beat?.bpm || 140} BPM
+                    </button>
+                  )}
                   {onChangeBpm && beat && (
                     <button
                       onClick={() => onChangeBpm(Math.min(300, beat.bpm + 1))}
@@ -170,6 +214,11 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                   const isDoubleTime = currentBpm >= 115;
                   const halfTimeBpm = isDoubleTime ? Math.round(currentBpm / 2) : currentBpm;
                   const doubleTimeBpm = isDoubleTime ? currentBpm : Math.round(currentBpm * 2);
+
+                  // 1.5x Tresillo ratio: converts between 95 and 142 BPM (e.g. 95 * 1.5 = 142.5 ~ 142)
+                  const tresilloBpm = currentBpm <= 112
+                    ? Math.min(300, Math.round(currentBpm * 1.5))
+                    : Math.max(40, Math.round(currentBpm / 1.5));
 
                   return (
                     <div className="inline-flex items-center gap-1 bg-zinc-900/90 border border-zinc-800 rounded-lg p-0.5 shadow-sm">
@@ -188,6 +237,16 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                         title={`Modo 1x tiempo base (${halfTimeBpm} BPM)`}
                       >
                         1x
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onChangeBpm(tresilloBpm);
+                        }}
+                        className="text-[10px] px-2 py-0.5 rounded font-mono font-bold transition-all select-none bg-zinc-800/80 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/30"
+                        title={`Ajuste Tresillo 1.5x (${currentBpm} ⇄ ${tresilloBpm} BPM)`}
+                      >
+                        1.5x
                       </button>
                       <button
                         type="button"
