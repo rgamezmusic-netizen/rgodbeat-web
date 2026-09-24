@@ -66,24 +66,27 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Studio Access Badge (Active Pass vs Demo Mode) */}
         {accessStatus?.hasActivePass ? (
-          <div
-            className="flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] sm:text-xs font-mono font-bold shrink-0"
-            title={`Pase de grabación activo. Quedan ${accessStatus.daysRemaining} días.`}
+          <button
+            type="button"
+            onClick={onOpenUnlockModal}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 text-[10px] sm:text-xs font-mono font-bold shrink-0 cursor-pointer transition-all active:scale-95 shadow-sm"
+            title={`Pase activo: quedan ${accessStatus.daysRemaining} días. Haz clic para ver detalles o gestionar cuenta.`}
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
             <span>{accessStatus.daysRemaining}d</span>
-            <span className="hidden xs:inline">Activo</span>
-          </div>
+            <span>Activo</span>
+          </button>
         ) : (
           <button
+            type="button"
             onClick={onOpenUnlockModal}
-            className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-[10px] sm:text-xs font-mono font-bold cursor-pointer transition-all active:scale-95 shrink-0"
-            title="Modo Demo: Solo 1 pista vocal y exportación bloqueada. Haz clic para activar tu pase de 30 días o comprar un beat."
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 text-xs font-mono font-bold cursor-pointer transition-all active:scale-95 shrink-0 shadow-sm"
+            title="Haz clic para Iniciar Sesión en tu cuenta o activar tu pase"
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
             <span>Demo</span>
-            <span className="hidden sm:inline text-[9px] px-1 py-0.2 rounded bg-amber-500 text-black font-extrabold uppercase">
-              Activar
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400 text-black font-extrabold uppercase">
+              Login
             </span>
           </button>
         )}

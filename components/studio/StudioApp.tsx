@@ -1295,6 +1295,11 @@ export default function App() {
         currentBeatTitle={currentBeat?.title}
         currentBeatBpm={currentBeat?.bpm}
         onOpenInstallModal={() => setShowInstallModal(true)}
+        accessStatus={accessStatus}
+        onOpenUnlockModal={() => {
+          setUnlockModalReason('general');
+          setIsUnlockModalOpen(true);
+        }}
       />
 
       {/* View Switcher Pill Bar */}
