@@ -134,6 +134,40 @@ export async function resolveAuthoritativeCart(
 }
 
 /**
+ * Extends or activates 30 days of full studio access for a customer.
+ * If the customer already has an active period, it accumulates 30 days onto the existing expiration date.
+ */
+export async function grantStudioAccess(supabase: any, customerId: string, days = 30) {
+  try {
+    const { data: customer } = await (supabase as any)
+      .from("customers")
+      .select("studio_access_until")
+      .eq("id", customerId)
+      .maybeSingle();
+
+    const now = new Date();
+    const currentAccess = customer?.studio_access_until ? new Date(customer.studio_access_until) : null;
+    const baseDate = currentAccess && currentAccess > now ? currentAccess : now;
+    const newAccessDate = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+
+    const { error } = await (supabase as any)
+      .from("customers")
+      .update({ studio_access_until: newAccessDate })
+      .eq("id", customerId);
+
+    if (error) {
+      console.warn("[Fulfillment] Warning updating studio_access_until:", error.message);
+    } else {
+      console.log(`[Fulfillment] Granted ${days} days studio access to customer ${customerId} (Valid until: ${newAccessDate})`);
+    }
+    return newAccessDate;
+  } catch (err: any) {
+    console.error("[Fulfillment] Error in grantStudioAccess:", err);
+    return null;
+  }
+}
+
+/**
  * Idempotently fulfills a completed Stripe Checkout Session.
  */
 export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Session) {
@@ -188,6 +222,46 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
       throw new Error(`Failed to create customer record: ${createCustError?.message}`);
     }
     customerId = newCustomer.id;
+  }
+
+  // Handle standalone Studio Pass purchase
+  if (session.metadata?.type === "studio_pass") {
+    let orderId: string;
+    if (existingOrder) {
+      orderId = existingOrder.id;
+      await supabase
+        .from("orders")
+        .update({
+          status: "completed",
+          payment_status: "paid",
+          stripe_payment_intent_id: paymentIntentId,
+          subtotal_amount: 10,
+          total_amount: 10,
+          metadata: session.metadata || {},
+        })
+        .eq("id", orderId);
+    } else {
+      const { data: newOrder, error: orderInsertError } = await supabase
+        .from("orders")
+        .insert({
+          customer_id: customerId,
+          stripe_checkout_session_id: sessionId,
+          stripe_payment_intent_id: paymentIntentId,
+          status: "completed",
+          payment_status: "paid",
+          currency: session.currency || "usd",
+          subtotal_amount: 10,
+          total_amount: 10,
+          metadata: session.metadata || {},
+        })
+        .select("id")
+        .single();
+      orderId = newOrder?.id || sessionId;
+    }
+
+    const newExpiry = await grantStudioAccess(supabase, customerId, 30);
+    console.log(`[Fulfillment] Studio pass (30 days) activated for ${customerEmail} until ${newExpiry}`);
+    return { status: "fulfilled", orderId, customerId, type: "studio_pass" };
   }
 
   // 3. Parse Items from Metadata or Line Items
@@ -341,6 +415,9 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
     }
   }
 
-  console.log(`[Fulfillment] Successfully fulfilled order ${orderId} for customer ${customerEmail}`);
+  // Grant 30 days of studio access for beat purchase
+  await grantStudioAccess(supabase, customerId, 30);
+
+  console.log(`[Fulfillment] Successfully fulfilled order ${orderId} for customer ${customerEmail} (Granted 30 days Studio Access)`);
   return { status: "fulfilled", orderId, customerId };
 }

@@ -46,6 +46,16 @@ export function Navbar() {
           >
             BEATS
           </Link>
+          <Link
+            href="/studio"
+            className="hover:text-amber-300 transition-colors py-1 flex items-center gap-1.5 group"
+            title="Abre el DAW móvil RGODBEAT Studio con Auto-Tune"
+          >
+            <span className="text-white group-hover:text-amber-300 font-bold tracking-wider">STUDIO</span>
+            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+              APP
+            </span>
+          </Link>
           <a
             href="/#services"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
@@ -189,6 +199,16 @@ export function Navbar() {
             >
               <span>BEATS</span>
               <span className="text-purple-400 text-xs font-mono font-bold">SHOP →</span>
+            </Link>
+            <Link
+              href="/studio"
+              onClick={() => setMobileMenuOpen(false)}
+              className="hover:text-amber-300 py-1 transition-colors flex items-center justify-between border-b border-white/[0.04] pb-2 text-amber-300"
+            >
+              <span className="font-bold">RGODBEAT STUDIO</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                DAW APP 🎙️
+              </span>
             </Link>
             <a
               href="/#services"
