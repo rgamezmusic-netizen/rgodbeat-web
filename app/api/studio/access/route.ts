@@ -26,12 +26,23 @@ export async function GET(req: NextRequest) {
       .eq("email", user.email)
       .maybeSingle();
 
+    const ADMIN_EMAILS = [
+      "admin@rgodbeat.com",
+      "rgamezmusic@gmail.com",
+      "rgodbeat@gmail.com",
+    ];
+    const isAdmin =
+      user.user_metadata?.role === "admin" ||
+      ADMIN_EMAILS.includes(user.email.toLowerCase());
+
     const accessUntil = customer?.studio_access_until ? new Date(customer.studio_access_until) : null;
     const now = new Date();
-    const hasActivePass = Boolean(accessUntil && accessUntil > now);
+    const hasActivePass = isAdmin || Boolean(accessUntil && accessUntil > now);
 
     let daysRemaining = 0;
-    if (hasActivePass && accessUntil) {
+    if (isAdmin) {
+      daysRemaining = 365;
+    } else if (hasActivePass && accessUntil) {
       const diffMs = accessUntil.getTime() - now.getTime();
       daysRemaining = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
     }

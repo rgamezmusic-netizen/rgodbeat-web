@@ -66,6 +66,7 @@ export class AudioEngine {
 
   // Recording
   private micStream: MediaStream | null = null;
+  private micStreamDest: MediaStreamAudioDestinationNode | null = null;
   private micSource: MediaStreamAudioSourceNode | null = null;
   private micHighPassFilter: BiquadFilterNode | null = null;
   private micInputGain: GainNode | null = null;
@@ -431,7 +432,9 @@ export class AudioEngine {
       } else if (hasAnySolo && !track.isSolo) {
         effectiveVolume = 0;
       }
-      nodes.trackGain.gain.setTargetAtTime(effectiveVolume, t, 0.05);
+      // Pro vocal makeup compensation: restores dynamic presence and body lost during compression
+      const compMakeupGain = 1.0 + compAmount * 0.35;
+      nodes.trackGain.gain.setTargetAtTime(effectiveVolume * compMakeupGain, t, 0.05);
       nodes.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, track.pan ?? 0)), t, 0.05);
     } catch (err) {
       console.warn('Error in updateVocalFX, handled gracefully:', err);
@@ -440,8 +443,19 @@ export class AudioEngine {
 
   public async play(vocalTracks: VocalTrack[] = []) {
     if (!this.beatData) return;
+    this.releaseMicrophone();
+    if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
+      try {
+        (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
+      } catch {}
+    }
     await this.unlockAudio();
     if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') {
+      try {
+        await this.ctx.resume();
+      } catch {}
+    }
 
     if (this.isPlaying) {
       this.stopSources();
@@ -703,6 +717,18 @@ export class AudioEngine {
    * Voice-Communication / Call mode and instantly restore uncompressed Hi-Fi stereo playback.
    */
   public releaseMicrophone() {
+    if (this.micStreamDest) {
+      try {
+        this.micStreamDest.stream.getTracks().forEach((track) => track.stop());
+        if (this.micInputGain) {
+          this.micInputGain.disconnect(this.micStreamDest);
+        }
+      } catch (err) {
+        // ignore
+      }
+      this.micStreamDest = null;
+    }
+
     if (this.micStream) {
       try {
         this.micStream.getTracks().forEach((track) => {
@@ -712,6 +738,22 @@ export class AudioEngine {
         console.warn('Error releasing microphone tracks:', err);
       }
       this.micStream = null;
+    }
+
+    // Immediately restore high-fidelity stereo media playback mode on iOS Safari & Android.
+    // Shifts output route back to the bottom stereo speakers and switches Bluetooth headsets
+    // from telephone SCO/HFP mode (8kHz/16kHz) back to A2DP stereo studio quality.
+    if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
+      try {
+        (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
+        setTimeout(() => {
+          try {
+            (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'auto';
+          } catch {}
+        }, 120);
+      } catch (err) {
+        console.warn('Error resetting audioSession type:', err);
+      }
     }
   }
 
@@ -824,10 +866,10 @@ export class AudioEngine {
       // Create stream destination from the processed/protected mic chain so MediaRecorder captures clean protected audio
       let recordingStream: MediaStream = stream;
       try {
-        const streamDest = this.ctx.createMediaStreamDestination();
-        this.micInputGain.connect(streamDest);
-        if (streamDest.stream && streamDest.stream.getAudioTracks().length > 0) {
-          recordingStream = streamDest.stream;
+        this.micStreamDest = this.ctx.createMediaStreamDestination();
+        this.micInputGain.connect(this.micStreamDest);
+        if (this.micStreamDest.stream && this.micStreamDest.stream.getAudioTracks().length > 0) {
+          recordingStream = this.micStreamDest.stream;
         }
       } catch (err) {
         console.warn('MediaStreamDestination fallback to raw stream:', err);
@@ -1392,8 +1434,9 @@ export class AudioEngine {
       const saturation = offlineCtx.createWaveShaper();
       saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
 
+      const compMakeupGain = 1.0 + compAmount * 0.35;
       const trackGain = offlineCtx.createGain();
-      trackGain.gain.setValueAtTime(effectiveVol, 0);
+      trackGain.gain.setValueAtTime(effectiveVol * compMakeupGain, 0);
 
       lowCut.connect(lowEq);
       lowEq.connect(midEq);
@@ -1604,8 +1647,9 @@ export class AudioEngine {
       const saturation = offlineCtx.createWaveShaper();
       saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
 
+      const compMakeupGain = 1.0 + compAmount * 0.35;
       const trackGain = offlineCtx.createGain();
-      trackGain.gain.setValueAtTime(track.volume, 0);
+      trackGain.gain.setValueAtTime(track.volume * compMakeupGain, 0);
 
       lowCut.connect(lowEq);
       lowEq.connect(midEq);
