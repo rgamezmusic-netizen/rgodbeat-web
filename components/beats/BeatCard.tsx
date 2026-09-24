@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { Heart } from "lucide-react";
 import { Beat } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 import { usePlayer } from "@/contexts/PlayerContext";
@@ -18,6 +19,40 @@ export function BeatCard({ beat }: BeatCardProps) {
   const { currentBeat, isPlaying, togglePlay } = usePlayer();
   const { addToCart } = useCart();
   const { setHoverState } = useAtmosphere();
+
+  // Weekly Ranking & Like / Vote State
+  const [likesCount, setLikesCount] = useState<number>(
+    beat.performanceMetrics?.favorites || 0
+  );
+  const [hasVoted, setHasVoted] = useState<boolean>(false);
+  const [isVoting, setIsVoting] = useState<boolean>(false);
+
+  const handleVote = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isVoting) return;
+
+    try {
+      setIsVoting(true);
+      const res = await fetch(`/api/beats/${beat.id}/vote`, { method: "POST" });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setHasVoted(true);
+        setLikesCount(data.favorites || likesCount + 1);
+      } else if (data.alreadyVoted) {
+        setHasVoted(true);
+      } else if (data.requireLogin) {
+        window.location.href = `/login?redirect=${encodeURIComponent(
+          typeof window !== "undefined" ? window.location.pathname : "/beats"
+        )}`;
+      }
+    } catch (err) {
+      console.error("[BeatCard Vote Error]:", err);
+    } finally {
+      setIsVoting(false);
+    }
+  };
 
   const isCurrentTrack = currentBeat?.id === beat.id;
   const isCurrentPlaying = isCurrentTrack && isPlaying;
@@ -131,14 +166,39 @@ export function BeatCard({ beat }: BeatCardProps) {
             <span>{beat.key}</span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => addToCart(beat, "mp3")}
-            aria-label={`Add ${beat.title} MP3 license to cart`}
-            className="text-xs font-mono text-purple-300 hover:text-white px-2 py-0.5 rounded hover:bg-purple-500/15 transition-colors cursor-pointer"
-          >
-            + LICENSE
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleVote}
+              disabled={isVoting}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono transition-all cursor-pointer ${
+                hasVoted
+                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/20"
+                  : "bg-white/[0.04] text-zinc-400 hover:text-white hover:bg-white/[0.08] border border-white/[0.06] active:scale-95"
+              }`}
+              title={
+                hasVoted
+                  ? "Voto semanal registrado en el ranking"
+                  : "Votar por este beat en el Ranking Semanal (1 voto por semana)"
+              }
+            >
+              <Heart
+                className={`w-3 h-3 transition-colors ${
+                  hasVoted ? "fill-rose-500 text-rose-500" : "text-zinc-400"
+                }`}
+              />
+              <span>{likesCount}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => addToCart(beat, "mp3")}
+              aria-label={`Add ${beat.title} MP3 license to cart`}
+              className="text-xs font-mono text-purple-300 hover:text-white px-2 py-0.5 rounded hover:bg-purple-500/15 transition-colors cursor-pointer"
+            >
+              + LICENSE
+            </button>
+          </div>
         </div>
       </div>
     </article>

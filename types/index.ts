@@ -98,6 +98,7 @@ export interface CartItem {
 
 export type SortOption =
   | "latest"
+  | "ranking"
   | "price_asc"
   | "price_desc"
   | "bpm_asc"

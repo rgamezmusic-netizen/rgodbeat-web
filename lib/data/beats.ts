@@ -113,6 +113,14 @@ export async function getPublishedBeats(): Promise<Beat[]> {
         featured,
         published,
         created_at,
+        ranking_status,
+        current_rank,
+        previous_rank,
+        ranking_period,
+        pool_entry_date,
+        days_in_pool,
+        performance_score,
+        performance_metrics,
         category:categories(name, slug),
         beat_licenses(
           price_override,
@@ -201,6 +209,14 @@ export async function getFeaturedBeats(limit = 6): Promise<Beat[]> {
         featured,
         published,
         created_at,
+        ranking_status,
+        current_rank,
+        previous_rank,
+        ranking_period,
+        pool_entry_date,
+        days_in_pool,
+        performance_score,
+        performance_metrics,
         category:categories(name, slug),
         beat_licenses(
           price_override,
@@ -221,6 +237,59 @@ export async function getFeaturedBeats(limit = 6): Promise<Beat[]> {
   } catch (err: any) {
     console.error("[Beats] Unexpected error:", err.message);
     throw err;
+  }
+}
+
+/**
+ * Fetch top ranking beats ordered by performance score & votes
+ */
+export async function getTopRankingBeats(limit = 23): Promise<Beat[]> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("beats")
+      .select(`
+        id,
+        title,
+        slug,
+        description,
+        mood,
+        bpm,
+        musical_key,
+        duration_seconds,
+        cover_path,
+        preview_path,
+        featured,
+        published,
+        created_at,
+        ranking_status,
+        current_rank,
+        previous_rank,
+        ranking_period,
+        pool_entry_date,
+        days_in_pool,
+        performance_score,
+        performance_metrics,
+        category:categories(name, slug),
+        beat_licenses(
+          price_override,
+          license_type:license_types(slug, price)
+        )
+      `)
+      .eq("published", true)
+      .order("performance_score", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error("[Beats] Error fetching top ranking beats:", error.message);
+      return [];
+    }
+
+    return (data || []).map(mapBeatRowToBeat);
+  } catch (err: any) {
+    console.error("[Beats] Unexpected error in getTopRankingBeats:", err.message);
+    return [];
   }
 }
 
@@ -246,6 +315,14 @@ export async function getAllBeats(): Promise<Beat[]> {
         featured,
         published,
         created_at,
+        ranking_status,
+        current_rank,
+        previous_rank,
+        ranking_period,
+        pool_entry_date,
+        days_in_pool,
+        performance_score,
+        performance_metrics,
         category:categories(name, slug),
         beat_licenses(
           price_override,

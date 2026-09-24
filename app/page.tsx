@@ -11,19 +11,35 @@ import { ServicesSection } from "@/components/home/ServicesSection";
 import { AboutSection } from "@/components/home/AboutSection";
 import { CtaSection } from "@/components/home/CtaSection";
 import { FLOW_CATEGORIES } from "@/lib/mock-data";
-import { getFeaturedBeats } from "@/lib/data/beats";
+import { getFeaturedBeats, getPublishedBeats } from "@/lib/data/beats";
 import { Beat } from "@/types";
 
 export const revalidate = 60; // Cache on edge CDN for fast initial page load (revalidates every 60s)
 
 export default async function HomePage() {
   let featuredBeats: Beat[] = [];
+  const beatCountsByGenre: Record<string, number> = {};
 
   try {
-    featuredBeats = await getFeaturedBeats(6);
+    const [featured, allPublished] = await Promise.all([
+      getFeaturedBeats(6),
+      getPublishedBeats(),
+    ]);
+    featuredBeats = featured;
+    (allPublished || []).forEach((b) => {
+      const g = (b.genre || "").toLowerCase().trim();
+      if (g) {
+        beatCountsByGenre[g] = (beatCountsByGenre[g] || 0) + 1;
+      }
+    });
   } catch (err: any) {
-    console.error("[HomePage] Error loading featured beats from Supabase:", err.message);
+    console.error("[HomePage] Error loading beats from Supabase:", err.message);
   }
+
+  const dynamicCategories = FLOW_CATEGORIES.map((cat) => ({
+    ...cat,
+    count: beatCountsByGenre[cat.id.toLowerCase()] || 0,
+  }));
 
   return (
     <div className="relative min-h-screen bg-transparent text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
@@ -77,7 +93,7 @@ export default async function HomePage() {
           />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {FLOW_CATEGORIES.map((category) => (
+            {dynamicCategories.map((category) => (
               <CategoryCard key={category.id} category={category} />
             ))}
           </div>

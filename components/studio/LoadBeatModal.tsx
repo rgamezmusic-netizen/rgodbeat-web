@@ -69,6 +69,13 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
         if (res.ok) {
           const data = await res.json();
           setRankingBeats(data.beats || []);
+          if (Array.isArray(data.userVotedBeatIds)) {
+            const map: Record<string, boolean> = {};
+            data.userVotedBeatIds.forEach((id: string) => {
+              map[id] = true;
+            });
+            setVotedBeatIds(map);
+          }
         }
       } catch (err) {
         console.error('Error fetching ranking beats:', err);

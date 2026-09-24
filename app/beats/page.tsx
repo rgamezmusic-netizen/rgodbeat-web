@@ -54,7 +54,7 @@ export default async function BeatsPage() {
           </h1>
 
           <p className="text-base sm:text-lg text-zinc-400 font-normal leading-relaxed">
-            Production-ready sounds for artists who want to create something that lasts.
+            Production-ready sounds and pristine sonic textures designed for your signature sound.
             All instrumentals are mixed, mastered, and delivered with uncompressed stems.
           </p>
         </div>

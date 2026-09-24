@@ -10,6 +10,7 @@ interface BeatSortProps {
 
 const SORT_OPTIONS: { id: SortOption; label: string }[] = [
   { id: "latest", label: "LATEST" },
+  { id: "ranking", label: "🔥 TOP RANKING (VOTOS)" },
   { id: "price_asc", label: "PRICE: LOW → HIGH" },
   { id: "price_desc", label: "PRICE: HIGH → LOW" },
   { id: "bpm_asc", label: "BPM: LOW → HIGH" },

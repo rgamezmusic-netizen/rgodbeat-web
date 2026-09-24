@@ -79,16 +79,16 @@ export function Hero() {
         <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full border border-white/10 bg-[#121218]/80 backdrop-blur-md mb-8">
           <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
           <span className="text-[11px] font-mono tracking-[0.22em] text-zinc-300 uppercase">
-            RGODBEAT SOUND ARCHITECTURE
+            RGODBEAT SOUNDS
           </span>
         </div>
 
         {/* Campaign Headline */}
         <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-[5.5rem] font-extrabold tracking-[-0.035em] leading-[0.94] text-white uppercase max-w-4xl select-none">
-          MAKE SOMETHING
+          YOUR SOUND.
           <br />
           <span className="bg-gradient-to-b from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-            THAT LASTS.
+            YOUR SIGNATURE.
           </span>
         </h1>
 

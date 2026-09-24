@@ -46,6 +46,11 @@ export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientPro
     // 3. Sort results
     result.sort((a, b) => {
       switch (currentSort) {
+        case "ranking": {
+          const scoreA = a.performanceScore !== undefined ? a.performanceScore : ((a.performanceMetrics?.favorites || 0) * 5);
+          const scoreB = b.performanceScore !== undefined ? b.performanceScore : ((b.performanceMetrics?.favorites || 0) * 5);
+          return scoreB - scoreA;
+        }
         case "price_asc":
           return a.price - b.price;
         case "price_desc":

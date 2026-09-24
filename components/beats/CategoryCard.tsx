@@ -24,8 +24,8 @@ export function CategoryCard({ category }: CategoryCardProps) {
         <span className="text-[10px] font-mono tracking-widest text-zinc-400 uppercase">
           {category.bpmRange}
         </span>
-        <span className="text-[11px] font-mono text-zinc-500 px-2 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06]">
-          {category.count} TRACKS
+        <span className="text-[11px] font-mono text-zinc-400 px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06]">
+          {category.count} {category.count === 1 ? "TRACK" : "TRACKS"}
         </span>
       </div>
 
