@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, Upload, Mic, Layers, Disc3, Undo2, Redo2, HardDrive } from 'lucide-react';
+import { Download, Upload, Mic, Layers, Disc3, Undo2, Redo2, HardDrive, Smartphone } from 'lucide-react';
 
 interface TopBarProps {
   onOpenLoadBeat: () => void;
@@ -26,6 +26,7 @@ interface TopBarProps {
     email?: string | null;
   };
   onOpenUnlockModal?: () => void;
+  onOpenInstallModal?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -46,6 +47,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   currentBeatBpm,
   accessStatus,
   onOpenUnlockModal,
+  onOpenInstallModal,
 }) => {
   return (
     <header
@@ -181,8 +183,19 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       </div>
 
-      {/* Zone 3: Actions (Load Beat & Export) */}
+      {/* Zone 3: Actions (Load Beat, Install App & Export) */}
       <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        {onOpenInstallModal && (
+          <button
+            onClick={onOpenInstallModal}
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-medium bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800 hover:text-white transition-all shrink-0"
+            title="Cómo instalar RGODBEAT Studio como App en tu celular (Android e iOS)"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden md:inline">Instalar App</span>
+          </button>
+        )}
+
         <button
           onClick={onOpenLoadBeat}
           className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800 hover:border-zinc-700 transition-all shrink-0"

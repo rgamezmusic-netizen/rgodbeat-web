@@ -38,6 +38,7 @@ import { LoadBeatModal } from './LoadBeatModal';
 import { ExportModal } from './ExportModal';
 import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
+import { InstallAppModal } from './InstallAppModal';
 import { AlertCircle, CheckCircle, Info, Disc3, Layers, HardDrive } from 'lucide-react';
 
 const defaultVocalFX = (): VocalFX => ({
@@ -202,6 +203,25 @@ export default function App() {
   const [tracks, setTracks] = useState<VocalTrack[]>(initialTracks);
   const tracksRef = useRef<VocalTrack[]>(initialTracks);
   tracksRef.current = tracks;
+
+  // Bluetooth Latency Auto-Compensation & App Install Modal State
+  const [bluetoothSyncEnabled, setBluetoothSyncEnabled] = useState<boolean>(false);
+  const [bluetoothOffsetMs, setBluetoothOffsetMs] = useState<number>(185);
+  const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
+
+  const handleToggleBluetoothSync = () => {
+    const nextState = !bluetoothSyncEnabled;
+    setBluetoothSyncEnabled(nextState);
+    if (engine) {
+      engine.setLatencyCompensation(nextState ? -bluetoothOffsetMs : -25);
+    }
+    showToast(
+      nextState
+        ? `⚡ Compensación Bluetooth ACTIVADA (-${bluetoothOffsetMs}ms). Tu voz grabada se sincronizará al beat automáticamente.`
+        : '🎧 Modo normal (Cable / Altavoz). Compensación estándar activa (-25ms).',
+      'info'
+    );
+  };
 
   // History stack for Undo and Redo
   interface HistorySnapshot {
@@ -1196,6 +1216,7 @@ export default function App() {
         redoCount={redoStack.length}
         currentBeatTitle={currentBeat?.title}
         currentBeatBpm={currentBeat?.bpm}
+        onOpenInstallModal={() => setShowInstallModal(true)}
       />
 
       {/* View Switcher Pill Bar */}
@@ -1304,6 +1325,9 @@ export default function App() {
               recordingTrackId={activeRecordingTrackId}
               countInEnabled={countInEnabled}
               onToggleCountIn={() => setCountInEnabled(!countInEnabled)}
+              bluetoothSyncEnabled={bluetoothSyncEnabled}
+              bluetoothOffsetMs={bluetoothOffsetMs}
+              onToggleBluetoothSync={handleToggleBluetoothSync}
               onStartRecord={handleStartRecord}
               onStopRecord={handleStopRecord}
               onGenerateTestTake={handleGenerateTestTake}
@@ -1341,6 +1365,9 @@ export default function App() {
               recordingTrackId={activeRecordingTrackId}
               countInEnabled={countInEnabled}
               onToggleCountIn={() => setCountInEnabled(!countInEnabled)}
+              bluetoothSyncEnabled={bluetoothSyncEnabled}
+              bluetoothOffsetMs={bluetoothOffsetMs}
+              onToggleBluetoothSync={handleToggleBluetoothSync}
               onStartRecord={handleStartRecord}
               onStopRecord={handleStopRecord}
               onGenerateTestTake={handleGenerateTestTake}
@@ -1476,6 +1503,12 @@ export default function App() {
         onClose={() => setIsUnlockModalOpen(false)}
         reason={unlockModalReason}
         userEmail={accessStatus.email}
+      />
+
+      {/* Guide modal on how to install PWA on Android & iOS */}
+      <InstallAppModal
+        isOpen={showInstallModal}
+        onClose={() => setShowInstallModal(false)}
       />
     </div>
   );

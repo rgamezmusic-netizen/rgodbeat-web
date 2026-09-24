@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Mic, Square, Timer, AlertTriangle } from 'lucide-react';
+import { Mic, Square, Timer, AlertTriangle, Headphones } from 'lucide-react';
 import { VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 
 interface RecordControlBarProps {
@@ -8,6 +8,9 @@ interface RecordControlBarProps {
   recordingTrackId: VocalTrackId | null;
   countInEnabled: boolean;
   onToggleCountIn: () => void;
+  bluetoothSyncEnabled?: boolean;
+  bluetoothOffsetMs?: number;
+  onToggleBluetoothSync?: () => void;
   onStartRecord: (trackId: VocalTrackId) => void;
   onStopRecord: () => void;
   onGenerateTestTake?: (trackId: VocalTrackId) => void;
@@ -21,6 +24,9 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
   recordingTrackId: _recordingTrackId,
   countInEnabled,
   onToggleCountIn,
+  bluetoothSyncEnabled = false,
+  bluetoothOffsetMs = 185,
+  onToggleBluetoothSync,
   onStartRecord,
   onStopRecord,
   getMicLevel,
@@ -100,19 +106,43 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
             )}
           </div>
 
-          {/* Quick Count-in switch */}
-          <button
-            onClick={onToggleCountIn}
-            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono transition-all ${
-              countInEnabled
-                ? 'bg-zinc-800 text-amber-300 border border-amber-500/30'
-                : 'bg-zinc-900 text-zinc-500 border border-zinc-800'
-            }`}
-            title="Conteo de 1 compás antes de grabar"
-          >
-            <Timer className="w-3 h-3" />
-            <span>1 Compás</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* Bluetooth Latency Compensation Button */}
+            {onToggleBluetoothSync && (
+              <button
+                type="button"
+                onClick={onToggleBluetoothSync}
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono font-bold transition-all cursor-pointer ${
+                  bluetoothSyncEnabled
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/20'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+                }`}
+                title={
+                  bluetoothSyncEnabled
+                    ? `Compensación de latencia activa (-${bluetoothOffsetMs}ms). Tu voz grabada con audífonos Bluetooth se sincroniza al beat automáticamente.`
+                    : 'Activar si grabas con audífonos Bluetooth (AirPods, auriculares inalámbricos) para calibrar el retraso de audio y que tu voz no quede desfasada.'
+                }
+              >
+                <Headphones className="w-3 h-3 text-current" />
+                <span>{bluetoothSyncEnabled ? `BT: -${bluetoothOffsetMs}ms` : 'Modo BT'}</span>
+              </button>
+            )}
+
+            {/* Quick Count-in switch */}
+            <button
+              type="button"
+              onClick={onToggleCountIn}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono transition-all cursor-pointer ${
+                countInEnabled
+                  ? 'bg-zinc-800 text-amber-300 border border-amber-500/30'
+                  : 'bg-zinc-900 text-zinc-500 border border-zinc-800'
+              }`}
+              title="Conteo de 1 compás antes de grabar"
+            >
+              <Timer className="w-3 h-3" />
+              <span>1 Compás</span>
+            </button>
+          </div>
         </div>
 
         {/* Live Audio Level Meter & Anti-Saturation Protection Indicator */}
