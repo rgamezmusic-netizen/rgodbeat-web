@@ -235,19 +235,41 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       return;
     }
 
-    if (!audioCtx) {
-      setStatusMsg('Audio engine initializing...');
-      return;
-    }
-
     try {
       setIsProcessing(true);
+      setStatusMsg(`Preparando decodificación de "${file.name}"...`);
+
+      // Ensure valid running AudioContext even on fresh load before user play gesture
+      let ctx = audioCtx;
+      if (!ctx) {
+        const AudioCtxClass =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        ctx = new AudioCtxClass();
+      }
+      if (ctx.state === 'suspended') {
+        try {
+          await ctx.resume();
+        } catch {
+          // ignore
+        }
+      }
+
       setStatusMsg(`Decodificando archivo de audio "${file.name}"...`);
 
       const arrayBuffer = await file.arrayBuffer();
       // Keep a clone for IndexedDB persistence before decodeAudioData detaches it
       const arrayBufferForStorage = arrayBuffer.slice(0);
-      const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+      let decodedBuffer: AudioBuffer;
+      try {
+        decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
+      } catch (err) {
+        // Fallback for older Safari callback syntax
+        decodedBuffer = await new Promise((resolve, reject) => {
+          ctx!.decodeAudioData(arrayBufferForStorage.slice(0), resolve, reject);
+        });
+      }
 
       setStatusMsg('Analizando BPM y escala musical del beat con IA/DSP...');
 
@@ -301,7 +323,8 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       setTimeout(() => {
         setIsProcessing(false);
         setActiveTab('slots');
-      }, 700);
+        onClose();
+      }, 850);
     } catch (err) {
       console.error('File load error:', err);
       setStatusMsg('No se pudo decodificar el archivo. Asegúrate de que sea WAV, MP3, M4A o FLAC.');
@@ -759,10 +782,12 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                   disabled={isStorageFull}
                   onChange={(e) => {
                     if (e.target.files && e.target.files.length > 0) {
-                      handleFile(e.target.files[0]);
+                      const file = e.target.files[0];
+                      e.target.value = '';
+                      handleFile(file);
                     }
                   }}
-                  accept="audio/*,.wav,.mp3,.m4a,.aac,.flac,.ogg"
+                  accept="audio/*,.wav,.mp3,.m4a,.aac,.flac,.ogg,.mp4"
                   className="hidden"
                 />
                 <div className="w-12 h-12 rounded-full bg-zinc-800/90 border border-zinc-700 flex items-center justify-center mx-auto mb-3 shadow-inner">

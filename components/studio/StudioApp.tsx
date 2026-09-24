@@ -692,18 +692,41 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [tracks, loopSettings, currentTime]);
 
-  // Immediate auto-save on tab blur / incoming phone call / screen lock / pagehide
+  // Phone call interruption & backgrounding protector
+  // Handles incoming phone calls, WhatsApp calls, screen lock, and app switching
+  // without losing timeline synchronization or recorded takes!
   useEffect(() => {
-    const handleSaveOnExit = () => {
-      saveStudioSession(tracksRef.current, currentBeatRef.current?.id, loopSettings, currentTime);
+    const handleInterruption = async () => {
+      if (document.hidden) {
+        // Phone call ringing, screen turned off, or app sent to background
+        if (engine && engine.getIsRecording()) {
+          // Finalize and save active vocal take cleanly to prevent data corruption or loss
+          await engine.stopRecording();
+          setIsRecording(false);
+        } else if (engine && engine.getIsPlaying()) {
+          // Pause cleanly keeping playback position locked
+          engine.pause();
+          setIsPlaying(false);
+        }
+        // Persist complete session to IndexedDB
+        saveStudioSession(tracksRef.current, currentBeatRef.current?.id, loopSettings, currentTime);
+      } else {
+        // User returned to browser after call or app switch
+        if (engine) {
+          try {
+            await engine.ensureAudioContext();
+          } catch {}
+        }
+      }
     };
-    window.addEventListener('visibilitychange', handleSaveOnExit);
-    window.addEventListener('pagehide', handleSaveOnExit);
+
+    window.addEventListener('visibilitychange', handleInterruption);
+    window.addEventListener('pagehide', handleInterruption);
     return () => {
-      window.removeEventListener('visibilitychange', handleSaveOnExit);
-      window.removeEventListener('pagehide', handleSaveOnExit);
+      window.removeEventListener('visibilitychange', handleInterruption);
+      window.removeEventListener('pagehide', handleInterruption);
     };
-  }, [loopSettings, currentTime]);
+  }, [engine, loopSettings, currentTime]);
 
   // Automatic Beat BPM & Key Detection on demand
   const handleDetectCurrentBeat = async () => {

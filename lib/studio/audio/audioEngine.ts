@@ -121,6 +121,18 @@ export class AudioEngine {
         this.ctx = new AudioCtxClass();
       }
       this.setupMasterGraph();
+
+      // Listen for mobile OS hardware interruptions (incoming phone calls, Siri, alarms)
+      this.ctx.onstatechange = () => {
+        if (!this.ctx) return;
+        if (this.ctx.state === 'interrupted') {
+          if (this.isRecording) {
+            this.stopRecording();
+          } else if (this.isPlaying) {
+            this.pause();
+          }
+        }
+      };
     }
     if (this.ctx.state === 'suspended') {
       await this.ctx.resume();
@@ -901,7 +913,7 @@ export class AudioEngine {
               this.mediaRecorderChunks.push(e.data);
             }
           };
-          this.mediaRecorder.start(100);
+          // Start will happen in exact lock-step with playback below
         } catch (e) {
           console.warn('MediaRecorder init failed, relying on PCM processor:', e);
           this.mediaRecorder = null;
@@ -975,6 +987,15 @@ export class AudioEngine {
       // 5. Start synchronized playback if not already in playback
       if (!wasPlaying) {
         await this.play(vocalTracks);
+      }
+
+      // Start MediaRecorder in exact sample-accurate lock-step with beat playback
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'recording') {
+        try {
+          this.mediaRecorder.start(100);
+        } catch (recStartErr) {
+          console.warn('MediaRecorder start error:', recStartErr);
+        }
       }
       return true;
     } catch (err) {
