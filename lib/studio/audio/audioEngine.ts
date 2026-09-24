@@ -287,134 +287,155 @@ export class AudioEngine {
 
   public updateVocalFX(track: VocalTrack, allTracks: VocalTrack[]) {
     if (!this.ctx || !this.masterGainNode) return;
-    const t = this.ctx.currentTime;
+    try {
+      const t = this.ctx.currentTime;
 
-    let nodes = this.vocalNodes.get(track.id);
-    if (!nodes) {
-      const lowCut = this.ctx.createBiquadFilter();
-      lowCut.type = 'highpass';
+      let nodes = this.vocalNodes.get(track.id);
+      if (!nodes) {
+        const lowCut = this.ctx.createBiquadFilter();
+        lowCut.type = 'highpass';
 
-      const lowEq = this.ctx.createBiquadFilter();
-      lowEq.type = 'lowshelf';
-      lowEq.frequency.setValueAtTime(100, t);
+        const lowEq = this.ctx.createBiquadFilter();
+        lowEq.type = 'lowshelf';
+        lowEq.frequency.setValueAtTime(100, t);
 
-      const midEq = this.ctx.createBiquadFilter();
-      midEq.type = 'peaking';
-      midEq.frequency.setValueAtTime(2500, t);
-      midEq.Q.setValueAtTime(1.0, t);
+        const midEq = this.ctx.createBiquadFilter();
+        midEq.type = 'peaking';
+        midEq.frequency.setValueAtTime(2500, t);
+        midEq.Q.setValueAtTime(1.0, t);
 
-      const highEq = this.ctx.createBiquadFilter();
-      highEq.type = 'highshelf';
-      highEq.frequency.setValueAtTime(10000, t);
+        const highEq = this.ctx.createBiquadFilter();
+        highEq.type = 'highshelf';
+        highEq.frequency.setValueAtTime(10000, t);
 
-      const compressor = this.ctx.createDynamicsCompressor();
-      compressor.attack.setValueAtTime(0.015, t);
-      compressor.release.setValueAtTime(0.12, t);
+        const compressor = this.ctx.createDynamicsCompressor();
+        compressor.attack.setValueAtTime(0.015, t);
+        compressor.release.setValueAtTime(0.12, t);
 
-      const saturation = this.ctx.createWaveShaper();
-      saturation.oversample = '2x';
+        const saturation = this.ctx.createWaveShaper();
+        saturation.oversample = '2x';
 
-      const delay = this.ctx.createDelay(4.0);
-      const delayFeedback = this.ctx.createGain();
-      const delayMix = this.ctx.createGain();
-      delay.connect(delayFeedback);
-      delayFeedback.connect(delay);
-      delay.connect(delayMix);
+        const delay = this.ctx.createDelay(4.0);
+        const delayFeedback = this.ctx.createGain();
+        const delayMix = this.ctx.createGain();
+        delay.connect(delayFeedback);
+        delayFeedback.connect(delay);
+        delay.connect(delayMix);
 
-      const reverbConvolver = this.ctx.createConvolver();
-      const reverbMix = this.ctx.createGain();
-      reverbConvolver.connect(reverbMix);
+        const reverbConvolver = this.ctx.createConvolver();
+        const initialImpulse = this.getReverbImpulse(track.fx.reverb?.preset || 'ROOM');
+        if (initialImpulse) {
+          reverbConvolver.buffer = initialImpulse;
+        }
+        const reverbMix = this.ctx.createGain();
+        reverbConvolver.connect(reverbMix);
 
-      const trackGain = this.ctx.createGain();
-      const panner = this.ctx.createStereoPanner();
+        const trackGain = this.ctx.createGain();
+        const panner = this.ctx.createStereoPanner();
 
-      lowCut.connect(lowEq);
-      lowEq.connect(midEq);
-      midEq.connect(highEq);
-      highEq.connect(compressor);
-      compressor.connect(saturation);
+        lowCut.connect(lowEq);
+        lowEq.connect(midEq);
+        midEq.connect(highEq);
+        highEq.connect(compressor);
+        compressor.connect(saturation);
 
-      saturation.connect(trackGain);
-      saturation.connect(delay);
-      delayMix.connect(trackGain);
-      saturation.connect(reverbConvolver);
-      reverbMix.connect(trackGain);
+        saturation.connect(trackGain);
+        saturation.connect(delay);
+        delayMix.connect(trackGain);
+        saturation.connect(reverbConvolver);
+        reverbMix.connect(trackGain);
 
-      trackGain.connect(panner);
-      panner.connect(this.masterGainNode);
+        trackGain.connect(panner);
+        panner.connect(this.masterGainNode);
 
-      nodes = {
-        lowCut,
-        lowEq,
-        midEq,
-        highEq,
-        compressor,
-        saturation,
-        delay,
-        delayFeedback,
-        delayMix,
-        reverbConvolver,
-        reverbMix,
-        trackGain,
-        panner,
-      };
-      this.vocalNodes.set(track.id, nodes);
-    }
-
-    nodes.lowCut.frequency.setTargetAtTime(
-      track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 20,
-      t,
-      0.05
-    );
-    nodes.lowEq.gain.setTargetAtTime(track.fx.eq.low, t, 0.05);
-    nodes.midEq.gain.setTargetAtTime(track.fx.eq.mid, t, 0.05);
-    nodes.highEq.gain.setTargetAtTime(track.fx.eq.high, t, 0.05);
-
-    const compAmount = track.fx.comp.amount;
-    nodes.compressor.threshold.setTargetAtTime(-10 - compAmount * 24, t, 0.05);
-    nodes.compressor.ratio.setTargetAtTime(1.5 + compAmount * 6, t, 0.05);
-
-    nodes.saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
-
-    if (this.beatData && track.fx.delay.division !== 'OFF') {
-      const secPerBeat = 60 / this.beatData.bpm;
-      let delayTimeSec = secPerBeat;
-      switch (track.fx.delay.division) {
-        case '1/8':
-          delayTimeSec = secPerBeat * 0.5;
-          break;
-        case '1/4':
-          delayTimeSec = secPerBeat;
-          break;
-        case '1/2':
-          delayTimeSec = secPerBeat * 2;
-          break;
-        case '1 BAR':
-          delayTimeSec = secPerBeat * 4;
-          break;
+        nodes = {
+          lowCut,
+          lowEq,
+          midEq,
+          highEq,
+          compressor,
+          saturation,
+          delay,
+          delayFeedback,
+          delayMix,
+          reverbConvolver,
+          reverbMix,
+          trackGain,
+          panner,
+        };
+        this.vocalNodes.set(track.id, nodes);
       }
-      nodes.delay.delayTime.setTargetAtTime(delayTimeSec, t, 0.05);
-      nodes.delayFeedback.gain.setTargetAtTime(track.fx.delay.feedback, t, 0.05);
-      nodes.delayMix.gain.setTargetAtTime(track.fx.delay.mix, t, 0.05);
-    } else {
-      nodes.delayMix.gain.setTargetAtTime(0, t, 0.05);
-    }
 
-    const impulse = this.getReverbImpulse(track.fx.reverb.preset);
-    if (impulse && nodes.reverbConvolver.buffer !== impulse) {
-      nodes.reverbConvolver.buffer = impulse;
-    }
-    nodes.reverbMix.gain.setTargetAtTime(track.fx.reverb.mix, t, 0.05);
+      nodes.lowCut.frequency.setTargetAtTime(
+        track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 20,
+        t,
+        0.05
+      );
+      nodes.lowEq.gain.setTargetAtTime(track.fx.eq.low, t, 0.05);
+      nodes.midEq.gain.setTargetAtTime(track.fx.eq.mid, t, 0.05);
+      nodes.highEq.gain.setTargetAtTime(track.fx.eq.high, t, 0.05);
 
-    const hasAnySolo = allTracks.some((tr) => tr.isSolo);
-    let effectiveVolume = track.volume;
-    if (track.isMuted) {
-      effectiveVolume = 0;
-    } else if (hasAnySolo && !track.isSolo) {
-      effectiveVolume = 0;
+      const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
+      nodes.compressor.threshold.setTargetAtTime(-10 - compAmount * 24, t, 0.05);
+      nodes.compressor.ratio.setTargetAtTime(1.5 + compAmount * 6, t, 0.05);
+
+      nodes.saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
+
+      if (this.beatData && track.fx.delay.division !== 'OFF') {
+        const secPerBeat = 60 / this.beatData.bpm;
+        let delayTimeSec = secPerBeat;
+        switch (track.fx.delay.division) {
+          case '1/8':
+            delayTimeSec = secPerBeat * 0.5;
+            break;
+          case '1/4':
+            delayTimeSec = secPerBeat;
+            break;
+          case '1/2':
+            delayTimeSec = secPerBeat * 2;
+            break;
+          case '1 BAR':
+            delayTimeSec = secPerBeat * 4;
+            break;
+        }
+        nodes.delay.delayTime.setTargetAtTime(delayTimeSec, t, 0.05);
+        const safeFeedback = Math.max(0, Math.min(0.85, track.fx.delay.feedback));
+        nodes.delayFeedback.gain.setTargetAtTime(safeFeedback, t, 0.05);
+        nodes.delayMix.gain.setTargetAtTime(Math.max(0, Math.min(1, track.fx.delay.mix)), t, 0.05);
+      } else {
+        nodes.delayMix.gain.setTargetAtTime(0, t, 0.05);
+      }
+
+      const impulse = this.getReverbImpulse(track.fx.reverb.preset);
+      if (impulse && nodes.reverbConvolver.buffer !== impulse) {
+        // ConvolverNode.buffer is write-once per WebAudio spec.
+        // Disconnect old node and attach fresh Convolver to avoid InvalidStateError exception
+        try {
+          nodes.saturation.disconnect(nodes.reverbConvolver);
+          nodes.reverbConvolver.disconnect();
+        } catch {
+          // ignore
+        }
+        const freshConvolver = this.ctx.createConvolver();
+        freshConvolver.buffer = impulse;
+        freshConvolver.connect(nodes.reverbMix);
+        nodes.saturation.connect(freshConvolver);
+        nodes.reverbConvolver = freshConvolver;
+      }
+      nodes.reverbMix.gain.setTargetAtTime(Math.max(0, Math.min(1, track.fx.reverb.mix)), t, 0.05);
+
+      const hasAnySolo = allTracks.some((tr) => tr.isSolo);
+      let effectiveVolume = track.volume;
+      if (track.isMuted) {
+        effectiveVolume = 0;
+      } else if (hasAnySolo && !track.isSolo) {
+        effectiveVolume = 0;
+      }
+      nodes.trackGain.gain.setTargetAtTime(effectiveVolume, t, 0.05);
+      nodes.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, track.pan ?? 0)), t, 0.05);
+    } catch (err) {
+      console.warn('Error in updateVocalFX, handled gracefully:', err);
     }
-    nodes.trackGain.gain.setTargetAtTime(effectiveVolume, t, 0.05);
-    nodes.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, track.pan ?? 0)), t, 0.05);
   }
 
   public async play(vocalTracks: VocalTrack[] = []) {
@@ -445,49 +466,53 @@ export class AudioEngine {
 
     // 2. Start all active vocal tracks that have takes/clips
     for (const track of vocalTracks) {
-      this.updateVocalFX(track, vocalTracks);
-      const trackNodes = this.vocalNodes.get(track.id);
-      if (!trackNodes) continue;
+      try {
+        this.updateVocalFX(track, vocalTracks);
+        const trackNodes = this.vocalNodes.get(track.id);
+        if (!trackNodes) continue;
 
-      // Extract all clips for this track line (or fallback to track.buffer)
-      const clips: VocalClip[] = (track.clips && track.clips.length > 0)
-        ? track.clips
-        : (track.buffer ? [{
-            id: `legacy-${track.id}`,
-            buffer: track.buffer,
-            tunedBuffer: track.tunedBuffer,
-            startBeatOffset: track.startBeatOffset,
-            duration: track.duration,
-          }] : []);
+        // Extract all clips for this track line (or fallback to track.buffer)
+        const clips: VocalClip[] = (track.clips && track.clips.length > 0)
+          ? track.clips
+          : (track.buffer ? [{
+              id: `legacy-${track.id}`,
+              buffer: track.buffer,
+              tunedBuffer: track.tunedBuffer,
+              startBeatOffset: track.startBeatOffset,
+              duration: track.duration,
+            }] : []);
 
-      for (const clip of clips) {
-        if (!clip.buffer) continue;
-        const trackOffset = clip.startBeatOffset;
-        const trackDur = clip.duration || clip.buffer.duration;
+        for (const clip of clips) {
+          if (!clip.buffer) continue;
+          const trackOffset = clip.startBeatOffset;
+          const trackDur = clip.duration || clip.buffer.duration;
 
-        const playBuffer = (track.fx.tune?.enabled && track.fx.tune.speed > 0.01 && clip.tunedBuffer)
-          ? clip.tunedBuffer
-          : (track.fx.tune?.enabled && track.fx.tune.speed > 0.01 && track.tunedBuffer && clips.length === 1)
-          ? track.tunedBuffer
-          : clip.buffer;
+          const playBuffer = (track.fx.tune?.enabled && track.fx.tune.speed > 0.01 && clip.tunedBuffer)
+            ? clip.tunedBuffer
+            : (track.fx.tune?.enabled && track.fx.tune.speed > 0.01 && track.tunedBuffer && clips.length === 1)
+            ? track.tunedBuffer
+            : clip.buffer;
 
-        const sourceKey = `${track.id}-${clip.id}`;
+          const sourceKey = `${track.id}-${clip.id}`;
 
-        if (startPos < trackOffset) {
-          const source = this.ctx.createBufferSource();
-          source.buffer = playBuffer;
-          source.connect(trackNodes.lowCut);
-          const when = this.playbackStartCtxTime + trackOffset;
-          source.start(when, 0);
-          this.vocalSources.set(sourceKey, source);
-        } else if (startPos >= trackOffset && startPos < trackOffset + trackDur) {
-          const source = this.ctx.createBufferSource();
-          source.buffer = playBuffer;
-          source.connect(trackNodes.lowCut);
-          const offsetInTake = startPos - trackOffset;
-          source.start(startTime, offsetInTake);
-          this.vocalSources.set(sourceKey, source);
+          if (startPos < trackOffset) {
+            const source = this.ctx.createBufferSource();
+            source.buffer = playBuffer;
+            source.connect(trackNodes.lowCut);
+            const when = this.playbackStartCtxTime + trackOffset;
+            source.start(when, 0);
+            this.vocalSources.set(sourceKey, source);
+          } else if (startPos >= trackOffset && startPos < trackOffset + trackDur) {
+            const source = this.ctx.createBufferSource();
+            source.buffer = playBuffer;
+            source.connect(trackNodes.lowCut);
+            const offsetInTake = startPos - trackOffset;
+            source.start(startTime, offsetInTake);
+            this.vocalSources.set(sourceKey, source);
+          }
         }
+      } catch (trackPlayErr) {
+        console.warn(`Error playing vocal track ${track.id}, skipping clip to keep beat playing:`, trackPlayErr);
       }
     }
 

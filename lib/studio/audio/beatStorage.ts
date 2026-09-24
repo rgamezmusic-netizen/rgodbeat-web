@@ -2,9 +2,10 @@ import { BeatData } from '../types/audio';
 import { audioBufferToWav } from './wavEncoder';
 
 const DB_NAME = 'RGODBEAT_STUDIO_DB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const BEATS_STORE = 'saved_beats';
 const SETTINGS_STORE = 'studio_settings';
+const SESSIONS_STORE = 'studio_sessions';
 
 export const MAX_SAVED_BEATS = 23;
 
@@ -42,6 +43,9 @@ async function getDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(SETTINGS_STORE)) {
         db.createObjectStore(SETTINGS_STORE, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(SESSIONS_STORE)) {
+        db.createObjectStore(SESSIONS_STORE, { keyPath: 'id' });
       }
     };
 

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   BeatAnalysisResult,
   BeatData,
@@ -26,6 +26,11 @@ import {
   getActiveBeatSettings,
   MAX_SAVED_BEATS,
 } from '@/lib/studio/audio/beatStorage';
+import {
+  saveStudioSession,
+  restoreLastStudioSession,
+  clearSavedStudioSession,
+} from '@/lib/studio/audio/sessionStorage';
 import { TopBar } from './TopBar';
 import { ArtworkPlayer } from './ArtworkPlayer';
 import { RecordControlBar } from './RecordControlBar';
@@ -379,27 +384,31 @@ export default function App() {
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
   const [unlockModalReason, setUnlockModalReason] = useState<'export' | 'tracks' | 'general'>('general');
 
-  useEffect(() => {
-    async function checkStudioAccess() {
-      try {
-        const res = await fetch('/api/studio/access');
-        if (res.ok) {
-          const data = await res.json();
-          setAccessStatus({
-            isDemo: data.isDemo,
-            hasActivePass: data.hasActivePass,
-            daysRemaining: data.daysRemaining || 0,
-            expiresAt: data.expiresAt,
-            email: data.email,
-            name: data.name || 'Artista',
-          });
+  const refreshStudioAccess = useCallback(async () => {
+    try {
+      const res = await fetch('/api/studio/access');
+      if (res.ok) {
+        const data = await res.json();
+        setAccessStatus({
+          isDemo: data.isDemo,
+          hasActivePass: data.hasActivePass,
+          daysRemaining: data.daysRemaining || 0,
+          expiresAt: data.expiresAt,
+          email: data.email,
+          name: data.name || 'Artista',
+        });
+        if (data.hasActivePass) {
+          showToast(`¡Pase activo verificado! ${data.daysRemaining || 30} días restantes.`, 'success');
         }
-      } catch (err) {
-        console.error('Error checking studio access:', err);
       }
+    } catch (err) {
+      console.error('Error checking studio access:', err);
     }
-    checkStudioAccess();
   }, []);
+
+  useEffect(() => {
+    refreshStudioAccess();
+  }, [refreshStudioAccess]);
 
   // Modals state
   const [activeFXTrackId, setActiveFXTrackId] = useState<VocalTrackId | null>(null);
@@ -512,6 +521,7 @@ export default function App() {
 
         const trackName = tracksRef.current.find((t) => t.id === trackId)?.name || trackId;
         showToast(`¡Toma grabada en ${trackName}! Agregada a la línea de tiempo.`, 'success');
+        saveStudioSession(tracksRef.current, currentBeatRef.current?.id, loopSettings, currentTime);
       },
       onRecordingAborted: () => {
         setIsRecording(false);
@@ -535,12 +545,38 @@ export default function App() {
       try {
         const audioCtx = await audioEngine.ensureAudioContext();
 
+        // 0. Check and restore last active Studio session (takes, vocal clips, FX, timeline)
+        let restoredSessionBeatId: string | null = null;
+        try {
+          const lastSession = await restoreLastStudioSession(audioCtx);
+          if (lastSession && lastSession.tracks.length > 0) {
+            const hasClips = lastSession.tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer);
+            if (hasClips) {
+              setTracks(lastSession.tracks);
+              tracksRef.current = lastSession.tracks;
+              if (lastSession.loopSettings) {
+                setLoopSettings(lastSession.loopSettings);
+              }
+              if (lastSession.currentTime) {
+                setCurrentTime(lastSession.currentTime);
+              }
+              if (lastSession.beatId) {
+                restoredSessionBeatId = lastSession.beatId;
+              }
+              showToast('✓ Sesión anterior restaurada: continuando tu proyecto.', 'success');
+            }
+          }
+        } catch (sessErr) {
+          console.warn('Could not restore previous studio session:', sessErr);
+        }
+
         // 1. Fetch saved custom beats from persistent IndexedDB
         const storedBeats = await getAllSavedBeats(audioCtx);
         setSavedCustomBeats(storedBeats);
 
         // 2. Fetch saved active beat preference and lock status
         const { activeBeatId, isLocked } = await getActiveBeatSettings();
+        const preferredBeatId = restoredSessionBeatId || activeBeatId;
 
         // 3. Generate initial offline demo beats
         const trapBeat = await createDemoBeat(audioCtx, 'trap');
@@ -561,15 +597,15 @@ export default function App() {
         let chosenLock = isLocked;
 
         if (storedBeats.length > 0) {
-          const matchedStored = storedBeats.find((b) => b.id === activeBeatId);
+          const matchedStored = storedBeats.find((b) => b.id === preferredBeatId);
           if (matchedStored) {
             chosenBeat = matchedStored;
           } else {
             chosenBeat = storedBeats[0];
           }
           chosenLock = true; // Custom beats are locked by default so they don't get lost
-        } else if (activeBeatId) {
-          const matchedPreset = beats.find((b) => b.id === activeBeatId);
+        } else if (preferredBeatId) {
+          const matchedPreset = beats.find((b) => b.id === preferredBeatId);
           if (matchedPreset) chosenBeat = matchedPreset;
         }
 
@@ -620,6 +656,29 @@ export default function App() {
       window.removeEventListener('click', handleFirstGesture);
     };
   }, [engine]);
+
+  // Debounced auto-save session whenever tracks or edits change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer)) {
+        saveStudioSession(tracks, currentBeatRef.current?.id, loopSettings, currentTime);
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [tracks, loopSettings, currentTime]);
+
+  // Immediate auto-save on tab blur / incoming phone call / screen lock / pagehide
+  useEffect(() => {
+    const handleSaveOnExit = () => {
+      saveStudioSession(tracksRef.current, currentBeatRef.current?.id, loopSettings, currentTime);
+    };
+    window.addEventListener('visibilitychange', handleSaveOnExit);
+    window.addEventListener('pagehide', handleSaveOnExit);
+    return () => {
+      window.removeEventListener('visibilitychange', handleSaveOnExit);
+      window.removeEventListener('pagehide', handleSaveOnExit);
+    };
+  }, [loopSettings, currentTime]);
 
   // Automatic Beat BPM & Key Detection on demand
   const handleDetectCurrentBeat = async () => {
@@ -1522,6 +1581,7 @@ export default function App() {
         onClose={() => setIsUnlockModalOpen(false)}
         reason={unlockModalReason}
         userEmail={accessStatus.email}
+        onAuthSuccess={refreshStudioAccess}
       />
 
       {/* Guide modal on how to install PWA on Android & iOS */}
