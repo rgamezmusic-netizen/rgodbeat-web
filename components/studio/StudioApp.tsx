@@ -603,6 +603,24 @@ export default function App() {
     }
   }, [beatFX, engine]);
 
+  // Hardware audio unlock on first user interaction (touch/click) for iOS Safari / Chrome
+  useEffect(() => {
+    if (!engine) return;
+    const handleFirstGesture = () => {
+      engine.unlockAudio();
+    };
+    window.addEventListener('touchstart', handleFirstGesture, { passive: true, once: true });
+    window.addEventListener('touchend', handleFirstGesture, { passive: true, once: true });
+    window.addEventListener('pointerdown', handleFirstGesture, { passive: true, once: true });
+    window.addEventListener('click', handleFirstGesture, { passive: true, once: true });
+    return () => {
+      window.removeEventListener('touchstart', handleFirstGesture);
+      window.removeEventListener('touchend', handleFirstGesture);
+      window.removeEventListener('pointerdown', handleFirstGesture);
+      window.removeEventListener('click', handleFirstGesture);
+    };
+  }, [engine]);
+
   // Automatic Beat BPM & Key Detection on demand
   const handleDetectCurrentBeat = async () => {
     if (!currentBeat || !currentBeat.buffer) {
@@ -661,6 +679,7 @@ export default function App() {
   // Transport Handlers
   const handlePlayPause = async () => {
     if (!engine || !currentBeat) return;
+    await engine.unlockAudio();
     if (isRecording) {
       handleStopRecord();
       return;

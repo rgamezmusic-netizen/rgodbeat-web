@@ -127,6 +127,33 @@ export class AudioEngine {
     return this.ctx;
   }
 
+  /**
+   * Hardware audio unlock for mobile Safari / Chrome.
+   * Plays a silent 1-sample buffer and resumes AudioContext synchronously on user gesture.
+   */
+  public async unlockAudio(): Promise<void> {
+    if (!this.ctx) {
+      await this.ensureAudioContext();
+    }
+    if (!this.ctx) return;
+    if (this.ctx.state === 'suspended') {
+      try {
+        await this.ctx.resume();
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      const buffer = this.ctx.createBuffer(1, 1, 22050);
+      const source = this.ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.ctx.destination);
+      source.start(0);
+    } catch {
+      // ignore
+    }
+  }
+
   public getAudioContext(): AudioContext | null {
     return this.ctx;
   }
@@ -392,7 +419,7 @@ export class AudioEngine {
 
   public async play(vocalTracks: VocalTrack[] = []) {
     if (!this.beatData) return;
-    await this.ensureAudioContext();
+    await this.unlockAudio();
     if (!this.ctx) return;
 
     if (this.isPlaying) {
@@ -487,6 +514,7 @@ export class AudioEngine {
     if (this.isRecording && !this.isFinalizingRecording) {
       this.stopRecording();
     }
+    this.releaseMicrophone();
     this.pause();
     this.currentPlaybackPosition = 0;
     this.callbacks.onTimeUpdate(0);
@@ -582,6 +610,8 @@ export class AudioEngine {
 
   /**
    * Request microphone stream with multi-level browser fallback.
+   * Explicitly disables mobile OS communication processing (echoCancellation, noiseSuppression, autoGainControl)
+   * so recording captures pure audio and doesn't duck or squash playback.
    */
   public async getMicrophoneStream(): Promise<MediaStream> {
     if (this.micStream && this.micStream.active) {
@@ -619,12 +649,44 @@ export class AudioEngine {
       console.warn('Strict 48kHz mic constraints failed, attempting fallback { channelCount: 1 }:', e);
       try {
         this.micStream = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1 },
+          audio: {
+            channelCount: 1,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
         });
       } catch {
-        this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        try {
+          this.micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
+          });
+        } catch {
+          this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        }
       }
       return this.micStream;
+    }
+  }
+
+  /**
+   * Releases hardware microphone tracks immediately so iOS and Android exit
+   * Voice-Communication / Call mode and instantly restore uncompressed Hi-Fi stereo playback.
+   */
+  public releaseMicrophone() {
+    if (this.micStream) {
+      try {
+        this.micStream.getTracks().forEach((track) => {
+          track.stop();
+        });
+      } catch (err) {
+        console.warn('Error releasing microphone tracks:', err);
+      }
+      this.micStream = null;
     }
   }
 
@@ -688,6 +750,7 @@ export class AudioEngine {
         for (let beat = 1; beat <= 4; beat++) {
           if (this.cancelCountIn || !this.isRecording) {
             this.callbacks.onCountInBeat(0);
+            this.releaseMicrophone();
             this.callbacks.onRecordingAborted();
             return false;
           }
@@ -701,6 +764,7 @@ export class AudioEngine {
       }
 
       if (this.cancelCountIn || !this.isRecording) {
+        this.releaseMicrophone();
         this.callbacks.onRecordingAborted();
         return false;
       }
@@ -847,6 +911,7 @@ export class AudioEngine {
       }
       return true;
     } catch (err) {
+      this.releaseMicrophone();
       this.isRecording = false;
       this.recordingTrackId = null;
       const msg = err instanceof Error ? err.message : 'Error al inicializar la grabación';
@@ -870,6 +935,7 @@ export class AudioEngine {
       if (!this.isRecording || !this.ctx || !this.recordingTrackId) {
         this.isRecording = false;
         this.recordingTrackId = null;
+        this.releaseMicrophone();
         this.callbacks.onRecordingAborted();
         return;
       }
@@ -984,6 +1050,7 @@ export class AudioEngine {
     // Notify callback
     this.callbacks.onRecordingFinished(targetTrackId, finalBuffer, waveform);
     } finally {
+      this.releaseMicrophone();
       this.isFinalizingRecording = false;
     }
   }

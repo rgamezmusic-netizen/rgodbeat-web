@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Check, Flame, Disc, ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
+import { X, Sparkles, Check, Flame, Disc, ShieldCheck, ArrowRight, Loader2, LogIn, User } from 'lucide-react';
 
 interface UnlockPassModalProps {
   isOpen: boolean;
@@ -97,8 +97,52 @@ export const UnlockPassModal: React.FC<UnlockPassModalProps> = ({
           </div>
         )}
 
-        {/* Modal Body: The 2 Official Options */}
+        {/* Modal Body: Login Account Access + The 2 Official Options */}
         <div className="p-5 sm:p-6 space-y-4 relative z-10">
+          {/* Quick Account Login Bar */}
+          {!userEmail ? (
+            <div className="p-3.5 sm:p-4 rounded-xl bg-gradient-to-r from-amber-500/15 via-zinc-900 to-zinc-900/90 border border-amber-500/35 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+                  <LogIn className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wide">
+                    ¿Ya tienes cuenta o te regalaron un Pase?
+                  </h3>
+                  <p className="text-[11px] sm:text-xs text-zinc-400">
+                    Inicia sesión para sincronizar tus pases y activar el Studio de inmediato.
+                  </p>
+                </div>
+              </div>
+              <a
+                href="/login?redirect=/studio"
+                className="w-full sm:w-auto px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs uppercase tracking-wider transition-all text-center shrink-0 shadow-[0_0_15px_rgba(245,158,11,0.25)] active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                <span>Iniciar Sesión</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          ) : (
+            <div className="p-3 sm:p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0">
+                  <User className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-mono text-zinc-500 uppercase">Conectado con cuenta</p>
+                  <p className="text-xs font-mono text-zinc-200 truncate font-semibold">{userEmail}</p>
+                </div>
+              </div>
+              <a
+                href="/login?redirect=/studio"
+                className="text-[11px] font-mono text-amber-400 hover:text-amber-300 underline shrink-0 transition-colors"
+              >
+                Cambiar cuenta
+              </a>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* OPTION 1: PASE 30 DÍAS x $10 USD */}
             <div className="p-4 sm:p-5 rounded-xl bg-gradient-to-b from-amber-500/10 to-zinc-900/60 border border-amber-500/40 flex flex-col justify-between space-y-4 relative overflow-hidden group hover:border-amber-400 transition-all">

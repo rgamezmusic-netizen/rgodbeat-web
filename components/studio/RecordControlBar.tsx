@@ -124,7 +124,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                 }
               >
                 <Headphones className="w-3 h-3 text-current" />
-                <span>{bluetoothSyncEnabled ? `BT: -${bluetoothOffsetMs}ms` : 'Modo BT'}</span>
+                <span>{bluetoothSyncEnabled ? 'Modo BT: ON' : 'Modo BT'}</span>
               </button>
             )}
 
