@@ -1,0 +1,17 @@
+{
+  "name": "RGODBEAT Studio",
+  "short_name": "Studio",
+  "description": "Estudio multipista de grabación vocal con Auto-Tune en tiempo real por RGODBEAT.",
+  "start_url": "/studio",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

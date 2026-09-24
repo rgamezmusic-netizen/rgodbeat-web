@@ -111,7 +111,14 @@ export class AudioEngine {
       const AudioCtxClass =
         window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.ctx = new AudioCtxClass();
+      try {
+        this.ctx = new AudioCtxClass({
+          latencyHint: 'interactive',
+          sampleRate: 48000,
+        });
+      } catch {
+        this.ctx = new AudioCtxClass();
+      }
       this.setupMasterGraph();
     }
     if (this.ctx.state === 'suspended') {
