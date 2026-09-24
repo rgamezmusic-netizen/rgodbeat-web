@@ -44,7 +44,13 @@ import { ExportModal } from './ExportModal';
 import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
 import { InstallAppModal } from './InstallAppModal';
-import { AlertCircle, CheckCircle, Info, Disc3, Layers, HardDrive } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info, Disc3, Layers, HardDrive, AlertTriangle, Cloud, CloudUpload, Sparkles } from 'lucide-react';
+import {
+  saveProjectToCloud,
+  loadProjectFromCloud,
+  checkCloudProject,
+  CloudProjectCheckResult,
+} from '@/lib/studio/cloudProject';
 
 const defaultVocalFX = (): VocalFX => ({
   tune: {
@@ -406,9 +412,28 @@ export default function App() {
     }
   }, []);
 
+  // Cloud Project State (1 saved project per active account in R2 cloud)
+  const [cloudProjectInfo, setCloudProjectInfo] = useState<CloudProjectCheckResult | null>(null);
+  const [isSavingCloud, setIsSavingCloud] = useState<boolean>(false);
+  const [isLoadingCloud, setIsLoadingCloud] = useState<boolean>(false);
+  const [dismissExpirationBanner, setDismissExpirationBanner] = useState<boolean>(false);
+
+  const refreshCloudProjectStatus = useCallback(async () => {
+    try {
+      const status = await checkCloudProject();
+      setCloudProjectInfo(status);
+      if (status.expired) {
+        showToast(status.message || 'Tu proyecto en la nube fue eliminado porque tu suscripción expiró.', 'error');
+      }
+    } catch (err) {
+      console.warn('Error checking cloud project:', err);
+    }
+  }, []);
+
   useEffect(() => {
     refreshStudioAccess();
-  }, [refreshStudioAccess]);
+    refreshCloudProjectStatus();
+  }, [refreshStudioAccess, refreshCloudProjectStatus]);
 
   // Modals state
   const [activeFXTrackId, setActiveFXTrackId] = useState<VocalTrackId | null>(null);
@@ -1263,6 +1288,141 @@ export default function App() {
     setShowExportModal(true);
   };
 
+  // Save Project to User Account Cloud (R2 storage)
+  const handleSaveCloudProject = async () => {
+    if (!accessStatus.hasActivePass) {
+      setUnlockModalReason('general');
+      setIsUnlockModalOpen(true);
+      showToast('Inicia sesión con tu cuenta activa o adquiere un Pase para guardar en la nube.', 'info');
+      return;
+    }
+
+    const hasAnyContent = currentBeat || tracks.some((t) => t.buffer || (t.clips && t.clips.length > 0));
+    if (!hasAnyContent) {
+      showToast('Carga un beat o graba una voz antes de guardar tu proyecto.', 'info');
+      return;
+    }
+
+    setIsSavingCloud(true);
+    showToast('Guardando proyecto en tu cuenta (pista + voces + efectos)...', 'info');
+
+    try {
+      const res = await saveProjectToCloud(tracks, currentBeat, loopSettings);
+      if (res.success) {
+        showToast('☁️ Proyecto guardado exitosamente en tu cuenta.', 'success');
+        await refreshCloudProjectStatus();
+      } else {
+        if (res.requiresPass) {
+          setUnlockModalReason('general');
+          setIsUnlockModalOpen(true);
+        }
+        showToast(res.error || 'Error al guardar proyecto en la nube.', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error de conexión al guardar.', 'error');
+    } finally {
+      setIsSavingCloud(false);
+    }
+  };
+
+  // Load Saved Project from User Account Cloud
+  const handleLoadCloudProject = async () => {
+    if (!engine) return;
+    setIsLoadingCloud(true);
+    showToast('Descargando tu proyecto desde la nube...', 'info');
+
+    try {
+      const audioCtx = await engine.ensureAudioContext();
+      const cloudData = await loadProjectFromCloud(audioCtx);
+
+      if (!cloudData) {
+        showToast('No se pudo encontrar o descargar el proyecto de la nube.', 'error');
+        return;
+      }
+
+      // 1. Restore beat
+      if (cloudData.beatData) {
+        const beat = cloudData.beatData;
+        if (beat.isCustomUpload && beat.customBeatBuffer) {
+          const fullCustomBeat: BeatData = {
+            id: beat.id || `custom-${Date.now()}`,
+            title: beat.title || 'Mi Beat Guardado',
+            producer: beat.producer || 'Custom Beat',
+            bpm: beat.bpm || 140,
+            key: beat.key || 'C',
+            scale: beat.scale || 'Menor',
+            duration: beat.customBeatBuffer.duration,
+            buffer: beat.customBeatBuffer,
+            artworkGradient: beat.artworkGradient || 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
+            isCustomUpload: true,
+            detectedBpm: beat.detectedBpm,
+            detectedKey: beat.detectedKey,
+            isLocked: true,
+          };
+          setCurrentBeat(fullCustomBeat);
+          engine.setBeat(fullCustomBeat);
+        } else if (beat.id) {
+          const found = demoBeats.find((b) => b.id === beat.id) || savedCustomBeats.find((b) => b.id === beat.id);
+          if (found) {
+            setCurrentBeat(found);
+            engine.setBeat(found);
+          }
+        }
+      }
+
+      // 2. Restore vocal tracks
+      setTracks(cloudData.tracks);
+      tracksRef.current = cloudData.tracks;
+
+      // 3. Restore loop settings
+      if (cloudData.loopSettings) {
+        setLoopSettings(cloudData.loopSettings);
+        engine.setLoopSettings(cloudData.loopSettings);
+      }
+
+      showToast('☁️ Proyecto cargado y sincronizado exitosamente.', 'success');
+    } catch (err: any) {
+      console.error('Error loading cloud project:', err);
+      showToast('Error al procesar proyecto de la nube.', 'error');
+    } finally {
+      setIsLoadingCloud(false);
+    }
+  };
+
+  // Start a Clean New Project
+  const handleNewProject = async () => {
+    const hasTakes = tracks.some((t) => t.buffer || (t.clips && t.clips.length > 0));
+    if (hasTakes) {
+      const confirmed = window.confirm(
+        '¿Deseas iniciar un nuevo proyecto?\n\nSe limpiarán las voces actuales del espacio de trabajo. (Si guardaste tu proyecto en tu cuenta, permanecerá intacto en la nube).'
+      );
+      if (!confirmed) return;
+    }
+
+    if (engine) {
+      engine.stop();
+    }
+
+    const resetTracks = initialTracks.map((t) => ({
+      ...t,
+      buffer: null,
+      clips: [],
+      duration: 0,
+      startBeatOffset: 0,
+      waveformSample: undefined,
+      tunedBuffer: null,
+    }));
+
+    setTracks(resetTracks);
+    tracksRef.current = resetTracks;
+    setUndoStack([]);
+    setRedoStack([]);
+    await clearSavedStudioSession();
+
+    showToast('✨ Nuevo proyecto iniciado. Carga un beat para comenzar.', 'info');
+    setShowLoadBeatModal(true);
+  };
+
   const selectedTrack = tracks.find((t) => t.id === selectedTrackId) || tracks[0];
   const activeFXTrack = tracks.find((t) => t.id === activeFXTrackId) || null;
   const hasRecordings = tracks.some((t) => t.buffer !== null);
@@ -1300,7 +1460,73 @@ export default function App() {
           setUnlockModalReason('general');
           setIsUnlockModalOpen(true);
         }}
+        onSaveCloudProject={handleSaveCloudProject}
+        onLoadCloudProject={handleLoadCloudProject}
+        onNewProject={handleNewProject}
+        isSavingCloud={isSavingCloud}
+        isLoadingCloud={isLoadingCloud}
+        hasCloudProject={Boolean(cloudProjectInfo?.hasProject)}
       />
+
+      {/* 3-Day Expiration Alert Banner */}
+      {accessStatus.hasActivePass &&
+        accessStatus.daysRemaining <= 3 &&
+        !dismissExpirationBanner &&
+        !['admin@rgodbeat.com', 'rgamezmusic@gmail.com', 'rgodbeat@gmail.com'].includes(
+          accessStatus.email?.toLowerCase() || ''
+        ) && (
+          <div className="bg-gradient-to-r from-red-950/95 via-amber-950/90 to-red-950/95 border-b border-amber-500/40 px-3 sm:px-6 py-2.5 flex items-center justify-between text-xs text-amber-100 z-20 shadow-lg">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
+              <span className="truncate sm:whitespace-normal font-sans">
+                <strong>Atención:</strong> Tu suscripción al Studio vence en{' '}
+                <span className="text-amber-300 font-bold underline font-mono">
+                  {accessStatus.daysRemaining} {accessStatus.daysRemaining === 1 ? 'día' : 'días'}
+                </span>
+                . Si tu pase expira, tu proyecto guardado en la nube se eliminará automáticamente.
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 ml-3">
+              <button
+                onClick={() => {
+                  setUnlockModalReason('general');
+                  setIsUnlockModalOpen(true);
+                }}
+                className="px-3 py-1 rounded-lg bg-amber-500 text-black font-extrabold hover:bg-amber-400 active:scale-95 text-xs transition-all cursor-pointer shadow-md"
+              >
+                Renovar Pase ($10)
+              </button>
+              <button
+                onClick={() => setDismissExpirationBanner(true)}
+                className="text-zinc-400 hover:text-white px-1 text-xs cursor-pointer"
+                title="Ocultar aviso"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+      {/* Cloud Project Available Notification Banner (if saved project exists and workspace is fresh) */}
+      {cloudProjectInfo?.hasProject && !hasRecordings && (
+        <div className="bg-emerald-950/40 border-b border-emerald-500/30 px-3 sm:px-6 py-2 flex items-center justify-between text-xs text-emerald-200 z-20">
+          <div className="flex items-center gap-2 min-w-0">
+            <Cloud className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="truncate">
+              Tienes 1 proyecto guardado en tu cuenta:{' '}
+              <strong className="text-white font-mono">{cloudProjectInfo.projectMeta?.beatTitle}</strong>
+              {cloudProjectInfo.projectMeta?.takesCount ? ` (${cloudProjectInfo.projectMeta.takesCount} tomas)` : ''}
+            </span>
+          </div>
+          <button
+            onClick={handleLoadCloudProject}
+            disabled={isLoadingCloud}
+            className="px-3 py-1 rounded-lg bg-emerald-500 text-black font-bold hover:bg-emerald-400 active:scale-95 text-xs transition-all shrink-0 ml-3 cursor-pointer"
+          >
+            {isLoadingCloud ? 'Cargando...' : 'Cargar Proyecto'}
+          </button>
+        </div>
+      )}
 
       {/* View Switcher Pill Bar */}
       <div className="w-full max-w-md mx-auto px-4 pt-3 flex items-center justify-center gap-2">

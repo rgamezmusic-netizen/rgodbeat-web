@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, Upload, Mic, Layers, Disc3, Undo2, Redo2, HardDrive, Smartphone } from 'lucide-react';
+import { Download, Upload, Mic, Layers, Disc3, Undo2, Redo2, HardDrive, Smartphone, Cloud, CloudUpload, Plus, Loader2 } from 'lucide-react';
 
 interface TopBarProps {
   onOpenLoadBeat: () => void;
@@ -27,6 +27,12 @@ interface TopBarProps {
   };
   onOpenUnlockModal?: () => void;
   onOpenInstallModal?: () => void;
+  onSaveCloudProject?: () => void;
+  onLoadCloudProject?: () => void;
+  onNewProject?: () => void;
+  isSavingCloud?: boolean;
+  isLoadingCloud?: boolean;
+  hasCloudProject?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -48,6 +54,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   accessStatus,
   onOpenUnlockModal,
   onOpenInstallModal,
+  onSaveCloudProject,
+  onLoadCloudProject,
+  onNewProject,
+  isSavingCloud = false,
+  isLoadingCloud = false,
+  hasCloudProject = false,
 }) => {
   return (
     <header
@@ -186,8 +198,55 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
       </div>
 
-      {/* Zone 3: Actions (Load Beat, Install App & Export) */}
+      {/* Zone 3: Actions (Project Cloud, Load Beat, Install App & Export) */}
       <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        {onNewProject && (
+          <button
+            onClick={onNewProject}
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-medium bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800 hover:text-white transition-all shrink-0 active:scale-95"
+            title="Nuevo Proyecto (Limpiar pistas vocales y empezar nuevo)"
+          >
+            <Plus className="w-3.5 h-3.5 text-zinc-400" />
+            <span className="hidden sm:inline">Nuevo</span>
+          </button>
+        )}
+
+        {hasCloudProject && onLoadCloudProject && (
+          <button
+            onClick={onLoadCloudProject}
+            disabled={isLoadingCloud}
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold bg-emerald-950/50 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-900/50 transition-all shrink-0 active:scale-95 shadow-sm"
+            title="Cargar proyecto guardado en tu cuenta"
+          >
+            {isLoadingCloud ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+            ) : (
+              <CloudUpload className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+            <span className="hidden sm:inline">{isLoadingCloud ? 'Cargando...' : 'Cargar Cloud'}</span>
+          </button>
+        )}
+
+        {onSaveCloudProject && (
+          <button
+            onClick={onSaveCloudProject}
+            disabled={isSavingCloud}
+            className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all shrink-0 active:scale-95 shadow-sm ${
+              isSavingCloud
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 cursor-wait'
+                : 'bg-zinc-900 text-amber-400 border border-zinc-800 hover:bg-amber-500/10 hover:border-amber-500/40'
+            }`}
+            title="Guardar proyecto actual en tu cuenta (Beat + Voces + Efectos en la nube)"
+          >
+            {isSavingCloud ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+            ) : (
+              <Cloud className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span className="hidden sm:inline">{isSavingCloud ? 'Guardando...' : 'Guardar'}</span>
+          </button>
+        )}
+
         {onOpenInstallModal && (
           <button
             onClick={onOpenInstallModal}

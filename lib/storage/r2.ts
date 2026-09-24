@@ -4,6 +4,7 @@ import {
   GetObjectCommand,
   DeleteObjectCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -152,3 +153,59 @@ export async function deleteFromR2(key: string, bucket?: string): Promise<boolea
     return false;
   }
 }
+
+/**
+ * Downloads a file buffer directly from Cloudflare R2.
+ */
+export async function downloadFromR2(key: string, bucket?: string): Promise<Buffer | null> {
+  const client = getR2Client();
+  if (!client) return null;
+
+  try {
+    const command = new GetObjectCommand({
+      Bucket: bucket || R2_BUCKET_NAME,
+      Key: key,
+    });
+    const res = await client.send(command);
+    if (!res.Body) return null;
+    const byteArray = await res.Body.transformToByteArray();
+    return Buffer.from(byteArray);
+  } catch (err) {
+    console.warn(`[R2 Storage] Error downloading ${key}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Deletes all objects with a given key prefix (e.g. all files in a project folder).
+ */
+export async function deleteR2Prefix(prefix: string, bucket?: string): Promise<boolean> {
+  const client = getR2Client();
+  if (!client) return false;
+
+  try {
+    const targetBucket = bucket || R2_BUCKET_NAME;
+    const listCmd = new ListObjectsV2Command({
+      Bucket: targetBucket,
+      Prefix: prefix,
+    });
+    const listRes = await client.send(listCmd);
+    if (listRes.Contents && listRes.Contents.length > 0) {
+      for (const obj of listRes.Contents) {
+        if (obj.Key) {
+          await client.send(
+            new DeleteObjectCommand({
+              Bucket: targetBucket,
+              Key: obj.Key,
+            })
+          );
+        }
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error(`[R2 Storage] Error deleting prefix ${prefix}:`, err);
+    return false;
+  }
+}
+
