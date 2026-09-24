@@ -1,7 +1,7 @@
 {
-  "name": "RGODBEAT Studio",
-  "short_name": "Studio",
-  "description": "Estudio multipista de grabación vocal con Auto-Tune en tiempo real por RGODBEAT.",
+  "name": "RGodbeat Studio",
+  "short_name": "RGodbeat",
+  "description": "Estudio multipista vocal con Auto-Tune en tiempo real por RGODBEAT.",
   "start_url": "/studio",
   "display": "standalone",
   "orientation": "portrait-primary",
@@ -9,9 +9,21 @@
   "theme_color": "#09090b",
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
     }
   ]
 }

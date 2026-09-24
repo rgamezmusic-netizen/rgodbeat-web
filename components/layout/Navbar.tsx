@@ -30,12 +30,16 @@ export function Navbar() {
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-        {/* Brand Logo */}
+        {/* Brand Logo with Graffiti Handstyle & Green Status Indicator */}
         <Link href="/" className="flex items-center gap-2.5 group">
-          <span className="font-extrabold text-lg sm:text-xl tracking-[0.22em] text-white group-hover:text-purple-300 transition-colors">
-            RGODBEAT
-          </span>
-          <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]" />
+          <div className="relative h-8 sm:h-9 flex items-center">
+            <img
+              src="/images/rgodbeat-logo.png"
+              alt="RGodbeat"
+              className="h-7 sm:h-8 w-auto object-contain filter brightness-110 group-hover:drop-shadow-[0_0_14px_rgba(255,255,255,0.45)] transition-all"
+            />
+          </div>
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.9)]" />
         </Link>
 
         {/* Center Primary Navigation */}

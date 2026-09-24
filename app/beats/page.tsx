@@ -6,7 +6,7 @@ import { getPublishedBeats } from "@/lib/data/beats";
 import { getCategories } from "@/lib/data/categories";
 import { Beat } from "@/types";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60; // Cache on edge CDN for fast initial page load (revalidates every 60s)
 
 export default async function BeatsPage() {
   let beats: Beat[] = [];

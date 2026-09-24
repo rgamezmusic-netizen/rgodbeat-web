@@ -51,12 +51,21 @@ export const TopBar: React.FC<TopBarProps> = ({
     <header className="sticky top-0 z-30 flex items-center justify-between px-3 sm:px-6 py-2 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80">
       {/* Zone 1: Wordmark & Beat status badge */}
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.6)]" />
-          <span className="font-display text-sm sm:text-base tracking-wider font-extrabold text-white uppercase truncate">
-            RGODBEAT <span className="text-zinc-500 text-[10px] sm:text-xs font-mono font-medium tracking-widest pl-0.5">STUDIO</span>
+        <a href="/" className="flex items-center gap-2 group shrink-0" title="Volver a la tienda principal">
+          <img
+            src="/apple-touch-icon.png"
+            alt="RGodbeat Studio"
+            className="w-7 h-7 rounded-lg border border-white/10 shrink-0 shadow-md group-hover:scale-105 transition-transform"
+          />
+          <img
+            src="/images/rgodbeat-logo.png"
+            alt="RGodbeat"
+            className="h-5 sm:h-6 w-auto object-contain hidden xs:inline"
+          />
+          <span className="text-amber-400 text-[9px] sm:text-[10px] font-mono font-bold tracking-widest pl-0.5 uppercase bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+            STUDIO
           </span>
-        </div>
+        </a>
 
         {/* Studio Access Badge (Active Pass vs Demo Mode) */}
         {accessStatus?.hasActivePass ? (
