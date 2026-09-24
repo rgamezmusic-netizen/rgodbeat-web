@@ -1245,7 +1245,7 @@ export default function App() {
                         Espacio Físico Beat
                       </span>
                       <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
-                        RANURA {currentBeatSlotIndex}/23
+                        SLOT {currentBeatSlotIndex}/23
                       </span>
                       <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold hidden sm:inline">
                         GUARDADO ({savedCustomBeats.length}/23)
@@ -1264,9 +1264,9 @@ export default function App() {
                   <button
                     onClick={() => setShowLoadBeatModal(true)}
                     className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 font-medium transition-colors active:scale-95"
-                    title="Administrar las 23 ranuras físicas de beats"
+                    title="Administrar los 23 slots de beats"
                   >
-                    23 Ranuras
+                    23 Slots
                   </button>
                 </div>
               </div>

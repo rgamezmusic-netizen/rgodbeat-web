@@ -11,7 +11,7 @@ const ADMIN_EMAILS = [
 
 export const dynamic = "force-dynamic";
 
-// GET: List all customers with their studio access status
+// GET: List all registered users and customers with their studio access status
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
@@ -20,17 +20,75 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = createAdminClient();
+
+    // 1. Fetch registered users from Supabase Auth
+    let authUsers: any[] = [];
+    try {
+      const { data: authData, error: authError } = await supabase.auth.admin.listUsers({
+        page: 1,
+        perPage: 1000,
+      });
+      if (!authError && authData?.users) {
+        authUsers = authData.users;
+      }
+    } catch (authErr) {
+      console.warn("[Admin Studio Passes] Could not list auth users:", authErr);
+    }
+
+    // 2. Fetch customers table
     const { data: customers, error } = await (supabase as any)
       .from("customers")
-      .select("id, email, name, studio_access_until, created_at")
-      .order("studio_access_until", { ascending: false, nullsFirst: false });
+      .select("id, email, name, studio_access_until, created_at");
 
-    if (error) {
+    if (error && authUsers.length === 0) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     const now = new Date();
-    const formatted = (customers || []).map((c: any) => {
+    const customerMap = new Map<string, any>();
+    (customers || []).forEach((c: any) => {
+      if (c.email) {
+        customerMap.set(c.email.toLowerCase().trim(), c);
+      }
+    });
+
+    const combinedList: any[] = [];
+    const processedEmails = new Set<string>();
+
+    // Add all registered auth users first
+    for (const u of authUsers) {
+      if (!u.email) continue;
+      const emailLower = u.email.toLowerCase().trim();
+      processedEmails.add(emailLower);
+
+      const cust = customerMap.get(emailLower);
+      const accessUntil = cust?.studio_access_until ? new Date(cust.studio_access_until) : null;
+      const isActive = Boolean(accessUntil && accessUntil > now);
+      let daysRemaining = 0;
+      if (isActive && accessUntil) {
+        daysRemaining = Math.max(1, Math.ceil((accessUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+      }
+
+      combinedList.push({
+        id: cust?.id || u.id,
+        authId: u.id,
+        email: u.email,
+        name: cust?.name || u.user_metadata?.full_name || u.user_metadata?.name || u.email.split("@")[0] || "Artista",
+        studioAccessUntil: cust?.studio_access_until || null,
+        isActive,
+        daysRemaining,
+        isRegistered: true,
+        createdAt: u.created_at || cust?.created_at,
+        lastSignInAt: u.last_sign_in_at || null,
+      });
+    }
+
+    // Add any remaining customers (e.g. guest checkouts not yet having auth.users)
+    for (const c of (customers || [])) {
+      if (!c.email) continue;
+      const emailLower = c.email.toLowerCase().trim();
+      if (processedEmails.has(emailLower)) continue;
+
       const accessUntil = c.studio_access_until ? new Date(c.studio_access_until) : null;
       const isActive = Boolean(accessUntil && accessUntil > now);
       let daysRemaining = 0;
@@ -38,18 +96,28 @@ export async function GET(req: NextRequest) {
         daysRemaining = Math.max(1, Math.ceil((accessUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
       }
 
-      return {
+      combinedList.push({
         id: c.id,
+        authId: null,
         email: c.email,
         name: c.name || "Artista",
         studioAccessUntil: c.studio_access_until,
         isActive,
         daysRemaining,
+        isRegistered: false,
         createdAt: c.created_at,
-      };
+        lastSignInAt: null,
+      });
+    }
+
+    // Sort by created_at descending (newest registrations first) so admin immediately sees new sign-ups!
+    combinedList.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
     });
 
-    return NextResponse.json({ customers: formatted }, { status: 200 });
+    return NextResponse.json({ customers: combinedList }, { status: 200 });
   } catch (err: any) {
     console.error("[Admin Studio Passes GET Error]:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });

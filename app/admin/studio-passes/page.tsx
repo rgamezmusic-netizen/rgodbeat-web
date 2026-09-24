@@ -10,6 +10,7 @@ interface CustomerPass {
   studioAccessUntil: string | null;
   isActive: boolean;
   daysRemaining: number;
+  isRegistered?: boolean;
   createdAt: string;
 }
 
@@ -18,6 +19,10 @@ export default function AdminStudioPassesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  // Filter & Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterTab, setFilterTab] = useState<"all" | "registered_no_pass" | "active">("all");
 
   // Form State
   const [targetEmail, setTargetEmail] = useState("");
@@ -258,43 +263,108 @@ export default function AdminStudioPassesPage() {
         </div>
       </div>
 
-      {/* Customer Passes List */}
+      {/* Customer & Registered Users Passes List */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-base font-bold font-mono text-white uppercase tracking-wider">
-              CLIENTES & ARTISTAS CON PASES ({customers.length})
+              USUARIOS REGISTRADOS & ARTISTAS ({customers.length})
             </h2>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              {activeCount} Activos
+              {activeCount} Con Pase Activo
+            </span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+              {customers.filter((c) => !c.isActive).length} Sin Pase (Para regalar prueba)
             </span>
           </div>
+
+          {/* Search bar */}
+          <div className="w-full md:w-64">
+            <input
+              type="text"
+              placeholder="Buscar por email o nombre..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-1.5 text-xs font-mono text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-400"
+            />
+          </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex items-center gap-2 border-b border-white/[0.08] pb-2">
+          <button
+            type="button"
+            onClick={() => setFilterTab("all")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-colors ${
+              filterTab === "all"
+                ? "bg-white/10 text-white font-bold border border-white/20"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            Todos ({customers.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTab("registered_no_pass")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-colors flex items-center gap-1.5 ${
+              filterTab === "registered_no_pass"
+                ? "bg-amber-500 text-black font-bold shadow-md shadow-amber-500/20"
+                : "text-amber-400/80 hover:text-amber-300 bg-amber-500/10 border border-amber-500/20"
+            }`}
+          >
+            <span>⭐ Nuevos Registrados Sin Pase</span>
+            <span className="px-1.5 py-0.2 rounded bg-black/40 text-[10px]">
+              {customers.filter((c) => !c.isActive).length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTab("active")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-mono transition-colors ${
+              filterTab === "active"
+                ? "bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            Activos ({activeCount})
+          </button>
         </div>
 
         <div className="overflow-x-auto rounded-2xl border border-white/[0.08] bg-[#0c0c12]">
           <table className="w-full text-left text-xs font-mono">
             <thead className="border-b border-white/[0.08] bg-white/[0.02] text-zinc-400 uppercase tracking-wider">
               <tr>
-                <th className="py-3 px-4">Artista / Email</th>
-                <th className="py-3 px-4">Estado</th>
+                <th className="py-3 px-4">Usuario / Email</th>
+                <th className="py-3 px-4">Tipo & Estado</th>
                 <th className="py-3 px-4">Días Restantes</th>
-                <th className="py-3 px-4">Vence En</th>
-                <th className="py-3 px-4 text-right">Acciones Rápidas</th>
+                <th className="py-3 px-4">Registrado / Vence</th>
+                <th className="py-3 px-4 text-right">Regalar Días / Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {customers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-zinc-500">
-                    No hay clientes registrados con pases aún.
-                  </td>
-                </tr>
-              ) : (
-                customers.map((c) => (
+              {customers
+                .filter((c) => {
+                  const match =
+                    !searchQuery ||
+                    c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    c.name.toLowerCase().includes(searchQuery.toLowerCase());
+                  if (!match) return false;
+                  if (filterTab === "active") return c.isActive;
+                  if (filterTab === "registered_no_pass") return !c.isActive;
+                  return true;
+                })
+                .map((c) => (
                   <tr key={c.id} className="hover:bg-white/[0.02] transition-colors">
                     <td className="py-3.5 px-4">
                       <div className="font-semibold text-white">{c.email}</div>
-                      <div className="text-[10px] text-zinc-500">{c.name}</div>
+                      <div className="text-[10px] text-zinc-400 flex items-center gap-1.5 mt-0.5">
+                        <span>{c.name}</span>
+                        {c.isRegistered && (
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
+                            Cuenta Web
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3.5 px-4">
                       {c.isActive ? (
@@ -303,8 +373,8 @@ export default function AdminStudioPassesPage() {
                           ACTIVO
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[10px]">
-                          EXPIRADO
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-bold">
+                          SIN PASE (LISTO PARA TEST)
                         </span>
                       )}
                     </td>
@@ -312,17 +382,34 @@ export default function AdminStudioPassesPage() {
                       {c.isActive ? (
                         <span className="text-amber-400 font-bold">{c.daysRemaining} días</span>
                       ) : (
-                        <span className="text-zinc-600">0 días</span>
+                        <span className="text-zinc-500">0 días</span>
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-zinc-400 text-[11px]">
-                      {c.studioAccessUntil ? new Date(c.studioAccessUntil).toLocaleDateString("es-ES", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }) : "Sin pase"}
+                      {c.isActive && c.studioAccessUntil ? (
+                        <div>
+                          <span className="text-zinc-300">
+                            Vence:{" "}
+                            {new Date(c.studioAccessUntil).toLocaleDateString("es-ES", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            })}
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-zinc-500">
+                            Registrado:{" "}
+                            {c.createdAt
+                              ? new Date(c.createdAt).toLocaleDateString("es-ES", {
+                                  day: "2-digit",
+                                  month: "short",
+                                })
+                              : "Reciente"}
+                          </span>
+                        </div>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -330,17 +417,17 @@ export default function AdminStudioPassesPage() {
                           type="button"
                           onClick={() => handleGrantPass(c.email, 3)}
                           disabled={isSubmitting}
-                          className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] transition-colors cursor-pointer"
-                          title="Sumar 3 días free a este usuario"
+                          className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-black font-extrabold border border-amber-400 text-[10px] uppercase transition-all cursor-pointer shadow-sm active:scale-95"
+                          title="Dar 3 días gratis de prueba a este usuario"
                         >
-                          +3 Días
+                          ⭐ +3 Días Free
                         </button>
                         <button
                           type="button"
                           onClick={() => handleGrantPass(c.email, 30)}
                           disabled={isSubmitting}
                           className="px-2 py-1 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] transition-colors cursor-pointer"
-                          title="Sumar 30 días a este usuario"
+                          title="Dar 30 días (1 mes) a este usuario"
                         >
                           +30 Días
                         </button>
@@ -358,8 +445,7 @@ export default function AdminStudioPassesPage() {
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
+                ))}
             </tbody>
           </table>
         </div>
