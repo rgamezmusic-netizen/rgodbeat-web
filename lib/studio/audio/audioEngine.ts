@@ -658,12 +658,12 @@ export class AudioEngine {
     }
 
     try {
-      // High-fidelity studio music recording constraints: 48 kHz, 24-bit studio mono, raw uncolored signal
+      // Universal mobile studio recording constraints (Android & iOS)
+      // Uses ideal constraints so Android devices don't throw OverconstrainedError
       this.micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          sampleRate: 48000,
-          sampleSize: 24,
+          sampleRate: { ideal: 48000 },
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
@@ -671,7 +671,7 @@ export class AudioEngine {
       });
       return this.micStream;
     } catch (e) {
-      console.warn('Strict 48kHz mic constraints failed, attempting fallback { channelCount: 1 }:', e);
+      console.warn('Initial mic constraints failed, attempting fallback { channelCount: 1 }:', e);
       try {
         this.micStream = await navigator.mediaDevices.getUserMedia({
           audio: {
