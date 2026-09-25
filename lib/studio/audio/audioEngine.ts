@@ -150,20 +150,29 @@ export class AudioEngine {
    * high-priority Media Playback (Loudspeaker). Bypasses the iPhone physical mute
    * switch and prevents audio from being muted or routed to the earpiece when
    * headphones are not connected.
+   *
+   * CRITICAL FOR RECORDING STUDIO:
+   * In WebKit (iOS Safari), ALWAYS use 'play-and-record'. NEVER set 'playback' because
+   * WebKit strictly blocks and prohibits getUserMedia when the category is set to 'playback'.
    */
   public triggerMobileSpeakerRouting() {
     if (typeof window === 'undefined') return;
-    if (this.isRecording) return; // Crucial: never force playback while actively recording
+    if (this.isRecording) return; // Never interfere while actively recording
     try {
       if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
         try {
-          (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
+          const session = (navigator as unknown as { audioSession: { type: string } }).audioSession;
+          if (session.type !== 'play-and-record') {
+            session.type = 'play-and-record';
+          }
         } catch {}
+        return; // W3C AudioSession API directly elevates OS hardware, no media tag needed
       }
 
+      // Legacy fallback only for old iOS versions (< 16.4) without navigator.audioSession
       if (!this.silentAudioEl) {
         this.silentAudioEl = new Audio(SILENT_WAV_DATA_URI);
-        this.silentAudioEl.loop = true;
+        this.silentAudioEl.loop = false;
         this.silentAudioEl.volume = 0.01;
         this.silentAudioEl.setAttribute('playsinline', 'true');
         this.silentAudioEl.setAttribute('webkit-playsinline', 'true');
@@ -766,20 +775,32 @@ export class AudioEngine {
    */
   public async getMicrophoneStream(): Promise<MediaStream> {
     if (this.micStream && this.micStream.active) {
-      return this.micStream;
+      const liveTracks = this.micStream.getAudioTracks().filter((t) => t.readyState === 'live');
+      if (liveTracks.length > 0) {
+        return this.micStream;
+      }
     }
 
-    // 1. Temporarily pause silent audio loop so it does not block microphone capture
+    // 1. Completely release any legacy silent audio element so it cannot tie up the audio session
     if (this.silentAudioEl) {
       try {
         this.silentAudioEl.pause();
+        this.silentAudioEl.removeAttribute('src');
+        this.silentAudioEl.load();
+        this.silentAudioEl = null;
       } catch {}
     }
 
     // 2. iOS WebKit AudioSession MUST be in 'play-and-record' mode before calling getUserMedia
+    // NEVER allow it to stay in 'playback' because WebKit throws 'Cannot connect to audio session'
     if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
       try {
-        (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'play-and-record';
+        const audioSession = (navigator as unknown as { audioSession: { type: string } }).audioSession;
+        if (audioSession.type !== 'play-and-record') {
+          audioSession.type = 'play-and-record';
+          // Allow WebKit's IPC to notify mediaserverd of the category change
+          await new Promise((resolve) => setTimeout(resolve, 60));
+        }
       } catch (e) {
         console.warn('Could not set audioSession to play-and-record:', e);
       }
@@ -799,9 +820,9 @@ export class AudioEngine {
       throw new Error('Tu navegador no soporta grabación de micrófono (getUserMedia no disponible).');
     }
 
+    // Universal studio recording constraints attempt cascade:
+    // 1. Studio clean: 1 channel, 48kHz ideal, no OS ducking
     try {
-      // Universal mobile studio recording constraints (Android & iOS)
-      // Uses ideal constraints so Android devices don't throw OverconstrainedError
       this.micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
@@ -812,31 +833,29 @@ export class AudioEngine {
         },
       });
       return this.micStream;
-    } catch (e) {
-      console.warn('Initial mic constraints failed, attempting fallback { channelCount: 1 }:', e);
-      try {
-        this.micStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            channelCount: 1,
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
-        });
-      } catch {
-        try {
-          this.micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: false,
-              noiseSuppression: false,
-              autoGainControl: false,
-            },
-          });
-        } catch {
-          this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        }
-      }
+    } catch (e1) {
+      console.warn('Initial studio mic constraints rejected, trying channelCount: 1 fallback:', e1);
+    }
+
+    // 2. Simplified channel constraint fallback
+    try {
+      this.micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+        },
+      });
       return this.micStream;
+    } catch (e2) {
+      console.warn('ChannelCount constraint rejected, trying universal audio: true fallback:', e2);
+    }
+
+    // 3. Universal basic fallback
+    try {
+      this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      return this.micStream;
+    } catch (e3: any) {
+      console.error('All getUserMedia attempts failed:', e3);
+      throw e3;
     }
   }
 
@@ -845,9 +864,7 @@ export class AudioEngine {
    * Voice-Communication / Call mode and instantly restore uncompressed Hi-Fi stereo playback.
    */
   public releaseMicrophone() {
-    let hadActiveMic = false;
     if (this.micStreamDest) {
-      hadActiveMic = true;
       try {
         this.micStreamDest.stream.getTracks().forEach((track) => track.stop());
         if (this.micInputGain) {
@@ -860,7 +877,6 @@ export class AudioEngine {
     }
 
     if (this.micStream) {
-      hadActiveMic = true;
       try {
         this.micStream.getTracks().forEach((track) => {
           track.stop();
@@ -871,26 +887,28 @@ export class AudioEngine {
       this.micStream = null;
     }
 
-    // Only restore audio session if microphone hardware was actually active
-    if (hadActiveMic) {
-      this.triggerMobileSpeakerRouting();
-      if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
-        try {
-          (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
-        } catch (err) {
-          // ignore
+    // Crucial: ALWAYS maintain 'play-and-record' mode so subsequent takes can record smoothly.
+    // NEVER switch back to 'playback' because that locks the hardware and breaks the next recording.
+    if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
+      try {
+        const session = (navigator as unknown as { audioSession: { type: string } }).audioSession;
+        if (session.type !== 'play-and-record') {
+          session.type = 'play-and-record';
         }
+      } catch (err) {
+        // ignore
       }
     }
   }
 
   /**
    * Starts Recording Workflow:
-   * 1. Acquires microphone permission.
-   * 2. Optional 1-bar count-in.
-   * 3. Initializes protected audio chain (rumble filter + auto-headroom gain + real-time peak meter).
-   * 4. Starts MediaRecorder (320 kbps broadcast bitrate) + Float32 PCM backup.
-   * 5. Starts synchronized playback.
+   * 1. Acquires microphone permission first on user gesture.
+   * 2. Resumes AudioContext.
+   * 3. Optional 1-bar count-in.
+   * 4. Initializes protected audio chain (rumble filter + auto-headroom gain + real-time peak meter).
+   * 5. Starts MediaRecorder (320 kbps broadcast bitrate) + Float32 PCM backup.
+   * 6. Starts synchronized playback.
    */
   public async startRecording(
     trackId: VocalTrackId,
@@ -903,10 +921,7 @@ export class AudioEngine {
     }
 
     try {
-      await this.ensureAudioContext();
-      if (!this.ctx) return false;
-
-      // 1. Acquire mic permission
+      // 1. Acquire mic permission first directly on the user's tap gesture
       let stream: MediaStream;
       try {
         stream = await this.getMicrophoneStream();
@@ -924,6 +939,9 @@ export class AudioEngine {
         this.callbacks.onError(friendlyMsg);
         return false;
       }
+
+      await this.ensureAudioContext();
+      if (!this.ctx) return false;
 
       const wasPlaying = this.isPlaying;
       this.recordingTrackId = trackId;
