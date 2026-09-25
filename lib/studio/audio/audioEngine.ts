@@ -55,6 +55,8 @@ export class AudioEngine {
       delay: DelayNode;
       delayFeedback: GainNode;
       delayMix: GainNode;
+      delayFilterHp: BiquadFilterNode;
+      delayFilterLp: BiquadFilterNode;
       reverbConvolver: ConvolverNode;
       reverbMix: GainNode;
       trackGain: GainNode;
@@ -388,9 +390,25 @@ export class AudioEngine {
         const delay = this.ctx.createDelay(4.0);
         const delayFeedback = this.ctx.createGain();
         const delayMix = this.ctx.createGain();
-        delay.connect(delayFeedback);
+
+        // Analog Tape Vocal Delay Filtering (removes harsh sibilants and low-end mud from echoes)
+        const delayFilterHp = this.ctx.createBiquadFilter();
+        delayFilterHp.type = 'highpass';
+        delayFilterHp.frequency.setValueAtTime(320, t);
+        delayFilterHp.Q.setValueAtTime(0.707, t);
+
+        const delayFilterLp = this.ctx.createBiquadFilter();
+        delayFilterLp.type = 'lowpass';
+        delayFilterLp.frequency.setValueAtTime(3800, t);
+        delayFilterLp.Q.setValueAtTime(0.707, t);
+
+        // Feedback loop: delay -> HP (320Hz) -> LP (3800Hz) -> feedback gain -> delay
+        delay.connect(delayFilterHp);
+        delayFilterHp.connect(delayFilterLp);
+        delayFilterLp.connect(delayFeedback);
         delayFeedback.connect(delay);
-        delay.connect(delayMix);
+        // Wet send to mix
+        delayFilterLp.connect(delayMix);
 
         const reverbConvolver = this.ctx.createConvolver();
         const initialImpulse = this.getReverbImpulse(track.fx.reverb?.preset || 'ROOM');
@@ -428,6 +446,8 @@ export class AudioEngine {
           delay,
           delayFeedback,
           delayMix,
+          delayFilterHp,
+          delayFilterLp,
           reverbConvolver,
           reverbMix,
           trackGain,
@@ -468,12 +488,14 @@ export class AudioEngine {
             delayTimeSec = secPerBeat * 4;
             break;
         }
-        nodes.delay.delayTime.setTargetAtTime(delayTimeSec, t, 0.05);
-        const safeFeedback = Math.max(0, Math.min(0.85, track.fx.delay.feedback));
-        nodes.delayFeedback.gain.setTargetAtTime(safeFeedback, t, 0.05);
-        nodes.delayMix.gain.setTargetAtTime(Math.max(0, Math.min(1, track.fx.delay.mix)), t, 0.05);
+        nodes.delay.delayTime.setTargetAtTime(delayTimeSec, t, 0.08);
+        const safeFeedback = Math.max(0, Math.min(0.75, track.fx.delay.feedback));
+        nodes.delayFeedback.gain.setTargetAtTime(safeFeedback, t, 0.04);
+        nodes.delayMix.gain.setTargetAtTime(Math.max(0, Math.min(1, track.fx.delay.mix)), t, 0.04);
       } else {
-        nodes.delayMix.gain.setTargetAtTime(0, t, 0.05);
+        // Pop-free smooth fade to 0
+        nodes.delayMix.gain.setTargetAtTime(0, t, 0.03);
+        nodes.delayFeedback.gain.setTargetAtTime(0, t, 0.03);
       }
 
       const impulse = this.getReverbImpulse(track.fx.reverb.preset);
@@ -1690,14 +1712,26 @@ export class AudioEngine {
         const delay = offlineCtx.createDelay(4.0);
         delay.delayTime.setValueAtTime(delayTime, 0);
         const delayFeedback = offlineCtx.createGain();
-        delayFeedback.gain.setValueAtTime(track.fx.delay.feedback, 0);
+        delayFeedback.gain.setValueAtTime(Math.min(0.75, track.fx.delay.feedback), 0);
         const delayMix = offlineCtx.createGain();
         delayMix.gain.setValueAtTime(track.fx.delay.mix, 0);
 
+        const delayFilterHp = offlineCtx.createBiquadFilter();
+        delayFilterHp.type = 'highpass';
+        delayFilterHp.frequency.setValueAtTime(320, 0);
+        delayFilterHp.Q.setValueAtTime(0.707, 0);
+
+        const delayFilterLp = offlineCtx.createBiquadFilter();
+        delayFilterLp.type = 'lowpass';
+        delayFilterLp.frequency.setValueAtTime(3800, 0);
+        delayFilterLp.Q.setValueAtTime(0.707, 0);
+
         saturation.connect(delay);
-        delay.connect(delayFeedback);
+        delay.connect(delayFilterHp);
+        delayFilterHp.connect(delayFilterLp);
+        delayFilterLp.connect(delayFeedback);
         delayFeedback.connect(delay);
-        delay.connect(delayMix);
+        delayFilterLp.connect(delayMix);
         delayMix.connect(trackGain);
       }
 
@@ -1903,14 +1937,26 @@ export class AudioEngine {
         const delay = offlineCtx.createDelay(4.0);
         delay.delayTime.setValueAtTime(delayTime, 0);
         const delayFeedback = offlineCtx.createGain();
-        delayFeedback.gain.setValueAtTime(track.fx.delay.feedback, 0);
+        delayFeedback.gain.setValueAtTime(Math.min(0.75, track.fx.delay.feedback), 0);
         const delayMix = offlineCtx.createGain();
         delayMix.gain.setValueAtTime(track.fx.delay.mix, 0);
 
+        const delayFilterHp = offlineCtx.createBiquadFilter();
+        delayFilterHp.type = 'highpass';
+        delayFilterHp.frequency.setValueAtTime(320, 0);
+        delayFilterHp.Q.setValueAtTime(0.707, 0);
+
+        const delayFilterLp = offlineCtx.createBiquadFilter();
+        delayFilterLp.type = 'lowpass';
+        delayFilterLp.frequency.setValueAtTime(3800, 0);
+        delayFilterLp.Q.setValueAtTime(0.707, 0);
+
         saturation.connect(delay);
-        delay.connect(delayFeedback);
+        delay.connect(delayFilterHp);
+        delayFilterHp.connect(delayFilterLp);
+        delayFilterLp.connect(delayFeedback);
         delayFeedback.connect(delay);
-        delay.connect(delayMix);
+        delayFilterLp.connect(delayMix);
         delayMix.connect(trackGain);
       }
 

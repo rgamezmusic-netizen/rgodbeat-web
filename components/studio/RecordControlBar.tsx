@@ -124,7 +124,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
             </span>
             {hasTake && (
               <span className="text-[10px] font-mono text-emerald-400 font-medium">
-                (Tiene toma)
+                (Con toma)
               </span>
             )}
           </div>
@@ -267,14 +267,11 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
         ) : (
           <button
             onClick={() => onStartRecord(selectedTrack.id)}
-            className={`w-full py-3.5 px-4 rounded-xl font-mono text-sm font-bold flex items-center justify-center gap-2.5 active:scale-98 transition-all shadow-lg ${
-              hasTake
-                ? 'bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white'
-                : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
-            }`}
+            className="w-full py-3.5 px-4 rounded-xl font-mono text-sm font-bold flex items-center justify-center gap-2.5 active:scale-98 transition-all shadow-lg bg-red-600 hover:bg-red-500 text-white shadow-red-600/30"
+            title="Grabar en esta pista (Sobrescritura Punch-In: solo reemplaza el tramo que cantes, manteniendo el resto de la pista intacto)"
           >
-            <Mic className="w-5 h-5" />
-            <span>{hasTake ? `REHACER TOMA (${selectedTrack.name.toUpperCase()})` : `GRABAR VOZ (${selectedTrack.name.toUpperCase()})`}</span>
+            <Mic className="w-5 h-5 fill-current" />
+            <span>GRABAR VOZ ({selectedTrack.name.toUpperCase()})</span>
           </button>
         )}
 

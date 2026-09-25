@@ -48,6 +48,7 @@ import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
 import { InstallAppModal } from './InstallAppModal';
 import { StartupProjectModal } from './StartupProjectModal';
+import { SignatureCollageBackdrop } from './SignatureCollageBackdrop';
 import {
   saveUserChannelFXTemplate,
   applyUserFXTemplatesToTracks,
@@ -2128,7 +2129,9 @@ export default function App() {
     : 1;
 
   return (
-    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#09090b] text-white flex flex-col justify-between selection:bg-amber-500/30 selection:text-amber-200">
+    <div className={`w-full max-w-[100vw] bg-[#09090b] text-white flex flex-col selection:bg-amber-500/30 selection:text-amber-200 ${
+      activeView === 'editor' ? 'h-screen max-h-screen overflow-hidden' : 'min-h-screen overflow-x-hidden justify-between'
+    }`}>
       {/* 1-Bar Count In Metronome Visual Overlay */}
       <CountInOverlay beatNumber={countInBeat} />
 
@@ -2175,7 +2178,7 @@ export default function App() {
         !['admin@rgodbeat.com', 'rgamezmusic@gmail.com', 'rgodbeat@gmail.com'].includes(
           accessStatus.email?.toLowerCase() || ''
         ) && (
-          <div className="bg-gradient-to-r from-red-950/95 via-amber-950/90 to-red-950/95 border-b border-amber-500/40 px-3 sm:px-6 py-2.5 flex items-center justify-between text-xs text-amber-100 z-20 shadow-lg">
+          <div className="bg-gradient-to-r from-red-950/95 via-amber-950/90 to-red-950/95 border-b border-amber-500/40 px-3 sm:px-6 py-2.5 flex items-center justify-between text-xs text-amber-100 z-20 shadow-lg shrink-0">
             <div className="flex items-center gap-2.5 min-w-0">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
               <span className="truncate sm:whitespace-normal font-sans">
@@ -2209,7 +2212,7 @@ export default function App() {
 
       {/* Cloud Project Available Notification Banner (if saved project exists and workspace is fresh) */}
       {cloudProjectInfo?.hasProject && !hasRecordings && (
-        <div className="bg-emerald-950/40 border-b border-emerald-500/30 px-3 sm:px-6 py-2 flex items-center justify-between text-xs text-emerald-200 z-20">
+        <div className="bg-emerald-950/40 border-b border-emerald-500/30 px-3 sm:px-6 py-2 flex items-center justify-between text-xs text-emerald-200 z-20 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <Cloud className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="truncate">
@@ -2229,7 +2232,7 @@ export default function App() {
       )}
 
       {/* View Switcher Pill Bar */}
-      <div className="w-full max-w-md mx-auto px-4 pt-3 flex items-center justify-center gap-2">
+      <div className="w-full max-w-md mx-auto px-4 pt-2.5 shrink-0 flex items-center justify-center gap-2 z-20">
         <button
           onClick={() => setActiveView('studio')}
           className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all ${
@@ -2259,7 +2262,9 @@ export default function App() {
       </div>
 
       {/* Main Studio Viewport Canvas */}
-      <main className="flex-1 flex flex-col items-center w-full mx-auto pb-8 pt-1">
+      <main className={`flex-1 min-h-0 flex flex-col items-center w-full mx-auto ${
+        activeView === 'editor' ? 'overflow-hidden px-1 sm:px-4 pb-1 pt-1' : 'pb-8 pt-1'
+      }`}>
         {activeView === 'studio' ? (
           <div className="w-full max-w-xl flex flex-col items-center">
             {/* Physical Beat Dock Shelf - Tangible visual anchor for the user's beat */}
@@ -2375,34 +2380,41 @@ export default function App() {
           </div>
         ) : (
           /* Dedicated Editing Workspace (Timeline with Beat + Vocal Tracks, moveable clips, micro-latency nudge, 2 leads) */
-          <div className="w-full max-w-4xl flex flex-col items-center">
-            {/* Direct Quick Record Bar also available in Editor Mode */}
-            <RecordControlBar
-              selectedTrack={selectedTrack}
-              tracks={tracks}
-              onSelectTrack={handleSelectTrack}
-              isRecording={isRecording}
-              recordingTrackId={activeRecordingTrackId}
-              countInEnabled={countInEnabled}
-              onToggleCountIn={() => setCountInEnabled(!countInEnabled)}
-              bluetoothSyncEnabled={bluetoothSyncEnabled}
-              bluetoothOffsetMs={bluetoothOffsetMs}
-              onToggleBluetoothSync={handleToggleBluetoothSync}
-              onStartRecord={handleStartRecord}
-              onStopRecord={handleStopRecord}
-              onGenerateTestTake={handleGenerateTestTake}
-              getMicLevel={() => (engine ? engine.getMicInputLevel() : 0)}
-              getMicStatus={() => (engine ? engine.getMicInputStatus() : { level: 0, isSaturated: false, gainReductionDb: 0 })}
-              canUndo={undoStack.length > 0}
-              canRedo={redoStack.length > 0}
-              onUndo={handleUndo}
-              onRedo={handleRedo}
-              undoCount={undoStack.length}
-              redoCount={redoStack.length}
-            />
+          <div className="w-full max-w-4xl flex flex-col items-center flex-1 min-h-0 relative overflow-hidden">
+            {/* Signature collage watermark pattern */}
+            <SignatureCollageBackdrop />
 
-            <TimelineWorkspace
-              beat={currentBeat}
+            {/* Direct Quick Record Bar in Editor Mode - Fixed at the top */}
+            <div className="w-full shrink-0 relative z-10 px-1 sm:px-0">
+              <RecordControlBar
+                selectedTrack={selectedTrack}
+                tracks={tracks}
+                onSelectTrack={handleSelectTrack}
+                isRecording={isRecording}
+                recordingTrackId={activeRecordingTrackId}
+                countInEnabled={countInEnabled}
+                onToggleCountIn={() => setCountInEnabled(!countInEnabled)}
+                bluetoothSyncEnabled={bluetoothSyncEnabled}
+                bluetoothOffsetMs={bluetoothOffsetMs}
+                onToggleBluetoothSync={handleToggleBluetoothSync}
+                onStartRecord={handleStartRecord}
+                onStopRecord={handleStopRecord}
+                onGenerateTestTake={handleGenerateTestTake}
+                getMicLevel={() => (engine ? engine.getMicInputLevel() : 0)}
+                getMicStatus={() => (engine ? engine.getMicInputStatus() : { level: 0, isSaturated: false, gainReductionDb: 0 })}
+                canUndo={undoStack.length > 0}
+                canRedo={redoStack.length > 0}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                undoCount={undoStack.length}
+                redoCount={redoStack.length}
+              />
+            </div>
+
+            {/* Multitrack Workspace: Action buttons fixed above, and tracks independently scrolling below */}
+            <div className="w-full flex-1 min-h-0 flex flex-col relative z-10">
+              <TimelineWorkspace
+                beat={currentBeat}
               tracks={tracks}
               currentTime={currentTime}
               isPlaying={isPlaying}
@@ -2443,6 +2455,7 @@ export default function App() {
               onSplitTake={handleSplitTake}
               onToggleLockTake={handleToggleLockTake}
             />
+            </div>
           </div>
         )}
       </main>

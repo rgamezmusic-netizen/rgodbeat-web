@@ -408,11 +408,16 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-2 sm:px-4 py-2 text-white">
-      {/* Workspace Header & Action Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-zinc-900/90 rounded-2xl border border-zinc-800 shadow-xl mb-3 backdrop-blur-md">
-        <div className="flex items-center gap-2.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+    <div className="w-full max-w-4xl mx-auto px-1 sm:px-4 py-1 text-white flex flex-col flex-1 min-h-0">
+      {/* Workspace Header & Action Bar - Anchored at the top */}
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-2.5 sm:p-3 bg-zinc-900/95 rounded-2xl border border-zinc-800 shadow-xl mb-2 backdrop-blur-md sticky top-0 z-20">
+        <div className="flex items-center gap-2">
+          <img
+            src="/images/rgodbeat-logo.png"
+            alt="RGodbeat"
+            className="h-6 sm:h-7 w-auto object-contain filter brightness-125 drop-shadow-[0_0_8px_rgba(251,191,36,0.35)] shrink-0"
+          />
+          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
           <div>
             <h3 className="text-xs sm:text-sm font-bold font-display uppercase tracking-wider text-zinc-100 flex items-center gap-1.5">
               <span>ESPACIO DE EDICIÓN MULTIPISTA</span>
@@ -420,8 +425,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                 {tracks.length} PISTAS
               </span>
             </h3>
-            <p className="text-[11px] font-mono text-zinc-400">
-              Haz clic o arrastra en la regla para mover el cursor. Arrastra las tomas o usa los botones de ajuste fino.
+            <p className="text-[10px] sm:text-[11px] font-mono text-zinc-400">
+              Arrastra las tomas o usa los controles directos. Pista fijada arriba para máxima comodidad.
             </p>
           </div>
         </div>
@@ -603,11 +608,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* Main Multitrack Canvas Window */}
+      {/* Main Multitrack Canvas Window - Only this section scrolls tracks */}
       <div
         ref={containerRef}
-        className="w-full bg-[#0d0d12] rounded-2xl border border-zinc-800/90 shadow-2xl overflow-x-auto relative select-none"
-        style={{ minHeight: '340px' }}
+        className="w-full flex-1 min-h-[300px] max-h-[58vh] sm:max-h-[66vh] bg-[#0d0d12] rounded-2xl border border-zinc-800/90 shadow-2xl overflow-y-auto overflow-x-auto relative select-none scroll-smooth"
       >
         <div
           ref={timelineContentRef}
@@ -959,61 +963,25 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                     </button>
                   </div>
 
-                  {/* Row 2: Arm [REC], Mute [M], Solo [S] */}
-                  <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
-                    {/* Direct 1-Click Record button on any channel in Edition Mode */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isThisRecording) {
-                          if (onStopRecord) onStopRecord();
-                        } else {
-                          onSelectTrack(track.id);
-                          setSelectedClipTrackId(track.id);
-                          if (onStartRecord) {
-                            onStartRecord(track.id);
-                          }
-                        }
-                      }}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                        isThisRecording
-                          ? 'bg-red-600 text-white animate-pulse shadow-sm shadow-red-600/50 ring-1 ring-white/50'
-                          : isArmed
-                          ? 'bg-red-600 hover:bg-red-500 text-white shadow-sm shadow-red-600/40 ring-1 ring-red-400'
-                          : 'bg-zinc-800 text-zinc-400 hover:text-white hover:bg-red-600/80 border border-zinc-700/60'
-                      }`}
-                      title={
-                        isThisRecording
-                          ? `Grabando en ${track.name} (clic para detener)`
-                          : `Grabar inmediatamente en ${track.name}`
-                      }
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full ${isThisRecording || isArmed ? 'bg-white' : 'bg-red-500'}`} />
-                      <span>{isThisRecording ? 'STOP' : 'REC'}</span>
-                    </button>
-
+                  {/* Row 2: Mute [MUTE] */}
+                  <div className="flex items-center justify-between gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => onToggleMute(track.id)}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
+                      className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
                         track.isMuted
-                          ? 'bg-red-500 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                          ? 'bg-red-500 text-white shadow-sm'
+                          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
                       }`}
-                      title="Silenciar (Mute)"
+                      title={track.isMuted ? 'Activar audio (Desmutear)' : 'Silenciar pista (Mute)'}
                     >
-                      M
+                      {track.isMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
+                      <span>{track.isMuted ? 'MUTED' : 'MUTE'}</span>
                     </button>
-                    <button
-                      onClick={() => onToggleSolo(track.id)}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
-                        track.isSolo
-                          ? 'bg-amber-500 text-black font-extrabold'
-                          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                      }`}
-                      title="Solo"
-                    >
-                      S
-                    </button>
+                    {isArmed && (
+                      <span className="text-[8px] font-mono font-bold text-amber-400/90 px-1 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">
+                        ACTIVA
+                      </span>
+                    )}
                   </div>
 
                   {/* Row 3: Track Volume Slider */}
