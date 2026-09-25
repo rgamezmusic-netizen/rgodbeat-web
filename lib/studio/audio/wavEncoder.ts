@@ -1,3 +1,5 @@
+import { VocalClip } from '../types/audio';
+
 /**
  * Encodes an AudioBuffer into standard PCM WAV format.
  * Supports 24-bit (studio standard) and 16-bit PCM.
@@ -110,4 +112,122 @@ export function extractWaveformPeaks(buffer: AudioBuffer, points: number = 60): 
   // Normalize to 0.1 - 1.0
   const maxPeak = Math.max(...peaks, 0.01);
   return peaks.map((p) => Math.max(0.12, p / maxPeak));
+}
+
+/**
+ * Accurately slices an AudioBuffer from startSec for durationSec with zero-crossing micro-fades.
+ */
+export function sliceAudioBuffer(
+  audioCtx: AudioContext | BaseAudioContext,
+  source: AudioBuffer,
+  startSec: number,
+  durationSec: number
+): AudioBuffer | null {
+  if (!source || durationSec <= 0.05) return null;
+  const sampleRate = source.sampleRate;
+  const numChannels = source.numberOfChannels;
+  const startSample = Math.max(0, Math.floor(startSec * sampleRate));
+  const numSamples = Math.min(source.length - startSample, Math.floor(durationSec * sampleRate));
+  if (numSamples <= 0) return null;
+
+  const sliced = audioCtx.createBuffer(numChannels, numSamples, sampleRate);
+  for (let ch = 0; ch < numChannels; ch++) {
+    sliced.getChannelData(ch).set(
+      source.getChannelData(ch).subarray(startSample, startSample + numSamples)
+    );
+  }
+
+  // Apply 2ms micro-fade in & out to eliminate zero-crossing pops
+  const fadeLen = Math.min(Math.floor(sampleRate * 0.002), Math.floor(numSamples / 4));
+  if (fadeLen > 0) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const data = sliced.getChannelData(ch);
+      for (let i = 0; i < fadeLen; i++) {
+        data[i] *= (i / fadeLen);
+        data[numSamples - 1 - i] *= (i / fadeLen);
+      }
+    }
+  }
+
+  return sliced;
+}
+
+/**
+ * Non-destructive DAW punch-in overwrite on vocal clips:
+ * 1. Preserves completely non-overlapping takes (e.g. verse vs chorus on the same track).
+ * 2. If a new take partially overlaps an older take, only the overwritten segment is replaced;
+ *    the non-overwritten portions (before or after) continue seamlessly.
+ * 3. Returns the clean, sorted clip timeline for the track.
+ */
+export function punchInClips(
+  audioCtx: AudioContext | BaseAudioContext,
+  existingClips: VocalClip[],
+  newClip: VocalClip
+): VocalClip[] {
+  const newStart = newClip.startBeatOffset;
+  const newEnd = newStart + newClip.duration;
+  const survivingClips: VocalClip[] = [];
+
+  for (const c of existingClips) {
+    if (!c.buffer) continue;
+    const cStart = c.startBeatOffset;
+    const cEnd = c.startBeatOffset + c.duration;
+
+    // Case 1: No overlap with [newStart, newEnd]
+    if (cEnd <= newStart + 0.03 || cStart >= newEnd - 0.03) {
+      survivingClips.push(c);
+      continue;
+    }
+
+    // Case 2: New take completely covers this clip -> clip is overwritten entirely
+    if (newStart <= cStart + 0.03 && newEnd >= cEnd - 0.03) {
+      continue;
+    }
+
+    // Case 3: Overlap is partial! Keep the non-overwritten portions.
+    // Left non-overwritten portion:
+    if (cStart < newStart - 0.05) {
+      const leftDuration = newStart - cStart;
+      const leftBuffer = sliceAudioBuffer(audioCtx, c.buffer, 0, leftDuration);
+      if (leftBuffer && leftBuffer.duration > 0.05) {
+        survivingClips.push({
+          ...c,
+          id: `${c.id}-p1-${Date.now()}`,
+          buffer: leftBuffer,
+          tunedBuffer: null,
+          startBeatOffset: cStart,
+          duration: leftBuffer.duration,
+          waveformSample: extractWaveformPeaks(leftBuffer, 36),
+          isLocked: true,
+        });
+      }
+    }
+
+    // Right non-overwritten portion:
+    if (cEnd > newEnd + 0.05) {
+      const offsetInClip = newEnd - cStart;
+      const rightDuration = cEnd - newEnd;
+      const rightBuffer = sliceAudioBuffer(audioCtx, c.buffer, offsetInClip, rightDuration);
+      if (rightBuffer && rightBuffer.duration > 0.05) {
+        survivingClips.push({
+          ...c,
+          id: `${c.id}-p2-${Date.now()}`,
+          buffer: rightBuffer,
+          tunedBuffer: null,
+          startBeatOffset: newEnd,
+          duration: rightBuffer.duration,
+          waveformSample: extractWaveformPeaks(rightBuffer, 36),
+          isLocked: true,
+        });
+      }
+    }
+  }
+
+  // Insert the new take
+  survivingClips.push(newClip);
+
+  // Sort by startBeatOffset
+  survivingClips.sort((a, b) => a.startBeatOffset - b.startBeatOffset);
+
+  return survivingClips;
 }

@@ -20,6 +20,8 @@ interface RecordControlBarProps {
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  tracks?: VocalTrack[];
+  onSelectTrack?: (trackId: VocalTrackId) => void;
   undoCount?: number;
   redoCount?: number;
 }
@@ -41,6 +43,8 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
   canRedo = false,
   onUndo,
   onRedo,
+  tracks,
+  onSelectTrack,
   undoCount = 0,
   redoCount = 0,
 }) => {
@@ -163,6 +167,41 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Track Switcher Pills: Allows instant 1-tap switching between channels, even during active recording */}
+        {tracks && onSelectTrack && tracks.length > 1 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 mb-2.5 no-scrollbar scroll-smooth">
+            {tracks.map((t) => {
+              const isSelected = t.id === selectedTrack.id;
+              const isRecThis = isRecording && _recordingTrackId === t.id;
+              const hasClips = Boolean(t.buffer || (t.clips && t.clips.length > 0));
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onSelectTrack(t.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold transition-all shrink-0 cursor-pointer active:scale-95 ${
+                    isRecThis
+                      ? 'bg-red-500 text-white animate-pulse shadow-md shadow-red-500/40 ring-1 ring-red-400'
+                      : isSelected
+                      ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 ring-1 ring-amber-400'
+                      : 'bg-zinc-800/90 text-zinc-300 hover:text-white hover:bg-zinc-750 border border-zinc-750'
+                  }`}
+                  title={isRecording ? `Cambiar grabación a ${t.name}` : `Seleccionar ${t.name}`}
+                >
+                  {isRecThis ? (
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping shrink-0" />
+                  ) : hasClips ? (
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0" />
+                  )}
+                  <span>{t.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Real-time Recording Timer Banner */}
         {isRecording && (

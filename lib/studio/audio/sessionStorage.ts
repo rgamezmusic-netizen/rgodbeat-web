@@ -55,6 +55,7 @@ export interface StoredStudioSession {
   beatVolume?: number;
   loopSettings?: LoopSettings;
   currentTime?: number;
+  activeView?: 'studio' | 'editor';
   tracks: StoredTrackData[];
 }
 
@@ -101,7 +102,8 @@ export async function saveStudioSession(
   beat?: BeatData | string | null,
   loopSettings?: LoopSettings,
   currentTime?: number,
-  beatVolume?: number
+  beatVolume?: number,
+  activeView?: 'studio' | 'editor'
 ): Promise<boolean> {
   try {
     const db = await getDB();
@@ -218,6 +220,16 @@ export async function saveStudioSession(
       });
     }
 
+    const incomingHasClips = storedTracks.some((t) => t.clips && t.clips.length > 0);
+    const existingHasClips = Boolean(existingSession?.tracks && existingSession.tracks.some((t) => t.clips && t.clips.length > 0));
+
+    // CRITICAL PROTECTION: If incoming tracks have no recorded takes (e.g. initial empty state on mount),
+    // but the existing session in storage already has recorded vocal takes, PRESERVE THEM!
+    // Never allow an empty state to silently destroy the user's recorded voices.
+    const finalTracks = (!incomingHasClips && existingHasClips && existingSession?.tracks)
+      ? existingSession.tracks
+      : storedTracks;
+
     const sessionPayload: StoredStudioSession = {
       id: 'latest_active_session',
       timestamp: Date.now(),
@@ -226,7 +238,8 @@ export async function saveStudioSession(
       beatVolume: beatVolume !== undefined ? beatVolume : existingSession?.beatVolume ?? 1.0,
       loopSettings: loopSettings || existingSession?.loopSettings,
       currentTime: currentTime || 0,
-      tracks: storedTracks,
+      activeView: activeView || existingSession?.activeView || 'studio',
+      tracks: finalTracks,
     };
 
     return new Promise((resolve) => {
@@ -302,6 +315,7 @@ export async function saveLastProjectBeat(
       beatVolume: beatVolume !== undefined ? beatVolume : existingSession?.beatVolume ?? 1.0,
       loopSettings: existingSession?.loopSettings,
       currentTime: existingSession?.currentTime || 0,
+      activeView: existingSession?.activeView || 'studio',
       tracks: existingSession?.tracks || [],
     };
 
@@ -331,6 +345,7 @@ export async function restoreLastStudioSession(
   beatVolume?: number;
   loopSettings?: LoopSettings;
   currentTime?: number;
+  activeView?: 'studio' | 'editor';
   timestamp: number;
 } | null> {
   try {
@@ -426,8 +441,8 @@ export async function restoreLastStudioSession(
           isMuted: Boolean(st.isMuted),
           isSolo: Boolean(st.isSolo),
           fx: st.fx,
-          startBeatOffset: st.startBeatOffset || 0,
-          duration: st.duration || 0,
+          startBeatOffset: st.startBeatOffset || (restoredClips[0]?.startBeatOffset ?? 0),
+          duration: st.duration || (restoredClips.length > 0 ? Math.max(...restoredClips.map((c) => c.startBeatOffset + c.duration)) : 0),
           buffer: latestBuffer,
           waveformSample: latestWaveform,
           tunedBuffer: null,
@@ -443,6 +458,7 @@ export async function restoreLastStudioSession(
       beatVolume: session.beatVolume,
       loopSettings: session.loopSettings,
       currentTime: session.currentTime,
+      activeView: session.activeView,
       timestamp: session.timestamp,
     };
   } catch (err) {

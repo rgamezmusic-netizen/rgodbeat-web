@@ -71,10 +71,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [showMobileProjectMenu, setShowMobileProjectMenu] = useState(false);
 
   return (
-    <header
-      style={{ paddingTop: 'max(14px, calc(env(safe-area-inset-top, 0px) + 10px))' }}
-      className="sticky top-0 z-30 flex items-center justify-between w-full max-w-full overflow-hidden px-2 sm:px-6 pb-2.5 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80 gap-1 sm:gap-4 box-border"
-    >
+    <>
+      <header
+        style={{ paddingTop: 'max(14px, calc(env(safe-area-inset-top, 0px) + 10px))' }}
+        className="sticky top-0 z-30 flex items-center justify-between w-full max-w-full overflow-hidden px-2 sm:px-6 pb-2.5 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80 gap-1 sm:gap-4 box-border"
+      >
       {/* Zone 1: Wordmark & Beat status badge */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
         <a
@@ -361,155 +362,156 @@ export const TopBar: React.FC<TopBarProps> = ({
           <span className="text-[11px] sm:text-xs">{isExporting ? 'Exportando...' : 'Exportar'}</span>
         </button>
       </div>
+    </header>
 
-      {/* Mobile Project Menu Modal / Drawer */}
-      {showMobileProjectMenu && (
+    {/* Mobile Project Menu Modal / Drawer - Placed outside sticky/overflow-hidden header */}
+    {showMobileProjectMenu && (
+      <div
+        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+        onClick={() => setShowMobileProjectMenu(false)}
+      >
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
-          onClick={() => setShowMobileProjectMenu(false)}
+          className="w-full sm:max-w-md bg-zinc-950 border border-zinc-800 rounded-t-2xl sm:rounded-2xl p-4 shadow-2xl space-y-3"
+          onClick={(e) => e.stopPropagation()}
         >
-          <div
-            className="w-full sm:max-w-md bg-zinc-950 border border-zinc-800 rounded-t-2xl sm:rounded-2xl p-4 shadow-2xl space-y-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
-              <div className="flex items-center gap-2">
-                <FolderKanban className="w-4 h-4 text-amber-400" />
-                <h3 className="text-xs font-mono font-bold text-zinc-200 uppercase tracking-wider">
-                  Gestión del Proyecto
-                </h3>
-              </div>
+          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
+            <div className="flex items-center gap-2">
+              <FolderKanban className="w-4 h-4 text-amber-400" />
+              <h3 className="text-xs font-mono font-bold text-zinc-200 uppercase tracking-wider">
+                Gestión del Proyecto
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowMobileProjectMenu(false)}
+              className="p-1 rounded-lg hover:bg-zinc-900 text-zinc-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-2 max-h-[70vh] overflow-y-auto">
+            {onNewProject && (
               <button
                 type="button"
-                onClick={() => setShowMobileProjectMenu(false)}
-                className="p-1 rounded-lg hover:bg-zinc-900 text-zinc-400 hover:text-white"
+                onClick={() => {
+                  setShowMobileProjectMenu(false);
+                  onNewProject();
+                }}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 text-left transition-all active:scale-98"
               >
-                <X className="w-4 h-4" />
+                <div className="p-2 rounded-lg bg-zinc-800 text-zinc-300">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-bold text-zinc-200">Nuevo Proyecto</div>
+                  <div className="text-[10px] text-zinc-400">Limpiar tomas y empezar una sesión nueva</div>
+                </div>
               </button>
-            </div>
+            )}
 
-            <div className="space-y-2 max-h-[70vh] overflow-y-auto">
-              {onNewProject && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMobileProjectMenu(false);
-                    onNewProject();
-                  }}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 text-left transition-all active:scale-98"
-                >
-                  <div className="p-2 rounded-lg bg-zinc-800 text-zinc-300">
-                    <Plus className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-mono font-bold text-zinc-200">Nuevo Proyecto</div>
-                    <div className="text-[10px] text-zinc-400">Limpiar tomas y empezar una sesión nueva</div>
-                  </div>
-                </button>
-              )}
+            {onSaveCloudProject && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileProjectMenu(false);
+                  onSaveCloudProject();
+                }}
+                disabled={isSavingCloud}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-amber-500/30 text-left transition-all active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-300">
+                  {isSavingCloud ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-bold text-amber-300">Guardar en la Nube</div>
+                  <div className="text-[10px] text-zinc-400">Guardar beat + voces + efectos en tu cuenta</div>
+                </div>
+              </button>
+            )}
 
-              {onSaveCloudProject && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMobileProjectMenu(false);
-                    onSaveCloudProject();
-                  }}
-                  disabled={isSavingCloud}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-amber-500/30 text-left transition-all active:scale-98"
-                >
-                  <div className="p-2 rounded-lg bg-amber-500/20 text-amber-300">
-                    {isSavingCloud ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
-                  </div>
-                  <div>
-                    <div className="text-xs font-mono font-bold text-amber-300">Guardar en la Nube</div>
-                    <div className="text-[10px] text-zinc-400">Guardar beat + voces + efectos en tu cuenta</div>
-                  </div>
-                </button>
-              )}
+            {hasCloudProject && onLoadCloudProject && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileProjectMenu(false);
+                  onLoadCloudProject();
+                }}
+                disabled={isLoadingCloud}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-emerald-500/30 text-left transition-all active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+                  {isLoadingCloud ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-bold text-emerald-400">Cargar desde la Nube</div>
+                  <div className="text-[10px] text-zinc-400">Restaurar proyecto guardado en tu cuenta</div>
+                </div>
+              </button>
+            )}
 
-              {hasCloudProject && onLoadCloudProject && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMobileProjectMenu(false);
-                    onLoadCloudProject();
-                  }}
-                  disabled={isLoadingCloud}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-emerald-500/30 text-left transition-all active:scale-98"
-                >
-                  <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
-                    {isLoadingCloud ? <Loader2 className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
-                  </div>
-                  <div>
-                    <div className="text-xs font-mono font-bold text-emerald-400">Cargar desde la Nube</div>
-                    <div className="text-[10px] text-zinc-400">Restaurar proyecto guardado en tu cuenta</div>
-                  </div>
-                </button>
-              )}
+            {onSaveDeviceProject && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileProjectMenu(false);
+                  onSaveDeviceProject();
+                }}
+                disabled={isSavingDevice}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 text-left transition-all active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-zinc-800 text-amber-400">
+                  {isSavingDevice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-bold text-zinc-200">Guardar en este Móvil</div>
+                  <div className="text-[10px] text-zinc-400">Descargar archivo .rgodbeat al almacenamiento</div>
+                </div>
+              </button>
+            )}
 
-              {onSaveDeviceProject && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMobileProjectMenu(false);
-                    onSaveDeviceProject();
-                  }}
-                  disabled={isSavingDevice}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 text-left transition-all active:scale-98"
-                >
-                  <div className="p-2 rounded-lg bg-zinc-800 text-amber-400">
-                    {isSavingDevice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  </div>
-                  <div>
-                    <div className="text-xs font-mono font-bold text-zinc-200">Guardar en este Móvil</div>
-                    <div className="text-[10px] text-zinc-400">Descargar archivo .rgodbeat al almacenamiento</div>
-                  </div>
-                </button>
-              )}
+            {onLoadDeviceProject && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileProjectMenu(false);
+                  deviceFileInputRef.current?.click();
+                }}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 text-left transition-all active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-purple-950/50 text-purple-400">
+                  <FolderOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-bold text-purple-300">Abrir desde Móvil (.rgodbeat)</div>
+                  <div className="text-[10px] text-zinc-400">Cargar archivo guardado en tu teléfono</div>
+                </div>
+              </button>
+            )}
 
-              {onLoadDeviceProject && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMobileProjectMenu(false);
-                    deviceFileInputRef.current?.click();
-                  }}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 text-left transition-all active:scale-98"
-                >
-                  <div className="p-2 rounded-lg bg-purple-950/50 text-purple-400">
-                    <FolderOpen className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-mono font-bold text-purple-300">Abrir desde Móvil (.rgodbeat)</div>
-                    <div className="text-[10px] text-zinc-400">Cargar archivo guardado en tu teléfono</div>
-                  </div>
-                </button>
-              )}
-
-              {onOpenInstallModal && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMobileProjectMenu(false);
-                    onOpenInstallModal();
-                  }}
-                  className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 text-left transition-all active:scale-98"
-                >
-                  <div className="p-2 rounded-lg bg-zinc-800 text-amber-400">
-                    <Smartphone className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-mono font-bold text-zinc-200">Instalar como App</div>
-                    <div className="text-[10px] text-zinc-400">Crear acceso directo en pantalla de inicio</div>
-                  </div>
-                </button>
-              )}
-            </div>
+            {onOpenInstallModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileProjectMenu(false);
+                  onOpenInstallModal();
+                }}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-850 border border-zinc-800 text-left transition-all active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-zinc-800 text-amber-400">
+                  <Smartphone className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-bold text-zinc-200">Instalar como App</div>
+                  <div className="text-[10px] text-zinc-400">Crear acceso directo en pantalla de inicio</div>
+                </div>
+              </button>
+            )}
           </div>
         </div>
-      )}
-    </header>
-  );
+      </div>
+    )}
+  </>
+);
 };
 

@@ -1144,6 +1144,62 @@ export class AudioEngine {
   }
 
   /**
+   * Seamlessly switches recording from the current active channel to a new channel
+   * WITHOUT stopping playback or interrupting the singer.
+   * Finalizes and saves the take on the previous track, then starts capturing to newTrackId.
+   */
+  public async switchRecordingTrack(
+    newTrackId: VocalTrackId,
+    vocalTracks: VocalTrack[]
+  ): Promise<boolean> {
+    if (!this.isRecording || !this.ctx || !this.recordingTrackId) {
+      return false;
+    }
+    if (this.recordingTrackId === newTrackId) {
+      return true;
+    }
+
+    const previousTrackId = this.recordingTrackId;
+    const previousChunks = [...this.recordedPCMChunks];
+    this.recordedPCMChunks = [];
+    this.mediaRecorderChunks = [];
+
+    // Switch active channel pointer
+    this.recordingTrackId = newTrackId;
+    this.recordingStartBeatTime = Math.max(
+      0,
+      this.currentPlaybackPosition + this.recordingLatencyCompensation
+    );
+    this.clearTrackSources(newTrackId);
+
+    // Finalize previous track take if it has enough audio (> 0.2s)
+    if (previousChunks.length > 0) {
+      let totalSamples = 0;
+      for (const chunk of previousChunks) {
+        totalSamples += chunk.length;
+      }
+      if (totalSamples > 0) {
+        const sampleRate = this.ctx.sampleRate;
+        const prevBuffer = this.ctx.createBuffer(1, totalSamples, sampleRate);
+        const channelData = prevBuffer.getChannelData(0);
+        let offset = 0;
+        for (const chunk of previousChunks) {
+          channelData.set(chunk, offset);
+          offset += chunk.length;
+        }
+
+        if (prevBuffer.duration >= 0.2) {
+          const waveform = extractWaveformPeaks(prevBuffer, 48);
+          // Commit previous take
+          this.callbacks.onRecordingFinished(previousTrackId, prevBuffer, waveform);
+        }
+      }
+    }
+
+    return true;
+  }
+
+  /**
    * Stops recording cleanly, decodes the audio, and saves the take to the vocal track.
    */
   public async stopRecording(): Promise<void> {
@@ -1384,6 +1440,10 @@ export class AudioEngine {
 
   public getIsRecording(): boolean {
     return this.isRecording;
+  }
+
+  public getRecordingTrackId(): VocalTrackId | null {
+    return this.recordingTrackId;
   }
 
   public getCurrentPlaybackPosition(): number {
