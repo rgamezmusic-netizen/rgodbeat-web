@@ -21,6 +21,8 @@ import {
   HardDrive,
   ShieldCheck,
   Repeat,
+  Square,
+  Mic,
 } from 'lucide-react';
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
@@ -75,6 +77,10 @@ interface TimelineWorkspaceProps {
   totalSavedBeatsCount?: number;
   loopSettings?: LoopSettings;
   onOpenLoopModal?: () => void;
+  isRecording?: boolean;
+  activeRecordingTrackId?: VocalTrackId | null;
+  onStartRecord?: (trackId: VocalTrackId) => void;
+  onStopRecord?: () => void;
 }
 
 export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
@@ -109,6 +115,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   totalSavedBeatsCount = 1,
   loopSettings,
   onOpenLoopModal,
+  isRecording = false,
+  activeRecordingTrackId = null,
+  onStartRecord,
+  onStopRecord,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
@@ -126,6 +136,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const bpm = beat?.bpm || 140;
   const secPerBeat = 60 / bpm;
   const secPerBar = secPerBeat * 4;
+
+  const selectedTrack = tracks.find((t) => t.id === selectedTrackId);
+  const selectedTrackName = selectedTrack ? selectedTrack.name : 'Pista';
 
   // Base pixels per second
   const basePixelsPerSec = 16 * zoomLevel;
@@ -388,6 +401,32 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             <span>{isPlaying ? 'PAUSA' : 'PLAY'}</span>
           </button>
 
+          {/* DAW Transport Record Button */}
+          {onStartRecord && (
+            <button
+              onClick={() => {
+                if (isRecording) {
+                  if (onStopRecord) onStopRecord();
+                } else {
+                  onStartRecord(selectedTrackId);
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-xs font-bold transition-all shadow-sm active:scale-95 select-none ${
+                isRecording
+                  ? 'bg-red-600 hover:bg-red-500 text-white animate-pulse shadow-red-600/50 ring-1 ring-white/50'
+                  : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
+              }`}
+              title={isRecording ? 'Detener grabación (clic o barra espaciadora)' : `Grabar en pista armada: ${selectedTrackName}`}
+            >
+              {isRecording ? (
+                <Square className="w-3.5 h-3.5 fill-current" />
+              ) : (
+                <span className="w-2.5 h-2.5 rounded-full bg-white shadow-inner" />
+              )}
+              <span>{isRecording ? 'DETENER' : `REC (${selectedTrackName.toUpperCase()})`}</span>
+            </button>
+          )}
+
           <div className="h-5 w-px bg-zinc-700 mx-1 hidden sm:block" />
 
           <button
@@ -565,6 +604,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             const clips = getTrackClips(track);
             const hasTakes = clips.length > 0;
             const isSelected = selectedClipTrackId === track.id;
+            const isArmed = selectedTrackId === track.id;
+            const isThisRecording = isRecording && activeRecordingTrackId === track.id;
 
             return (
               <div
@@ -576,8 +617,14 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   }
                   onSelectTrack(track.id);
                 }}
-                className={`flex items-stretch border-b border-zinc-850 h-20 transition-colors ${
-                  isSelected ? 'bg-zinc-900/60' : 'bg-transparent hover:bg-zinc-900/20'
+                className={`flex items-stretch border-b border-zinc-850 h-20 transition-all ${
+                  isThisRecording
+                    ? 'bg-red-950/30 border-red-500/80 shadow-[0_0_20px_rgba(239,68,68,0.25)] border-l-4 border-l-red-500'
+                    : isArmed
+                    ? 'bg-zinc-900/80 border-l-4 border-l-red-500 shadow-md ring-1 ring-red-500/20'
+                    : isSelected
+                    ? 'bg-zinc-900/60'
+                    : 'bg-transparent hover:bg-zinc-900/20'
                 }`}
               >
                 {/* Track Left Header (Controls: FX, Mute, Solo, Volume, Pan) */}
@@ -591,6 +638,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       <span className="text-xs font-semibold font-display text-zinc-100 truncate">
                         {track.name}
                       </span>
+                      {isArmed && (
+                        <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-red-500/20 text-red-300 font-bold border border-red-500/30">
+                          ARM
+                        </span>
+                      )}
                       {clips.length > 1 && (
                         <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
                           {clips.length}
@@ -620,8 +672,37 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                     </button>
                   </div>
 
-                  {/* Row 2: Mute, Solo, Volume */}
-                  <div className="flex items-center gap-1.5 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                  {/* Row 2: Arm [R], Mute [M], Solo [S], Volume */}
+                  <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                    {/* Arm / Record button like FL Studio, Ableton, Logic Pro, Pro Tools */}
+                    <button
+                      onClick={() => {
+                        onSelectTrack(track.id);
+                        if (isThisRecording && onStopRecord) {
+                          onStopRecord();
+                        } else if (isArmed && onStartRecord) {
+                          onStartRecord(track.id);
+                        }
+                      }}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all ${
+                        isThisRecording
+                          ? 'bg-red-600 text-white animate-pulse shadow-sm shadow-red-600/50 ring-1 ring-white/50'
+                          : isArmed
+                          ? 'bg-red-600 text-white shadow-sm shadow-red-600/40 ring-1 ring-red-400'
+                          : 'bg-zinc-800 text-zinc-500 hover:text-red-400 hover:bg-zinc-700'
+                      }`}
+                      title={
+                        isThisRecording
+                          ? `Grabando en ${track.name} (clic para detener)`
+                          : isArmed
+                          ? `Pista armada para grabar (${track.name}). Clic para grabar.`
+                          : `Armar / seleccionar ${track.name} para grabar`
+                      }
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${isThisRecording || isArmed ? 'bg-white' : 'bg-zinc-500'}`} />
+                      <span>R</span>
+                    </button>
+
                     <button
                       onClick={() => onToggleMute(track.id)}
                       className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${

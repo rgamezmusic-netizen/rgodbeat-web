@@ -485,20 +485,6 @@ export default function App() {
           const next = prev.map((t) => {
             if (t.id !== trackId) return t;
 
-            const existingClips: VocalClip[] = (t.clips && t.clips.length > 0)
-              ? [...t.clips]
-              : t.buffer
-              ? [{
-                  id: `clip-${t.id}-init`,
-                  buffer: t.buffer,
-                  tunedBuffer: t.tunedBuffer,
-                  startBeatOffset: t.startBeatOffset,
-                  duration: t.duration,
-                  waveformSample: t.waveformSample,
-                  name: 'Toma 1',
-                }]
-              : [];
-
             const newClip: VocalClip = {
               id: newClipId,
               buffer,
@@ -506,20 +492,19 @@ export default function App() {
               startBeatOffset: startOffset,
               duration: buffer.duration,
               waveformSample: waveform,
-              name: `Toma ${existingClips.length + 1}`,
+              name: 'Toma',
             };
 
-            const updatedClips = [...existingClips, newClip];
-            const maxTrackDuration = Math.max(
-              t.duration || 0,
-              startOffset + buffer.duration
-            );
+            // In professional DAW track workflow (FL Studio, Ableton, Logic, Pro Tools):
+            // Recording a new take on a vocal channel replaces the previous take on that channel.
+            // (Previous take is preserved in undo history snapshot so user can Ctrl+Z / Deshacer if needed).
+            const updatedClips = [newClip];
 
             return {
               ...t,
               clips: updatedClips,
-              buffer, // latest buffer for legacy helpers
-              duration: maxTrackDuration,
+              buffer,
+              duration: buffer.duration,
               startBeatOffset: startOffset,
               waveformSample: waveform,
               tunedBuffer: null,
@@ -1739,6 +1724,10 @@ export default function App() {
               totalSavedBeatsCount={savedCustomBeats.length}
               loopSettings={loopSettings}
               onOpenLoopModal={() => setShowLoopModal(true)}
+              isRecording={isRecording}
+              activeRecordingTrackId={activeRecordingTrackId}
+              onStartRecord={handleStartRecord}
+              onStopRecord={handleStopRecord}
             />
           </div>
         )}

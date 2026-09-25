@@ -455,11 +455,13 @@ export class AudioEngine {
 
   public async play(vocalTracks: VocalTrack[] = []) {
     if (!this.beatData) return;
-    this.releaseMicrophone();
-    if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
-      try {
-        (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
-      } catch {}
+    if (!this.isRecording) {
+      this.releaseMicrophone();
+      if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
+        try {
+          (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
+        } catch {}
+      }
     }
     await this.unlockAudio();
     if (!this.ctx) return;
@@ -493,9 +495,23 @@ export class AudioEngine {
     // 2. Start all active vocal tracks that have takes/clips
     for (const track of vocalTracks) {
       try {
+        // In professional DAWs (Pro Tools, Logic Pro, Ableton, FL Studio):
+        // If this track is the one currently recording, its previous take is MUTED from playback
+        // so the artist does NOT hear their old take clashing with their live singing!
+        if (this.isRecording && this.recordingTrackId === track.id) {
+          continue;
+        }
+
         this.updateVocalFX(track, vocalTracks);
         const trackNodes = this.vocalNodes.get(track.id);
         if (!trackNodes) continue;
+
+        // Skip scheduling if track is muted
+        if (track.isMuted) continue;
+
+        // Check Solo logic: if any track has isSolo, only play soloed tracks
+        const hasAnySolo = vocalTracks.some((t) => t.isSolo);
+        if (hasAnySolo && !track.isSolo) continue;
 
         // Extract all clips for this track line (or fallback to track.buffer)
         const clips: VocalClip[] = (track.clips && track.clips.length > 0)
@@ -510,7 +526,7 @@ export class AudioEngine {
 
         for (const clip of clips) {
           if (!clip.buffer) continue;
-          const trackOffset = clip.startBeatOffset;
+          const trackOffset = clip.startBeatOffset || 0;
           const trackDur = clip.duration || clip.buffer.duration;
 
           const playBuffer = (track.fx.tune?.enabled && track.fx.tune.speed > 0.01 && clip.tunedBuffer)
@@ -984,8 +1000,18 @@ export class AudioEngine {
         this.currentPlaybackPosition + this.recordingLatencyCompensation
       );
 
-      // 5. Start synchronized playback if not already in playback
-      if (!wasPlaying) {
+      // 5. Start synchronized playback (or silence the track being recorded if already playing)
+      if (wasPlaying) {
+        for (const [key, source] of this.vocalSources.entries()) {
+          if (key.startsWith(`${trackId}-`)) {
+            try {
+              source.stop();
+              source.disconnect();
+            } catch {}
+            this.vocalSources.delete(key);
+          }
+        }
+      } else {
         await this.play(vocalTracks);
       }
 
