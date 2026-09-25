@@ -38,6 +38,7 @@ export class AudioEngine {
 
   // Master
   private masterGainNode: GainNode | null = null;
+  private masterLimiterNode: DynamicsCompressorNode | null = null;
   private masterAnalyserNode: AnalyserNode | null = null;
 
   // Vocal Track Source Nodes (keyed by `${trackId}-${clipId}`)
@@ -221,13 +222,22 @@ export class AudioEngine {
   private setupMasterGraph() {
     if (!this.ctx) return;
     this.masterGainNode = this.ctx.createGain();
-    this.masterGainNode.gain.setValueAtTime(1.0, this.ctx.currentTime);
+    this.masterGainNode.gain.setValueAtTime(0.92, this.ctx.currentTime); // -0.7 dB clean output headroom
+
+    // Professional Master Brickwall Limiter prevents phone DAC clipping & kick distortion:
+    this.masterLimiterNode = this.ctx.createDynamicsCompressor();
+    this.masterLimiterNode.threshold.setValueAtTime(-1.8, this.ctx.currentTime);
+    this.masterLimiterNode.knee.setValueAtTime(4.0, this.ctx.currentTime);
+    this.masterLimiterNode.ratio.setValueAtTime(8.0, this.ctx.currentTime);
+    this.masterLimiterNode.attack.setValueAtTime(0.002, this.ctx.currentTime);
+    this.masterLimiterNode.release.setValueAtTime(0.045, this.ctx.currentTime);
 
     this.masterAnalyserNode = this.ctx.createAnalyser();
     this.masterAnalyserNode.fftSize = 128;
     this.masterAnalyserNode.smoothingTimeConstant = 0.8;
 
-    this.masterGainNode.connect(this.masterAnalyserNode);
+    this.masterGainNode.connect(this.masterLimiterNode);
+    this.masterLimiterNode.connect(this.masterAnalyserNode);
     this.masterAnalyserNode.connect(this.ctx.destination);
 
     // Setup Beat FX Chain
@@ -822,33 +832,43 @@ export class AudioEngine {
     }
 
     // Universal studio recording constraints attempt cascade:
-    // 1. Studio clean: 1 channel, 48kHz ideal, request no OS ducking or telephone AEC
+    // 1. Studio Hi-Fi Clean: Strict booleans echoCancellation: false, noiseSuppression: false, autoGainControl: false
+    // plus Chromium/Android flags so the phone NEVER activates telephone call filtering or cuts kicks/808s.
     try {
       this.micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          channelCount: { ideal: 1 },
-          sampleRate: { ideal: 48000 },
-          echoCancellation: { ideal: false },
-          noiseSuppression: { ideal: false },
-          autoGainControl: { ideal: false },
+          channelCount: 1,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          ...({
+            googEchoCancellation: false,
+            googAutoGainControl: false,
+            googNoiseSuppression: false,
+            googHighpassFilter: false,
+            googAudioMirroring: false,
+            voiceIsolation: false,
+          } as any),
         },
       });
       return this.micStream;
     } catch (e1) {
-      console.warn('Initial studio mic constraints rejected, trying channelCount: 1 fallback:', e1);
+      console.warn('Initial studio mic constraints rejected, trying boolean fallback:', e1);
     }
 
-    // 2. Simplified channel constraint fallback
+    // 2. Standard boolean fallback:
     try {
       this.micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          channelCount: { ideal: 1 },
+          channelCount: 1,
           echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
         },
       });
       return this.micStream;
     } catch (e2) {
-      console.warn('ChannelCount constraint rejected, trying universal audio: true fallback:', e2);
+      console.warn('Boolean constraint fallback rejected, trying universal audio: true fallback:', e2);
     }
 
     // 3. Universal basic fallback

@@ -635,19 +635,24 @@ export default function App() {
 
         const trackName = tracksRef.current.find((t) => t.id === trackId)?.name || trackId;
         showToast(`¡Toma grabada en ${trackName}! Agregada a la línea de tiempo.`, 'success');
-        saveStudioSession(tracksRef.current, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
 
-        // Auto-save project to user account in the cloud (Cloudflare R2) so work is never lost!
-        if (accessStatusRef.current.isLoggedIn || accessStatusRef.current.hasActivePass) {
-          saveProjectToCloud(tracksRef.current, currentBeatRef.current, loopSettings)
-            .then((cloudRes) => {
-              if (cloudRes.success) {
-                refreshCloudProjectStatus();
-              }
-            })
-            .catch((err) => {
-              console.warn('Background cloud auto-save failed:', err);
-            });
+        // Only run heavy WAV serialization to disk when recording has completely stopped,
+        // so live channel switching while recording NEVER stutters or freezes!
+        if (!isStillRecording) {
+          saveStudioSession(tracksRef.current, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
+
+          // Auto-save project to user account in the cloud (Cloudflare R2) so work is never lost!
+          if (accessStatusRef.current.isLoggedIn || accessStatusRef.current.hasActivePass) {
+            saveProjectToCloud(tracksRef.current, currentBeatRef.current, loopSettings)
+              .then((cloudRes) => {
+                if (cloudRes.success) {
+                  refreshCloudProjectStatus();
+                }
+              })
+              .catch((err) => {
+                console.warn('Background cloud auto-save failed:', err);
+              });
+          }
         }
       },
       onRecordingAborted: () => {
