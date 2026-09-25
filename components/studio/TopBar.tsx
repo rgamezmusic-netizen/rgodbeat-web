@@ -63,12 +63,12 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   return (
     <header
-      style={{ paddingTop: 'max(14px, calc(env(safe-area-inset-top, 0px) + 8px))' }}
+      style={{ paddingTop: 'max(16px, calc(env(safe-area-inset-top, 0px) + 12px))' }}
       className="sticky top-0 z-30 flex items-center justify-between px-2.5 sm:px-6 pb-2.5 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80 gap-1.5 sm:gap-4"
     >
       {/* Zone 1: Wordmark & Beat status badge */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
-        <a href="/" className="flex items-center gap-2 group shrink-0" title="Volver a la tienda principal">
+        <a href="/" className="flex items-center gap-2 group shrink-0 min-h-[38px] p-1 rounded-lg hover:bg-white/[0.05] transition-colors" title="Volver a la tienda principal">
           <img
             src="/images/rgodbeat-studio-logo.png"
             alt="RGodbeat Studio"

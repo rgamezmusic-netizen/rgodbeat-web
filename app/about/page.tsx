@@ -14,7 +14,7 @@ export default function AboutPage() {
       <AtmosphericBackground theme="about" intensity="high" enableStars={true} starDensity="high" animate={true} />
       <Navbar />
 
-      <main className="relative z-10 flex-1 pt-28 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full">
+      <main className="relative z-10 flex-1 pt-32 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full">
         <div className="space-y-6 mb-12">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />

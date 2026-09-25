@@ -315,7 +315,10 @@ function AuthForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-[#08080a] text-white flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden selection:bg-purple-500/30 selection:text-white">
+    <div
+      style={{ paddingTop: "max(2rem, calc(env(safe-area-inset-top, 0px) + 1.5rem))" }}
+      className="min-h-screen bg-[#08080a] text-white flex flex-col items-center justify-center px-4 pb-12 relative overflow-hidden selection:bg-purple-500/30 selection:text-white"
+    >
       {/* Background Ambience */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-br from-purple-900/10 via-indigo-950/5 to-transparent rounded-full blur-3xl pointer-events-none" />
 
@@ -323,7 +326,7 @@ export default function LoginPage() {
       <div className="mb-6 text-center">
         <Link
           href="/"
-          className="text-xs font-mono text-zinc-500 hover:text-white transition-colors tracking-widest uppercase flex items-center gap-1.5 justify-center"
+          className="text-xs font-mono text-zinc-400 hover:text-white transition-colors tracking-widest uppercase flex items-center gap-1.5 justify-center py-2 px-3 rounded-lg bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08]"
         >
           <span>←</span>
           <span>VOLVER A LA TIENDA</span>

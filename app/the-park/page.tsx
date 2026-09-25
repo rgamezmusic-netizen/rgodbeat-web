@@ -15,7 +15,7 @@ export default function TheParkPage() {
       <AtmosphericBackground theme="park" intensity="high" enableStars={true} starDensity="high" animate={true} />
       <Navbar />
 
-      <main className="relative z-10 flex-1 pt-28 sm:pt-36 pb-20">
+      <main className="relative z-10 flex-1 pt-32 sm:pt-36 pb-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-12">
           <div className="flex items-center gap-2 mb-4">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />

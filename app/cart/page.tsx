@@ -19,7 +19,7 @@ export default function CartPage() {
       <AtmosphericBackground theme="beats" intensity="medium" enableStars={true} animate={true} />
       <Navbar />
 
-      <main className="relative z-10 flex-1 pt-28 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto w-full">
+      <main className="relative z-10 flex-1 pt-32 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto w-full">
         <div className="mb-8 space-y-2">
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />

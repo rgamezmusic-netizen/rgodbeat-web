@@ -64,8 +64,22 @@ export default async function AccountPage() {
   const hasPurchases = purchases.length > 0;
 
   return (
-    <div className="min-h-screen bg-[#08080a] text-white pt-28 pb-20 px-4 sm:px-6 lg:px-8 selection:bg-purple-500/30 selection:text-white">
-      <div className="max-w-5xl mx-auto space-y-10">
+    <div className="min-h-screen bg-[#08080a] text-white pt-6 sm:pt-12 pb-20 px-4 sm:px-6 lg:px-8 selection:bg-purple-500/30 selection:text-white">
+      <div
+        style={{ paddingTop: 'max(16px, calc(env(safe-area-inset-top, 0px) + 12px))' }}
+        className="max-w-5xl mx-auto space-y-8"
+      >
+        {/* Top Navigation Links */}
+        <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
+          <Link href="/" className="hover:text-white transition-colors flex items-center gap-1.5">
+            <span>←</span>
+            <span>VOLVER A LA TIENDA</span>
+          </Link>
+          <Link href="/studio" className="text-amber-300 hover:text-amber-200 transition-colors flex items-center gap-1.5 font-bold">
+            <span>STUDIO APP 🎙️ →</span>
+          </Link>
+        </div>
+
         {/* Top Header Card */}
         <div className="p-6 sm:p-8 rounded-2xl bg-[#0e0e14] border border-white/[0.08] shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />

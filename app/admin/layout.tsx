@@ -16,7 +16,10 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen bg-[#08080a] text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
       {/* Top Admin Bar */}
-      <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#09090e]/95 backdrop-blur-md px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <header
+        style={{ paddingTop: "max(12px, calc(env(safe-area-inset-top, 0px) + 8px))" }}
+        className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#09090e]/95 backdrop-blur-md px-4 sm:px-6 lg:px-8 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+      >
         <div className="flex items-center justify-between sm:justify-start gap-6">
           <Link href="/admin" className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />

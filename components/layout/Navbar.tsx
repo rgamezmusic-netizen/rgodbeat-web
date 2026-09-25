@@ -23,10 +23,15 @@ export function Navbar() {
 
   return (
     <nav
+      style={{
+        paddingTop: isScrolled
+          ? "max(12px, calc(env(safe-area-inset-top, 0px) + 8px))"
+          : "max(18px, calc(env(safe-area-inset-top, 0px) + 14px))",
+      }}
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         isScrolled
-          ? "bg-[#08080a]/90 backdrop-blur-xl border-b border-white/[0.08] py-3.5 shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
-          : "bg-transparent py-5 sm:py-6"
+          ? "bg-[#08080a]/95 backdrop-blur-xl border-b border-white/[0.08] pb-3.5 shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
+          : "bg-gradient-to-b from-[#08080a]/90 via-[#08080a]/40 to-transparent pb-5 sm:pb-6"
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
@@ -160,11 +165,11 @@ export function Navbar() {
           </Button>
         </div>
 
-        {/* Mobile Menu Hamburger Trigger */}
+        {/* Mobile Menu Hamburger Trigger with guaranteed 44x44px touch target */}
         <button
           type="button"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="md:hidden p-2 text-zinc-300 hover:text-white focus:outline-none cursor-pointer"
+          className="md:hidden p-2.5 rounded-xl bg-white/[0.08] hover:bg-white/15 active:bg-white/25 border border-white/15 text-white focus:outline-none cursor-pointer transition-all active:scale-95 flex items-center justify-center min-w-[44px] min-h-[44px] shadow-sm relative z-50"
           aria-label="Toggle mobile menu"
         >
           <svg
@@ -194,30 +199,30 @@ export function Navbar() {
 
       {/* Mobile Drawer Overlay */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-b border-white/10 bg-[#08080a]/98 backdrop-blur-2xl px-6 py-8 space-y-6">
-          <div className="flex flex-col gap-5 text-sm tracking-[0.18em] font-medium text-zinc-300">
+        <div className="md:hidden border-b border-white/10 bg-[#08080a]/98 backdrop-blur-2xl px-6 py-6 space-y-6 max-h-[calc(100vh-100px)] overflow-y-auto shadow-2xl">
+          <div className="flex flex-col gap-4 text-sm tracking-[0.18em] font-medium text-zinc-300">
             <Link
               href="/beats"
               onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-white py-1 transition-colors flex items-center justify-between border-b border-white/[0.04] pb-2"
+              className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
             >
-              <span>BEATS</span>
+              <span className="font-bold text-white text-base">BEATS</span>
               <span className="text-purple-400 text-xs font-mono font-bold">SHOP →</span>
             </Link>
             <Link
               href="/studio"
               onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-amber-300 py-1 transition-colors flex items-center justify-between border-b border-white/[0.04] pb-2 text-amber-300"
+              className="hover:text-amber-300 py-3 transition-colors flex items-center justify-between border-b border-white/[0.06] text-amber-300 bg-amber-500/10 px-3.5 rounded-xl border border-amber-500/30"
             >
-              <span className="font-bold">RGODBEAT STUDIO</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+              <span className="font-bold text-base">RGODBEAT STUDIO</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/30 text-amber-200 border border-amber-500/40 font-bold">
                 DAW APP 🎙️
               </span>
             </Link>
             <a
               href="/#services"
               onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-white py-1 transition-colors flex items-center justify-between border-b border-white/[0.04] pb-2"
+              className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
             >
               <span>SERVICES</span>
               <span className="text-zinc-600 text-xs">02</span>
@@ -225,7 +230,7 @@ export function Navbar() {
             <a
               href="/#the-park"
               onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-white py-1 transition-colors flex items-center justify-between border-b border-white/[0.04] pb-2"
+              className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
             >
               <span>THE PARK</span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
@@ -235,7 +240,7 @@ export function Navbar() {
             <a
               href="/#about"
               onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-white py-1 transition-colors flex items-center justify-between pb-2"
+              className="hover:text-white py-3 transition-colors flex items-center justify-between pb-3"
             >
               <span>ABOUT</span>
               <span className="text-zinc-600 text-xs">04</span>
@@ -245,7 +250,7 @@ export function Navbar() {
           <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3">
             <Link
               href={currentUser ? "/account" : "/login"}
-              className="w-full py-2.5 rounded-lg text-xs font-mono font-bold tracking-wider uppercase text-center bg-white/[0.05] border border-white/10 text-zinc-200 hover:text-white hover:bg-white/10 transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl text-xs font-mono font-bold tracking-wider uppercase text-center bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-white transition-colors flex items-center justify-center gap-2 min-h-[44px]"
               onClick={() => setMobileMenuOpen(false)}
             >
               {currentUser && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
@@ -254,7 +259,7 @@ export function Navbar() {
             <Button
               variant="primary"
               size="md"
-              className="w-full justify-center"
+              className="w-full justify-center min-h-[44px]"
               onClick={() => {
                 setMobileMenuOpen(false);
                 openCart();

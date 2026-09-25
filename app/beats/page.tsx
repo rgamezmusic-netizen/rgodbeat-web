@@ -39,7 +39,7 @@ export default async function BeatsPage() {
 
       <Navbar />
 
-      <main className="relative z-10 flex-1 pt-28 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+      <main className="relative z-10 flex-1 pt-32 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
         {/* Editorial Beat Shop Header */}
         <div className="max-w-3xl mb-12 sm:mb-14 space-y-4">
           <div className="flex items-center gap-2">

@@ -69,7 +69,7 @@ export default async function BeatDetailPage({ params }: PageProps) {
     <div className="min-h-screen bg-[#08080a] text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
       <Navbar />
 
-      <main className="flex-1 pt-28 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-20">
+      <main className="flex-1 pt-32 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full space-y-20">
         {/* Navigation Breadcrumb */}
         <div className="flex items-center gap-2 text-xs font-mono text-zinc-400">
           <Link href="/beats" className="hover:text-white transition-colors flex items-center gap-1.5">
