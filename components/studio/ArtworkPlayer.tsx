@@ -20,6 +20,7 @@ interface ArtworkPlayerProps {
   onDetectKeyAndBpm?: () => void;
   isAnalyzingBeat?: boolean;
   onChangeBpm?: (bpm: number) => void;
+  isRecording?: boolean;
 }
 
 export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
@@ -39,6 +40,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   onDetectKeyAndBpm,
   isAnalyzingBeat = false,
   onChangeBpm,
+  isRecording = false,
 }) => {
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [isEditingBpm, setIsEditingBpm] = React.useState(false);
@@ -350,7 +352,14 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
 
         {/* Timestamps */}
         <div className="flex items-center justify-between text-xs font-mono font-medium text-zinc-400 px-0.5 mt-0.5">
-          <span>{formatTime(currentTime)}</span>
+          {isRecording ? (
+            <span className="flex items-center gap-1.5 text-red-400 font-bold font-mono animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              🔴 REC {formatTime(currentTime)}
+            </span>
+          ) : (
+            <span>{formatTime(currentTime)}</span>
+          )}
           <span>{formatTime(duration)}</span>
         </div>
       </div>

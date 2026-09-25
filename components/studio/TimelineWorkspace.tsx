@@ -427,6 +427,13 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             </button>
           )}
 
+          {isRecording && (
+            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-950/90 border border-red-500/70 text-red-200 font-mono text-xs font-bold animate-pulse shadow-sm shadow-red-500/20">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              <span>REC {formatTime(currentTime)}</span>
+            </span>
+          )}
+
           <div className="h-5 w-px bg-zinc-700 mx-1 hidden sm:block" />
 
           <button

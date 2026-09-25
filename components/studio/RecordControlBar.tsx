@@ -46,7 +46,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
       const start = Date.now();
       interval = setInterval(() => {
         setElapsedSec(Math.floor((Date.now() - start) / 1000));
-      }, 500);
+      }, 200);
 
       const trackStatus = () => {
         if (getMicStatus) {
@@ -144,6 +144,25 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Real-time Recording Timer Banner */}
+        {isRecording && (
+          <div className="flex items-center justify-between bg-red-950/70 border border-red-500/60 rounded-xl px-3 py-2 mb-2.5 shadow-lg shadow-red-500/10">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+              </span>
+              <span className="text-xs font-mono font-bold text-red-200 uppercase tracking-wider">
+                GRABANDO EN {selectedTrack.name.toUpperCase()}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 font-mono text-base font-extrabold text-white bg-black/50 px-2.5 py-0.5 rounded-lg border border-red-500/40">
+              <span className="text-red-400 animate-pulse text-xs">● REC</span>
+              <span>{formatElapsed(elapsedSec)}</span>
+            </div>
+          </div>
+        )}
 
         {/* Live Audio Level Meter & Anti-Saturation Protection Indicator */}
         {isRecording && (

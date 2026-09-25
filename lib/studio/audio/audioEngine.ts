@@ -625,6 +625,24 @@ export class AudioEngine {
     this.vocalSources.clear();
   }
 
+  /**
+   * Immediately stops and disconnects all active audio buffer sources for a specific track.
+   * Essential for clean take replacement when punch-in or re-recording on a channel.
+   */
+  public clearTrackSources(trackId: VocalTrackId) {
+    for (const [key, source] of this.vocalSources.entries()) {
+      if (key.startsWith(`${trackId}-`)) {
+        try {
+          source.stop();
+          source.disconnect();
+        } catch {
+          // ignore
+        }
+        this.vocalSources.delete(key);
+      }
+    }
+  }
+
   private startPositionTracker(vocalTracks: VocalTrack[]) {
     const trackLoop = () => {
       if (!this.isPlaying || !this.ctx || !this.beatData) return;
@@ -1000,18 +1018,9 @@ export class AudioEngine {
         this.currentPlaybackPosition + this.recordingLatencyCompensation
       );
 
-      // 5. Start synchronized playback (or silence the track being recorded if already playing)
-      if (wasPlaying) {
-        for (const [key, source] of this.vocalSources.entries()) {
-          if (key.startsWith(`${trackId}-`)) {
-            try {
-              source.stop();
-              source.disconnect();
-            } catch {}
-            this.vocalSources.delete(key);
-          }
-        }
-      } else {
+      // 5. Clear any old take audio playing on this track, then start synchronized playback
+      this.clearTrackSources(trackId);
+      if (!wasPlaying) {
         await this.play(vocalTracks);
       }
 
