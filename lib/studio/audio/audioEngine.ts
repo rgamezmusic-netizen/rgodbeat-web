@@ -153,6 +153,7 @@ export class AudioEngine {
    */
   public triggerMobileSpeakerRouting() {
     if (typeof window === 'undefined') return;
+    if (this.isRecording) return; // Crucial: never force playback while actively recording
     try {
       if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
         try {
@@ -766,6 +767,22 @@ export class AudioEngine {
   public async getMicrophoneStream(): Promise<MediaStream> {
     if (this.micStream && this.micStream.active) {
       return this.micStream;
+    }
+
+    // 1. Temporarily pause silent audio loop so it does not block microphone capture
+    if (this.silentAudioEl) {
+      try {
+        this.silentAudioEl.pause();
+      } catch {}
+    }
+
+    // 2. iOS WebKit AudioSession MUST be in 'play-and-record' mode before calling getUserMedia
+    if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
+      try {
+        (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'play-and-record';
+      } catch (e) {
+        console.warn('Could not set audioSession to play-and-record:', e);
+      }
     }
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {

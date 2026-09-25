@@ -1,5 +1,5 @@
-import React from 'react';
-import { Download, Upload, Mic, Layers, Disc3, Undo2, Redo2, HardDrive, Smartphone, Cloud, CloudUpload, Plus, Loader2 } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Download, Upload, Mic, Layers, Disc3, Undo2, Redo2, HardDrive, Smartphone, Cloud, CloudUpload, Plus, Loader2, FolderOpen, Save } from 'lucide-react';
 
 interface TopBarProps {
   onOpenLoadBeat: () => void;
@@ -30,6 +30,9 @@ interface TopBarProps {
   onSaveCloudProject?: () => void;
   onLoadCloudProject?: () => void;
   onNewProject?: () => void;
+  onSaveDeviceProject?: () => void;
+  onLoadDeviceProject?: (file: File) => void;
+  isSavingDevice?: boolean;
   isSavingCloud?: boolean;
   isLoadingCloud?: boolean;
   hasCloudProject?: boolean;
@@ -57,10 +60,15 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSaveCloudProject,
   onLoadCloudProject,
   onNewProject,
+  onSaveDeviceProject,
+  onLoadDeviceProject,
+  isSavingDevice = false,
   isSavingCloud = false,
   isLoadingCloud = false,
   hasCloudProject = false,
 }) => {
+  const deviceFileInputRef = useRef<HTMLInputElement>(null);
+
   return (
     <header
       style={{ paddingTop: 'max(16px, calc(env(safe-area-inset-top, 0px) + 12px))' }}
@@ -249,6 +257,48 @@ export const TopBar: React.FC<TopBarProps> = ({
             )}
             <span className="hidden sm:inline">{isSavingCloud ? 'Guardando...' : 'Guardar'}</span>
           </button>
+        )}
+
+        {/* Guardar Proyecto en Móvil / PC (.rgodbeat) */}
+        {onSaveDeviceProject && (
+          <button
+            onClick={onSaveDeviceProject}
+            disabled={isSavingDevice}
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold bg-zinc-900 text-amber-300 border border-zinc-800 hover:border-amber-500/50 hover:bg-amber-500/10 transition-all shrink-0 active:scale-95 shadow-sm"
+            title="Guardar archivo de proyecto en tu móvil/computadora (.rgodbeat) para no perder nada"
+          >
+            {isSavingDevice ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+            ) : (
+              <Save className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span className="hidden md:inline">En Móvil</span>
+          </button>
+        )}
+
+        {/* Abrir Proyecto desde Móvil / PC (.rgodbeat) */}
+        {onLoadDeviceProject && (
+          <>
+            <input
+              ref={deviceFileInputRef}
+              type="file"
+              accept=".rgodbeat,.json,application/json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onLoadDeviceProject(f);
+                e.target.value = '';
+              }}
+            />
+            <button
+              onClick={() => deviceFileInputRef.current?.click()}
+              className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-medium bg-zinc-900 text-purple-300 border border-zinc-800 hover:border-purple-500/40 hover:bg-purple-950/30 transition-all shrink-0 active:scale-95"
+              title="Abrir un archivo de proyecto (.rgodbeat) desde tu móvil o PC"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-purple-400" />
+              <span className="hidden md:inline">Abrir</span>
+            </button>
+          </>
         )}
 
         {onOpenInstallModal && (

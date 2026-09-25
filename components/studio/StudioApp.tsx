@@ -31,6 +31,8 @@ import {
   saveStudioSession,
   restoreLastStudioSession,
   clearSavedStudioSession,
+  exportProjectToDeviceFile,
+  importProjectFromDeviceFile,
 } from '@/lib/studio/audio/sessionStorage';
 import { TopBar } from './TopBar';
 import { ArtworkPlayer } from './ArtworkPlayer';
@@ -475,6 +477,7 @@ export default function App() {
   // Cloud Project State (1 saved project per active account in R2 cloud)
   const [cloudProjectInfo, setCloudProjectInfo] = useState<CloudProjectCheckResult | null>(null);
   const [isSavingCloud, setIsSavingCloud] = useState<boolean>(false);
+  const [isSavingDevice, setIsSavingDevice] = useState<boolean>(false);
   const [isLoadingCloud, setIsLoadingCloud] = useState<boolean>(false);
   const [dismissExpirationBanner, setDismissExpirationBanner] = useState<boolean>(false);
 
@@ -1154,6 +1157,9 @@ export default function App() {
 
     setTracks(updated);
     tracksRef.current = updated;
+    if (recordHistory) {
+      saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume);
+    }
     if (engine && isPlaying) {
       engine.seek(engine.getCurrentPlaybackPosition(), updated);
     }
@@ -1236,6 +1242,7 @@ export default function App() {
 
     setTracks(updated);
     tracksRef.current = updated;
+    saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume);
     showToast(`Toma de ${source.name} duplicada a ${target?.name || targetTrackId}`, 'success');
   };
 
@@ -1425,6 +1432,7 @@ export default function App() {
 
     setTracks(updated);
     tracksRef.current = updated;
+    saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume);
     const targetName = tracks.find((t) => t.id === trackId)?.name || trackId;
     showToast(clipId ? `🗑️ Pedazo seleccionado eliminado en ${targetName}` : `Toma eliminada en ${targetName}`, 'info');
   };
@@ -1865,6 +1873,82 @@ export default function App() {
     }
   };
 
+  // Export active project bundle directly to phone/device file (.rgodbeat)
+  const handleExportDeviceProject = async () => {
+    const hasAnyContent = currentBeat || tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer);
+    if (!hasAnyContent) {
+      showToast('Carga un beat o graba una voz antes de guardar tu proyecto.', 'info');
+      return;
+    }
+
+    setIsSavingDevice(true);
+    showToast('💾 Generando archivo de proyecto para tu móvil...', 'info');
+
+    try {
+      await saveStudioSession(tracksRef.current, currentBeatRef.current, loopSettings, currentTime, beatFX.volume);
+      const filename = await exportProjectToDeviceFile(
+        tracksRef.current,
+        currentBeatRef.current,
+        loopSettings,
+        currentTime,
+        beatFX.volume
+      );
+      showToast(`💾 Proyecto guardado en tu móvil (${filename})`, 'success');
+    } catch (err: any) {
+      console.error('Error exporting project to device:', err);
+      showToast('Error al guardar el archivo en tu dispositivo.', 'error');
+    } finally {
+      setIsSavingDevice(false);
+    }
+  };
+
+  // Open Project File (.rgodbeat) from Device (phone or PC)
+  const handleImportDeviceProject = async (file: File) => {
+    if (!engine) return;
+
+    try {
+      showToast('Abriendo archivo de proyecto desde tu dispositivo...', 'info');
+      const audioCtx = await engine.ensureAudioContext();
+      const restored = await importProjectFromDeviceFile(file, audioCtx);
+
+      if (!restored) {
+        showToast('No se pudo leer el archivo de proyecto.', 'error');
+        return;
+      }
+
+      if (restored.beat) {
+        setCurrentBeat(restored.beat);
+        currentBeatRef.current = restored.beat;
+        engine.setBeat(restored.beat);
+      }
+
+      setTracks(restored.tracks);
+      tracksRef.current = restored.tracks;
+
+      if (restored.loopSettings) {
+        setLoopSettings(restored.loopSettings);
+        engine.setLoopSettings(restored.loopSettings);
+      }
+
+      if (restored.beatVolume !== undefined) {
+        const nextVol = restored.beatVolume;
+        setBeatFX((prev) => {
+          const updated = { ...prev, volume: nextVol };
+          engine.setBeatFX(updated);
+          return updated;
+        });
+      }
+
+      // Close startup modal if open
+      setShowStartupModal(false);
+
+      showToast('✅ Proyecto cargado con éxito desde tu dispositivo.', 'success');
+    } catch (err: any) {
+      console.error('Error importing project from device:', err);
+      showToast('Error al abrir el archivo de proyecto. Formato incompatible o dañado.', 'error');
+    }
+  };
+
   // Start a Clean New Project
   const handleNewProject = async () => {
     const hasTakes = tracks.some((t) => t.buffer || (t.clips && t.clips.length > 0));
@@ -1942,6 +2026,9 @@ export default function App() {
         onSaveCloudProject={handleSaveCloudProject}
         onLoadCloudProject={handleLoadCloudProject}
         onNewProject={handleNewProject}
+        onSaveDeviceProject={handleExportDeviceProject}
+        onLoadDeviceProject={handleImportDeviceProject}
+        isSavingDevice={isSavingDevice}
         isSavingCloud={isSavingCloud}
         isLoadingCloud={isLoadingCloud}
         hasCloudProject={Boolean(cloudProjectInfo?.hasProject)}
@@ -2318,6 +2405,7 @@ export default function App() {
         savedTimeText={pendingStartupSession?.savedTimeText}
         onContinueLastProject={handleContinueLastProject}
         onStartNewProject={handleStartNewProjectClean}
+        onOpenDeviceProject={handleImportDeviceProject}
         onClose={() => setShowStartupModal(false)}
       />
     </div>

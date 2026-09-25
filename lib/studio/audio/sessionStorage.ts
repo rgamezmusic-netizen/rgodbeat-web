@@ -468,3 +468,307 @@ export async function clearSavedStudioSession(): Promise<boolean> {
     return false;
   }
 }
+
+// Convert ArrayBuffer to Base64 safely
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Convert Base64 to ArrayBuffer safely
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+export interface RGODBeatExportFile {
+  format: 'RGODBEAT_PROJECT_V1';
+  version: 1;
+  exportedAt: number;
+  beatTitle: string;
+  sessionData: {
+    beatId?: string | null;
+    beatData?: {
+      id: string;
+      title: string;
+      producer?: string;
+      bpm: number;
+      key: string;
+      scale: string;
+      duration: number;
+      waveformSample?: number[];
+      artworkGradient?: string;
+      isCustomUpload?: boolean;
+      audioWavBase64?: string;
+    } | null;
+    beatVolume?: number;
+    loopSettings?: LoopSettings;
+    currentTime?: number;
+    tracks: Array<{
+      id: string;
+      name: string;
+      volume: number;
+      pan?: number;
+      isMuted: boolean;
+      isSolo: boolean;
+      fx: any;
+      clips: Array<{
+        id: string;
+        name?: string;
+        startBeatOffset: number;
+        duration: number;
+        waveformSample?: number[];
+        audioWavBase64: string;
+        isLocked?: boolean;
+      }>;
+    }>;
+  };
+}
+
+/**
+ * Exports the entire active project (Beat audio, all vocal takes, FX, markers and settings)
+ * as a standalone downloadable `.rgodbeat` bundle file directly onto the user's phone or computer.
+ */
+export async function exportProjectToDeviceFile(
+  tracks: VocalTrack[],
+  beat?: BeatData | null,
+  loopSettings?: LoopSettings,
+  currentTime?: number,
+  beatVolume?: number
+): Promise<{ success: boolean; filename?: string; error?: string }> {
+  try {
+    const cleanBeatTitle = (beat?.title || 'Mi_Proyecto').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${cleanBeatTitle}_RGODBEAT_${new Date().toISOString().slice(0, 10)}.rgodbeat`;
+
+    const exportedTracks: RGODBeatExportFile['sessionData']['tracks'] = [];
+
+    for (const track of tracks) {
+      const clipsToProcess: VocalClip[] =
+        track.clips && track.clips.length > 0
+          ? track.clips
+          : track.buffer
+          ? [{
+              id: `clip-${track.id}-init`,
+              buffer: track.buffer,
+              tunedBuffer: track.tunedBuffer,
+              startBeatOffset: track.startBeatOffset,
+              duration: track.duration || track.buffer.duration,
+              waveformSample: track.waveformSample,
+              name: 'Toma 1',
+              isLocked: true,
+            }]
+          : [];
+
+      const storedClips = [];
+      for (const clip of clipsToProcess) {
+        if (!clip.buffer) continue;
+        try {
+          const wavBlob = audioBufferToWav(clip.buffer, 16);
+          const buf = await wavBlob.arrayBuffer();
+          const base64 = arrayBufferToBase64(buf);
+          storedClips.push({
+            id: clip.id,
+            name: clip.name,
+            startBeatOffset: clip.startBeatOffset,
+            duration: clip.duration,
+            waveformSample: clip.waveformSample,
+            audioWavBase64: base64,
+            isLocked: clip.isLocked !== undefined ? Boolean(clip.isLocked) : true,
+          });
+        } catch (e) {
+          console.warn('Clip encode error in export:', e);
+        }
+      }
+
+      exportedTracks.push({
+        id: track.id,
+        name: track.name,
+        volume: track.volume,
+        pan: track.pan,
+        isMuted: track.isMuted,
+        isSolo: track.isSolo,
+        fx: track.fx,
+        clips: storedClips,
+      });
+    }
+
+    let storedBeatData = null;
+    if (beat) {
+      let audioWavBase64: string | undefined = undefined;
+      if (beat.buffer) {
+        try {
+          const wavBlob = audioBufferToWav(beat.buffer, 16);
+          const buf = await wavBlob.arrayBuffer();
+          audioWavBase64 = arrayBufferToBase64(buf);
+        } catch (e) {
+          console.warn('Beat encode error in export:', e);
+        }
+      }
+      storedBeatData = {
+        id: beat.id,
+        title: beat.title,
+        producer: beat.producer,
+        bpm: beat.bpm,
+        key: beat.key,
+        scale: beat.scale,
+        duration: beat.duration,
+        waveformSample: beat.waveformSample,
+        artworkGradient: beat.artworkGradient,
+        isCustomUpload: Boolean(beat.isCustomUpload),
+        audioWavBase64,
+      };
+    }
+
+    const payload: RGODBeatExportFile = {
+      format: 'RGODBEAT_PROJECT_V1',
+      version: 1,
+      exportedAt: Date.now(),
+      beatTitle: beat?.title || 'Mi Proyecto',
+      sessionData: {
+        beatId: beat?.id,
+        beatData: storedBeatData,
+        beatVolume: beatVolume ?? 1.0,
+        loopSettings,
+        currentTime: currentTime ?? 0,
+        tracks: exportedTracks,
+      },
+    };
+
+    const json = JSON.stringify(payload);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+    return { success: true, filename };
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.error('Export project to device error:', err);
+    return { success: false, error };
+  }
+}
+
+/**
+ * Imports and restores a previously exported `.rgodbeat` bundle file from the user's phone or computer.
+ */
+export async function importProjectFromDeviceFile(
+  file: File,
+  audioCtx: AudioContext
+): Promise<{
+  tracks: VocalTrack[];
+  beat: BeatData | null;
+  loopSettings?: LoopSettings;
+  currentTime?: number;
+  beatVolume?: number;
+} | null> {
+  try {
+    const text = await file.text();
+    const data: RGODBeatExportFile = JSON.parse(text);
+
+    if (data.format !== 'RGODBEAT_PROJECT_V1' || !data.sessionData) {
+      throw new Error('El archivo seleccionado no es un proyecto RGODBEAT válido (.rgodbeat).');
+    }
+
+    const s = data.sessionData;
+
+    // 1. Reconstruct beat AudioBuffer
+    let restoredBeat: BeatData | null = null;
+    if (s.beatData && s.beatData.audioWavBase64) {
+      try {
+        const rawBuf = base64ToArrayBuffer(s.beatData.audioWavBase64);
+        const decoded = await audioCtx.decodeAudioData(rawBuf);
+        restoredBeat = {
+          id: s.beatData.id,
+          title: s.beatData.title,
+          producer: s.beatData.producer || 'Custom Beat',
+          bpm: s.beatData.bpm,
+          key: s.beatData.key,
+          scale: s.beatData.scale,
+          duration: decoded.duration,
+          buffer: decoded,
+          artworkGradient: s.beatData.artworkGradient || 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
+          waveformSample: s.beatData.waveformSample,
+          isCustomUpload: Boolean(s.beatData.isCustomUpload),
+          isLocked: true,
+        };
+      } catch (decErr) {
+        console.warn('Error decoding project beat from file:', decErr);
+      }
+    }
+
+    // 2. Reconstruct tracks and clips
+    const restoredTracks: VocalTrack[] = [];
+    for (const t of s.tracks || []) {
+      const restoredClips: VocalClip[] = [];
+      let latestBuffer: AudioBuffer | null = null;
+      let latestWaveform: number[] | undefined;
+
+      for (const sc of t.clips || []) {
+        if (!sc.audioWavBase64) continue;
+        try {
+          const rawBuf = base64ToArrayBuffer(sc.audioWavBase64);
+          const decoded = await audioCtx.decodeAudioData(rawBuf);
+          restoredClips.push({
+            id: sc.id,
+            name: sc.name || 'Toma',
+            startBeatOffset: sc.startBeatOffset,
+            duration: sc.duration || decoded.duration,
+            waveformSample: sc.waveformSample,
+            buffer: decoded,
+            tunedBuffer: null,
+            isLocked: sc.isLocked !== undefined ? Boolean(sc.isLocked) : true,
+          });
+          latestBuffer = decoded;
+          latestWaveform = sc.waveformSample;
+        } catch (cErr) {
+          console.warn('Error decoding restored clip from file:', cErr);
+        }
+      }
+
+      restoredTracks.push({
+        id: t.id as any,
+        name: t.name,
+        volume: t.volume ?? 1.0,
+        pan: t.pan ?? 0,
+        isMuted: Boolean(t.isMuted),
+        isSolo: Boolean(t.isSolo),
+        fx: t.fx,
+        startBeatOffset: restoredClips[0]?.startBeatOffset || 0,
+        duration: restoredClips.length > 0 ? Math.max(...restoredClips.map((c) => c.startBeatOffset + c.duration)) : 0,
+        buffer: latestBuffer,
+        waveformSample: latestWaveform,
+        tunedBuffer: null,
+        clips: restoredClips,
+      });
+    }
+
+    // 3. Immediately persist imported project as current active session in device memory
+    await saveStudioSession(restoredTracks, restoredBeat, s.loopSettings, s.currentTime, s.beatVolume);
+
+    return {
+      tracks: restoredTracks,
+      beat: restoredBeat,
+      loopSettings: s.loopSettings,
+      currentTime: s.currentTime,
+      beatVolume: s.beatVolume,
+    };
+  } catch (err) {
+    console.error('importProjectFromDeviceFile failed:', err);
+    throw err;
+  }
+}

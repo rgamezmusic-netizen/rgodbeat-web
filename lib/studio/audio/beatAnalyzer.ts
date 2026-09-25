@@ -605,7 +605,7 @@ function detectKey(
     const minorCorr = correlation(compositeChroma, rotatedMinor);
 
     // Add bass tonic bonus: if note `root` has strong bassline energy, it is overwhelmingly likely the root key!
-    const bassBonus = normBass[root] * 0.45;
+    const bassBonus = normBass[root] * 0.55;
 
     const majorTotal = majorCorr + bassBonus;
     const minorTotal = minorCorr + bassBonus;
@@ -629,7 +629,30 @@ function detectKey(
     }
   }
 
-  const confidence = Math.max(0.68, Math.min(0.99, bestScore - (secondBestScore > 0 ? secondBestScore * 0.12 : 0)));
+  // --- Bass-Tonic Weighting & Relative Major/Minor Disambiguation ---
+  // In modern urban/trap/pop music, relative keys share identical notes (e.g. C Major and A Minor).
+  // The sub-bass/808 fundamental energy is the definitive truth for the perceived tonic center.
+  if (bestMode === 'major') {
+    const relativeMinorRoot = (bestKeyIndex + 9) % 12;
+    const minorBass = normBass[relativeMinorRoot];
+    const majorBass = normBass[bestKeyIndex];
+    // If the relative minor's bass fundamental is notably stronger than the major root, switch to relative minor
+    if (minorBass > majorBass * 1.15 && minorBass > 0.35) {
+      bestKeyIndex = relativeMinorRoot;
+      bestMode = 'minor';
+    }
+  } else if (bestMode === 'minor') {
+    const relativeMajorRoot = (bestKeyIndex + 3) % 12;
+    const majorBass = normBass[relativeMajorRoot];
+    const minorBass = normBass[bestKeyIndex];
+    // If the relative major's bass fundamental is notably stronger than the minor root, switch to relative major
+    if (majorBass > minorBass * 1.25 && majorBass > 0.4) {
+      bestKeyIndex = relativeMajorRoot;
+      bestMode = 'major';
+    }
+  }
+
+  const confidence = Math.max(0.72, Math.min(0.99, bestScore - (secondBestScore > 0 ? secondBestScore * 0.10 : 0)));
 
   return {
     rootKey: NOTE_NAMES[bestKeyIndex],
