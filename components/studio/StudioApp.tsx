@@ -553,6 +553,7 @@ export default function App() {
               duration: buffer.duration,
               waveformSample: waveform,
               name: 'Toma',
+              isLocked: true, // Seguro/Hold activado de fábrica por defecto
             };
 
             // In professional DAW track workflow (FL Studio, Ableton, Logic, Pro Tools):
@@ -1200,6 +1201,7 @@ export default function App() {
       duration: targetClip.duration,
       waveformSample: targetClip.waveformSample ? [...targetClip.waveformSample] : undefined,
       name: `${targetClip.name || 'Toma'} (Copia)`,
+      isLocked: true,
     };
 
     const target = tracks.find((t) => t.id === targetTrackId);
@@ -1252,6 +1254,7 @@ export default function App() {
         duration: buffer.duration,
         waveformSample: waveform,
         name: 'Toma de Prueba',
+        isLocked: true,
       };
       setTracks((prev) => {
         const next = prev.map((t) =>
@@ -1568,6 +1571,7 @@ export default function App() {
       startBeatOffset: clipStart,
       duration: part1Buffer.duration,
       waveformSample: extractWaveformPeaks(part1Buffer, 36),
+      isLocked: true,
     };
 
     const part2Clip: VocalClip = {
@@ -1578,6 +1582,7 @@ export default function App() {
       startBeatOffset: cutPoint,
       duration: part2Buffer.duration,
       waveformSample: extractWaveformPeaks(part2Buffer, 36),
+      isLocked: true,
     };
 
     const newClips = clips.flatMap((c) => (c.id === targetClip!.id ? [part1Clip, part2Clip] : [c]));

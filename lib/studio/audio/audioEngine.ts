@@ -20,8 +20,13 @@ export interface AudioEngineCallbacks {
   onError: (msg: string) => void;
 }
 
+// 1-second silent WAV base64 data URI (valid PCM 16-bit 44.1kHz mono silence)
+const SILENT_WAV_DATA_URI =
+  'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
+  private silentAudioEl: HTMLAudioElement | null = null;
   private callbacks: AudioEngineCallbacks;
 
   // Beat Nodes
@@ -141,15 +146,46 @@ export class AudioEngine {
   }
 
   /**
+   * Forces mobile OS (iOS Safari & Android) to elevate the Web Audio session to
+   * high-priority Media Playback (Loudspeaker). Bypasses the iPhone physical mute
+   * switch and prevents audio from being muted or routed to the earpiece when
+   * headphones are not connected.
+   */
+  public triggerMobileSpeakerRouting() {
+    if (typeof window === 'undefined') return;
+    try {
+      if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
+        try {
+          (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
+        } catch {}
+      }
+
+      if (!this.silentAudioEl) {
+        this.silentAudioEl = new Audio(SILENT_WAV_DATA_URI);
+        this.silentAudioEl.loop = true;
+        this.silentAudioEl.volume = 0.01;
+        this.silentAudioEl.setAttribute('playsinline', 'true');
+        this.silentAudioEl.setAttribute('webkit-playsinline', 'true');
+      }
+
+      const p = this.silentAudioEl.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {});
+      }
+    } catch {}
+  }
+
+  /**
    * Hardware audio unlock for mobile Safari / Chrome.
    * Plays a silent 1-sample buffer and resumes AudioContext synchronously on user gesture.
    */
   public async unlockAudio(): Promise<void> {
+    this.triggerMobileSpeakerRouting();
     if (!this.ctx) {
       await this.ensureAudioContext();
     }
     if (!this.ctx) return;
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
       try {
         await this.ctx.resume();
       } catch {
@@ -459,9 +495,11 @@ export class AudioEngine {
       return;
     }
 
+    // Force loudspeaker media route for devices without headphones plugged in
+    this.triggerMobileSpeakerRouting();
     await this.unlockAudio();
     if (!this.ctx) return;
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
       try {
         await this.ctx.resume();
       } catch (err) {
@@ -817,11 +855,14 @@ export class AudioEngine {
     }
 
     // Only restore audio session if microphone hardware was actually active
-    if (hadActiveMic && typeof navigator !== 'undefined' && 'audioSession' in navigator) {
-      try {
-        (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
-      } catch (err) {
-        // ignore
+    if (hadActiveMic) {
+      this.triggerMobileSpeakerRouting();
+      if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
+        try {
+          (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
+        } catch (err) {
+          // ignore
+        }
       }
     }
   }
