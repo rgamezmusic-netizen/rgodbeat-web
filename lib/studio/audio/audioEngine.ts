@@ -152,8 +152,9 @@ export class AudioEngine {
    * headphones are not connected.
    *
    * CRITICAL FOR RECORDING STUDIO:
-   * In WebKit (iOS Safari), ALWAYS use 'play-and-record'. NEVER set 'playback' because
-   * WebKit strictly blocks and prohibits getUserMedia when the category is set to 'playback'.
+   * When playing audio (and not actively recording), ALWAYS use 'playback' mode.
+   * 'playback' routes audio to the high-power stereo loudspeakers at full fidelity,
+   * completely bypassing the earpiece/telephone call filter and physical silent switch.
    */
   public triggerMobileSpeakerRouting() {
     if (typeof window === 'undefined') return;
@@ -162,8 +163,8 @@ export class AudioEngine {
       if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
         try {
           const session = (navigator as unknown as { audioSession: { type: string } }).audioSession;
-          if (session.type !== 'play-and-record') {
-            session.type = 'play-and-record';
+          if (session.type !== 'playback') {
+            session.type = 'playback';
           }
         } catch {}
         return; // W3C AudioSession API directly elevates OS hardware, no media tag needed
@@ -821,15 +822,15 @@ export class AudioEngine {
     }
 
     // Universal studio recording constraints attempt cascade:
-    // 1. Studio clean: 1 channel, 48kHz ideal, no OS ducking
+    // 1. Studio clean: 1 channel, 48kHz ideal, request no OS ducking or telephone AEC
     try {
       this.micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          channelCount: 1,
+          channelCount: { ideal: 1 },
           sampleRate: { ideal: 48000 },
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
+          echoCancellation: { ideal: false },
+          noiseSuppression: { ideal: false },
+          autoGainControl: { ideal: false },
         },
       });
       return this.micStream;
@@ -841,7 +842,8 @@ export class AudioEngine {
     try {
       this.micStream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          channelCount: 1,
+          channelCount: { ideal: 1 },
+          echoCancellation: false,
         },
       });
       return this.micStream;
@@ -887,14 +889,12 @@ export class AudioEngine {
       this.micStream = null;
     }
 
-    // Crucial: ALWAYS maintain 'play-and-record' mode so subsequent takes can record smoothly.
-    // NEVER switch back to 'playback' because that locks the hardware and breaks the next recording.
+    // Immediately restore uncompressed, full-frequency Hi-Fi playback through main speakers.
+    // Exits the phone call / earpiece routing mode so everything sounds crystal clear!
     if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
       try {
         const session = (navigator as unknown as { audioSession: { type: string } }).audioSession;
-        if (session.type !== 'play-and-record') {
-          session.type = 'play-and-record';
-        }
+        session.type = 'playback';
       } catch (err) {
         // ignore
       }
