@@ -28,7 +28,7 @@ import {
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
 
-const TRACK_HEADER_WIDTH = 176; // px (fixed w-44 for guaranteed sub-pixel playhead & click alignment)
+const TRACK_HEADER_WIDTH = 188; // px (roomy for track name, FX, M/S, pan, and volume slider)
 
 export const getTrackClips = (track: VocalTrack): VocalClip[] => {
   if (track.clips && track.clips.length > 0) return track.clips;
@@ -46,6 +46,26 @@ export const getTrackClips = (track: VocalTrack): VocalClip[] => {
   return [];
 };
 
+/**
+ * Resamples waveform peak data across the exact width of a clip
+ * so the waveform spans 100% of the recorded take from start to finish.
+ */
+export const getInterpolatedWaveform = (peaks: number[] | undefined, targetBars: number): number[] => {
+  const source = peaks && peaks.length > 0 ? peaks : Array(36).fill(0.35);
+  const count = Math.max(16, targetBars);
+  const result: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const progress = i / (count - 1 || 1);
+    const sourceIdx = progress * (source.length - 1);
+    const i0 = Math.floor(sourceIdx);
+    const i1 = Math.min(source.length - 1, Math.ceil(sourceIdx));
+    const frac = sourceIdx - i0;
+    const v = (source[i0] ?? 0.3) * (1 - frac) + (source[i1] ?? 0.3) * frac;
+    result.push(Number(v.toFixed(3)));
+  }
+  return result;
+};
+
 interface TimelineWorkspaceProps {
   beat: BeatData | null;
   tracks: VocalTrack[];
@@ -60,7 +80,10 @@ interface TimelineWorkspaceProps {
   onDeleteTake: (trackId: VocalTrackId, clipId?: string) => void;
   onToggleMute: (trackId: VocalTrackId) => void;
   onToggleSolo: (trackId: VocalTrackId) => void;
+  onChangeVolume?: (trackId: VocalTrackId, volume: number) => void;
   onChangePan?: (trackId: VocalTrackId, pan: number) => void;
+  beatVolume?: number;
+  onChangeBeatVolume?: (volume: number) => void;
   onAddBackingTrack?: () => void;
   canAddMoreTracks?: boolean;
   onDeleteTrack?: (trackId: VocalTrackId) => void;
@@ -99,7 +122,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   onDeleteTake,
   onToggleMute,
   onToggleSolo,
+  onChangeVolume,
   onChangePan,
+  beatVolume,
+  onChangeBeatVolume,
   onAddBackingTrack,
   canAddMoreTracks = false,
   onDeleteTrack,
@@ -143,8 +169,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const selectedTrack = tracks.find((t) => t.id === selectedTrackId);
   const selectedTrackName = selectedTrack ? selectedTrack.name : 'Pista';
 
-  // Base pixels per second
-  const basePixelsPerSec = 16 * zoomLevel;
+  // Base pixels per second (36px provides ample breathing room for bar numbers & beats 1, 2, 3, 4)
+  const basePixelsPerSec = 36 * zoomLevel;
   const timelineWidth = Math.max(500, duration * basePixelsPerSec);
 
   // Time format helper
@@ -158,7 +184,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const formatBarTime = (sec: number) => {
     const bar = Math.floor(sec / secPerBar) + 1;
     const beatInBar = Math.floor((sec % secPerBar) / secPerBeat) + 1;
-    return `Bar ${bar}.${beatInBar}`;
+    return `Compás ${bar}.${beatInBar}`;
   };
 
   const formatPan = (pan: number = 0) => {
@@ -167,34 +193,86 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     return `R${Math.round(pan * 100)}`;
   };
 
-  // Precise seeking directly from clicking on an audio lane (0 offset guaranteed)
+  // State to track if the user is scrubbing the playhead (prevents any accidental channel or clip move)
+  const [isScrubbingPlayhead, setIsScrubbingPlayhead] = useState<boolean>(false);
+
+  // Unified Playhead Scrubber Handler (Works seamlessly from TOP ruler, BOTTOM bar, or playhead handle)
+  const startPlayheadScrub = (clientX: number) => {
+    setIsScrubbingPlayhead(true);
+    const timelineEl = timelineContentRef.current;
+    if (!timelineEl) return;
+
+    const updateTimeFromX = (x: number) => {
+      if (!timelineEl) return;
+      const rect = timelineEl.getBoundingClientRect();
+      const clickX = x - rect.left - TRACK_HEADER_WIDTH;
+      const newTime = Math.max(0, Math.min(duration, clickX / basePixelsPerSec));
+      onSeek(Math.round(newTime * 1000) / 1000);
+    };
+
+    updateTimeFromX(clientX);
+
+    const onMove = (moveEvt: MouseEvent | TouchEvent) => {
+      const curX = 'touches' in moveEvt ? moveEvt.touches[0].clientX : moveEvt.clientX;
+      updateTimeFromX(curX);
+    };
+
+    const onEnd = () => {
+      setIsScrubbingPlayhead(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onEnd);
+  };
+
+  const handlePlayheadMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    startPlayheadScrub(e.clientX);
+  };
+
+  const handlePlayheadTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    startPlayheadScrub(e.touches[0].clientX);
+  };
+
+  const handleRulerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    startPlayheadScrub(e.clientX);
+  };
+
+  const handleRulerTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    startPlayheadScrub(e.touches[0].clientX);
+  };
+
+  const handleBottomScrubMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    startPlayheadScrub(e.clientX);
+  };
+
+  const handleBottomScrubTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    startPlayheadScrub(e.touches[0].clientX);
+  };
+
+  // Safe lane clicking: Sets playhead without triggering clip dragging or channel movement
   const handleLaneClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isDraggingClip || isScrubbingPlayhead) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-clip-item]') || target.closest('button') || target.closest('input')) {
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const newTime = Math.max(0, Math.min(duration, clickX / basePixelsPerSec));
-    onSeek(newTime);
-  };
-
-  // Scrubbing on the ruler
-  const handleRulerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    const lane = e.currentTarget;
-    const updateTimeFromMouse = (clientX: number) => {
-      const rect = lane.getBoundingClientRect();
-      const clickX = clientX - rect.left;
-      const newTime = Math.max(0, Math.min(duration, clickX / basePixelsPerSec));
-      onSeek(newTime);
-    };
-    updateTimeFromMouse(e.clientX);
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      updateTimeFromMouse(moveEvent.clientX);
-    };
-    const onMouseUp = () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    onSeek(Math.round(newTime * 1000) / 1000);
   };
 
   // Dragging logic for moving takes / clips
@@ -203,6 +281,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     track: VocalTrack,
     clip: VocalClip
   ) => {
+    if (isScrubbingPlayhead) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input')) return;
+
     e.stopPropagation();
     setSelectedClipTrackId(track.id);
     setSelectedClipId(clip.id);
@@ -284,12 +366,30 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     }
   };
 
-  // Generate ruler tick marks
+  // Generate Musical Grid ticks: Downbeats (Tiempos Fuertes) & Sub-beats (2, 3, 4)
+  interface GridBeatTick {
+    bar: number;           // 1-indexed bar number
+    beat: number;          // 1, 2, 3, or 4
+    sec: number;           // timestamp in seconds
+    isDownbeat: boolean;   // beat === 1 (Tiempo Fuerte principal)
+    isSemiStrong: boolean; // beat === 3 (Tiempo Semifuerte)
+  }
+
   const totalBars = Math.ceil(duration / secPerBar);
-  const rulerTicks: { bar: number; sec: number }[] = [];
-  for (let bar = 0; bar < totalBars; bar++) {
-    const sec = bar * secPerBar;
-    rulerTicks.push({ bar: bar + 1, sec });
+  const gridTicks: GridBeatTick[] = [];
+  for (let b = 0; b < totalBars; b++) {
+    for (let beat = 1; beat <= 4; beat++) {
+      const sec = b * secPerBar + (beat - 1) * secPerBeat;
+      if (sec <= duration + 0.1) {
+        gridTicks.push({
+          bar: b + 1,
+          beat,
+          sec,
+          isDownbeat: beat === 1,
+          isSemiStrong: beat === 3,
+        });
+      }
+    }
   }
 
   return (
@@ -507,36 +607,85 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           style={{ width: `${timelineWidth + TRACK_HEADER_WIDTH + 40}px` }}
         >
           {/* Time Ruler (Seconds & Musical Bars) */}
-          <div className="sticky top-0 z-30 h-8 bg-[#14141c] border-b border-zinc-800 flex items-center shadow-sm">
+          <div className="sticky top-0 z-30 h-9 bg-[#12121a] border-b border-zinc-800 flex items-center shadow-md">
             {/* Left Header Column */}
             <div
-              className="w-44 shrink-0 px-3 text-[10px] font-mono text-zinc-400 font-bold border-r border-zinc-800 uppercase tracking-wider flex items-center justify-between bg-[#14141c]"
+              className="shrink-0 px-3 text-[10px] font-mono text-zinc-400 font-bold border-r border-zinc-800 uppercase tracking-wider flex items-center justify-between bg-[#12121a]"
               style={{ width: `${TRACK_HEADER_WIDTH}px` }}
             >
-              <span>PISTAS</span>
-              <span className="text-amber-400">{formatTime(currentTime)}</span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                PISTAS
+              </span>
+              <span className="text-amber-300 font-mono font-bold">{formatTime(currentTime)}</span>
             </div>
 
-            {/* Ruler Time Lane (Click & Scrub) */}
+            {/* Ruler Time Lane (Click & Scrub from Top) */}
             <div
               onMouseDown={handleRulerMouseDown}
-              className="relative flex-1 h-full cursor-pointer overflow-hidden group"
+              onTouchStart={handleRulerTouchStart}
+              className="relative flex-1 h-full cursor-ew-resize overflow-hidden group select-none bg-[#0e0e16]"
               title="Haz clic o arrastra para mover el cursor de reproducción"
             >
-              {rulerTicks.map((tick) => {
+              {gridTicks.map((tick, idx) => {
                 const leftPos = tick.sec * basePixelsPerSec;
+                if (tick.isDownbeat) {
+                  // Beat 1: Tiempo Fuerte Principal (Compás entero) - Alta visibilidad
+                  return (
+                    <div
+                      key={`ruler-b-${tick.bar}`}
+                      className="absolute top-0 bottom-0 pointer-events-none flex flex-col justify-between"
+                      style={{ left: `${leftPos}px` }}
+                    >
+                      {/* Bold vertical downbeat tick */}
+                      <div className="w-[2px] h-3 bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+
+                      {/* Clear, High-Contrast Bar Badge */}
+                      <div className="absolute top-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-950/95 border border-amber-500/70 shadow-md">
+                        <span className="text-[10px] font-mono font-black text-amber-300 tracking-tight">
+                          C{tick.bar}
+                        </span>
+                        {zoomLevel >= 1.2 && (
+                          <span className="text-[8px] font-mono text-zinc-400">
+                            {formatTime(tick.sec)}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="w-[2px] h-2 bg-amber-400/80" />
+                    </div>
+                  );
+                }
+
+                if (tick.isSemiStrong) {
+                  // Beat 3: Tiempo Semifuerte (Sub-acento rítmico)
+                  return (
+                    <div
+                      key={`ruler-b3-${idx}`}
+                      className="absolute bottom-0 h-3.5 border-l border-zinc-500/80 pointer-events-none flex flex-col items-center"
+                      style={{ left: `${leftPos}px` }}
+                    >
+                      {zoomLevel >= 1.2 && (
+                        <span className="text-[7px] font-mono text-zinc-500 -translate-y-3 font-semibold">
+                          3
+                        </span>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Beats 2 y 4: Tiempos Débiles
                 return (
                   <div
-                    key={tick.bar}
-                    className="absolute top-0 bottom-0 border-l border-zinc-700/60 pl-1 flex flex-col justify-center pointer-events-none"
+                    key={`ruler-sub-${idx}`}
+                    className="absolute bottom-0 h-2 border-l border-zinc-700/60 pointer-events-none"
                     style={{ left: `${leftPos}px` }}
                   >
-                    <span className="text-[9px] font-mono font-bold text-amber-300">
-                      Bar {tick.bar}
-                    </span>
-                    <span className="text-[8px] font-mono text-zinc-500">
-                      {Math.round(tick.sec)}s
-                    </span>
+                    {zoomLevel >= 1.6 && (
+                      <span className="text-[6.5px] font-mono text-zinc-600 -translate-y-2.5 block">
+                        {tick.beat}
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -552,27 +701,51 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                 width: `${Math.max(4, (loopSettings.endSec - loopSettings.startSec) * basePixelsPerSec)}px`,
               }}
             >
-              <div className="absolute top-0.5 left-1 text-[8px] font-mono font-bold text-amber-300 bg-black/85 px-1.5 py-0.5 rounded shadow border border-amber-500/40 whitespace-nowrap">
-                LOOP: Bar {loopSettings.startBar + 1} ➔ Bar {loopSettings.bars === 'all' ? Math.ceil(duration / secPerBar) : loopSettings.startBar + (loopSettings.bars as number)}
+              <div className="absolute top-1 left-1 text-[8px] font-mono font-bold text-amber-300 bg-black/90 px-1.5 py-0.5 rounded shadow border border-amber-500/50 whitespace-nowrap">
+                LOOP: Compás {loopSettings.startBar + 1} ➔ Compás {loopSettings.bars === 'all' ? Math.ceil(duration / secPerBar) : loopSettings.startBar + (loopSettings.bars as number)}
               </div>
             </div>
           )}
 
-          {/* Vertical Playhead Cursor Line - Exactly aligned with the start of the audio lanes */}
+          {/* Vertical Playhead Cursor Line with Dual Top & Bottom Grab Handles */}
           <div
-            className="absolute top-0 bottom-0 z-40 w-0.5 bg-amber-400 pointer-events-none shadow-[0_0_12px_rgba(251,191,36,0.95)]"
+            className="absolute top-0 bottom-0 z-40 w-0.5 bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.95)] pointer-events-auto"
             style={{
               left: `${TRACK_HEADER_WIDTH + currentTime * basePixelsPerSec}px`,
             }}
           >
-            <div className="w-3.5 h-3.5 bg-amber-400 -translate-x-[6px] -translate-y-1 rotate-45 shadow-md border border-black/40" />
+            {/* Top Playhead Cursor Grab Handle (Ruler Header) */}
+            <div
+              onMouseDown={handlePlayheadMouseDown}
+              onTouchStart={handlePlayheadTouchStart}
+              className="absolute -top-1 -translate-x-1/2 w-8 h-8 flex flex-col items-center justify-start cursor-ew-resize group/top-scrub z-50 pointer-events-auto"
+              title="Arrastrar cursor de reproducción desde arriba"
+            >
+              <div className="w-4 h-4 bg-amber-400 rotate-45 shadow-[0_0_10px_rgba(251,191,36,0.9)] border-2 border-black group-hover/top-scrub:scale-125 group-hover/top-scrub:bg-amber-300 transition-transform" />
+              <span className="text-[8px] font-mono font-bold text-amber-300 bg-black/95 px-1 rounded -translate-y-0.5 shadow border border-amber-500/40 whitespace-nowrap">
+                {formatTime(currentTime)}
+              </span>
+            </div>
+
+            {/* Bottom Playhead Cursor Grab Handle (Bottom Bar) */}
+            <div
+              onMouseDown={handlePlayheadMouseDown}
+              onTouchStart={handlePlayheadTouchStart}
+              className="absolute -bottom-1 -translate-x-1/2 w-8 h-8 flex flex-col items-center justify-end cursor-ew-resize group/bottom-scrub z-50 pointer-events-auto"
+              title="Arrastrar cursor de reproducción desde abajo"
+            >
+              <span className="text-[8px] font-mono font-bold text-amber-300 bg-black/95 px-1 rounded translate-y-0.5 shadow border border-amber-500/40 whitespace-nowrap">
+                {formatTime(currentTime)}
+              </span>
+              <div className="w-4 h-4 bg-amber-400 rotate-45 shadow-[0_0_10px_rgba(251,191,36,0.9)] border-2 border-black group-hover/bottom-scrub:scale-125 group-hover/bottom-scrub:bg-amber-300 transition-transform" />
+            </div>
           </div>
 
           {/* TRACK 0: The Master Beat */}
-          <div className="flex items-stretch border-b border-zinc-800/80 bg-zinc-950/70 h-16 group hover:bg-zinc-900/40 transition-colors">
+          <div className="flex items-stretch border-b border-zinc-800/80 bg-zinc-950/70 h-24 group hover:bg-zinc-900/40 transition-colors">
             {/* Track Info Header */}
             <div
-              className="w-44 shrink-0 p-2 border-r border-zinc-800 flex flex-col justify-center bg-zinc-900/90 z-20"
+              className="shrink-0 p-2 border-r border-zinc-800 flex flex-col justify-between bg-zinc-900/95 z-20"
               style={{ width: `${TRACK_HEADER_WIDTH}px` }}
             >
               <div className="flex items-center justify-between gap-1">
@@ -598,23 +771,41 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               {(() => {
                 const keyInfo = parseKeyAndGetRelative(beat?.key, beat?.scale);
                 return (
-                  <div className="flex items-center justify-between mt-1">
+                  <div className="flex items-center justify-between mt-0.5">
                     <span
                       className="text-[10px] font-mono text-zinc-400 truncate"
                       title={beat ? `${keyInfo.tonalityName} · Relativa: ${keyInfo.relativeTonalityName}` : ''}
                     >
-                      {beat ? `${beat.bpm} BPM · ${keyInfo.keySymbol} (Rel. ${keyInfo.relativeKey})` : 'Sin Beat'}
+                      {beat ? `${beat.bpm} BPM · ${keyInfo.keySymbol}` : 'Sin Beat'}
                     </span>
                     <span
                       className="text-[8px] font-mono text-amber-300 font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 shrink-0 flex items-center gap-1"
                       title={`Espacio físico: Slot ${currentBeatSlotIndex} de 23 slots disponibles (${totalSavedBeatsCount}/23 beats guardados)`}
                     >
                       <ShieldCheck className="w-2.5 h-2.5 text-amber-400" />
-                      <span>SLOT {currentBeatSlotIndex}/23</span>
+                      <span>SLOT {currentBeatSlotIndex}</span>
                     </span>
                   </div>
                 );
               })()}
+
+              {/* Master Beat Volume Control Slider */}
+              <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-zinc-850/80" onClick={(e) => e.stopPropagation()}>
+                <Volume2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <input
+                  type="range"
+                  min={0}
+                  max={1.5}
+                  step={0.01}
+                  value={beatVolume ?? 1.0}
+                  onChange={(e) => onChangeBeatVolume && onChangeBeatVolume(parseFloat(e.target.value))}
+                  className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  title={`Volumen del Beat: ${Math.round((beatVolume ?? 1.0) * 100)}%`}
+                />
+                <span className="text-[9px] font-mono text-amber-300 font-bold min-w-[28px] text-right">
+                  {Math.round((beatVolume ?? 1.0) * 100)}%
+                </span>
+              </div>
             </div>
 
             {/* Beat Waveform Track Body */}
@@ -623,12 +814,27 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               className="relative flex-1 h-full cursor-pointer bg-zinc-900/20"
               title="Haz clic para ubicar el cursor de reproducción"
             >
+              {/* Musical Grid Lines in Beat Lane */}
+              {gridTicks.map((tick, idx) => (
+                <div
+                  key={`beat-grid-${idx}`}
+                  className={`absolute top-0 bottom-0 pointer-events-none ${
+                    tick.isDownbeat
+                      ? 'border-l-2 border-amber-400/25 z-0'
+                      : tick.isSemiStrong
+                      ? 'border-l border-zinc-700/35 z-0'
+                      : 'border-l border-zinc-850/20 z-0'
+                  }`}
+                  style={{ left: `${tick.sec * basePixelsPerSec}px` }}
+                />
+              ))}
+
               {beat && (
                 <div
-                  className="absolute top-1.5 bottom-1.5 left-0 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/40 flex items-center px-2 overflow-hidden pointer-events-none"
+                  className="absolute top-2 bottom-2 left-0 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/40 flex items-center px-2 overflow-hidden pointer-events-none z-10"
                   style={{ width: `${beat.duration * basePixelsPerSec}px` }}
                 >
-                  <div className="w-full h-8 flex items-center gap-0.5 opacity-70">
+                  <div className="w-full h-8 flex items-center gap-0.5 opacity-75">
                     {(beat.waveformSample || Array(60).fill(0.5)).map((val, idx) => (
                       <div
                         key={idx}
@@ -657,13 +863,14 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               <div
                 key={track.id}
                 onClick={() => {
+                  if (isScrubbingPlayhead) return;
                   setSelectedClipTrackId(track.id);
                   if (clips.length > 0 && (!selectedClipId || !clips.some((c) => c.id === selectedClipId))) {
                     setSelectedClipId(clips[clips.length - 1].id);
                   }
                   onSelectTrack(track.id);
                 }}
-                className={`flex items-stretch border-b border-zinc-850 h-20 transition-all ${
+                className={`flex items-stretch border-b border-zinc-850 h-24 transition-all ${
                   isThisRecording
                     ? 'bg-red-950/30 border-red-500/80 shadow-[0_0_20px_rgba(239,68,68,0.25)] border-l-4 border-l-red-500'
                     : isArmed
@@ -675,7 +882,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               >
                 {/* Track Left Header (Controls: FX, Mute, Solo, Volume, Pan) */}
                 <div
-                  className="w-44 shrink-0 p-2 border-r border-zinc-800 flex flex-col justify-between bg-[#111116] z-20"
+                  className="shrink-0 p-2 border-r border-zinc-800 flex flex-col justify-between bg-[#111116] z-20"
                   style={{ width: `${TRACK_HEADER_WIDTH}px` }}
                 >
                   {/* Row 1: Name, Custom delete, FX button */}
@@ -718,7 +925,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                     </button>
                   </div>
 
-                  {/* Row 2: Arm [R], Mute [M], Solo [S], Volume */}
+                  {/* Row 2: Arm [REC], Mute [M], Solo [S] */}
                   <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
                     {/* Direct 1-Click Record button on any channel in Edition Mode */}
                     <button
@@ -773,14 +980,32 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                     >
                       S
                     </button>
-                    <span className="text-[9px] font-mono text-zinc-400 tabular-nums ml-auto">
+                  </div>
+
+                  {/* Row 3: Track Volume Slider */}
+                  <div
+                    className="flex items-center gap-1.5 text-[9px] font-mono mt-0.5 pt-0.5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Volume2 className="w-3 h-3 text-zinc-400 shrink-0" />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1.5}
+                      step={0.01}
+                      value={track.volume}
+                      onChange={(e) => onChangeVolume && onChangeVolume(track.id, parseFloat(e.target.value))}
+                      className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                      title={`Volumen ${track.name}: ${Math.round(track.volume * 100)}%`}
+                    />
+                    <span className="text-[9px] font-mono text-zinc-300 font-bold tabular-nums min-w-[28px] text-right">
                       {Math.round(track.volume * 100)}%
                     </span>
                   </div>
 
-                  {/* Row 3: Stereo PAN control */}
+                  {/* Row 4: Stereo PAN control */}
                   <div
-                    className="flex items-center justify-between text-[9px] font-mono mt-0.5 pt-1 border-t border-zinc-850/80"
+                    className="flex items-center justify-between text-[9px] font-mono mt-0.5 pt-0.5 border-t border-zinc-850/80"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <span className="text-zinc-500 font-bold">PAN</span>
@@ -812,14 +1037,20 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                 {/* Track Audio Lane */}
                 <div
                   onClick={handleLaneClick}
-                  className="relative flex-1 h-full cursor-pointer"
+                  className="relative flex-1 h-full cursor-pointer bg-zinc-900/10"
                   title="Haz clic para ubicar el cursor de reproducción"
                 >
-                  {/* Subtle bar grid lines */}
-                  {rulerTicks.map((tick) => (
+                  {/* Musical Grid Lines: Downbeats vs Sub-beats */}
+                  {gridTicks.map((tick, idx) => (
                     <div
-                      key={tick.bar}
-                      className="absolute top-0 bottom-0 border-l border-zinc-850/40 pointer-events-none"
+                      key={`lane-grid-${idx}`}
+                      className={`absolute top-0 bottom-0 pointer-events-none ${
+                        tick.isDownbeat
+                          ? 'border-l-2 border-amber-400/25 z-0'
+                          : tick.isSemiStrong
+                          ? 'border-l border-zinc-700/35 z-0'
+                          : 'border-l border-zinc-850/20 z-0'
+                      }`}
                       style={{ left: `${tick.sec * basePixelsPerSec}px` }}
                     />
                   ))}
@@ -833,12 +1064,24 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                     const isTargetOfDrag = isDraggingClip && dragClipId === clip.id;
                     const clipStartPx = clip.startBeatOffset * basePixelsPerSec;
                     const clipWidthPx = Math.max(30, (clip.duration || 1) * basePixelsPerSec);
+                    const waveformBarCount = Math.max(16, Math.min(300, Math.floor(clipWidthPx / 4)));
+                    const interpolatedPeaks = getInterpolatedWaveform(
+                      clip.waveformSample || track.waveformSample,
+                      waveformBarCount
+                    );
 
                     return (
                       <div
                         key={clip.id}
-                        onMouseDown={(e) => handleClipMouseDown(e, track, clip)}
-                        onTouchStart={(e) => handleClipMouseDown(e, track, clip)}
+                        data-clip-item="true"
+                        onMouseDown={(e) => {
+                          if (isScrubbingPlayhead) return;
+                          handleClipMouseDown(e, track, clip);
+                        }}
+                        onTouchStart={(e) => {
+                          if (isScrubbingPlayhead) return;
+                          handleClipMouseDown(e, track, clip);
+                        }}
                         className={`absolute top-2 bottom-2 rounded-xl border flex items-center px-2 cursor-grab active:cursor-grabbing transition-shadow select-none shadow-lg z-10 ${
                           isClipSelected
                             ? 'bg-gradient-to-r from-emerald-600/50 to-teal-500/40 border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
@@ -854,17 +1097,15 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           <MoveHorizontal className="w-3.5 h-3.5 text-emerald-300" />
                         </div>
 
-                        {/* Mini Waveform Visualization */}
-                        <div className="flex-1 h-8 flex items-center gap-0.5 overflow-hidden">
-                          {(clip.waveformSample || track.waveformSample || Array(30).fill(0.5)).map(
-                            (val, idx) => (
-                              <div
-                                key={idx}
-                                className="w-1 bg-emerald-400 rounded-full shrink-0"
-                                style={{ height: `${Math.max(20, val * 100)}%` }}
-                              />
-                            )
-                          )}
+                        {/* Continuous Waveform Across Full Clip Duration */}
+                        <div className="flex-1 h-8 flex items-center gap-[2px] overflow-hidden w-full px-1">
+                          {interpolatedPeaks.map((val, idx) => (
+                            <div
+                              key={idx}
+                              className="flex-1 min-w-[2px] max-w-[4px] bg-emerald-400 rounded-full shrink-0"
+                              style={{ height: `${Math.max(15, val * 100)}%` }}
+                            />
+                          ))}
                         </div>
 
                         {/* Clip Meta Tag */}
@@ -922,6 +1163,50 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               </div>
             );
           })}
+
+          {/* BOTTOM TRANSPORT SCRUB BAR / RULER */}
+          <div
+            onMouseDown={handleBottomScrubMouseDown}
+            onTouchStart={handleBottomScrubTouchStart}
+            className="flex items-center h-8 bg-zinc-950 border-t-2 border-zinc-800 select-none cursor-pointer sticky bottom-0 z-30 group/bottom-ruler hover:bg-zinc-900/90 transition-colors"
+            title="Barra de transporte inferior: haz clic o arrastra para mover el cursor de tiempo"
+          >
+            {/* Left Corner Indicator */}
+            <div
+              className="shrink-0 px-3 h-full flex items-center justify-between bg-zinc-900 border-r border-zinc-800 text-[10px] font-mono text-zinc-400"
+              style={{ width: `${TRACK_HEADER_WIDTH}px` }}
+            >
+              <div className="flex items-center gap-1.5 text-amber-400 font-bold">
+                <Clock className="w-3 h-3" />
+                <span>TIEMPO</span>
+              </div>
+              <span className="text-[9px] text-zinc-500 font-bold">4/4 BEAT</span>
+            </div>
+
+            {/* Bottom Ticks Bar */}
+            <div className="relative flex-1 h-full">
+              {gridTicks.map((tick, idx) => (
+                <div
+                  key={`bottom-tick-${idx}`}
+                  className="absolute bottom-0 -translate-x-1/2 flex flex-col items-center pointer-events-none"
+                  style={{ left: `${tick.sec * basePixelsPerSec}px` }}
+                >
+                  {tick.isDownbeat ? (
+                    <div className="flex flex-col items-center">
+                      <span className="text-[9px] font-mono font-black text-amber-300 bg-amber-950/80 px-1 py-0.2 rounded border border-amber-500/40 mb-0.5">
+                        C{tick.bar}
+                      </span>
+                      <div className="w-[2px] h-3 bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]" />
+                    </div>
+                  ) : tick.isSemiStrong ? (
+                    <div className="w-[1.5px] h-2 bg-zinc-500 mb-0" />
+                  ) : (
+                    <div className="w-[1px] h-1.5 bg-zinc-700 mb-0" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 

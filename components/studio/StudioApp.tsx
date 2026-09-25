@@ -2073,7 +2073,10 @@ export default function App() {
               onDeleteTake={handleDeleteTake}
               onToggleMute={handleToggleMute}
               onToggleSolo={handleToggleSolo}
+              onChangeVolume={handleChangeTrackVolume}
               onChangePan={handleChangeTrackPan}
+              beatVolume={beatFX.volume}
+              onChangeBeatVolume={(vol) => setBeatFX((prev) => ({ ...prev, volume: vol }))}
               onAddBackingTrack={handleAddBackingTrack}
               canAddMoreTracks={canAddMoreTracks}
               onDeleteTrack={handleDeleteCustomTrack}
