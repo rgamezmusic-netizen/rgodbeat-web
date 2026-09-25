@@ -1994,7 +1994,7 @@ export default function App() {
     : 1;
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-white flex flex-col justify-between selection:bg-amber-500/30 selection:text-amber-200">
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#09090b] text-white flex flex-col justify-between selection:bg-amber-500/30 selection:text-amber-200">
       {/* 1-Bar Count In Metronome Visual Overlay */}
       <CountInOverlay beatNumber={countInBeat} />
 
@@ -2209,6 +2209,12 @@ export default function App() {
               onGenerateTestTake={handleGenerateTestTake}
               getMicLevel={() => (engine ? engine.getMicInputLevel() : 0)}
               getMicStatus={() => (engine ? engine.getMicInputStatus() : { level: 0, isSaturated: false, gainReductionDb: 0 })}
+              canUndo={undoStack.length > 0}
+              canRedo={redoStack.length > 0}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              undoCount={undoStack.length}
+              redoCount={redoStack.length}
             />
 
             {/* Vocal Tracks Mixer & Recorders (Lead 1, Lead 2, Double, Harmony 1, Harmony 2, Adlibs, Backings) */}
@@ -2249,6 +2255,12 @@ export default function App() {
               onGenerateTestTake={handleGenerateTestTake}
               getMicLevel={() => (engine ? engine.getMicInputLevel() : 0)}
               getMicStatus={() => (engine ? engine.getMicInputStatus() : { level: 0, isSaturated: false, gainReductionDb: 0 })}
+              canUndo={undoStack.length > 0}
+              canRedo={redoStack.length > 0}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              undoCount={undoStack.length}
+              redoCount={redoStack.length}
             />
 
             <TimelineWorkspace

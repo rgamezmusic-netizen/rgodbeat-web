@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Mic, Square, Timer, AlertTriangle, Headphones } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Mic, Square, Timer, AlertTriangle, Headphones, Undo2, Redo2 } from 'lucide-react';
 import { VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 
 interface RecordControlBarProps {
@@ -16,6 +16,12 @@ interface RecordControlBarProps {
   onGenerateTestTake?: (trackId: VocalTrackId) => void;
   getMicLevel?: () => number;
   getMicStatus?: () => { level: number; isSaturated: boolean; gainReductionDb: number };
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  undoCount?: number;
+  redoCount?: number;
 }
 
 export const RecordControlBar: React.FC<RecordControlBarProps> = ({
@@ -31,11 +37,23 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
   onStopRecord,
   getMicLevel,
   getMicStatus,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
+  undoCount = 0,
+  redoCount = 0,
 }) => {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [micLevel, setMicLevel] = useState(0);
   const [isSaturated, setIsSaturated] = useState(false);
   const [gainReductionDb, setGainReductionDb] = useState(0);
+
+  // Store callbacks in refs so changes in parent render don't re-run effect or clear interval
+  const getMicStatusRef = useRef(getMicStatus);
+  getMicStatusRef.current = getMicStatus;
+  const getMicLevelRef = useRef(getMicLevel);
+  getMicLevelRef.current = getMicLevel;
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
@@ -44,18 +62,19 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
     if (isRecording) {
       setElapsedSec(0);
       const start = Date.now();
+      // Tick every 200ms to calculate elapsed seconds steadily without drift
       interval = setInterval(() => {
         setElapsedSec(Math.floor((Date.now() - start) / 1000));
       }, 200);
 
       const trackStatus = () => {
-        if (getMicStatus) {
-          const status = getMicStatus();
+        if (getMicStatusRef.current) {
+          const status = getMicStatusRef.current();
           setMicLevel(status.level);
           setIsSaturated(status.isSaturated);
           setGainReductionDb(status.gainReductionDb);
-        } else if (getMicLevel) {
-          const lvl = getMicLevel();
+        } else if (getMicLevelRef.current) {
+          const lvl = getMicLevelRef.current();
           setMicLevel(lvl);
           setIsSaturated(lvl >= 0.88);
         }
@@ -73,7 +92,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
       if (interval) clearInterval(interval);
       if (animId) cancelAnimationFrame(animId);
     };
-  }, [isRecording, getMicLevel, getMicStatus]);
+  }, [isRecording]);
 
   const formatElapsed = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -218,6 +237,53 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
             <Mic className="w-5 h-5" />
             <span>{hasTake ? `REHACER TOMA (${selectedTrack.name.toUpperCase()})` : `GRABAR VOZ (${selectedTrack.name.toUpperCase()})`}</span>
           </button>
+        )}
+
+        {/* Undo & Redo centered action buttons right below REC button */}
+        {(onUndo || onRedo) && (
+          <div className="flex items-center justify-center gap-2 mt-2.5 pt-2 border-t border-zinc-800/80">
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-mono font-medium transition-all ${
+                canUndo
+                  ? 'bg-zinc-800/90 text-amber-300 hover:bg-zinc-750 hover:text-amber-200 border border-zinc-700 active:scale-95 shadow-sm cursor-pointer'
+                  : 'bg-zinc-900/40 text-zinc-600 border border-zinc-850 cursor-not-allowed opacity-40'
+              }`}
+              title="Deshacer última acción (Ctrl+Z)"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+              <span>Deshacer</span>
+              {undoCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-900 font-bold text-zinc-400">
+                  {undoCount}
+                </span>
+              )}
+            </button>
+
+            <div className="w-[1px] h-4 bg-zinc-800" />
+
+            <button
+              type="button"
+              onClick={onRedo}
+              disabled={!canRedo}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-mono font-medium transition-all ${
+                canRedo
+                  ? 'bg-zinc-800/90 text-amber-300 hover:bg-zinc-750 hover:text-amber-200 border border-zinc-700 active:scale-95 shadow-sm cursor-pointer'
+                  : 'bg-zinc-900/40 text-zinc-600 border border-zinc-850 cursor-not-allowed opacity-40'
+              }`}
+              title="Rehacer acción (Ctrl+Y)"
+            >
+              <Redo2 className="w-3.5 h-3.5" />
+              <span>Rehacer</span>
+              {redoCount > 0 && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-900 font-bold text-zinc-400">
+                  {redoCount}
+                </span>
+              )}
+            </button>
+          </div>
         )}
       </div>
     </div>

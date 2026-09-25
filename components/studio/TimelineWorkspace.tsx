@@ -541,15 +541,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               ) : (
                 <span className="w-2.5 h-2.5 rounded-full bg-white shadow-inner" />
               )}
-              <span>{isRecording ? 'DETENER' : `REC (${selectedTrackName.toUpperCase()})`}</span>
+              <span>{isRecording ? `DETENER (${formatTime(currentTime)})` : `REC (${selectedTrackName.toUpperCase()})`}</span>
             </button>
-          )}
-
-          {isRecording && (
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-950/90 border border-red-500/70 text-red-200 font-mono text-xs font-bold animate-pulse shadow-sm shadow-red-500/20">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-              <span>REC {formatTime(currentTime)}</span>
-            </span>
           )}
 
           {/* Direct Channel Selector */}
