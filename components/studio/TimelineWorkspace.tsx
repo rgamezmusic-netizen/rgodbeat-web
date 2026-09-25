@@ -877,23 +877,36 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           </span>
                         </div>
 
-                        {/* Quick Scissor Cut Button on the Clip */}
-                        {onSplitTake && (
+                        {/* Quick Scissor & Delete Buttons on the Clip */}
+                        <div className="absolute right-1.5 top-1 flex items-center gap-1 z-20">
+                          {onSplitTake && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedClipTrackId(track.id);
+                                setSelectedClipId(clip.id);
+                                onSelectTrack(track.id);
+                                onSplitTake(track.id, clip.id, currentTime);
+                              }}
+                              className="p-1 rounded-md bg-black/75 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-500/40 transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-sm"
+                              title={`Cortar esta toma en el cabezal (${formatTime(currentTime)})`}
+                            >
+                              <Scissors className="w-2.5 h-2.5" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedClipTrackId(track.id);
-                              setSelectedClipId(clip.id);
-                              onSelectTrack(track.id);
-                              onSplitTake(track.id, clip.id, currentTime);
+                              onDeleteTake(track.id, clip.id);
                             }}
-                            className="absolute right-1.5 top-1 p-1 rounded-md bg-black/60 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-500/30 transition-all opacity-70 hover:opacity-100 cursor-pointer z-20 shadow-sm"
-                            title={`Cortar esta toma en el cabezal (${formatTime(currentTime)})`}
+                            className="p-1 rounded-md bg-black/75 hover:bg-red-600 hover:text-white text-red-300 border border-red-500/40 transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-sm"
+                            title={`Borrar solo este pedazo (${clip.name || 'Corte'})`}
                           >
-                            <Scissors className="w-2.5 h-2.5" />
+                            <Trash2 className="w-2.5 h-2.5" />
                           </button>
-                        )}
+                        </div>
                       </div>
                     );
                   })}
@@ -987,11 +1000,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
                 <button
                   onClick={() => onDeleteTake(selectedClipTrack.id, activeSelectedClip.id)}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-red-950/40 text-zinc-400 hover:text-red-400 border border-zinc-700 hover:border-red-500/30 text-xs font-mono transition-colors"
-                  title="Eliminar esta toma"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/70 text-red-300 hover:text-red-100 border border-red-500/50 hover:border-red-400 text-xs font-mono font-bold transition-all active:scale-95 shadow-sm shadow-red-950/40 cursor-pointer"
+                  title={`Eliminar únicamente el pedazo seleccionado (${activeSelectedClip.name || 'Pedazo'}) sin alterar el resto de la pista`}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Borrar Toma</span>
+                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                  <span>Borrar Pedazo Seleccionado</span>
                 </button>
               </div>
             )}

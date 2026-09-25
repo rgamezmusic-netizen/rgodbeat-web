@@ -45,6 +45,12 @@ import { ExportModal } from './ExportModal';
 import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
 import { InstallAppModal } from './InstallAppModal';
+import { StartupProjectModal } from './StartupProjectModal';
+import {
+  saveUserChannelFXTemplate,
+  applyUserFXTemplatesToTracks,
+  adaptTracksTonalityToBeat,
+} from '@/lib/studio/audio/userFXTemplates';
 import { AlertCircle, CheckCircle, Info, Disc3, Layers, HardDrive, AlertTriangle, Cloud, CloudUpload, Sparkles } from 'lucide-react';
 import {
   saveProjectToCloud,
@@ -211,10 +217,55 @@ export default function App() {
   // View state: 'studio' (Player & Strips) | 'editor' (Timeline Multitrack with moveable takes)
   const [activeView, setActiveView] = useState<'studio' | 'editor'>('studio');
 
-  // Vocal Tracks with 2 Leads
-  const [tracks, setTracks] = useState<VocalTrack[]>(initialTracks);
-  const tracksRef = useRef<VocalTrack[]>(initialTracks);
+  // Vocal Tracks with 2 Leads (Applying user's saved channel FX templates)
+  const [tracks, setTracks] = useState<VocalTrack[]>(() => applyUserFXTemplatesToTracks(initialTracks, null));
+  const tracksRef = useRef<VocalTrack[]>(tracks);
   tracksRef.current = tracks;
+
+  // Startup Project Prompt state (Continuar Último Proyecto vs Iniciar Proyecto Nuevo)
+  const [showStartupModal, setShowStartupModal] = useState<boolean>(false);
+  const [pendingStartupSession, setPendingStartupSession] = useState<{
+    tracks: VocalTrack[];
+    beat?: BeatData | null;
+    beatId?: string | null;
+    loopSettings?: LoopSettings;
+    currentTime?: number;
+    takesCount: number;
+    beatTitle: string;
+    savedTimeText?: string;
+  } | null>(null);
+
+  // Screen Wake Lock API: Keeps the screen awake while using Studio
+  useEffect(() => {
+    let wakeLockSentinel: any = null;
+
+    const requestWakeLock = async () => {
+      try {
+        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && (navigator as any).wakeLock?.request) {
+          wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (err) {
+        console.debug('Screen WakeLock active/prevented:', err);
+      }
+    };
+
+    requestWakeLock();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLockSentinel) {
+        wakeLockSentinel.release().catch(() => {});
+      }
+    };
+  }, []);
 
   // Bluetooth Latency Auto-Compensation & App Install Modal State
   const [bluetoothSyncEnabled, setBluetoothSyncEnabled] = useState<boolean>(false);
@@ -574,78 +625,74 @@ export default function App() {
       try {
         const audioCtx = await audioEngine.ensureAudioContext();
 
-        // 0. Check and restore last active Studio session (takes, vocal clips, FX, timeline)
+        // 0. Detect last active Studio session or cloud project to give user the choice:
+        // "Continuar Último Proyecto" vs "Iniciar Proyecto Nuevo"
         let restoredSessionBeatId: string | null = null;
-        let hasRestoredSession = false;
+        let hasPreviousSession = false;
         try {
           const lastSession = await restoreLastStudioSession(audioCtx);
           if (lastSession && lastSession.tracks.length > 0) {
-            const hasClips = lastSession.tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer);
-            if (hasClips) {
-              hasRestoredSession = true;
-              setTracks(lastSession.tracks);
-              tracksRef.current = lastSession.tracks;
-              if (lastSession.loopSettings) {
-                setLoopSettings(lastSession.loopSettings);
-              }
-              if (lastSession.currentTime) {
-                setCurrentTime(lastSession.currentTime);
-              }
+            const totalTakes = lastSession.tracks.reduce((acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)), 0);
+            if (totalTakes > 0) {
+              hasPreviousSession = true;
               if (lastSession.beatId) {
                 restoredSessionBeatId = lastSession.beatId;
               }
-              showToast('✓ Sesión anterior restaurada: continuando tu proyecto.', 'success');
+              setPendingStartupSession({
+                tracks: lastSession.tracks,
+                beatId: lastSession.beatId,
+                loopSettings: lastSession.loopSettings,
+                currentTime: lastSession.currentTime,
+                takesCount: totalTakes,
+                beatTitle: 'Último Proyecto Local',
+                savedTimeText: 'Guardado en tu dispositivo',
+              });
+              setShowStartupModal(true);
             }
           }
         } catch (sessErr) {
           console.warn('Could not restore previous studio session:', sessErr);
         }
 
-        // If local storage had no recordings (e.g. app reopened, switched browser, or cache was cleared),
-        // automatically restore the latest saved project from user account cloud (Cloudflare R2)!
-        if (!hasRestoredSession) {
+        // If local storage had no recordings, also check if user has a saved cloud project
+        if (!hasPreviousSession) {
           try {
             const cloudCheck = await checkCloudProject();
             setCloudProjectInfo(cloudCheck);
             if (cloudCheck.hasProject) {
               const cloudData = await loadProjectFromCloud(audioCtx);
-              if (cloudData) {
-                if (cloudData.beatData) {
-                  const beat = cloudData.beatData;
-                  if (beat.isCustomUpload && beat.customBeatBuffer) {
-                    const fullCustomBeat: BeatData = {
-                      id: beat.id || `custom-${Date.now()}`,
-                      title: beat.title || 'Mi Beat Guardado',
-                      producer: beat.producer || 'Custom Beat',
-                      bpm: beat.bpm || 140,
-                      key: beat.key || 'C',
-                      scale: beat.scale || 'Menor',
-                      duration: beat.customBeatBuffer.duration,
-                      buffer: beat.customBeatBuffer,
-                      artworkGradient: beat.artworkGradient || 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
-                      isCustomUpload: true,
-                      detectedBpm: beat.detectedBpm,
-                      detectedKey: beat.detectedKey,
-                      isLocked: true,
-                    };
-                    setCurrentBeat(fullCustomBeat);
-                    currentBeatRef.current = fullCustomBeat;
-                    audioEngine.setBeat(fullCustomBeat);
-                  } else if (beat.id) {
-                    restoredSessionBeatId = beat.id;
-                  }
+              if (cloudData && cloudData.tracks && cloudData.tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer)) {
+                const totalTakes = cloudData.tracks.reduce((acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)), 0);
+                let cloudBeat: BeatData | null = null;
+                const customBuf = cloudData.beatData?.customBeatBuffer;
+                if (cloudData.beatData && cloudData.beatData.isCustomUpload && customBuf) {
+                  const b = cloudData.beatData;
+                  cloudBeat = {
+                    id: b.id || `custom-${Date.now()}`,
+                    title: b.title || 'Mi Beat Guardado',
+                    producer: b.producer || 'Custom Beat',
+                    bpm: b.bpm || 140,
+                    key: b.key || 'C',
+                    scale: b.scale || 'Menor',
+                    duration: customBuf.duration,
+                    buffer: customBuf,
+                    artworkGradient: b.artworkGradient || 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
+                    isCustomUpload: true,
+                    detectedBpm: b.detectedBpm,
+                    detectedKey: b.detectedKey,
+                    isLocked: true,
+                  };
                 }
-
-                if (cloudData.tracks && cloudData.tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer)) {
-                  setTracks(cloudData.tracks);
-                  tracksRef.current = cloudData.tracks;
-                  showToast('☁️ Proyecto de tu cuenta restaurado automáticamente.', 'success');
-                }
-
-                if (cloudData.loopSettings) {
-                  setLoopSettings(cloudData.loopSettings);
-                  audioEngine.setLoopSettings(cloudData.loopSettings);
-                }
+                setPendingStartupSession({
+                  tracks: cloudData.tracks,
+                  beat: cloudBeat,
+                  beatId: cloudData.beatData?.id,
+                  loopSettings: cloudData.loopSettings,
+                  takesCount: totalTakes,
+                  beatTitle: cloudData.beatData?.title || 'Proyecto Guardado',
+                  savedTimeText: cloudCheck.projectMeta?.savedAt ? new Date(cloudCheck.projectMeta.savedAt).toLocaleDateString() : 'En tu cuenta',
+                });
+                setShowStartupModal(true);
               }
             }
           } catch (cloudErr) {
@@ -668,6 +715,14 @@ export default function App() {
 
         const beats = [trapBeat, rnbBeat, drillBeat];
         setDemoBeats(beats);
+
+        // If a startup session exists with a known beat ID, match its title
+        if (restoredSessionBeatId) {
+          const matchBeat = storedBeats.find((b) => b.id === restoredSessionBeatId) || beats.find((b) => b.id === restoredSessionBeatId);
+          if (matchBeat) {
+            setPendingStartupSession((prev) => prev ? { ...prev, beat: matchBeat, beatTitle: matchBeat.title } : null);
+          }
+        }
 
         // 4. Select initial beat:
         // CRITICAL CHECK: If user already uploaded or selected a beat before this async finished,
@@ -698,6 +753,11 @@ export default function App() {
         currentBeatRef.current = chosenBeat;
         setIsBeatLocked(chosenLock);
         audioEngine.setBeat(chosenBeat);
+
+        // Adapt vocal channel tuning scales to the chosen beat
+        const tracksWithScale = adaptTracksTonalityToBeat(tracksRef.current, chosenBeat);
+        setTracks(tracksWithScale);
+        tracksRef.current = tracksWithScale;
       } catch (err) {
         console.error('Initial beat generation/restore error:', err);
       }
@@ -749,6 +809,69 @@ export default function App() {
     }, 1500);
     return () => clearTimeout(timer);
   }, [tracks, loopSettings, currentTime]);
+
+  // Handlers for Startup Choice: Continuar Último Proyecto vs Iniciar Proyecto Nuevo
+  const handleContinueLastProject = () => {
+    if (!pendingStartupSession) {
+      setShowStartupModal(false);
+      return;
+    }
+
+    setTracks(pendingStartupSession.tracks);
+    tracksRef.current = pendingStartupSession.tracks;
+
+    if (pendingStartupSession.beat) {
+      setCurrentBeat(pendingStartupSession.beat);
+      currentBeatRef.current = pendingStartupSession.beat;
+      if (engine) engine.setBeat(pendingStartupSession.beat);
+    } else if (pendingStartupSession.beatId) {
+      const match = savedCustomBeats.find((b) => b.id === pendingStartupSession.beatId) ||
+        demoBeats.find((b) => b.id === pendingStartupSession.beatId);
+      if (match) {
+        setCurrentBeat(match);
+        currentBeatRef.current = match;
+        if (engine) engine.setBeat(match);
+      }
+    }
+
+    if (pendingStartupSession.loopSettings) {
+      setLoopSettings(pendingStartupSession.loopSettings);
+      if (engine) engine.setLoopSettings(pendingStartupSession.loopSettings);
+    }
+
+    if (pendingStartupSession.currentTime) {
+      setCurrentTime(pendingStartupSession.currentTime);
+      if (engine) engine.seek(pendingStartupSession.currentTime, pendingStartupSession.tracks);
+    }
+
+    setShowStartupModal(false);
+    showToast('✓ Continuando tu último proyecto con todas tus tomas.', 'success');
+  };
+
+  const handleStartNewProjectClean = async () => {
+    if (engine) {
+      engine.stop();
+    }
+    const cleanTracks = applyUserFXTemplatesToTracks(
+      initialTracks.map((t) => ({
+        ...t,
+        buffer: null,
+        clips: [],
+        duration: 0,
+        startBeatOffset: 0,
+        waveformSample: undefined,
+        tunedBuffer: null,
+      })),
+      currentBeatRef.current
+    );
+    setTracks(cleanTracks);
+    tracksRef.current = cleanTracks;
+    setUndoStack([]);
+    setRedoStack([]);
+    await clearSavedStudioSession();
+    setShowStartupModal(false);
+    showToast('✨ Proyecto nuevo iniciado: pistas limpias y efectos configurados.', 'info');
+  };
 
   // Phone call interruption & backgrounding protector
   // Handles incoming phone calls, WhatsApp calls, screen lock, and app switching
@@ -1215,7 +1338,7 @@ export default function App() {
   const canAddMoreTracks = tracks.filter((t) => t.id === 'backing1' || t.id === 'backing2').length < 2;
 
   const handleDeleteTake = (trackId: VocalTrackId, clipId?: string) => {
-    pushUndoSnapshot('Eliminar toma');
+    pushUndoSnapshot(clipId ? 'Borrar pedazo seleccionado' : 'Eliminar toma');
     const updated = tracks.map((t) => {
       if (t.id !== trackId) return t;
 
@@ -1223,13 +1346,14 @@ export default function App() {
         const remaining = t.clips.filter((c) => c.id !== clipId);
         if (remaining.length > 0) {
           const maxDur = Math.max(...remaining.map((c) => c.startBeatOffset + c.duration));
+          const minStart = Math.min(...remaining.map((c) => c.startBeatOffset));
           const last = remaining[remaining.length - 1];
           return {
             ...t,
             clips: remaining,
             buffer: last.buffer,
             duration: maxDur,
-            startBeatOffset: last.startBeatOffset,
+            startBeatOffset: minStart,
             waveformSample: last.waveformSample,
             tunedBuffer: last.tunedBuffer,
           };
@@ -1250,10 +1374,10 @@ export default function App() {
     setTracks(updated);
     tracksRef.current = updated;
     const targetName = tracks.find((t) => t.id === trackId)?.name || trackId;
-    showToast(`Toma eliminada en ${targetName}`, 'info');
+    showToast(clipId ? `🗑️ Pedazo seleccionado eliminado en ${targetName}` : `Toma eliminada en ${targetName}`, 'info');
   };
 
-  // Split / Cut take at playhead (or specified time)
+  // Split / Cut take at playhead (or specified time) with micro-fade declicking
   const handleSplitTake = async (trackId: VocalTrackId, clipId?: string, splitTimeSec?: number) => {
     if (!engine) return;
     const audioCtx = await engine.ensureAudioContext();
@@ -1317,6 +1441,23 @@ export default function App() {
       part2Buffer.getChannelData(ch).set(targetClip.buffer.getChannelData(ch).subarray(splitSample));
     }
 
+    // Micro-fade (2-3ms = ~120 samples at 44.1/48kHz) to eliminate zero-crossing click or pop
+    const fadeSamples = Math.min(Math.floor(sampleRate * 0.003), Math.floor(splitSample / 2), Math.floor(part2Length / 2));
+    if (fadeSamples > 0) {
+      for (let ch = 0; ch < numChannels; ch++) {
+        const c1 = part1Buffer.getChannelData(ch);
+        const start1 = splitSample - fadeSamples;
+        for (let i = 0; i < fadeSamples; i++) {
+          c1[start1 + i] *= (1 - i / fadeSamples);
+        }
+
+        const c2 = part2Buffer.getChannelData(ch);
+        for (let i = 0; i < fadeSamples; i++) {
+          c2[i] *= (i / fadeSamples);
+        }
+      }
+    }
+
     const baseName = targetClip.name?.replace(/ \(Parte \d+\)$/, '') || 'Toma';
 
     const part1Clip: VocalClip = {
@@ -1361,12 +1502,16 @@ export default function App() {
       engine.seek(currentTime, updated);
     }
     saveStudioSession(updated, currentBeatRef.current?.id, loopSettings, currentTime);
-    showToast(`✂️ Toma cortada en dos partes en ${cutPoint.toFixed(2)}s.`, 'success');
+    showToast(`✂️ Toma cortada con precisión en dos partes en ${cutPoint.toFixed(2)}s.`, 'success');
   };
 
-  // Update Vocal FX (including Pitch Tune)
+  // Update Vocal FX (including Pitch Tune) and persist channel template
   const handleChangeVocalFX = async (newFX: VocalFX) => {
     if (!activeFXTrackId) return;
+
+    // Persist this channel's custom FX template (EQ, Comp, Reverb, Delay, Saturation, AutoTune speed)
+    saveUserChannelFXTemplate(activeFXTrackId, newFX);
+
     const updated = tracks.map((t) =>
       t.id === activeFXTrackId ? { ...t, fx: newFX, tunedBuffer: null } : t
     );
@@ -1417,6 +1562,12 @@ export default function App() {
     setCurrentBeat(beat);
     if (engine) engine.setBeat(beat);
     saveActiveBeatId(beat.id, true);
+
+    // Adapt only the pitch tune musical scale/key to the new beat, preserving all other FX settings
+    const adapted = adaptTracksTonalityToBeat(tracksRef.current, beat);
+    setTracks(adapted);
+    tracksRef.current = adapted;
+
     showToast(`Beat seleccionado: "${beat.title}"`, 'info');
   };
 
@@ -1439,6 +1590,11 @@ export default function App() {
     currentBeatRef.current = uploadedBeat;
     setCurrentBeat(uploadedBeat);
     if (engine) engine.setBeat(uploadedBeat);
+
+    // Adapt only the pitch tune musical scale/key to the uploaded beat
+    const adapted = adaptTracksTonalityToBeat(tracksRef.current, uploadedBeat);
+    setTracks(adapted);
+    tracksRef.current = adapted;
 
     // 3. Persist to browser's IndexedDB and localStorage so it survives refreshes
     await saveBeatToDatabase(uploadedBeat, rawBuffer, true);
@@ -1618,15 +1774,18 @@ export default function App() {
       engine.stop();
     }
 
-    const resetTracks = initialTracks.map((t) => ({
-      ...t,
-      buffer: null,
-      clips: [],
-      duration: 0,
-      startBeatOffset: 0,
-      waveformSample: undefined,
-      tunedBuffer: null,
-    }));
+    const resetTracks = applyUserFXTemplatesToTracks(
+      initialTracks.map((t) => ({
+        ...t,
+        buffer: null,
+        clips: [],
+        duration: 0,
+        startBeatOffset: 0,
+        waveformSample: undefined,
+        tunedBuffer: null,
+      })),
+      currentBeatRef.current
+    );
 
     setTracks(resetTracks);
     tracksRef.current = resetTracks;
@@ -1634,7 +1793,7 @@ export default function App() {
     setRedoStack([]);
     await clearSavedStudioSession();
 
-    showToast('✨ Nuevo proyecto iniciado. Carga un beat para comenzar.', 'info');
+    showToast('✨ Nuevo proyecto iniciado: canales limpios con tus efectos preferidos.', 'info');
     setShowLoadBeatModal(true);
   };
 
@@ -2040,6 +2199,17 @@ export default function App() {
       <InstallAppModal
         isOpen={showInstallModal}
         onClose={() => setShowInstallModal(false)}
+      />
+
+      {/* Startup Choice Modal: Continuar Último Proyecto vs Proyecto Nuevo */}
+      <StartupProjectModal
+        isOpen={showStartupModal}
+        beatTitle={pendingStartupSession?.beatTitle || currentBeat?.title || 'Mi Beat'}
+        takesCount={pendingStartupSession?.takesCount || 0}
+        savedTimeText={pendingStartupSession?.savedTimeText}
+        onContinueLastProject={handleContinueLastProject}
+        onStartNewProject={handleStartNewProjectClean}
+        onClose={() => setShowStartupModal(false)}
       />
     </div>
   );
