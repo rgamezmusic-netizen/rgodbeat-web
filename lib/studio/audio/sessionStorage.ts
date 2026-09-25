@@ -14,6 +14,7 @@ export interface StoredClipData {
   duration: number;
   waveformSample?: number[];
   audioWavData: ArrayBuffer;
+  isLocked?: boolean;
 }
 
 export interface StoredTrackData {
@@ -196,6 +197,7 @@ export async function saveStudioSession(
             duration: clip.duration,
             waveformSample: clip.waveformSample,
             audioWavData,
+            isLocked: Boolean(clip.isLocked),
           });
         } catch (clipErr) {
           console.warn('Error serializing clip audio:', clipErr);
@@ -407,6 +409,7 @@ export async function restoreLastStudioSession(
               waveformSample: sc.waveformSample,
               buffer: decoded,
               tunedBuffer: null,
+              isLocked: Boolean(sc.isLocked),
             });
             latestBuffer = decoded;
             latestWaveform = sc.waveformSample;

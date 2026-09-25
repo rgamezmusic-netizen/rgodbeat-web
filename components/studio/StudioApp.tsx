@@ -1015,6 +1015,9 @@ export default function App() {
   // Transport Handlers
   const handlePlayPause = async () => {
     if (!engine || !currentBeat) return;
+    if (!engine.getBeat() && currentBeat) {
+      engine.setBeat(currentBeat);
+    }
     await engine.unlockAudio();
     if (isRecording) {
       handleStopRecord();
@@ -1421,6 +1424,57 @@ export default function App() {
     tracksRef.current = updated;
     const targetName = tracks.find((t) => t.id === trackId)?.name || trackId;
     showToast(clipId ? `🗑️ Pedazo seleccionado eliminado en ${targetName}` : `Toma eliminada en ${targetName}`, 'info');
+  };
+
+  // Toggle Lock/Hold on a specific vocal take to prevent accidental drag or displacement
+  const handleToggleLockTake = (trackId: VocalTrackId, clipId?: string) => {
+    let nowLocked = false;
+    const updated = tracks.map((t) => {
+      if (t.id !== trackId) return t;
+
+      if (t.clips && t.clips.length > 0) {
+        const updatedClips = t.clips.map((c) => {
+          if (!clipId || c.id === clipId) {
+            nowLocked = !c.isLocked;
+            return { ...c, isLocked: !c.isLocked };
+          }
+          return c;
+        });
+        return {
+          ...t,
+          clips: updatedClips,
+        };
+      }
+
+      if (t.buffer) {
+        nowLocked = true;
+        return {
+          ...t,
+          clips: [{
+            id: `clip-${t.id}-init`,
+            buffer: t.buffer,
+            tunedBuffer: t.tunedBuffer,
+            startBeatOffset: t.startBeatOffset,
+            duration: t.duration,
+            waveformSample: t.waveformSample,
+            name: 'Toma 1',
+            isLocked: true,
+          }],
+        };
+      }
+
+      return t;
+    });
+
+    setTracks(updated);
+    tracksRef.current = updated;
+    saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume);
+    showToast(
+      nowLocked
+        ? '🔒 Seguro activado (Hold): Toma protegida contra desplazamientos accidentales.'
+        : '🔓 Seguro desactivado: Ya puedes mover o desplazar la toma libremente.',
+      'info'
+    );
   };
 
   // Split / Cut take at playhead (or specified time) with micro-fade declicking
@@ -2145,6 +2199,7 @@ export default function App() {
               onStartRecord={handleStartRecord}
               onStopRecord={handleStopRecord}
               onSplitTake={handleSplitTake}
+              onToggleLockTake={handleToggleLockTake}
             />
           </div>
         )}

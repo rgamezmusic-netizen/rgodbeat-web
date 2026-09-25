@@ -454,25 +454,42 @@ export class AudioEngine {
   }
 
   public async play(vocalTracks: VocalTrack[] = []) {
-    if (!this.beatData) return;
-    if (!this.isRecording) {
-      this.releaseMicrophone();
-      if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
-        try {
-          (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
-        } catch {}
-      }
+    if (!this.beatData) {
+      console.warn('AudioEngine: cannot play, no beatData loaded');
+      return;
     }
+
     await this.unlockAudio();
     if (!this.ctx) return;
     if (this.ctx.state === 'suspended') {
       try {
         await this.ctx.resume();
-      } catch {}
+      } catch (err) {
+        console.warn('AudioEngine: error resuming AudioContext in play():', err);
+      }
     }
 
     if (this.isPlaying) {
       this.stopSources();
+    }
+
+    // Ensure beat gain and master gain nodes are configured and audible
+    if (this.beatGainNode) {
+      const vol = typeof this.beatFX?.volume === 'number' ? Math.max(0, Math.min(1.5, this.beatFX.volume)) : 1.0;
+      try {
+        this.beatGainNode.gain.cancelScheduledValues(this.ctx.currentTime);
+        this.beatGainNode.gain.setValueAtTime(vol, this.ctx.currentTime);
+      } catch {
+        this.beatGainNode.gain.value = vol;
+      }
+    }
+    if (this.masterGainNode) {
+      try {
+        this.masterGainNode.gain.cancelScheduledValues(this.ctx.currentTime);
+        this.masterGainNode.gain.setValueAtTime(1.0, this.ctx.currentTime);
+      } catch {
+        this.masterGainNode.gain.value = 1.0;
+      }
     }
 
     // If playhead was at or beyond duration, restart from loop start or 0
@@ -484,13 +501,23 @@ export class AudioEngine {
     const startTime = this.ctx.currentTime + 0.015;
     this.playbackStartCtxTime = startTime - startPos;
 
-    // 1. Start Beat Source
-    this.beatSource = this.ctx.createBufferSource();
-    this.beatSource.buffer = this.beatData.buffer;
-    if (this.beatHighPassNode) {
-      this.beatSource.connect(this.beatHighPassNode);
+    // 1. Start Beat Source (with multi-stage routing fallback)
+    if (this.beatData.buffer) {
+      this.beatSource = this.ctx.createBufferSource();
+      this.beatSource.buffer = this.beatData.buffer;
+      if (this.beatHighPassNode) {
+        this.beatSource.connect(this.beatHighPassNode);
+      } else if (this.beatGainNode) {
+        this.beatSource.connect(this.beatGainNode);
+      } else if (this.masterGainNode) {
+        this.beatSource.connect(this.masterGainNode);
+      } else {
+        this.beatSource.connect(this.ctx.destination);
+      }
+      this.beatSource.start(startTime, startPos);
+    } else {
+      console.warn('AudioEngine: beatData exists but has no AudioBuffer');
     }
-    this.beatSource.start(startTime, startPos);
 
     // 2. Start all active vocal tracks that have takes/clips
     for (const track of vocalTracks) {
@@ -763,7 +790,9 @@ export class AudioEngine {
    * Voice-Communication / Call mode and instantly restore uncompressed Hi-Fi stereo playback.
    */
   public releaseMicrophone() {
+    let hadActiveMic = false;
     if (this.micStreamDest) {
+      hadActiveMic = true;
       try {
         this.micStreamDest.stream.getTracks().forEach((track) => track.stop());
         if (this.micInputGain) {
@@ -776,6 +805,7 @@ export class AudioEngine {
     }
 
     if (this.micStream) {
+      hadActiveMic = true;
       try {
         this.micStream.getTracks().forEach((track) => {
           track.stop();
@@ -786,19 +816,12 @@ export class AudioEngine {
       this.micStream = null;
     }
 
-    // Immediately restore high-fidelity stereo media playback mode on iOS Safari & Android.
-    // Shifts output route back to the bottom stereo speakers and switches Bluetooth headsets
-    // from telephone SCO/HFP mode (8kHz/16kHz) back to A2DP stereo studio quality.
-    if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
+    // Only restore audio session if microphone hardware was actually active
+    if (hadActiveMic && typeof navigator !== 'undefined' && 'audioSession' in navigator) {
       try {
         (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'playback';
-        setTimeout(() => {
-          try {
-            (navigator as unknown as { audioSession: { type: string } }).audioSession.type = 'auto';
-          } catch {}
-        }, 120);
       } catch (err) {
-        console.warn('Error resetting audioSession type:', err);
+        // ignore
       }
     }
   }

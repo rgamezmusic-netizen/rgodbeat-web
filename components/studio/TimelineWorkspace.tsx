@@ -24,6 +24,8 @@ import {
   Square,
   Mic,
   Scissors,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
@@ -106,6 +108,7 @@ interface TimelineWorkspaceProps {
   onStartRecord?: (trackId: VocalTrackId) => void;
   onStopRecord?: () => void;
   onSplitTake?: (trackId: VocalTrackId, clipId?: string, splitTimeSec?: number) => void;
+  onToggleLockTake?: (trackId: VocalTrackId, clipId?: string) => void;
 }
 
 export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
@@ -148,6 +151,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   onStartRecord,
   onStopRecord,
   onSplitTake,
+  onToggleLockTake,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
@@ -184,7 +188,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const formatBarTime = (sec: number) => {
     const bar = Math.floor(sec / secPerBar) + 1;
     const beatInBar = Math.floor((sec % secPerBar) / secPerBeat) + 1;
-    return `Compás ${bar}.${beatInBar}`;
+    return `Bar ${bar}.${beatInBar}`;
   };
 
   const formatPan = (pan: number = 0) => {
@@ -213,8 +217,13 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     updateTimeFromX(clientX);
 
     const onMove = (moveEvt: MouseEvent | TouchEvent) => {
-      const curX = 'touches' in moveEvt ? moveEvt.touches[0].clientX : moveEvt.clientX;
-      updateTimeFromX(curX);
+      if ('touches' in moveEvt) {
+        if (moveEvt.cancelable) moveEvt.preventDefault();
+        const curX = moveEvt.touches[0].clientX;
+        updateTimeFromX(curX);
+      } else {
+        updateTimeFromX(moveEvt.clientX);
+      }
     };
 
     const onEnd = () => {
@@ -227,7 +236,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onEnd);
-    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('touchend', onEnd);
   };
 
@@ -289,6 +298,12 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     setSelectedClipTrackId(track.id);
     setSelectedClipId(clip.id);
     onSelectTrack(track.id);
+
+    // Si la toma tiene seguro (Hold/Lock), no permitir desplazamiento involuntario
+    if (clip.isLocked) {
+      return;
+    }
+
     setIsDraggingClip(true);
     setDragTrackId(track.id);
     setDragClipId(clip.id);
@@ -643,7 +658,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       {/* Clear, High-Contrast Bar Badge */}
                       <div className="absolute top-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-950/95 border border-amber-500/70 shadow-md">
                         <span className="text-[10px] font-mono font-black text-amber-300 tracking-tight">
-                          C{tick.bar}
+                          Bar {tick.bar}
                         </span>
                         {zoomLevel >= 1.2 && (
                           <span className="text-[8px] font-mono text-zinc-400">
@@ -702,18 +717,32 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               }}
             >
               <div className="absolute top-1 left-1 text-[8px] font-mono font-bold text-amber-300 bg-black/90 px-1.5 py-0.5 rounded shadow border border-amber-500/50 whitespace-nowrap">
-                LOOP: Compás {loopSettings.startBar + 1} ➔ Compás {loopSettings.bars === 'all' ? Math.ceil(duration / secPerBar) : loopSettings.startBar + (loopSettings.bars as number)}
+                LOOP: Bar {loopSettings.startBar + 1} ➔ Bar {loopSettings.bars === 'all' ? Math.ceil(duration / secPerBar) : loopSettings.startBar + (loopSettings.bars as number)}
               </div>
             </div>
           )}
 
-          {/* Vertical Playhead Cursor Line with Dual Top & Bottom Grab Handles */}
+          {/* Vertical Playhead Cursor Line with Full-Height Grab Area and Dual Top & Bottom Handles */}
           <div
             className="absolute top-0 bottom-0 z-40 w-0.5 bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.95)] pointer-events-auto"
             style={{
               left: `${TRACK_HEADER_WIDTH + currentTime * basePixelsPerSec}px`,
             }}
           >
+            {/* Full-height touch/grab hit-box: allows dragging playhead from ANY height of the timeline */}
+            <div
+              onMouseDown={handlePlayheadMouseDown}
+              onTouchStart={handlePlayheadTouchStart}
+              className="absolute -top-1 -bottom-1 -left-4 w-9 cursor-ew-resize pointer-events-auto group/scrub-hitbox z-40"
+              title="Arrastrar selector de tiempo con precisión"
+            >
+              <div
+                className={`w-1 h-full mx-auto rounded transition-colors ${
+                  isScrubbingPlayhead ? 'bg-amber-400/40' : 'group-hover/scrub-hitbox:bg-amber-400/20'
+                }`}
+              />
+            </div>
+
             {/* Top Playhead Cursor Grab Handle (Ruler Header) */}
             <div
               onMouseDown={handlePlayheadMouseDown}
@@ -726,6 +755,18 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                 {formatTime(currentTime)}
               </span>
             </div>
+
+            {/* Floating Live Scrubber Precision Badge (appears prominently while holding/dragging) */}
+            {isScrubbingPlayhead && (
+              <div className="absolute top-1/2 -translate-y-1/2 left-3 z-50 pointer-events-none bg-zinc-950/95 border-2 border-amber-400 px-2.5 py-1.5 rounded-xl shadow-[0_0_20px_rgba(251,191,36,0.5)] flex flex-col items-start whitespace-nowrap backdrop-blur-md">
+                <span className="text-[11px] font-mono font-black text-amber-300">
+                  {formatBarTime(currentTime)}
+                </span>
+                <span className="text-[9px] font-mono text-zinc-300 font-semibold">
+                  {formatTime(currentTime)} ({currentTime.toFixed(2)}s)
+                </span>
+              </div>
+            )}
 
             {/* Bottom Playhead Cursor Grab Handle (Bottom Bar) */}
             <div
@@ -1082,7 +1123,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           if (isScrubbingPlayhead) return;
                           handleClipMouseDown(e, track, clip);
                         }}
-                        className={`absolute top-2 bottom-2 rounded-xl border flex items-center px-2 cursor-grab active:cursor-grabbing transition-shadow select-none shadow-lg z-10 ${
+                        className={`absolute top-2 bottom-2 rounded-xl border flex items-center px-2 transition-shadow select-none shadow-lg z-10 ${
+                          clip.isLocked
+                            ? 'cursor-pointer'
+                            : 'cursor-grab active:cursor-grabbing'
+                        } ${
                           isClipSelected
                             ? 'bg-gradient-to-r from-emerald-600/50 to-teal-500/40 border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
                             : 'bg-gradient-to-r from-emerald-700/25 to-teal-800/20 border-emerald-500/50 hover:border-emerald-400'
@@ -1092,9 +1137,16 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           width: `${clipWidthPx}px`,
                         }}
                       >
-                        {/* Left Drag Handle Indicator */}
-                        <div className="mr-1.5 flex flex-col gap-0.5 text-zinc-400 opacity-60">
-                          <MoveHorizontal className="w-3.5 h-3.5 text-emerald-300" />
+                        {/* Left Drag or Lock Indicator */}
+                        <div
+                          className="mr-1.5 flex flex-col gap-0.5 shrink-0"
+                          title={clip.isLocked ? 'Toma con Seguro (Hold) activado' : 'Arrastrar para desplazar en el tiempo'}
+                        >
+                          {clip.isLocked ? (
+                            <Lock className="w-3.5 h-3.5 text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]" />
+                          ) : (
+                            <MoveHorizontal className="w-3.5 h-3.5 text-emerald-300 opacity-60" />
+                          )}
                         </div>
 
                         {/* Continuous Waveform Across Full Clip Duration */}
@@ -1102,7 +1154,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           {interpolatedPeaks.map((val, idx) => (
                             <div
                               key={idx}
-                              className="flex-1 min-w-[2px] max-w-[4px] bg-emerald-400 rounded-full shrink-0"
+                              className={`flex-1 min-w-[2px] max-w-[4px] rounded-full shrink-0 ${
+                                clip.isLocked ? 'bg-amber-400/90' : 'bg-emerald-400'
+                              }`}
                               style={{ height: `${Math.max(15, val * 100)}%` }}
                             />
                           ))}
@@ -1110,16 +1164,46 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
                         {/* Clip Meta Tag */}
                         <div className="absolute left-2.5 bottom-1 flex items-center gap-1.5 pointer-events-none drop-shadow">
-                          <span className="text-[9px] font-mono font-bold text-emerald-200 uppercase">
+                          <span className={`text-[9px] font-mono font-bold uppercase flex items-center gap-1 ${
+                            clip.isLocked ? 'text-amber-300' : 'text-emerald-200'
+                          }`}>
                             {clip.name || `Toma ${clipIndex + 1}`}
+                            {clip.isLocked && (
+                              <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[7px] border border-amber-500/30">
+                                HOLD
+                              </span>
+                            )}
                           </span>
                           <span className="text-[8px] font-mono text-zinc-300">
                             {formatTime(clip.startBeatOffset)} ({clip.duration.toFixed(1)}s)
                           </span>
                         </div>
 
-                        {/* Quick Scissor & Delete Buttons on the Clip */}
+                        {/* Quick Action Buttons: Lock/Hold, Split & Delete */}
                         <div className="absolute right-1.5 top-1 flex items-center gap-1 z-20">
+                          {/* Seguro / Hold Button on the clip */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onToggleLockTake) {
+                                onToggleLockTake(track.id, clip.id);
+                              }
+                            }}
+                            className={`p-1 rounded-md border transition-all cursor-pointer shadow-sm ${
+                              clip.isLocked
+                                ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.6)] opacity-100 font-bold'
+                                : 'bg-black/80 hover:bg-zinc-700 text-zinc-300 border-zinc-700/60 opacity-80 hover:opacity-100'
+                            }`}
+                            title={
+                              clip.isLocked
+                                ? 'Seguro ACTIVADO: Clic para desbloquear y permitir mover esta toma'
+                                : 'Activar SEGURO (Hold): Bloquea la toma para evitar que se mueva por accidente'
+                            }
+                          >
+                            {clip.isLocked ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
+                          </button>
+
                           {onSplitTake && (
                             <button
                               type="button"
@@ -1194,7 +1278,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   {tick.isDownbeat ? (
                     <div className="flex flex-col items-center">
                       <span className="text-[9px] font-mono font-black text-amber-300 bg-amber-950/80 px-1 py-0.2 rounded border border-amber-500/40 mb-0.5">
-                        C{tick.bar}
+                        Bar {tick.bar}
                       </span>
                       <div className="w-[2px] h-3 bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]" />
                     </div>
@@ -1299,28 +1383,63 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           {activeSelectedClip && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 flex-wrap">
+                {/* Hold/Seguro toggle in fine-nudge panel */}
+                <button
+                  onClick={() => {
+                    if (onToggleLockTake && selectedClipTrack) {
+                      onToggleLockTake(selectedClipTrack.id, activeSelectedClip.id);
+                    }
+                  }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-bold border transition-all active:scale-95 ${
+                    activeSelectedClip.isLocked
+                      ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.6)]'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                  }`}
+                  title={activeSelectedClip.isLocked ? 'Seguro ACTIVO: Clic para desbloquear' : 'Clic para activar seguro (Hold)'}
+                >
+                  {activeSelectedClip.isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                  <span>{activeSelectedClip.isLocked ? 'SEGURO ACTIVO (HOLD)' : 'ACTIVAR SEGURO'}</span>
+                </button>
+
+                <div className="h-4 w-px bg-zinc-700 mx-1" />
+
                 <span className="text-[11px] font-mono text-zinc-400 font-semibold mr-1">
                   AJUSTAR POSICIÓN:
                 </span>
 
                 <button
+                  disabled={Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(-1 * secPerBar)}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono font-medium border border-zinc-700 active:scale-95 transition-all"
-                  title="Retroceder 1 compás entero"
+                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
+                    activeSelectedClip.isLocked
+                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                  }`}
+                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Retroceder 1 Bar entero'}
                 >
-                  -1 Compás
+                  -1 Bar
                 </button>
                 <button
+                  disabled={Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(-0.1)}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono font-medium border border-zinc-700 active:scale-95 transition-all"
-                  title="Retroceder 100ms"
+                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
+                    activeSelectedClip.isLocked
+                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                  }`}
+                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Retroceder 100ms'}
                 >
                   -100ms
                 </button>
                 <button
+                  disabled={Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(-0.02)}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono font-medium border border-zinc-700 active:scale-95 transition-all"
-                  title="Retroceder 20ms (ajuste fino)"
+                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
+                    activeSelectedClip.isLocked
+                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                  }`}
+                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Retroceder 20ms (ajuste fino)'}
                 >
                   -20ms
                 </button>
@@ -1328,32 +1447,53 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                 <div className="h-4 w-px bg-zinc-700 mx-1" />
 
                 <button
+                  disabled={Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(0.02)}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono font-medium border border-zinc-700 active:scale-95 transition-all"
-                  title="Avanzar 20ms"
+                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
+                    activeSelectedClip.isLocked
+                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                  }`}
+                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Avanzar 20ms'}
                 >
                   +20ms
                 </button>
                 <button
+                  disabled={Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(0.1)}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono font-medium border border-zinc-700 active:scale-95 transition-all"
-                  title="Avanzar 100ms"
+                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
+                    activeSelectedClip.isLocked
+                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                  }`}
+                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Avanzar 100ms'}
                 >
                   +100ms
                 </button>
                 <button
+                  disabled={Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(1 * secPerBar)}
-                  className="px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono font-medium border border-zinc-700 active:scale-95 transition-all"
-                  title="Avanzar 1 compás entero"
+                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
+                    activeSelectedClip.isLocked
+                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                  }`}
+                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Avanzar 1 Bar entero'}
                 >
-                  +1 Compás
+                  +1 Bar
                 </button>
               </div>
 
               {/* Snap to Playhead button */}
               <button
+                disabled={Boolean(activeSelectedClip.isLocked)}
                 onClick={handleSnapToPlayhead}
-                className="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-mono font-semibold transition-all active:scale-95"
+                className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all active:scale-95 ${
+                  activeSelectedClip.isLocked
+                    ? 'bg-zinc-850 text-zinc-600 border border-zinc-800 cursor-not-allowed'
+                    : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                }`}
+                title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : `Alinear al cabezal actual (${formatTime(currentTime)})`}
               >
                 Mover al Cabezal ({formatTime(currentTime)})
               </button>

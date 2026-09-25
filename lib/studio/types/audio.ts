@@ -94,6 +94,7 @@ export interface VocalClip {
   startBeatOffset: number;          // start position in seconds relative to timeline 0
   waveformSample?: number[];
   name?: string;
+  isLocked?: boolean;               // Seguro/Hold: Protegido contra desplazamientos accidentales
 }
 
 export interface VocalTrack {
