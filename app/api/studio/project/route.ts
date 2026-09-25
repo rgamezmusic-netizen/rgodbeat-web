@@ -59,12 +59,12 @@ export async function GET() {
       return NextResponse.json({ hasProject: false, isLoggedIn: false });
     }
 
-    const { hasActivePass, daysRemaining, isAdmin } = await checkUserAccess(user);
+    const { hasActivePass, daysRemaining, isAdmin, accessUntil } = await checkUserAccess(user);
     const projectPrefix = `studio/projects/${user.id}/`;
     const projectKey = `${projectPrefix}project.json`;
 
-    // 1. If subscription expired, wipe cloud project automatically
-    if (!hasActivePass) {
+    // 1. If user had a paid pass and the expiration date has strictly elapsed in the past, clean up
+    if (accessUntil && accessUntil < new Date() && !isAdmin) {
       const exists = await doesR2ObjectExist(projectKey);
       if (exists) {
         await deleteR2Prefix(projectPrefix);
@@ -83,22 +83,16 @@ export async function GET() {
           message: "Tu proyecto en la nube fue eliminado porque tu suscripción premium ha expirado.",
         });
       }
-
-      return NextResponse.json({
-        hasProject: false,
-        hasActivePass: false,
-        daysRemaining: 0,
-      });
     }
 
-    // 2. User has active pass: load project.json from R2
+    // 2. Load user's latest project.json from R2
     const projectBuffer = await downloadFromR2(projectKey);
     if (!projectBuffer) {
       return NextResponse.json({
         hasProject: false,
-        hasActivePass: true,
+        hasActivePass,
         daysRemaining,
-        warnExpiration: daysRemaining <= 3 && !isAdmin,
+        warnExpiration: daysRemaining <= 3 && daysRemaining > 0 && !isAdmin,
       });
     }
 
@@ -123,9 +117,9 @@ export async function GET() {
 
     return NextResponse.json({
       hasProject: true,
-      hasActivePass: true,
+      hasActivePass,
       daysRemaining,
-      warnExpiration: daysRemaining <= 3 && !isAdmin,
+      warnExpiration: daysRemaining <= 3 && daysRemaining > 0 && !isAdmin,
       project: projectData,
     });
   } catch (err: any) {
@@ -144,22 +138,12 @@ export async function POST(req: NextRequest) {
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json(
-        { error: "Debes iniciar sesión para guardar tu proyecto." },
+        { error: "Debes iniciar sesión para guardar tu proyecto en tu cuenta." },
         { status: 401 }
       );
     }
 
-    const { hasActivePass, daysRemaining } = await checkUserAccess(user);
-    if (!hasActivePass) {
-      return NextResponse.json(
-        {
-          error:
-            "Necesitas un Pase de Studio activo para guardar tu proyecto en la nube.",
-          requiresPass: true,
-        },
-        { status: 403 }
-      );
-    }
+    const { daysRemaining, hasActivePass } = await checkUserAccess(user);
 
     const formData = await req.formData();
     const metadataRaw = formData.get("metadata") as string;

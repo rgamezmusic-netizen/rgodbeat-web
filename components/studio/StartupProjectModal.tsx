@@ -89,7 +89,9 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
               </span>
               <span className="flex items-center gap-1 text-emerald-400">
                 <Mic className="w-3 h-3" />
-                <span>{takesCount} {takesCount === 1 ? 'toma' : 'tomas'}</span>
+                <span>
+                  {takesCount === 0 ? 'Beat y pistas listas' : `${takesCount} ${takesCount === 1 ? 'toma' : 'tomas'}`}
+                </span>
               </span>
               {savedTimeText && (
                 <span className="flex items-center gap-1 text-zinc-500 text-[10px] ml-auto">

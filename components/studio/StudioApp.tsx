@@ -426,6 +426,7 @@ export default function App() {
   // Studio Access & Subscription state
   const [accessStatus, setAccessStatus] = useState<{
     isDemo: boolean;
+    isLoggedIn: boolean;
     hasActivePass: boolean;
     daysRemaining: number;
     expiresAt: string | null;
@@ -433,6 +434,7 @@ export default function App() {
     name: string;
   }>({
     isDemo: true,
+    isLoggedIn: false,
     hasActivePass: false,
     daysRemaining: 0,
     expiresAt: null,
@@ -454,6 +456,7 @@ export default function App() {
         const data = await res.json();
         setAccessStatus({
           isDemo: data.isDemo,
+          isLoggedIn: Boolean(data.isLoggedIn || data.email),
           hasActivePass: data.hasActivePass,
           daysRemaining: data.daysRemaining || 0,
           expiresAt: data.expiresAt,
@@ -588,10 +591,10 @@ export default function App() {
 
         const trackName = tracksRef.current.find((t) => t.id === trackId)?.name || trackId;
         showToast(`¡Toma grabada en ${trackName}! Agregada a la línea de tiempo.`, 'success');
-        saveStudioSession(tracksRef.current, currentBeatRef.current?.id, loopSettings, currentTime);
+        saveStudioSession(tracksRef.current, currentBeatRef.current, loopSettings, currentTime, beatFX.volume);
 
         // Auto-save project to user account in the cloud (Cloudflare R2) so work is never lost!
-        if (accessStatusRef.current.hasActivePass || !accessStatusRef.current.isDemo) {
+        if (accessStatusRef.current.isLoggedIn || accessStatusRef.current.hasActivePass) {
           saveProjectToCloud(tracksRef.current, currentBeatRef.current, loopSettings)
             .then((cloudRes) => {
               if (cloudRes.success) {
@@ -631,20 +634,35 @@ export default function App() {
         let hasPreviousSession = false;
         try {
           const lastSession = await restoreLastStudioSession(audioCtx);
-          if (lastSession && lastSession.tracks.length > 0) {
-            const totalTakes = lastSession.tracks.reduce((acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)), 0);
-            if (totalTakes > 0) {
+          if (lastSession) {
+            const totalTakes = (lastSession.tracks || []).reduce((acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)), 0);
+            const hasRecordings = totalTakes > 0;
+            const hasRestoredBeat = Boolean(lastSession.beat || lastSession.beatId);
+
+            if (hasRecordings || hasRestoredBeat) {
               hasPreviousSession = true;
-              if (lastSession.beatId) {
+              const sessionBeat = lastSession.beat || null;
+              if (sessionBeat) {
+                restoredSessionBeatId = sessionBeat.id;
+                setCurrentBeat(sessionBeat);
+                currentBeatRef.current = sessionBeat;
+                audioEngine.setBeat(sessionBeat);
+              } else if (lastSession.beatId) {
                 restoredSessionBeatId = lastSession.beatId;
               }
+
+              if (lastSession.beatVolume !== undefined) {
+                setBeatFX((prev) => ({ ...prev, volume: lastSession.beatVolume! }));
+              }
+
               setPendingStartupSession({
-                tracks: lastSession.tracks,
-                beatId: lastSession.beatId,
+                tracks: lastSession.tracks || [],
+                beat: sessionBeat,
+                beatId: sessionBeat?.id || lastSession.beatId,
                 loopSettings: lastSession.loopSettings,
                 currentTime: lastSession.currentTime,
                 takesCount: totalTakes,
-                beatTitle: 'Último Proyecto Local',
+                beatTitle: sessionBeat?.title || 'Último Beat',
                 savedTimeText: 'Guardado en tu dispositivo',
               });
               setShowStartupModal(true);
@@ -654,18 +672,18 @@ export default function App() {
           console.warn('Could not restore previous studio session:', sessErr);
         }
 
-        // If local storage had no recordings, also check if user has a saved cloud project
+        // If local storage had no recordings or beat, also check if user has a saved cloud project
         if (!hasPreviousSession) {
           try {
             const cloudCheck = await checkCloudProject();
             setCloudProjectInfo(cloudCheck);
             if (cloudCheck.hasProject) {
               const cloudData = await loadProjectFromCloud(audioCtx);
-              if (cloudData && cloudData.tracks && cloudData.tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer)) {
-                const totalTakes = cloudData.tracks.reduce((acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)), 0);
+              if (cloudData) {
+                const totalTakes = (cloudData.tracks || []).reduce((acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)), 0);
                 let cloudBeat: BeatData | null = null;
                 const customBuf = cloudData.beatData?.customBeatBuffer;
-                if (cloudData.beatData && cloudData.beatData.isCustomUpload && customBuf) {
+                if (cloudData.beatData && customBuf) {
                   const b = cloudData.beatData;
                   cloudBeat = {
                     id: b.id || `custom-${Date.now()}`,
@@ -677,22 +695,33 @@ export default function App() {
                     duration: customBuf.duration,
                     buffer: customBuf,
                     artworkGradient: b.artworkGradient || 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
-                    isCustomUpload: true,
+                    isCustomUpload: Boolean(b.isCustomUpload),
+                    waveformSample: b.waveformSample,
                     detectedBpm: b.detectedBpm,
                     detectedKey: b.detectedKey,
                     isLocked: true,
                   };
                 }
-                setPendingStartupSession({
-                  tracks: cloudData.tracks,
-                  beat: cloudBeat,
-                  beatId: cloudData.beatData?.id,
-                  loopSettings: cloudData.loopSettings,
-                  takesCount: totalTakes,
-                  beatTitle: cloudData.beatData?.title || 'Proyecto Guardado',
-                  savedTimeText: cloudCheck.projectMeta?.savedAt ? new Date(cloudCheck.projectMeta.savedAt).toLocaleDateString() : 'En tu cuenta',
-                });
-                setShowStartupModal(true);
+
+                if (totalTakes > 0 || cloudBeat) {
+                  hasPreviousSession = true;
+                  if (cloudBeat) {
+                    restoredSessionBeatId = cloudBeat.id;
+                    setCurrentBeat(cloudBeat);
+                    currentBeatRef.current = cloudBeat;
+                    audioEngine.setBeat(cloudBeat);
+                  }
+                  setPendingStartupSession({
+                    tracks: cloudData.tracks || [],
+                    beat: cloudBeat,
+                    beatId: cloudBeat?.id || cloudData.beatData?.id,
+                    loopSettings: cloudData.loopSettings,
+                    takesCount: totalTakes,
+                    beatTitle: cloudBeat?.title || cloudData.beatData?.title || 'Proyecto en Cuenta',
+                    savedTimeText: cloudCheck.projectMeta?.savedAt ? new Date(cloudCheck.projectMeta.savedAt).toLocaleDateString() : 'En tu cuenta',
+                  });
+                  setShowStartupModal(true);
+                }
               }
             }
           } catch (cloudErr) {
@@ -725,7 +754,7 @@ export default function App() {
         }
 
         // 4. Select initial beat:
-        // CRITICAL CHECK: If user already uploaded or selected a beat before this async finished,
+        // CRITICAL CHECK: If user already uploaded, selected or restored a beat from previous project,
         // NEVER OVERWRITE IT!
         if (currentBeatRef.current) {
           return;
@@ -800,15 +829,32 @@ export default function App() {
     };
   }, [engine]);
 
-  // Debounced auto-save session whenever tracks or edits change
+  // Active beat watcher: whenever the active beat changes, immediately update the record of the last project!
+  useEffect(() => {
+    if (!currentBeat) return;
+    currentBeatRef.current = currentBeat;
+    saveStudioSession(tracksRef.current, currentBeat, loopSettings, currentTime, beatFX.volume);
+    saveActiveBeatId(currentBeat.id, true);
+
+    if (currentBeat.isCustomUpload && currentBeat.buffer) {
+      saveBeatToDatabase(currentBeat, undefined, true).catch(() => {});
+    }
+
+    if (accessStatusRef.current.isLoggedIn) {
+      saveProjectToCloud(tracksRef.current, currentBeat, loopSettings).catch(() => {});
+    }
+  }, [currentBeat]);
+
+  // Debounced auto-save session whenever tracks, loop, or currentTime change
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer)) {
-        saveStudioSession(tracks, currentBeatRef.current?.id, loopSettings, currentTime);
+      saveStudioSession(tracks, currentBeatRef.current, loopSettings, currentTime, beatFX.volume);
+      if (accessStatusRef.current.isLoggedIn && (tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer) || currentBeatRef.current)) {
+        saveProjectToCloud(tracks, currentBeatRef.current, loopSettings).catch(() => {});
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [tracks, loopSettings, currentTime]);
+  }, [tracks, loopSettings, currentTime, beatFX.volume]);
 
   // Handlers for Startup Choice: Continuar Último Proyecto vs Iniciar Proyecto Nuevo
   const handleContinueLastProject = () => {
@@ -890,7 +936,7 @@ export default function App() {
           setIsPlaying(false);
         }
         // Persist complete session to IndexedDB
-        saveStudioSession(tracksRef.current, currentBeatRef.current?.id, loopSettings, currentTime);
+        saveStudioSession(tracksRef.current, currentBeatRef.current, loopSettings, currentTime, beatFX.volume);
       } else {
         // User returned to browser after call or app switch
         if (engine) {
@@ -1501,7 +1547,7 @@ export default function App() {
     if (engine && isPlaying) {
       engine.seek(currentTime, updated);
     }
-    saveStudioSession(updated, currentBeatRef.current?.id, loopSettings, currentTime);
+    saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume);
     showToast(`✂️ Toma cortada con precisión en dos partes en ${cutPoint.toFixed(2)}s.`, 'success');
   };
 

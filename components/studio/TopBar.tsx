@@ -68,11 +68,15 @@ export const TopBar: React.FC<TopBarProps> = ({
     >
       {/* Zone 1: Wordmark & Beat status badge */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
-        <a href="/" className="flex items-center gap-2 group shrink-0 min-h-[38px] p-1 rounded-lg hover:bg-white/[0.05] transition-colors" title="Volver a la tienda principal">
+        <a
+          href="/"
+          className="flex items-center group shrink-0 h-10 sm:h-12 px-1 py-0.5 rounded-xl hover:bg-white/[0.06] transition-all"
+          title="Volver a la tienda principal"
+        >
           <img
             src="/images/rgodbeat-studio-logo.png"
             alt="RGodbeat Studio"
-            className="h-6 sm:h-7 w-auto object-contain brightness-110 drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]"
+            className="h-9 sm:h-11 w-auto max-w-[125px] sm:max-w-[155px] object-contain filter brightness-125 drop-shadow-[0_0_12px_rgba(255,255,255,0.35)] group-hover:scale-105 transition-all duration-200"
           />
         </a>
 
