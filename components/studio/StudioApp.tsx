@@ -18,6 +18,7 @@ import {
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 import { createDemoBeat } from '@/lib/studio/audio/demoBeats';
 import { analyzeBeatAudio } from '@/lib/studio/audio/beatAnalyzer';
+import { extractWaveformPeaks } from '@/lib/studio/audio/wavEncoder';
 import {
   saveBeatToDatabase,
   getAllSavedBeats,
@@ -1252,6 +1253,117 @@ export default function App() {
     showToast(`Toma eliminada en ${targetName}`, 'info');
   };
 
+  // Split / Cut take at playhead (or specified time)
+  const handleSplitTake = async (trackId: VocalTrackId, clipId?: string, splitTimeSec?: number) => {
+    if (!engine) return;
+    const audioCtx = await engine.ensureAudioContext();
+
+    const track = tracks.find((t) => t.id === trackId);
+    if (!track) return;
+
+    const clips = (track.clips && track.clips.length > 0)
+      ? track.clips
+      : track.buffer
+      ? [{
+          id: `clip-${track.id}-init`,
+          buffer: track.buffer,
+          tunedBuffer: track.tunedBuffer,
+          startBeatOffset: track.startBeatOffset || 0,
+          duration: track.duration || track.buffer.duration,
+          waveformSample: track.waveformSample,
+          name: 'Toma 1',
+        }]
+      : [];
+
+    const cutPoint = splitTimeSec !== undefined ? splitTimeSec : currentTime;
+
+    // Find the clip to cut: either explicitly requested or under the cutPoint
+    let targetClip = clipId ? clips.find((c) => c.id === clipId) : null;
+    if (!targetClip) {
+      targetClip = clips.find((c) => cutPoint > c.startBeatOffset + 0.05 && cutPoint < c.startBeatOffset + c.duration - 0.05) || null;
+    }
+
+    if (!targetClip || !targetClip.buffer) {
+      showToast('Selecciona una toma o coloca el cabezal sobre la toma para cortarla.', 'info');
+      return;
+    }
+
+    const clipStart = targetClip.startBeatOffset;
+    const clipEnd = clipStart + targetClip.duration;
+
+    if (cutPoint <= clipStart + 0.05 || cutPoint >= clipEnd - 0.05) {
+      showToast(`Coloca el cabezal dentro de la toma (${clipStart.toFixed(1)}s - ${clipEnd.toFixed(1)}s) para cortarla en dos partes.`, 'info');
+      return;
+    }
+
+    pushUndoSnapshot('Cortar toma en cabezal');
+
+    const offsetInClip = cutPoint - clipStart;
+    const sampleRate = targetClip.buffer.sampleRate;
+    const numChannels = targetClip.buffer.numberOfChannels;
+    const totalSamples = targetClip.buffer.length;
+    const splitSample = Math.min(totalSamples - 1, Math.max(1, Math.floor(offsetInClip * sampleRate)));
+
+    // Part 1 Buffer (from 0 to splitSample)
+    const part1Buffer = audioCtx.createBuffer(numChannels, splitSample, sampleRate);
+    for (let ch = 0; ch < numChannels; ch++) {
+      part1Buffer.getChannelData(ch).set(targetClip.buffer.getChannelData(ch).subarray(0, splitSample));
+    }
+
+    // Part 2 Buffer (from splitSample to end)
+    const part2Length = totalSamples - splitSample;
+    const part2Buffer = audioCtx.createBuffer(numChannels, part2Length, sampleRate);
+    for (let ch = 0; ch < numChannels; ch++) {
+      part2Buffer.getChannelData(ch).set(targetClip.buffer.getChannelData(ch).subarray(splitSample));
+    }
+
+    const baseName = targetClip.name?.replace(/ \(Parte \d+\)$/, '') || 'Toma';
+
+    const part1Clip: VocalClip = {
+      id: `clip-${trackId}-${Date.now()}-a`,
+      name: `${baseName} (Parte 1)`,
+      buffer: part1Buffer,
+      tunedBuffer: null,
+      startBeatOffset: clipStart,
+      duration: part1Buffer.duration,
+      waveformSample: extractWaveformPeaks(part1Buffer, 36),
+    };
+
+    const part2Clip: VocalClip = {
+      id: `clip-${trackId}-${Date.now()}-b`,
+      name: `${baseName} (Parte 2)`,
+      buffer: part2Buffer,
+      tunedBuffer: null,
+      startBeatOffset: cutPoint,
+      duration: part2Buffer.duration,
+      waveformSample: extractWaveformPeaks(part2Buffer, 36),
+    };
+
+    const newClips = clips.flatMap((c) => (c.id === targetClip!.id ? [part1Clip, part2Clip] : [c]));
+
+    const updated = tracks.map((t) => {
+      if (t.id !== trackId) return t;
+      const maxDur = Math.max(...newClips.map((c) => c.startBeatOffset + c.duration));
+      return {
+        ...t,
+        clips: newClips,
+        buffer: part1Buffer,
+        duration: maxDur,
+        startBeatOffset: Math.min(...newClips.map((c) => c.startBeatOffset)),
+        waveformSample: part1Clip.waveformSample,
+        tunedBuffer: null,
+      };
+    });
+
+    setTracks(updated);
+    tracksRef.current = updated;
+    if (engine && isPlaying) {
+      engine.seek(currentTime, updated);
+    }
+    saveStudioSession(updated, currentBeatRef.current?.id, loopSettings, currentTime);
+    showToast(`✂️ Toma cortada en dos partes en ${cutPoint.toFixed(2)}s.`, 'success');
+  };
+
   // Update Vocal FX (including Pitch Tune)
   const handleChangeVocalFX = async (newFX: VocalFX) => {
     if (!activeFXTrackId) return;
@@ -1824,6 +1936,7 @@ export default function App() {
               activeRecordingTrackId={activeRecordingTrackId}
               onStartRecord={handleStartRecord}
               onStopRecord={handleStopRecord}
+              onSplitTake={handleSplitTake}
             />
           </div>
         )}

@@ -23,6 +23,7 @@ import {
   Repeat,
   Square,
   Mic,
+  Scissors,
 } from 'lucide-react';
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
@@ -81,6 +82,7 @@ interface TimelineWorkspaceProps {
   activeRecordingTrackId?: VocalTrackId | null;
   onStartRecord?: (trackId: VocalTrackId) => void;
   onStopRecord?: () => void;
+  onSplitTake?: (trackId: VocalTrackId, clipId?: string, splitTimeSec?: number) => void;
 }
 
 export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
@@ -119,6 +121,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   activeRecordingTrackId = null,
   onStartRecord,
   onStopRecord,
+  onSplitTake,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
@@ -434,6 +437,42 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             </span>
           )}
 
+          {/* Direct Channel Selector */}
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-mono text-zinc-400 hidden md:inline">Canal:</span>
+            <select
+              value={selectedTrackId}
+              onChange={(e) => {
+                const newId = e.target.value as VocalTrackId;
+                onSelectTrack(newId);
+                setSelectedClipTrackId(newId);
+              }}
+              className="bg-zinc-800 text-amber-300 font-mono text-xs font-bold px-2 py-1.5 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
+              title="Seleccionar canal para grabar o editar"
+            >
+              {tracks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Quick Cut / Scissor Tool Button */}
+          {onSplitTake && (
+            <button
+              onClick={() => {
+                const targetTrack = selectedClipTrackId || selectedTrackId;
+                onSplitTake(targetTrack, selectedClipId || undefined, currentTime);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-amber-500/20 text-zinc-200 hover:text-amber-300 border border-zinc-700 hover:border-amber-500/40 font-mono text-xs font-semibold transition-all active:scale-95 cursor-pointer shadow-sm"
+              title={`Cortar / Dividir toma en la posición del cabezal (${formatTime(currentTime)})`}
+            >
+              <Scissors className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">CORTAR</span>
+            </button>
+          )}
+
           <div className="h-5 w-px bg-zinc-700 mx-1 hidden sm:block" />
 
           <button
@@ -681,33 +720,35 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
                   {/* Row 2: Arm [R], Mute [M], Solo [S], Volume */}
                   <div className="flex items-center gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
-                    {/* Arm / Record button like FL Studio, Ableton, Logic Pro, Pro Tools */}
+                    {/* Direct 1-Click Record button on any channel in Edition Mode */}
                     <button
-                      onClick={() => {
-                        onSelectTrack(track.id);
-                        if (isThisRecording && onStopRecord) {
-                          onStopRecord();
-                        } else if (isArmed && onStartRecord) {
-                          onStartRecord(track.id);
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isThisRecording) {
+                          if (onStopRecord) onStopRecord();
+                        } else {
+                          onSelectTrack(track.id);
+                          setSelectedClipTrackId(track.id);
+                          if (onStartRecord) {
+                            onStartRecord(track.id);
+                          }
                         }
                       }}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all ${
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
                         isThisRecording
                           ? 'bg-red-600 text-white animate-pulse shadow-sm shadow-red-600/50 ring-1 ring-white/50'
                           : isArmed
-                          ? 'bg-red-600 text-white shadow-sm shadow-red-600/40 ring-1 ring-red-400'
-                          : 'bg-zinc-800 text-zinc-500 hover:text-red-400 hover:bg-zinc-700'
+                          ? 'bg-red-600 hover:bg-red-500 text-white shadow-sm shadow-red-600/40 ring-1 ring-red-400'
+                          : 'bg-zinc-800 text-zinc-400 hover:text-white hover:bg-red-600/80 border border-zinc-700/60'
                       }`}
                       title={
                         isThisRecording
                           ? `Grabando en ${track.name} (clic para detener)`
-                          : isArmed
-                          ? `Pista armada para grabar (${track.name}). Clic para grabar.`
-                          : `Armar / seleccionar ${track.name} para grabar`
+                          : `Grabar inmediatamente en ${track.name}`
                       }
                     >
-                      <span className={`w-1.5 h-1.5 rounded-full ${isThisRecording || isArmed ? 'bg-white' : 'bg-zinc-500'}`} />
-                      <span>R</span>
+                      <span className={`w-1.5 h-1.5 rounded-full ${isThisRecording || isArmed ? 'bg-white' : 'bg-red-500'}`} />
+                      <span>{isThisRecording ? 'STOP' : 'REC'}</span>
                     </button>
 
                     <button
@@ -835,6 +876,24 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                             {formatTime(clip.startBeatOffset)} ({clip.duration.toFixed(1)}s)
                           </span>
                         </div>
+
+                        {/* Quick Scissor Cut Button on the Clip */}
+                        {onSplitTake && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedClipTrackId(track.id);
+                              setSelectedClipId(clip.id);
+                              onSelectTrack(track.id);
+                              onSplitTake(track.id, clip.id, currentTime);
+                            }}
+                            className="absolute right-1.5 top-1 p-1 rounded-md bg-black/60 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-500/30 transition-all opacity-70 hover:opacity-100 cursor-pointer z-20 shadow-sm"
+                            title={`Cortar esta toma en el cabezal (${formatTime(currentTime)})`}
+                          >
+                            <Scissors className="w-2.5 h-2.5" />
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -913,6 +972,18 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       ))}
                   </select>
                 </div>
+
+                {/* Split / Cut Button */}
+                {onSplitTake && (
+                  <button
+                    onClick={() => onSplitTake(selectedClipTrack.id, activeSelectedClip.id, currentTime)}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-mono font-bold transition-all active:scale-95 cursor-pointer shadow-sm shadow-amber-500/10"
+                    title={`Cortar / Dividir esta toma exactamente en el cabezal (${formatTime(currentTime)})`}
+                  >
+                    <Scissors className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Cortar en Cabezal ({formatTime(currentTime)})</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => onDeleteTake(selectedClipTrack.id, activeSelectedClip.id)}
