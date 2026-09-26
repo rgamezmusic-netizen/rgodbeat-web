@@ -2136,6 +2136,10 @@ export class AudioEngine {
         track.tunedBuffer = tuned;
         return tuned;
       }
+      if (track.clips && track.clips.length > 0 && track.clips[0]?.tunedBuffer) {
+        track.tunedBuffer = track.clips[0].tunedBuffer;
+        return track.clips[0].tunedBuffer;
+      }
       return null;
     } catch (e) {
       console.error('Pitch correction processing error:', e);

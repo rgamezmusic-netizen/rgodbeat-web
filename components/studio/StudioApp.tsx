@@ -22,6 +22,7 @@ import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 import { createDemoBeat } from '@/lib/studio/audio/demoBeats';
 import { analyzeBeatAudio } from '@/lib/studio/audio/beatAnalyzer';
 import { extractWaveformPeaks, punchInClips } from '@/lib/studio/audio/wavEncoder';
+import { MAIN_SCALES } from '@/lib/studio/audio/pitchCorrection';
 import {
   saveBeatToDatabase,
   getAllSavedBeats,
@@ -1149,7 +1150,8 @@ export default function App() {
   // Manual key and scale change handler - Automatically syncs AutoTune on all tracks
   const handleChangeTonality = (rootKey: MusicalKey, scaleMode: ScaleMode) => {
     if (!currentBeat) return;
-    const scaleName = scaleMode === 'minor' ? 'Menor Natural' : 'Mayor';
+    const scaleDef = MAIN_SCALES.find((s) => s.id === scaleMode);
+    const scaleName = scaleDef ? scaleDef.name : scaleMode;
     const matchingTonalityId = `${rootKey.toLowerCase().replace('#', 's')}_${scaleMode}` as PopularTonalityId;
 
     const updatedBeat: BeatData = {
@@ -1165,7 +1167,7 @@ export default function App() {
       engine.setBeat(updatedBeat);
     }
 
-    // Auto-sync vocal tune root key & scale mode to all tracks
+    // Auto-sync vocal tune root key & scale mode to all tracks and re-tune active takes
     setTracks((prev) => {
       const next = prev.map((t) => ({
         ...t,
@@ -1178,13 +1180,29 @@ export default function App() {
             tonalityId: matchingTonalityId,
           },
         },
-        tunedBuffer: null,
       }));
       tracksRef.current = next;
+
+      // Re-tune any track with audio takes in background
+      if (engine) {
+        next.forEach((tr) => {
+          const hasAudio = (tr.clips && tr.clips.length > 0) || Boolean(tr.buffer);
+          if (tr.fx.tune?.enabled && tr.fx.tune.speed > 0.01 && hasAudio) {
+            engine.updateTuneForTrack(tr).then((tuned) => {
+              if (tuned) {
+                setTracks((current) =>
+                  current.map((currTr) => (currTr.id === tr.id ? { ...currTr, tunedBuffer: tuned } : currTr))
+                );
+              }
+            });
+          }
+        });
+      }
+
       return next;
     });
 
-    showToast(`Escala cambiada a ${rootKey} ${scaleName}. Autotune actualizado en todas las pistas.`, 'success');
+    showToast(`Escala actualizada: ${rootKey} ${scaleName} (Aplicada a todas las pistas)`, 'success');
   };
 
   // Transport Handlers
@@ -1852,14 +1870,22 @@ export default function App() {
       if (target) {
         engine.updateVocalFX(target, updated);
 
-        // Process vocal pitch tune if speed > 0
-        if (target.fx.tune?.enabled && target.fx.tune.speed > 0.01 && target.buffer) {
+        // Process vocal pitch tune if speed > 0 and track has audio
+        const hasAudio = (target.clips && target.clips.length > 0) || Boolean(target.buffer);
+        if (target.fx.tune?.enabled && target.fx.tune.speed > 0.01 && hasAudio) {
           const tuned = await engine.updateTuneForTrack(target);
           if (tuned) {
             target.tunedBuffer = tuned;
             setTracks([...updated]);
             tracksRef.current = [...updated];
           }
+        } else if (!target.fx.tune?.enabled || target.fx.tune.speed <= 0.01) {
+          target.tunedBuffer = null;
+          if (target.clips) {
+            target.clips.forEach((c) => { c.tunedBuffer = null; });
+          }
+          setTracks([...updated]);
+          tracksRef.current = [...updated];
         }
       }
     }

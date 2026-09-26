@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { BeatData, LoopSettings, MusicalKey, ScaleMode, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative, getRelativeKey, NOTE_NAMES, SPANISH_NAMES } from '@/lib/studio/audio/beatAnalyzer';
+import { MAIN_SCALES } from '@/lib/studio/audio/pitchCorrection';
 
 interface ArtworkPlayerProps {
   beat: BeatData | null;
@@ -409,18 +410,21 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                   })}
                 </select>
 
-                {/* Scale Mode (Menor / Mayor) */}
+                {/* Scale Mode (5 Escalas Conectadas) */}
                 <select
-                  value={keyInfo.scaleMode === 'minor' ? 'minor' : 'major'}
+                  value={keyInfo.scaleMode}
                   onChange={(e) => {
                     const newMode = e.target.value as ScaleMode;
                     onChangeTonality(keyInfo.rootKey, newMode);
                   }}
                   className="bg-zinc-800 text-zinc-200 font-bold font-mono text-xs px-2 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
-                  title="Modo de escala (Menor o Mayor)"
+                  title="Escala de afinación vocal (Auto-Tune)"
                 >
-                  <option value="minor">Menor</option>
-                  <option value="major">Mayor</option>
+                  {MAIN_SCALES.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.shortName}
+                    </option>
+                  ))}
                 </select>
               </div>
             ) : (

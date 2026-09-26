@@ -252,39 +252,35 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-5 text-sm">
-          {/* OPTION 1: Master Mezclado WAV con Sidechain Profesional */}
+        <div className="p-5 overflow-y-auto space-y-4 text-sm">
+          {/* OPTION 1: Master Mezclado WAV con Sidechain */}
           <div className="p-4 rounded-xl bg-gradient-to-b from-amber-500/10 via-zinc-900/60 to-zinc-900/90 border border-amber-500/30 shadow-lg space-y-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1">
-                    <Sparkles className="w-3.5 h-3.5" /> Recomendado
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Recomendado
                   </span>
                   {sidechainEnabled && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-semibold flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-semibold">
                       Sidechain Activo
                     </span>
                   )}
                 </div>
-                <h3 className="text-base font-bold text-white mt-1">
+                <h3 className="text-base font-bold text-white mt-0.5">
                   Master Mezclado Completo (WAV)
                 </h3>
-                <p className="text-xs text-zinc-300 mt-1 leading-relaxed">
-                  Integración acústica profesional entre voces y beat. Cuando el sidechain está activo, abre espacio en las frecuencias medias para que la voz principal resalte con claridad absoluta, manteniendo los graves, bombo y 808 100% intactos con toda su pegada y potencia.
-                </p>
               </div>
             </div>
 
             {/* Sidechain Toggle Button */}
-            <div className="p-3 rounded-lg bg-black/40 border border-zinc-800 flex items-center justify-between gap-3">
+            <div className="p-2.5 rounded-lg bg-black/40 border border-zinc-800 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Activity className={`w-4 h-4 ${sidechainEnabled ? 'text-emerald-400' : 'text-zinc-500'}`} />
                 <span className="text-xs text-zinc-300 font-medium">
                   {sidechainEnabled
-                    ? 'Sidechain activo: graves y 808 intactos, medios ducking para voz'
-                    : 'Sidechain desactivado: el instrumental suena plano sin atenuación'}
+                    ? 'Sidechain Activo (Voz limpia sobre el beat)'
+                    : 'Sidechain Desactivado (Plano)'}
                 </span>
               </div>
 
@@ -292,14 +288,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <button
                 type="button"
                 onClick={() => setSidechainEnabled(!sidechainEnabled)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all active:scale-95 shadow-sm select-none ${
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all active:scale-95 shadow-sm select-none ${
                   sidechainEnabled
                     ? 'bg-emerald-500 hover:bg-emerald-400 text-black border border-emerald-400 shadow-emerald-500/25'
                     : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700'
                 }`}
                 title="Activar o desactivar el sidechain profesional"
               >
-                {sidechainEnabled && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                {sidechainEnabled && <Check className="w-3 h-3 stroke-[3]" />}
                 <span>Sidechain {sidechainEnabled ? 'ON' : 'OFF'}</span>
               </button>
             </div>
@@ -310,24 +306,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold font-display shadow-lg shadow-amber-500/20 transition-all active:scale-[0.99] disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
-              <span>{isExportingMaster ? 'Renderizando Master Mezclado (24-bit / 48kHz)...' : 'Descargar Master Mezclado (WAV)'}</span>
+              <span>{isExportingMaster ? 'Renderizando Master (24-bit / 48kHz)...' : 'Descargar Master Mezclado (WAV)'}</span>
             </button>
           </div>
 
           {/* OPTION 2: Voces RAW como Stems (Dry / Sin Efectos) */}
           <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-3">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center justify-between">
               <div>
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
-                  <Mic className="w-3.5 h-3.5" /> Pistas Limpias para Mezcla Externa
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
+                  <Mic className="w-3 h-3" /> Pistas para Mezcla Externa
                 </span>
-                <h3 className="text-base font-bold text-white mt-1">
-                  Stems de Voces RAW (Dry / Sin Efectos)
+                <h3 className="text-base font-bold text-white mt-0.5">
+                  Stems de Voces RAW (Dry / Limpias)
                 </h3>
-                <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                  Exporta cada pista de voz por separado en formato crudo 24-bit / 48.0 kHz (sin Auto-Tune, sin reverb, sin compresión).
-                  Todas las tomas inician exactamente en el segundo cero (00:00:00) para arrastrar directo a Pro Tools, FL Studio, Ableton o enviar a tu ingeniero de mezcla.
-                </p>
               </div>
             </div>
 
@@ -387,11 +379,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <div>
                 <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
                   <Sliders className="w-3.5 h-3.5 text-purple-400" />
-                  Stems Procesados (Wet FX)
+                  Stems Vocales Wet (Con FX)
                 </h4>
-                <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                  Pistas vocales individuales con Auto-Tune, EQ, compresión, delay y reverb aplicados en 24-bit / 48kHz.
-                </p>
               </div>
               <button
                 onClick={handleExportAllWetStems}
@@ -408,11 +397,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <div>
                 <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
                   <Music className="w-3.5 h-3.5 text-amber-400" />
-                  Pista de Beat Aislada
+                  Beat Instrumental (WAV)
                 </h4>
-                <p className="text-[11px] text-zinc-400 mt-1 leading-snug">
-                  Archivo WAV del instrumental con sus filtros de Beat FX aplicados en 24-bit / 48kHz.
-                </p>
               </div>
               <button
                 onClick={handleExportBeatStem}

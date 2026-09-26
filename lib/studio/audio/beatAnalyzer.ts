@@ -148,10 +148,26 @@ export function parseKeyAndGetRelative(
     }
   }
 
-  const scaleMode: ScaleMode = isMinor ? 'minor' : 'major';
+  let scaleMode: ScaleMode = isMinor ? 'minor' : 'major';
+  if (hint.includes('harmonic') || hint.includes('armónica') || hint.includes('armonica') || raw.includes('ARM')) {
+    scaleMode = 'harmonic_minor';
+  } else if (hint.includes('penta') || raw.includes('PENTA')) {
+    scaleMode = 'pentatonic';
+  } else if (hint.includes('chrom') || hint.includes('crom') || raw.includes('CROM')) {
+    scaleMode = 'chromatic';
+  }
+
   const keySymbol = isMinor ? `${root}m` : root;
   const spanishRoot = SPANISH_NAMES[root] || root;
-  const spanishMode = isMinor ? 'Menor' : 'Mayor';
+  const spanishMode = scaleMode === 'harmonic_minor'
+    ? 'Menor Armónica'
+    : scaleMode === 'pentatonic'
+    ? 'Pentatónica'
+    : scaleMode === 'chromatic'
+    ? 'Cromática'
+    : isMinor
+    ? 'Menor'
+    : 'Mayor';
   const tonalityName = `${spanishRoot} ${spanishMode} (${keySymbol})`;
 
   const relative = getRelativeKey(root, scaleMode);

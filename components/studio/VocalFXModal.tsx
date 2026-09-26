@@ -199,12 +199,12 @@ export const VocalFXModal: React.FC<VocalFXModalProps> = ({
               )}
             </div>
 
-            {/* PARTE A: NOTA EN LA QUE QUIERES QUE SE ESCUCHE Y CORRIJA TU VOZ (12 NOTAS) */}
+            {/* PARTE A: NOTA FUNDAMENTAL (12 NOTAS) */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-mono font-bold text-zinc-200 flex items-center gap-1.5">
                   <Music2 className="w-3.5 h-3.5 text-amber-400" />
-                  <span>NOTA EN LA QUE QUIERES QUE SE ESCUCHE Y CORRIJA TU VOZ:</span>
+                  <span>NOTA FUNDAMENTAL:</span>
                 </label>
                 <span className="text-[10px] font-mono text-amber-400 font-bold">
                   {SPANISH_KEY_NAMES[currentTune.rootKey]} ({currentTune.rootKey})
@@ -219,14 +219,14 @@ export const VocalFXModal: React.FC<VocalFXModalProps> = ({
                     <button
                       key={k}
                       onClick={() => handleSelectRootKey(k)}
-                      className={`py-2 px-0.5 rounded-xl flex flex-col items-center justify-center border transition-all ${
+                      className={`py-1.5 px-0.5 rounded-lg flex flex-col items-center justify-center border transition-all ${
                         isSelected
-                          ? 'bg-amber-500 text-black border-amber-300 font-extrabold shadow-lg shadow-amber-500/20 scale-105 z-10 ring-2 ring-amber-400/50'
+                          ? 'bg-amber-500 text-black border-amber-300 font-extrabold shadow-md scale-105 z-10'
                           : 'bg-zinc-950/80 border-zinc-800 text-zinc-300 hover:border-zinc-700 hover:text-white'
                       }`}
                     >
                       <span className="text-xs font-mono font-bold">{k}</span>
-                      <span className={`text-[9px] font-sans ${isSelected ? 'text-black/85 font-bold' : 'text-zinc-500'}`}>
+                      <span className={`text-[8px] font-sans ${isSelected ? 'text-black/80 font-bold' : 'text-zinc-500'}`}>
                         {SPANISH_KEY_NAMES[k]}
                       </span>
                     </button>
@@ -235,44 +235,37 @@ export const VocalFXModal: React.FC<VocalFXModalProps> = ({
               </div>
             </div>
 
-            {/* PARTE B: LAS 5 ESCALAS PRINCIPALES */}
+            {/* PARTE B: LAS 5 ESCALAS */}
             <div className="space-y-1.5 pt-2 border-t border-zinc-800/80">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-mono font-bold text-zinc-200 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>LAS 5 ESCALAS PRINCIPALES:</span>
+                  <span>ESCALA MUSICAL:</span>
                 </label>
                 <span className="text-[10px] font-mono text-zinc-400">
-                  {activeScaleNotes.length} notas en escala
+                  {activeScaleNotes.length} notas
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
                 {MAIN_SCALES.map((scale) => {
                   const isSelected = currentTune.scaleMode === scale.id;
                   return (
                     <button
                       key={scale.id}
                       onClick={() => handleSelectScaleMode(scale.id)}
-                      className={`p-2.5 rounded-xl border text-left transition-all relative ${
+                      className={`py-2 px-2 rounded-xl border text-center transition-all ${
                         isSelected
-                          ? 'bg-amber-500/20 border-amber-400 text-white shadow-md ring-1 ring-amber-400/40'
+                          ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-md ring-1 ring-amber-400/40 font-bold'
                           : 'bg-zinc-950/70 border-zinc-800 text-zinc-300 hover:border-zinc-700'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-mono font-bold text-amber-300">
-                          {scale.name}
-                        </span>
-                        <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
-                          isSelected ? 'bg-amber-500 text-black font-extrabold' : 'bg-zinc-800 text-zinc-400'
-                        }`}>
-                          {scale.badge}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-zinc-400 font-sans mt-1 leading-snug">
-                        {scale.description}
-                      </p>
+                      <span className="text-xs font-mono font-bold block truncate">
+                        {scale.name}
+                      </span>
+                      <span className="text-[9px] font-mono text-zinc-500 block mt-0.5">
+                        {scale.badge}
+                      </span>
                     </button>
                   );
                 })}
