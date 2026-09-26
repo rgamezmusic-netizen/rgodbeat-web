@@ -61,7 +61,7 @@ import {
   applyUserFXTemplatesToTracks,
   adaptTracksTonalityToBeat,
 } from '@/lib/studio/audio/userFXTemplates';
-import { AlertCircle, CheckCircle, Info, Disc3, Layers, HardDrive, AlertTriangle, Cloud, CloudUpload, Sparkles } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info, Disc3, Layers, HardDrive, AlertTriangle, Cloud, CloudUpload, Sparkles, Download } from 'lucide-react';
 import {
   saveProjectToCloud,
   loadProjectFromCloud,
@@ -2550,9 +2550,34 @@ export default function App() {
         )}
       </main>
 
+      {/* Bottom Screen Export Action Dock: Spacious, easy to reach on mobile & desktop */}
+      <footer className="sticky bottom-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800/80 px-4 py-2.5 flex items-center justify-between pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-2xl">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs font-mono font-bold text-zinc-100 truncate">
+              {currentBeat?.title || 'Mi Proyecto'}
+            </span>
+            <span className="text-[10px] font-mono text-zinc-400 truncate">
+              {tracks.reduce((acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)), 0)} tomas de voz
+            </span>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowExportModal(true)}
+          className="flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-black font-mono font-bold text-xs sm:text-sm tracking-wide shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
+          title="Exportar mezcla final y pistas de voz (WAV / MP3 / Stems)"
+        >
+          <Download className="w-4 h-4 stroke-[2.5]" />
+          <span>EXPORTAR PROYECTO</span>
+        </button>
+      </footer>
+
       {/* Toast Notification Container */}
       {toastMessage && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full bg-zinc-900/95 text-white border border-zinc-700 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-200 text-xs font-mono max-w-[90vw]">
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full bg-zinc-900/95 text-white border border-zinc-700 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-200 text-xs font-mono max-w-[90vw]">
           {toastMessage.type === 'error' && (
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
           )}

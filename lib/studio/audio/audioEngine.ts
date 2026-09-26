@@ -598,7 +598,9 @@ export class AudioEngine {
     }
 
     const startPos = this.currentPlaybackPosition;
-    const startTime = this.ctx.currentTime + 0.015;
+    // 45ms lookahead ensures all tracks/clips on mobile WebAudio are tightly synchronized without stutter
+    const scheduleLeadTime = 0.045;
+    const startTime = this.ctx.currentTime + scheduleLeadTime;
     this.playbackStartCtxTime = startTime - startPos;
 
     // 1. Start Beat Source (with multi-stage routing fallback)
@@ -668,7 +670,7 @@ export class AudioEngine {
             const source = this.ctx.createBufferSource();
             source.buffer = playBuffer;
             source.connect(trackNodes.lowCut);
-            const when = Math.max(this.ctx.currentTime, this.playbackStartCtxTime + trackOffset);
+            const when = Math.max(startTime, this.playbackStartCtxTime + trackOffset);
             source.start(when, 0);
             this.vocalSources.set(sourceKey, source);
           } else if (startPos >= trackOffset && startPos < trackOffset + trackDur) {

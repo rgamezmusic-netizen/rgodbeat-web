@@ -30,7 +30,8 @@ import {
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
 
-const TRACK_HEADER_WIDTH = 188; // px (roomy for track name, FX, M/S, pan, and volume slider)
+const BASE_TRACK_HEADER_WIDTH = 108; // px (clean compact default)
+const EXPANDED_TRACK_HEADER_WIDTH = 180; // px (full mixer with faders and pan)
 
 export const getTrackClips = (track: VocalTrack): VocalClip[] => {
   if (track.clips && track.clips.length > 0) return track.clips;
@@ -161,6 +162,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const timelineContentRef = useRef<HTMLDivElement>(null);
 
   const [zoomLevel, setZoomLevel] = useState<number>(1); // 1 = baseline, up to 2.5x
+  const [showFaders, setShowFaders] = useState<boolean>(false); // Collapsed by default for clean view
+  const trackHeaderWidth = showFaders ? EXPANDED_TRACK_HEADER_WIDTH : BASE_TRACK_HEADER_WIDTH;
+
   const [selectedClipTrackId, setSelectedClipTrackId] = useState<VocalTrackId | null>('lead1');
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState<boolean>(false);
@@ -215,7 +219,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     const updateTimeFromX = (x: number) => {
       if (!timelineEl) return;
       const rect = timelineEl.getBoundingClientRect();
-      const clickX = x - rect.left - TRACK_HEADER_WIDTH;
+      const clickX = x - rect.left - trackHeaderWidth;
       const newTime = Math.max(0, Math.min(duration, clickX / basePixelsPerSec));
       onSeek(Math.round(newTime * 1000) / 1000);
     };
@@ -586,6 +590,26 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
           <div className="h-5 w-px bg-zinc-700 mx-1 hidden sm:block" />
 
+          {/* Faders / Mix Visibility Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setShowFaders((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-mono text-xs font-bold transition-all border cursor-pointer active:scale-95 ${
+              showFaders
+                ? 'bg-amber-400 text-black border-amber-300 shadow-md shadow-amber-500/20'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border-zinc-700'
+            }`}
+            title={
+              showFaders
+                ? 'Ocultar faders de volumen y paneo (Vista compacta)'
+                : 'Mostrar faders de volumen y paneo en cada pista (Vista mixer)'
+            }
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{showFaders ? 'FADERS ON' : 'FADERS'}</span>
+            <span className="sm:hidden">{showFaders ? 'MIX' : 'MIX'}</span>
+          </button>
+
           <button
             onClick={() => setZoomLevel((prev) => Math.max(0.6, prev - 0.25))}
             className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 transition-all"
@@ -614,20 +638,27 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
         <div
           ref={timelineContentRef}
           className="relative min-w-full"
-          style={{ width: `${timelineWidth + TRACK_HEADER_WIDTH + 40}px` }}
+          style={{ width: `${timelineWidth + trackHeaderWidth + 40}px` }}
         >
           {/* Time Ruler (Seconds & Musical Bars) */}
           <div className="sticky top-0 z-30 h-9 bg-[#12121a] border-b border-zinc-800 flex items-center shadow-md">
             {/* Left Header Column */}
             <div
-              className="shrink-0 sticky left-0 z-40 px-3 text-[10px] font-mono text-zinc-400 font-bold border-r border-zinc-800 uppercase tracking-wider flex items-center justify-between bg-[#12121a] shadow-[2px_0_10px_rgba(0,0,0,0.5)]"
-              style={{ width: `${TRACK_HEADER_WIDTH}px` }}
+              className="shrink-0 sticky left-0 z-40 px-2 sm:px-3 text-[10px] font-mono text-zinc-400 font-bold border-r border-zinc-800 uppercase tracking-wider flex items-center justify-between bg-[#12121a] shadow-[2px_0_10px_rgba(0,0,0,0.5)] transition-all"
+              style={{ width: `${trackHeaderWidth}px` }}
             >
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                PISTAS
+              <button
+                type="button"
+                onClick={() => setShowFaders((prev) => !prev)}
+                className="flex items-center gap-1 hover:text-amber-300 transition-colors cursor-pointer"
+                title={showFaders ? 'Ocultar faders (Vista compacta)' : 'Mostrar faders de volumen'}
+              >
+                <Sliders className={`w-3 h-3 ${showFaders ? 'text-amber-400' : 'text-zinc-500'}`} />
+                <span className="truncate">{showFaders ? 'CANALES' : 'PISTAS'}</span>
+              </button>
+              <span className="text-amber-300 font-mono font-bold text-[9px] sm:text-[10px]">
+                {formatTime(currentTime)}
               </span>
-              <span className="text-amber-300 font-mono font-bold">{formatTime(currentTime)}</span>
             </div>
 
             {/* Ruler Time Lane (Click & Scrub from Top) */}
@@ -713,7 +744,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             <div
               className="absolute top-0 bottom-0 pointer-events-none bg-amber-400/10 border-x-2 border-amber-400 z-30"
               style={{
-                left: `${TRACK_HEADER_WIDTH + loopSettings.startSec * basePixelsPerSec}px`,
+                left: `${trackHeaderWidth + loopSettings.startSec * basePixelsPerSec}px`,
                 width: `${Math.max(4, (loopSettings.endSec - loopSettings.startSec) * basePixelsPerSec)}px`,
               }}
             >
@@ -729,7 +760,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               isPlaying ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
             style={{
-              left: `${TRACK_HEADER_WIDTH + currentTime * basePixelsPerSec}px`,
+              left: `${trackHeaderWidth + currentTime * basePixelsPerSec}px`,
             }}
           >
             {/* Full-height touch/grab hit-box: allows dragging playhead from ANY height of the timeline */}
@@ -781,86 +812,137 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           <div className="flex items-stretch border-b border-zinc-800/80 bg-zinc-950/70 h-24 group hover:bg-zinc-900/40 transition-colors">
             {/* Track Info Header */}
             <div
-              className="shrink-0 sticky left-0 z-30 p-2 border-r border-zinc-800 flex flex-col justify-between bg-zinc-900/98 shadow-[2px_0_10px_rgba(0,0,0,0.5)]"
-              style={{ width: `${TRACK_HEADER_WIDTH}px` }}
+              className="shrink-0 sticky left-0 z-30 p-2 border-r border-zinc-800 flex flex-col justify-between bg-zinc-900/98 shadow-[2px_0_10px_rgba(0,0,0,0.5)] transition-all"
+              style={{ width: `${trackHeaderWidth}px` }}
             >
-              <div className="flex items-center justify-between gap-1">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
-                  <span
-                    className="text-xs font-bold font-display text-white truncate"
-                    title={beat ? beat.title : 'Beat Principal'}
-                  >
-                    {beat ? beat.title : 'Beat Principal'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  {onToggleBeatMute && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleBeatMute();
-                      }}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                        isBeatMuted
-                          ? 'bg-red-500 text-white shadow-sm'
-                          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
-                      }`}
-                      title={isBeatMuted ? 'Activar beat (Desmutear)' : 'Silenciar beat (Mute)'}
-                    >
-                      {isBeatMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
-                      <span>{isBeatMuted ? 'MUTED' : 'MUTE'}</span>
-                    </button>
-                  )}
-                  {onOpenLoadBeat && (
-                    <button
-                      onClick={onOpenLoadBeat}
-                      className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-amber-500 hover:text-black font-mono font-semibold text-zinc-300 transition-colors shrink-0 border border-zinc-700/80"
-                      title="Administrar / cambiar beat"
-                    >
-                      Beat
-                    </button>
-                  )}
-                </div>
-              </div>
-              {(() => {
-                const keyInfo = parseKeyAndGetRelative(beat?.key, beat?.scale);
-                return (
-                  <div className="flex items-center justify-between mt-0.5">
-                    <span
-                      className="text-[10px] font-mono text-zinc-400 truncate"
-                      title={beat ? `${keyInfo.tonalityName} · Relativa: ${keyInfo.relativeTonalityName}` : ''}
-                    >
-                      {beat ? `${beat.bpm} BPM · ${keyInfo.keySymbol}` : 'Sin Beat'}
-                    </span>
-                    <span
-                      className="text-[8px] font-mono text-amber-300 font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 shrink-0 flex items-center gap-1"
-                      title={`Espacio físico: Slot ${currentBeatSlotIndex} de 23 slots disponibles (${totalSavedBeatsCount}/23 beats guardados)`}
-                    >
-                      <ShieldCheck className="w-2.5 h-2.5 text-amber-400" />
-                      <span>SLOT {currentBeatSlotIndex}</span>
+              {showFaders ? (
+                <>
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                      <span
+                        className="text-xs font-bold font-display text-white truncate"
+                        title={beat ? beat.title : 'Beat Principal'}
+                      >
+                        {beat ? beat.title : 'Beat Principal'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {onToggleBeatMute && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleBeatMute();
+                          }}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                            isBeatMuted
+                              ? 'bg-red-500 text-white shadow-sm'
+                              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
+                          }`}
+                          title={isBeatMuted ? 'Activar beat (Desmutear)' : 'Silenciar beat (Mute)'}
+                        >
+                          {isBeatMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
+                          <span>{isBeatMuted ? 'MUTED' : 'MUTE'}</span>
+                        </button>
+                      )}
+                      {onOpenLoadBeat && (
+                        <button
+                          onClick={onOpenLoadBeat}
+                          className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-amber-500 hover:text-black font-mono font-semibold text-zinc-300 transition-colors shrink-0 border border-zinc-700/80"
+                          title="Administrar / cambiar beat"
+                        >
+                          Beat
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {(() => {
+                    const keyInfo = parseKeyAndGetRelative(beat?.key, beat?.scale);
+                    return (
+                      <div className="flex items-center justify-between mt-0.5">
+                        <span
+                          className="text-[10px] font-mono text-zinc-400 truncate"
+                          title={beat ? `${keyInfo.tonalityName} · Relativa: ${keyInfo.relativeTonalityName}` : ''}
+                        >
+                          {beat ? `${beat.bpm} BPM · ${keyInfo.keySymbol}` : 'Sin Beat'}
+                        </span>
+                        <span
+                          className="text-[8px] font-mono text-amber-300 font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 shrink-0 flex items-center gap-1"
+                          title={`Slot ${currentBeatSlotIndex} de 23`}
+                        >
+                          <ShieldCheck className="w-2.5 h-2.5 text-amber-400" />
+                          <span>SLOT {currentBeatSlotIndex}</span>
+                        </span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Master Beat Volume Control Slider */}
+                  <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-zinc-850/80" onClick={(e) => e.stopPropagation()}>
+                    <Volume2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <input
+                      type="range"
+                      min={0}
+                      max={1.5}
+                      step={0.01}
+                      value={beatVolume ?? 1.0}
+                      onChange={(e) => onChangeBeatVolume && onChangeBeatVolume(parseFloat(e.target.value))}
+                      className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                      title={`Volumen del Beat: ${Math.round((beatVolume ?? 1.0) * 100)}%`}
+                    />
+                    <span className="text-[9px] font-mono text-amber-300 font-bold min-w-[28px] text-right">
+                      {Math.round((beatVolume ?? 1.0) * 100)}%
                     </span>
                   </div>
-                );
-              })()}
+                </>
+              ) : (
+                /* Compact Mode: No volume slider, clean essential controls */
+                <>
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                      <span
+                        className="text-xs font-bold font-display text-white truncate"
+                        title={beat ? beat.title : 'Beat'}
+                      >
+                        {beat ? beat.title : 'Beat'}
+                      </span>
+                    </div>
+                    {onOpenLoadBeat && (
+                      <button
+                        onClick={onOpenLoadBeat}
+                        className="text-[8px] px-1 py-0.5 rounded bg-zinc-800 hover:bg-amber-500 hover:text-black font-mono font-semibold text-zinc-300 transition-colors shrink-0 border border-zinc-700/80"
+                        title="Cambiar beat"
+                      >
+                        Beat
+                      </button>
+                    )}
+                  </div>
 
-              {/* Master Beat Volume Control Slider */}
-              <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-zinc-850/80" onClick={(e) => e.stopPropagation()}>
-                <Volume2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <input
-                  type="range"
-                  min={0}
-                  max={1.5}
-                  step={0.01}
-                  value={beatVolume ?? 1.0}
-                  onChange={(e) => onChangeBeatVolume && onChangeBeatVolume(parseFloat(e.target.value))}
-                  className="flex-1 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
-                  title={`Volumen del Beat: ${Math.round((beatVolume ?? 1.0) * 100)}%`}
-                />
-                <span className="text-[9px] font-mono text-amber-300 font-bold min-w-[28px] text-right">
-                  {Math.round((beatVolume ?? 1.0) * 100)}%
-                </span>
-              </div>
+                  <div className="flex items-center justify-between gap-1 mt-1">
+                    {onToggleBeatMute && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleBeatMute();
+                        }}
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                          isBeatMuted
+                            ? 'bg-red-500 text-white shadow-sm'
+                            : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
+                        }`}
+                        title={isBeatMuted ? 'Desmutear' : 'Mute beat'}
+                      >
+                        {isBeatMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
+                        <span>{isBeatMuted ? 'MUT' : 'MUTE'}</span>
+                      </button>
+                    )}
+                    <span className="text-[9px] font-mono text-amber-300/80 font-bold truncate">
+                      {beat ? `${beat.bpm} BPM` : ''}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Beat Waveform Track Body */}
@@ -939,120 +1021,181 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               >
                 {/* Track Left Header (Controls: FX, Mute, Solo, Volume, Pan) */}
                 <div
-                  className="shrink-0 sticky left-0 z-30 p-2 border-r border-zinc-800 flex flex-col justify-between bg-[#111116] shadow-[2px_0_10px_rgba(0,0,0,0.5)]"
-                  style={{ width: `${TRACK_HEADER_WIDTH}px` }}
+                  className="shrink-0 sticky left-0 z-30 p-2 border-r border-zinc-800 flex flex-col justify-between bg-[#111116] shadow-[2px_0_10px_rgba(0,0,0,0.5)] transition-all"
+                  style={{ width: `${trackHeaderWidth}px` }}
                 >
-                  {/* Row 1: Name, Custom delete, FX button */}
-                  <div className="flex items-center justify-between gap-1">
-                    <div className="flex items-center gap-1 min-w-0">
-                      <span className="text-xs font-semibold font-display text-zinc-100 truncate">
-                        {track.name}
-                      </span>
-                      {isArmed && (
-                        <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-red-500/20 text-red-300 font-bold border border-red-500/30">
-                          ARM
-                        </span>
-                      )}
-                      {clips.length > 1 && (
-                        <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                          {clips.length}
-                        </span>
-                      )}
-                      {track.isCustom && onDeleteTrack && (
+                  {showFaders ? (
+                    <>
+                      {/* Row 1: Name, Custom delete, FX button */}
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="text-xs font-semibold font-display text-zinc-100 truncate">
+                            {track.name}
+                          </span>
+                          {isArmed && (
+                            <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-red-500/20 text-red-300 font-bold border border-red-500/30">
+                              ARM
+                            </span>
+                          )}
+                          {clips.length > 1 && (
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                              {clips.length}
+                            </span>
+                          )}
+                          {track.isCustom && onDeleteTrack && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteTrack(track.id);
+                              }}
+                              className="text-zinc-600 hover:text-red-400 p-0.5 rounded transition-colors"
+                              title="Eliminar esta pista adicional"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            onDeleteTrack(track.id);
+                            onOpenFX(track.id);
                           }}
-                          className="text-zinc-600 hover:text-red-400 p-0.5 rounded transition-colors"
-                          title="Eliminar esta pista adicional"
+                          className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 shrink-0"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          FX
                         </button>
-                      )}
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenFX(track.id);
-                      }}
-                      className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 shrink-0"
-                    >
-                      FX
-                    </button>
-                  </div>
+                      </div>
 
-                  {/* Row 2: Mute [MUTE] */}
-                  <div className="flex items-center justify-between gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => onToggleMute(track.id)}
-                      className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                        track.isMuted
-                          ? 'bg-red-500 text-white shadow-sm'
-                          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
-                      }`}
-                      title={track.isMuted ? 'Activar audio (Desmutear)' : 'Silenciar pista (Mute)'}
-                    >
-                      {track.isMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
-                      <span>{track.isMuted ? 'MUTED' : 'MUTE'}</span>
-                    </button>
-                    {isArmed && (
-                      <span className="text-[8px] font-mono font-bold text-amber-400/90 px-1 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">
-                        ACTIVA
-                      </span>
-                    )}
-                  </div>
+                      {/* Row 2: Mute [MUTE] */}
+                      <div className="flex items-center justify-between gap-1 mt-0.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => onToggleMute(track.id)}
+                          className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                            track.isMuted
+                              ? 'bg-red-500 text-white shadow-sm'
+                              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
+                          }`}
+                          title={track.isMuted ? 'Activar audio (Desmutear)' : 'Silenciar pista (Mute)'}
+                        >
+                          {track.isMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
+                          <span>{track.isMuted ? 'MUTED' : 'MUTE'}</span>
+                        </button>
+                        {isArmed && (
+                          <span className="text-[8px] font-mono font-bold text-amber-400/90 px-1 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">
+                            ACTIVA
+                          </span>
+                        )}
+                      </div>
 
-                  {/* Row 3: Track Volume Slider */}
-                  <div
-                    className="flex items-center gap-1.5 text-[9px] font-mono mt-0.5 pt-0.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Volume2 className="w-3 h-3 text-zinc-400 shrink-0" />
-                    <input
-                      type="range"
-                      min={0}
-                      max={1.5}
-                      step={0.01}
-                      value={track.volume}
-                      onChange={(e) => onChangeVolume && onChangeVolume(track.id, parseFloat(e.target.value))}
-                      className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
-                      title={`Volumen ${track.name}: ${Math.round(track.volume * 100)}%`}
-                    />
-                    <span className="text-[9px] font-mono text-zinc-300 font-bold tabular-nums min-w-[28px] text-right">
-                      {Math.round(track.volume * 100)}%
-                    </span>
-                  </div>
-
-                  {/* Row 4: Stereo PAN control */}
-                  <div
-                    className="flex items-center justify-between text-[9px] font-mono mt-0.5 pt-0.5 border-t border-zinc-850/80"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <span className="text-zinc-500 font-bold">PAN</span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[8px] text-zinc-500">L</span>
-                      <input
-                        type="range"
-                        min={-1}
-                        max={1}
-                        step={0.05}
-                        value={track.pan ?? 0}
-                        onChange={(e) => onChangePan && onChangePan(track.id, parseFloat(e.target.value))}
-                        onDoubleClick={() => onChangePan && onChangePan(track.id, 0)}
-                        className="w-14 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
-                        title={`Panorámico: ${formatPan(track.pan ?? 0)} (Doble clic para centrar)`}
-                      />
-                      <span className="text-[8px] text-zinc-500">R</span>
-                      <button
-                        onClick={() => onChangePan && onChangePan(track.id, 0)}
-                        className="text-[8px] font-bold text-amber-300 hover:text-amber-200 px-1 py-0.2 rounded bg-zinc-800 border border-zinc-700/60 min-w-[24px] text-center"
-                        title="Restablecer al centro (C)"
+                      {/* Row 3: Track Volume Slider */}
+                      <div
+                        className="flex items-center gap-1.5 text-[9px] font-mono mt-0.5 pt-0.5"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        {formatPan(track.pan ?? 0)}
-                      </button>
-                    </div>
-                  </div>
+                        <Volume2 className="w-3 h-3 text-zinc-400 shrink-0" />
+                        <input
+                          type="range"
+                          min={0}
+                          max={1.5}
+                          step={0.01}
+                          value={track.volume}
+                          onChange={(e) => onChangeVolume && onChangeVolume(track.id, parseFloat(e.target.value))}
+                          className="flex-1 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                          title={`Volumen ${track.name}: ${Math.round(track.volume * 100)}%`}
+                        />
+                        <span className="text-[9px] font-mono text-zinc-300 font-bold tabular-nums min-w-[28px] text-right">
+                          {Math.round(track.volume * 100)}%
+                        </span>
+                      </div>
+
+                      {/* Row 4: Stereo PAN control */}
+                      <div
+                        className="flex items-center justify-between text-[9px] font-mono mt-0.5 pt-0.5 border-t border-zinc-850/80"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className="text-zinc-500 font-bold">PAN</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[8px] text-zinc-500">L</span>
+                          <input
+                            type="range"
+                            min={-1}
+                            max={1}
+                            step={0.05}
+                            value={track.pan ?? 0}
+                            onChange={(e) => onChangePan && onChangePan(track.id, parseFloat(e.target.value))}
+                            onDoubleClick={() => onChangePan && onChangePan(track.id, 0)}
+                            className="w-14 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                            title={`Panorámico: ${formatPan(track.pan ?? 0)} (Doble clic para centrar)`}
+                          />
+                          <span className="text-[8px] text-zinc-500">R</span>
+                          <button
+                            onClick={() => onChangePan && onChangePan(track.id, 0)}
+                            className="text-[8px] font-bold text-amber-300 hover:text-amber-200 px-1 py-0.2 rounded bg-zinc-800 border border-zinc-700/60 min-w-[24px] text-center"
+                            title="Restablecer al centro (C)"
+                          >
+                            {formatPan(track.pan ?? 0)}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    /* Compact Mode: Clean track info, FX, and Mute button without volume sliders */
+                    <>
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1 min-w-0">
+                          <span className="text-xs font-semibold font-display text-zinc-100 truncate">
+                            {track.name}
+                          </span>
+                          {clips.length > 1 && (
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                              {clips.length}
+                            </span>
+                          )}
+                          {track.isCustom && onDeleteTrack && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteTrack(track.id);
+                              }}
+                              className="text-zinc-600 hover:text-red-400 p-0.5 rounded transition-colors"
+                              title="Eliminar pista"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenFX(track.id);
+                          }}
+                          className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 shrink-0 font-bold"
+                        >
+                          FX
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => onToggleMute(track.id)}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                            track.isMuted
+                              ? 'bg-red-500 text-white shadow-sm'
+                              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
+                          }`}
+                          title={track.isMuted ? 'Desmutear' : 'Silenciar'}
+                        >
+                          {track.isMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
+                          <span>{track.isMuted ? 'MUT' : 'MUTE'}</span>
+                        </button>
+                        {isArmed && (
+                          <span className="text-[7.5px] font-mono font-bold text-red-300 px-1 py-0.2 rounded bg-red-500/20 border border-red-500/30 truncate">
+                            REC
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Track Audio Lane */}
@@ -1151,49 +1294,52 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           })}
                         </div>
 
-                        {/* Clip Meta Tag */}
-                        <div className="absolute left-2.5 bottom-1 flex items-center gap-1.5 pointer-events-none drop-shadow">
-                          <span className={`text-[9px] font-mono font-bold uppercase flex items-center gap-1 ${
+                        {/* Clip Meta Tag: Truncated to avoid overlapping action buttons */}
+                        <div className="absolute left-2.5 bottom-1 max-w-[calc(100%-64px)] overflow-hidden pointer-events-none drop-shadow flex items-center gap-1.5">
+                          <span className={`text-[9px] font-mono font-bold uppercase truncate flex items-center gap-1 ${
                             clip.isLocked ? 'text-amber-300' : 'text-emerald-200'
                           }`}>
-                            {clip.name || `Toma ${clipIndex + 1}`}
+                            <span className="truncate">{clip.name || `Toma ${clipIndex + 1}`}</span>
                             {clip.isLocked && (
-                              <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[7px] border border-amber-500/30">
+                              <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[7px] border border-amber-500/30 shrink-0">
                                 HOLD
                               </span>
                             )}
                           </span>
-                          <span className="text-[8px] font-mono text-zinc-300">
-                            {formatTime(clip.startBeatOffset)} ({clip.duration.toFixed(1)}s)
+                          <span className="text-[8px] font-mono text-zinc-300 truncate hidden xs:inline">
+                            {formatTime(clip.startBeatOffset)}
                           </span>
                         </div>
 
-                        {/* Quick Action Buttons: Lock/Hold, Split & Delete */}
-                        <div className="absolute right-1.5 top-1 flex items-center gap-1 z-20">
-                          {/* Seguro / Hold Button on the clip */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onToggleLockTake) {
-                                onToggleLockTake(track.id, clip.id);
+                        {/* Quick Action Buttons: Lock/Hold, Split & Delete without overlapping */}
+                        <div className="absolute right-1 top-1 flex items-center gap-0.5 z-20 shrink-0 flex-nowrap">
+                          {/* Only show Lock button if clip is wide enough */}
+                          {clipWidthPx >= 65 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onToggleLockTake) {
+                                  onToggleLockTake(track.id, clip.id);
+                                }
+                              }}
+                              className={`p-1 rounded-md border transition-all cursor-pointer shadow-sm shrink-0 ${
+                                clip.isLocked
+                                  ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.6)] opacity-100 font-bold'
+                                  : 'bg-black/80 hover:bg-zinc-700 text-zinc-300 border-zinc-700/60 opacity-80 hover:opacity-100'
+                              }`}
+                              title={
+                                clip.isLocked
+                                  ? 'Seguro ACTIVADO: Clic para desbloquear y permitir mover esta toma'
+                                  : 'Activar SEGURO (Hold): Bloquea la toma para evitar que se mueva por accidente'
                               }
-                            }}
-                            className={`p-1 rounded-md border transition-all cursor-pointer shadow-sm ${
-                              clip.isLocked
-                                ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_8px_rgba(251,191,36,0.6)] opacity-100 font-bold'
-                                : 'bg-black/80 hover:bg-zinc-700 text-zinc-300 border-zinc-700/60 opacity-80 hover:opacity-100'
-                            }`}
-                            title={
-                              clip.isLocked
-                                ? 'Seguro ACTIVADO: Clic para desbloquear y permitir mover esta toma'
-                                : 'Activar SEGURO (Hold): Bloquea la toma para evitar que se mueva por accidente'
-                            }
-                          >
-                            {clip.isLocked ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
-                          </button>
+                            >
+                              {clip.isLocked ? <Lock className="w-2.5 h-2.5" /> : <Unlock className="w-2.5 h-2.5" />}
+                            </button>
+                          )}
 
-                          {onSplitTake && (
+                          {/* Only show Scissors if clip is wide enough */}
+                          {clipWidthPx >= 88 && onSplitTake && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1203,19 +1349,20 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                                 onSelectTrack(track.id);
                                 onSplitTake(track.id, clip.id, currentTime);
                               }}
-                              className="p-1 rounded-md bg-black/75 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-500/40 transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-sm"
+                              className="p-1 rounded-md bg-black/75 hover:bg-amber-500 hover:text-black text-amber-300 border border-amber-500/40 transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-sm shrink-0"
                               title={`Cortar esta toma en el cabezal (${formatTime(currentTime)})`}
                             >
                               <Scissors className="w-2.5 h-2.5" />
                             </button>
                           )}
+
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               onDeleteTake(track.id, clip.id);
                             }}
-                            className="p-1 rounded-md bg-black/75 hover:bg-red-600 hover:text-white text-red-300 border border-red-500/40 transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-sm"
+                            className="p-1 rounded-md bg-black/75 hover:bg-red-600 hover:text-white text-red-300 border border-red-500/40 transition-all opacity-80 hover:opacity-100 cursor-pointer shadow-sm shrink-0"
                             title={`Borrar solo este pedazo (${clip.name || 'Corte'})`}
                           >
                             <Trash2 className="w-2.5 h-2.5" />
