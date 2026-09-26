@@ -137,8 +137,12 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
     return `${mins}:${s.toString().padStart(2, '0')}`;
   };
 
+  const [isScrubbingProgress, setIsScrubbingProgress] = useState(false);
+  const [scrubPreviewTime, setScrubPreviewTime] = useState<number | null>(null);
+
   const duration = beat ? beat.duration : 0;
-  const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const displayTime = isScrubbingProgress && scrubPreviewTime !== null ? scrubPreviewTime : currentTime;
+  const progressPercent = duration > 0 ? Math.min(100, (displayTime / duration) * 100) : 0;
 
   const formatTime = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -146,12 +150,40 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const startScrubbing = (clientX: number) => {
     if (!progressBarRef.current || duration <= 0) return;
-    const rect = progressBarRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-    onSeek(ratio * duration);
+    setIsScrubbingProgress(true);
+
+    const updateTimeFromX = (x: number) => {
+      if (!progressBarRef.current || duration <= 0) return;
+      const rect = progressBarRef.current.getBoundingClientRect();
+      const clickX = x - rect.left;
+      const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+      const targetTime = ratio * duration;
+      setScrubPreviewTime(targetTime);
+      onSeek(targetTime);
+    };
+
+    updateTimeFromX(clientX);
+
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      const curX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      updateTimeFromX(curX);
+    };
+
+    const onEnd = () => {
+      setIsScrubbingProgress(false);
+      setScrubPreviewTime(null);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchmove', onMove, { passive: true });
+    window.addEventListener('touchend', onEnd);
   };
 
   const keyInfo = parseKeyAndGetRelative(beat?.key, beat?.scale);
@@ -303,26 +335,6 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
               )}
             </div>
 
-            {/* SMOOTH DRAGGABLE SLIDER (Deslizable, suave y manejable) */}
-            {onChangeBpm && beat && (
-              <div className="w-full px-1 flex flex-col items-center gap-0.5">
-                <input
-                  type="range"
-                  min="50"
-                  max="220"
-                  step="1"
-                  value={currentBpm}
-                  onChange={(e) => onChangeBpm(parseInt(e.target.value, 10))}
-                  className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-400 hover:accent-amber-300 transition-all"
-                  title="Desliza para ajustar el Tempo / BPM suavemente"
-                />
-                <div className="w-full flex items-center justify-between text-[8px] font-mono text-zinc-500 px-0.5 select-none pointer-events-none">
-                  <span>50</span>
-                  <span className="text-[7px] text-zinc-500 tracking-wider">◄ DESLIZAR ►</span>
-                  <span>220</span>
-                </div>
-              </div>
-            )}
 
             {/* Quick 1x / 2x Double-time Toggle */}
             {onChangeBpm && beat && (
@@ -427,15 +439,21 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
         </div>
       </div>
 
-      {/* 4. Scrubber & Progress Bar */}
+      {/* 4. Scrubber & Progress Bar (Suave, Deslizable y Fácil de Manipular) */}
       <div className="w-full px-2 mt-1">
         <div
           ref={progressBarRef}
-          onClick={handleProgressClick}
-          className="relative w-full h-7 flex items-center cursor-pointer group select-none"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            startScrubbing(e.clientX);
+          }}
+          onTouchStart={(e) => {
+            startScrubbing(e.touches[0].clientX);
+          }}
+          className="relative w-full h-8 flex items-center cursor-pointer group select-none touch-none"
         >
           {/* Background Track */}
-          <div className="w-full h-1.5 bg-black/30 rounded-full overflow-hidden relative shadow-inner">
+          <div className="w-full h-2 bg-black/30 rounded-full overflow-hidden relative shadow-inner">
             {/* Loop Region highlight */}
             {loopSettings.enabled && duration > 0 && (
               <div
@@ -454,10 +472,14 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             />
           </div>
 
-          {/* Scrubber Thumb */}
+          {/* Scrubber Thumb (Deslizable suavemente) */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-zinc-950 rounded-full shadow-md border-2 border-white pointer-events-none group-hover:scale-125 transition-transform"
-            style={{ left: `calc(${progressPercent}% - 8px)` }}
+            className={`absolute top-1/2 -translate-y-1/2 w-4.5 h-4.5 rounded-full shadow-md border-2 border-white pointer-events-none transition-transform duration-75 ${
+              isScrubbingProgress
+                ? 'scale-125 bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]'
+                : 'bg-zinc-950 group-hover:scale-125'
+            }`}
+            style={{ left: `calc(${progressPercent}% - 9px)` }}
           />
         </div>
 
@@ -466,10 +488,10 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
           {isRecording ? (
             <span className="flex items-center gap-1.5 text-red-600 font-extrabold font-mono animate-pulse">
               <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping" />
-              🔴 REC {formatTime(currentTime)}
+              🔴 REC {formatTime(displayTime)}
             </span>
           ) : (
-            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(displayTime)}</span>
           )}
           <span>{formatTime(duration)}</span>
         </div>
@@ -478,8 +500,28 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
       {/* 5. Main Transport Player Controls: UNIFIED DECK (1 Play, 1 Rec) */}
       <div className="w-full flex flex-col items-center px-2 mt-3">
         <div className="w-full flex items-center justify-between gap-1 sm:gap-2">
-          {/* Left tools: Loop & Rewind */}
+          {/* Left tools: Bluetooth Sync, Loop & Rewind */}
           <div className="flex items-center gap-1 sm:gap-1.5">
+            {/* Bluetooth Latency Compensation - Discreet, symmetrical to Count-in on the right */}
+            {onToggleBluetoothSync && (
+              <button
+                type="button"
+                onClick={onToggleBluetoothSync}
+                className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
+                  bluetoothSyncEnabled
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                }`}
+                title={
+                  bluetoothSyncEnabled
+                    ? `Bluetooth Sync Activo (-${bluetoothOffsetMs}ms)`
+                    : 'Calibrar audífonos Bluetooth (AirPods, etc.)'
+                }
+              >
+                <Headphones className="w-4 h-4" />
+              </button>
+            )}
+
             {/* Loop toggle button */}
             <button
               type="button"
@@ -561,7 +603,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             )}
           </div>
 
-          {/* Right tools: Forward & Count-In / BT Sync */}
+          {/* Right tools: Forward & Count-In */}
           <div className="flex items-center gap-1 sm:gap-1.5">
             {/* Forward 5s */}
             <button
@@ -586,26 +628,6 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 title={countInEnabled ? 'Conteo previo activo (1 compás)' : 'Activar conteo previo de 1 compás'}
               >
                 <Timer className="w-4 h-4" />
-              </button>
-            )}
-
-            {/* Bluetooth Sync Toggle */}
-            {onToggleBluetoothSync && (
-              <button
-                type="button"
-                onClick={onToggleBluetoothSync}
-                className={`hidden xs:flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
-                  bluetoothSyncEnabled
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-                }`}
-                title={
-                  bluetoothSyncEnabled
-                    ? `Bluetooth Sync Activo (-${bluetoothOffsetMs}ms)`
-                    : 'Calibrar audífonos Bluetooth (AirPods, etc.)'
-                }
-              >
-                <Headphones className="w-4 h-4" />
               </button>
             )}
           </div>

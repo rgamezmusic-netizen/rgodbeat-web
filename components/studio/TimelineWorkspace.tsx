@@ -202,6 +202,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
   // Unified Playhead Scrubber Handler (Works seamlessly from TOP ruler, BOTTOM bar, or playhead handle)
   const startPlayheadScrub = (clientX: number) => {
+    // Prevent moving or jumping playhead while playing to avoid unwanted seeks during scrolling/viewing
+    if (isPlaying) return;
     setIsScrubbingPlayhead(true);
     const timelineEl = timelineContentRef.current;
     if (!timelineEl) return;
@@ -241,39 +243,46 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   };
 
   const handlePlayheadMouseDown = (e: React.MouseEvent) => {
+    if (isPlaying) return;
     e.stopPropagation();
     e.preventDefault();
     startPlayheadScrub(e.clientX);
   };
 
   const handlePlayheadTouchStart = (e: React.TouchEvent) => {
+    if (isPlaying) return;
     e.stopPropagation();
     startPlayheadScrub(e.touches[0].clientX);
   };
 
   const handleRulerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isPlaying) return;
     e.stopPropagation();
     startPlayheadScrub(e.clientX);
   };
 
   const handleRulerTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isPlaying) return;
     e.stopPropagation();
     startPlayheadScrub(e.touches[0].clientX);
   };
 
   const handleBottomScrubMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isPlaying) return;
     e.stopPropagation();
     startPlayheadScrub(e.clientX);
   };
 
   const handleBottomScrubTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isPlaying) return;
     e.stopPropagation();
     startPlayheadScrub(e.touches[0].clientX);
   };
 
   // Safe lane clicking: Sets playhead without triggering clip dragging or channel movement
   const handleLaneClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (isDraggingClip || isScrubbingPlayhead) return;
+    // Only allow setting playhead position when playback is stopped
+    if (isPlaying || isDraggingClip || isScrubbingPlayhead) return;
     const target = e.target as HTMLElement;
     if (target.closest('[data-clip-item]') || target.closest('button') || target.closest('input')) {
       return;
@@ -636,8 +645,14 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             <div
               onMouseDown={handleRulerMouseDown}
               onTouchStart={handleRulerTouchStart}
-              className="relative flex-1 h-full cursor-ew-resize overflow-hidden group select-none bg-[#0e0e16]"
-              title="Haz clic o arrastra para mover el cursor de reproducción"
+              className={`relative flex-1 h-full overflow-hidden group select-none bg-[#0e0e16] ${
+                isPlaying ? 'cursor-default' : 'cursor-ew-resize'
+              }`}
+              title={
+                isPlaying
+                  ? 'Pausa la reproducción para mover el cabezal'
+                  : 'Haz clic o arrastra para mover el cursor de reproducción'
+              }
             >
               {gridTicks.map((tick, idx) => {
                 const leftPos = tick.sec * basePixelsPerSec;
@@ -721,7 +736,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
           {/* Vertical Playhead Cursor Line with Full-Height Grab Area and Dual Top & Bottom Handles */}
           <div
-            className="absolute top-0 bottom-0 z-40 w-0.5 bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.95)] pointer-events-auto"
+            className={`absolute top-0 bottom-0 z-40 w-0.5 bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.95)] ${
+              isPlaying ? 'pointer-events-none' : 'pointer-events-auto'
+            }`}
             style={{
               left: `${TRACK_HEADER_WIDTH + currentTime * basePixelsPerSec}px`,
             }}
@@ -730,8 +747,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             <div
               onMouseDown={handlePlayheadMouseDown}
               onTouchStart={handlePlayheadTouchStart}
-              className="absolute -top-1 -bottom-1 -left-4 w-9 cursor-ew-resize pointer-events-auto group/scrub-hitbox z-40"
-              title="Arrastrar selector de tiempo con precisión"
+              className={`absolute -top-1 -bottom-1 -left-4 w-9 ${
+                isPlaying ? 'cursor-default pointer-events-none' : 'cursor-ew-resize pointer-events-auto'
+              } group/scrub-hitbox z-40`}
+              title={isPlaying ? 'Pausa la reproducción para mover el cabezal' : 'Arrastrar selector de tiempo con precisión'}
             >
               <div
                 className={`w-1 h-full mx-auto rounded transition-colors ${
@@ -744,8 +763,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             <div
               onMouseDown={handlePlayheadMouseDown}
               onTouchStart={handlePlayheadTouchStart}
-              className="absolute -top-1 -translate-x-1/2 w-8 h-8 flex flex-col items-center justify-start cursor-ew-resize group/top-scrub z-50 pointer-events-auto"
-              title="Arrastrar cursor de reproducción desde arriba"
+              className={`absolute -top-1 -translate-x-1/2 w-8 h-8 flex flex-col items-center justify-start ${
+                isPlaying ? 'cursor-default pointer-events-none' : 'cursor-ew-resize pointer-events-auto'
+              } group/top-scrub z-50`}
+              title={isPlaying ? 'Pausa la reproducción para mover el cabezal' : 'Arrastrar cursor de reproducción desde arriba'}
             >
               <div className="w-4 h-4 bg-amber-400 rotate-45 shadow-[0_0_10px_rgba(251,191,36,0.9)] border-2 border-black group-hover/top-scrub:scale-125 group-hover/top-scrub:bg-amber-300 transition-transform" />
               <span className="text-[8px] font-mono font-bold text-amber-300 bg-black/95 px-1 rounded -translate-y-0.5 shadow border border-amber-500/40 whitespace-nowrap">
@@ -769,8 +790,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             <div
               onMouseDown={handlePlayheadMouseDown}
               onTouchStart={handlePlayheadTouchStart}
-              className="absolute -bottom-1 -translate-x-1/2 w-8 h-8 flex flex-col items-center justify-end cursor-ew-resize group/bottom-scrub z-50 pointer-events-auto"
-              title="Arrastrar cursor de reproducción desde abajo"
+              className={`absolute -bottom-1 -translate-x-1/2 w-8 h-8 flex flex-col items-center justify-end ${
+                isPlaying ? 'cursor-default pointer-events-none' : 'cursor-ew-resize pointer-events-auto'
+              } group/bottom-scrub z-50`}
+              title={isPlaying ? 'Pausa la reproducción para mover el cabezal' : 'Arrastrar cursor de reproducción desde abajo'}
             >
               <span className="text-[8px] font-mono font-bold text-amber-300 bg-black/95 px-1 rounded translate-y-0.5 shadow border border-amber-500/40 whitespace-nowrap">
                 {formatTime(currentTime)}
@@ -1222,8 +1245,14 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           <div
             onMouseDown={handleBottomScrubMouseDown}
             onTouchStart={handleBottomScrubTouchStart}
-            className="flex items-center h-8 bg-zinc-950 border-t-2 border-zinc-800 select-none cursor-pointer sticky bottom-0 z-30 group/bottom-ruler hover:bg-zinc-900/90 transition-colors"
-            title="Barra de transporte inferior: haz clic o arrastra para mover el cursor de tiempo"
+            className={`flex items-center h-8 bg-zinc-950 border-t-2 border-zinc-800 select-none ${
+              isPlaying ? 'cursor-default' : 'cursor-pointer group/bottom-ruler hover:bg-zinc-900/90'
+            } sticky bottom-0 z-30 transition-colors`}
+            title={
+              isPlaying
+                ? 'Pausa la reproducción para mover el cabezal'
+                : 'Barra de transporte inferior: haz clic o arrastra para mover el cursor de tiempo'
+            }
           >
             {/* Left Corner Indicator */}
             <div
