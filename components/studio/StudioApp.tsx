@@ -2231,9 +2231,11 @@ export default function App() {
     : 1;
 
   return (
-    <div className={`w-full max-w-[100vw] bg-[#09090b] text-white flex flex-col selection:bg-amber-500/30 selection:text-amber-200 ${
-      activeView === 'editor' ? 'h-screen max-h-screen overflow-hidden' : 'min-h-screen overflow-x-hidden justify-between'
-    }`}>
+    <div className={`w-full max-w-[100vw] ${
+      activeView === 'editor'
+        ? 'bg-[#09090b] text-white h-screen max-h-screen overflow-hidden'
+        : 'bg-[#fbbf24] text-zinc-950 min-h-screen overflow-x-hidden justify-between'
+    } flex flex-col selection:bg-amber-500/30 selection:text-amber-200 transition-colors duration-200`}>
       {/* 1-Bar Count In Metronome Visual Overlay */}
       <CountInOverlay beatNumber={countInBeat} onCancel={handleCancelCountIn} />
 
@@ -2337,7 +2339,9 @@ export default function App() {
 
       {/* Main Studio Viewport Canvas */}
       <main className={`flex-1 min-h-0 flex flex-col items-center w-full mx-auto ${
-        activeView === 'editor' ? 'overflow-hidden px-1 sm:px-4 pb-1 pt-1' : 'pb-8 pt-1'
+        activeView === 'editor'
+          ? 'overflow-hidden px-1 sm:px-4 pb-1 pt-1 bg-[#09090b]'
+          : 'pb-8 pt-1 bg-gradient-to-b from-[#fcd34d] via-[#fbbf24] to-[#f59e0b]'
       }`}>
         {activeView === 'studio' ? (
           <div className="w-full max-w-xl flex flex-col items-center">

@@ -420,13 +420,13 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
           <div>
             <h3 className="text-xs sm:text-sm font-bold font-display uppercase tracking-wider text-zinc-100 flex items-center gap-1.5">
-              <span>ESPACIO DE EDICIÓN MULTIPISTA</span>
+              <span>EDICIÓN MULTIPISTA</span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                {tracks.length} PISTAS
+                {tracks.length} Pistas Vocales
               </span>
             </h3>
             <p className="text-[10px] sm:text-[11px] font-mono text-zinc-400">
-              Arrastra las tomas o usa los controles directos. Pista fijada arriba para máxima comodidad.
+              Organiza, recorta y sincroniza tus tomas vocales en tiempo real.
             </p>
           </div>
         </div>
