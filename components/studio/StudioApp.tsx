@@ -1068,7 +1068,8 @@ export default function App() {
         waveformSample: undefined,
         tunedBuffer: null,
       })),
-      currentBeatRef.current
+      currentBeatRef.current,
+      accessStatus.email
     );
     setTracks(cleanTracks);
     tracksRef.current = cleanTracks;
@@ -1884,7 +1885,7 @@ export default function App() {
     if (!activeFXTrackId) return;
 
     // Persist this channel's custom FX template (EQ, Comp, Reverb, Delay, Saturation, AutoTune speed)
-    saveUserChannelFXTemplate(activeFXTrackId, newFX);
+    saveUserChannelFXTemplate(activeFXTrackId, newFX, accessStatus.email);
 
     const updated = tracks.map((t) =>
       t.id === activeFXTrackId ? { ...t, fx: newFX, tunedBuffer: null } : t
@@ -2298,7 +2299,8 @@ export default function App() {
         waveformSample: undefined,
         tunedBuffer: null,
       })),
-      currentBeatRef.current
+      currentBeatRef.current,
+      accessStatus.email
     );
 
     setTracks(resetTracks);

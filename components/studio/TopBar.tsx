@@ -161,35 +161,32 @@ export const TopBar: React.FC<TopBarProps> = ({
           </a>
         </div>
 
-        {/* CENTER ZONE: 4 Centered Buttons (View Switchers are LARGER in the center) */}
-        <div className="flex items-center justify-center gap-1 sm:gap-2 flex-1 min-w-0 px-0.5 sm:px-2">
-          {/* Button 1 (Opción Izquierda): Beat Selector */}
+        {/* CENTER ZONE: 4 Centered Buttons (View Switchers are LARGER in the center, Beat and Options symmetrical & square) */}
+        <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 px-0.5 sm:px-2">
+          {/* Button 1 (Opción Izquierda): Beat Selector (Mismo tamaño cuadrado que el de Opciones) */}
           <button
             type="button"
             onClick={onOpenLoadBeat}
-            className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl bg-zinc-900/90 border border-zinc-750 hover:border-amber-500/50 cursor-pointer text-[10px] sm:text-xs font-mono transition-all shadow-sm shrink min-w-0 active:scale-95"
-            title="Cambiar beat o cargar archivo de audio"
+            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 hover:bg-zinc-850 cursor-pointer transition-all shadow-sm shrink-0 active:scale-95"
+            title={`Beat: ${currentBeatTitle || 'Beat actual'}. Clic para cambiar beat o cargar audio`}
           >
-            <Music className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="text-zinc-200 max-w-[50px] xs:max-w-[75px] sm:max-w-[110px] truncate font-medium">
-              {currentBeatTitle || 'Beat'}
-            </span>
+            <Music className="w-4 h-4 text-amber-400 shrink-0" />
           </button>
 
           {/* VIEW SWITCHER CLUSTER: MÁS GRANDES EN TODO EL CENTRO */}
-          <div className="flex items-center bg-zinc-900/95 p-1 rounded-2xl border border-zinc-800 shadow-inner shrink-0 gap-1">
+          <div className="flex items-center bg-zinc-900/95 p-1 rounded-2xl border border-zinc-800 shadow-inner shrink-0 gap-1 sm:gap-1.5">
             {/* Button 2: Ventana Principal (Grabador) */}
             <button
               type="button"
               onClick={() => onChangeView('studio')}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer ${
+              className={`h-9 sm:h-10 px-3 sm:px-4 flex items-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer ${
                 activeView === 'studio'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20 font-black'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 font-black scale-[1.02]'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
               }`}
               title="Ventana Principal: Grabador & Reproductor"
             >
-              <Disc3 className="w-4 h-4 shrink-0" />
+              <Disc3 className="w-4.5 h-4.5 sm:w-5 sm:h-5 shrink-0" />
               <span className="hidden xs:inline font-bold">Grabador</span>
             </button>
 
@@ -197,32 +194,30 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => onChangeView('editor')}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer relative ${
+              className={`h-9 sm:h-10 px-3 sm:px-4 flex items-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer relative ${
                 activeView === 'editor'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20 font-black'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 font-black scale-[1.02]'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
               }`}
               title="Ventana de Edición: Multitrack & Tomas"
             >
-              <Layers className="w-4 h-4 shrink-0" />
+              <Layers className="w-4.5 h-4.5 sm:w-5 sm:h-5 shrink-0" />
               <span className="hidden xs:inline font-bold">Edición</span>
               {hasRecordings && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               )}
             </button>
           </div>
 
-          {/* Button 4 (Opción Derecha): Proyecto Dropdown */}
+          {/* Button 4 (Opción Derecha): Proyecto Dropdown (Mismo tamaño cuadrado que el de Beat) */}
           <div className="relative shrink-0" ref={menuRef}>
             <button
               type="button"
               onClick={() => setShowProjectMenu(!showProjectMenu)}
-              className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-xl text-[10px] sm:text-xs font-mono font-medium bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800 hover:text-white transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
-              title="Opciones de Proyecto"
+              className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 hover:bg-zinc-850 text-zinc-300 hover:text-white transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+              title="Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)"
             >
-              <FolderKanban className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span className="hidden sm:inline">Proyecto</span>
-              <ChevronDown className="w-3 h-3 text-zinc-500 hidden sm:inline" />
+              <FolderKanban className="w-4 h-4 text-amber-400 shrink-0" />
             </button>
 
             {/* Dropdown Menu Box */}
@@ -412,8 +407,8 @@ export const TopBar: React.FC<TopBarProps> = ({
 
               {/* Account Dropdown Menu */}
               {showAccountMenu && (
-                <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#0e0e14] border border-zinc-700/80 shadow-2xl z-50 p-3 space-y-2.5 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
-                  <div className="flex items-center gap-2.5 pb-2 border-b border-zinc-800">
+                <div className="absolute right-0 mt-2 w-60 rounded-2xl bg-[#0e0e14] border border-zinc-700/80 shadow-2xl z-50 p-3 space-y-3 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 font-bold text-xs shrink-0">
                       <User className="w-4 h-4" />
                     </div>
@@ -421,16 +416,12 @@ export const TopBar: React.FC<TopBarProps> = ({
                       <p className="text-xs font-mono font-bold text-white truncate">
                         {accessStatus?.email || 'Usuario Conectado'}
                       </p>
-                      <p className="text-[10px] font-mono text-emerald-400 flex items-center gap-1 font-semibold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        {daysText} restantes
+                      <p className="text-[11px] font-mono text-emerald-400 flex items-center gap-1 font-semibold mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                        <span className="truncate">{daysText.includes('día') ? `${daysText} restantes` : daysText}</span>
                       </p>
                     </div>
                   </div>
-
-                  <p className="text-[10px] font-mono text-zinc-400 leading-relaxed px-0.5">
-                    Tu memoria de proyectos y grabaciones está vinculada exclusivamente a esta cuenta.
-                  </p>
 
                   {onLogout && (
                     <button
@@ -442,7 +433,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-mono font-bold bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 hover:border-red-400 transition-all cursor-pointer shadow-sm active:scale-95"
                     >
                       <LogOut className="w-3.5 h-3.5 text-red-400" />
-                      <span>Cerrar Sesión (Desloguear)</span>
+                      <span>Cerrar Sesión</span>
                     </button>
                   )}
                 </div>

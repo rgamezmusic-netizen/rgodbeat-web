@@ -30,8 +30,8 @@ import {
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
 
-const BASE_TRACK_HEADER_WIDTH = 108; // px (clean compact default)
-const EXPANDED_TRACK_HEADER_WIDTH = 180; // px (full mixer with faders and pan)
+const BASE_TRACK_HEADER_WIDTH = 120; // px (clean compact default with ample breathing room)
+const EXPANDED_TRACK_HEADER_WIDTH = 192; // px (full mixer with faders and pan)
 
 export const getTrackClips = (track: VocalTrack): VocalClip[] => {
   if (track.clips && track.clips.length > 0) return track.clips;
@@ -644,21 +644,18 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           <div className="sticky top-0 z-30 h-9 bg-[#12121a] border-b border-zinc-800 flex items-center shadow-md">
             {/* Left Header Column */}
             <div
-              className="shrink-0 sticky left-0 z-40 px-2 sm:px-3 text-[10px] font-mono text-zinc-400 font-bold border-r border-zinc-800 uppercase tracking-wider flex items-center justify-between bg-[#12121a] shadow-[2px_0_10px_rgba(0,0,0,0.5)] transition-all"
+              className="shrink-0 sticky left-0 z-45 px-3 text-[10px] font-mono text-zinc-400 font-bold border-r border-zinc-800 uppercase tracking-wider flex items-center justify-between bg-[#12121a] shadow-[2px_0_10px_rgba(0,0,0,0.5)] transition-all"
               style={{ width: `${trackHeaderWidth}px` }}
             >
               <button
                 type="button"
                 onClick={() => setShowFaders((prev) => !prev)}
-                className="flex items-center gap-1 hover:text-amber-300 transition-colors cursor-pointer"
-                title={showFaders ? 'Ocultar faders (Vista compacta)' : 'Mostrar faders de volumen'}
+                className="flex items-center gap-1.5 hover:text-amber-300 transition-colors cursor-pointer text-xs font-bold font-mono"
+                title={showFaders ? 'Ocultar faders (Vista compacta)' : 'Mostrar faders de volumen y paneo (Modo mixer)'}
               >
-                <Sliders className={`w-3 h-3 ${showFaders ? 'text-amber-400' : 'text-zinc-500'}`} />
-                <span className="truncate">{showFaders ? 'CANALES' : 'PISTAS'}</span>
+                <Sliders className={`w-3.5 h-3.5 ${showFaders ? 'text-amber-400' : 'text-zinc-500'}`} />
+                <span>{showFaders ? 'MIX ON' : 'PISTAS'}</span>
               </button>
-              <span className="text-amber-300 font-mono font-bold text-[9px] sm:text-[10px]">
-                {formatTime(currentTime)}
-              </span>
             </div>
 
             {/* Ruler Time Lane (Click & Scrub from Top) */}
@@ -687,8 +684,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       {/* Bold vertical downbeat tick */}
                       <div className="w-[2px] h-3 bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
 
-                      {/* Clear, High-Contrast Bar Badge */}
-                      <div className="absolute top-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-950/95 border border-amber-500/70 shadow-md">
+                      {/* Clear, High-Contrast Bar Badge (with offset for Bar 1 to avoid playhead overlap) */}
+                      <div className={`absolute top-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-950/95 border border-amber-500/70 shadow-md ${tick.bar === 1 ? 'left-2.5' : 'left-1'}`}>
                         <span className="text-[10px] font-mono font-black text-amber-300 tracking-tight">
                           Bar {tick.bar}
                         </span>
@@ -809,7 +806,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           </div>
 
           {/* TRACK 0: The Master Beat */}
-          <div className="flex items-stretch border-b border-zinc-800/80 bg-zinc-950/70 h-24 group hover:bg-zinc-900/40 transition-colors">
+          <div className="flex items-stretch border-b border-zinc-800/80 bg-zinc-950/70 h-24 group hover:bg-zinc-900/40 transition-colors border-l-4 border-l-transparent">
             {/* Track Info Header */}
             <div
               className="shrink-0 sticky left-0 z-30 p-2 border-r border-zinc-800 flex flex-col justify-between bg-zinc-900/98 shadow-[2px_0_10px_rgba(0,0,0,0.5)] transition-all"
@@ -1009,14 +1006,14 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   }
                   onSelectTrack(track.id);
                 }}
-                className={`flex items-stretch border-b border-zinc-850 h-24 transition-all ${
+                className={`flex items-stretch border-b border-zinc-850 h-24 border-l-4 transition-colors select-none ${
                   isThisRecording
-                    ? 'bg-red-950/30 border-red-500/80 shadow-[0_0_20px_rgba(239,68,68,0.25)] border-l-4 border-l-red-500'
+                    ? 'bg-red-950/30 border-l-red-500 shadow-[0_0_20px_rgba(239,68,68,0.25)]'
                     : isArmed
-                    ? 'bg-zinc-900/80 border-l-4 border-l-red-500 shadow-md ring-1 ring-red-500/20'
+                    ? 'bg-zinc-900/80 border-l-red-500 shadow-md ring-1 ring-red-500/20'
                     : isSelected
-                    ? 'bg-zinc-900/60'
-                    : 'bg-transparent hover:bg-zinc-900/20'
+                    ? 'bg-zinc-900/60 border-l-amber-500/60'
+                    : 'bg-transparent hover:bg-zinc-900/20 border-l-transparent'
                 }`}
               >
                 {/* Track Left Header (Controls: FX, Mute, Solo, Volume, Pan) */}

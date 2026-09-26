@@ -5,9 +5,10 @@ const STORAGE_PREFIX = 'rgodbeat_user_channel_fx_';
 /**
  * Persists the user's custom FX settings for a specific channel (Lead 1, Lead 2, etc.)
  * Remembers EQ, Compression, Reverb, Delay, Saturation, AutoTune speed & enabled status,
- * while leaving the musical key/scale independent so it automatically adapts to each beat.
+ * scoped per account so their sweet spot is never lost across project resets or new projects,
+ * while leaving musical key/scale independent so it automatically adapts to each beat.
  */
-export function saveUserChannelFXTemplate(trackId: VocalTrackId, fx: VocalFX) {
+export function saveUserChannelFXTemplate(trackId: VocalTrackId, fx: VocalFX, userEmail?: string | null) {
   if (typeof window === 'undefined') return;
   try {
     const templateToSave = {
@@ -22,7 +23,12 @@ export function saveUserChannelFXTemplate(trackId: VocalTrackId, fx: VocalFX) {
       delay: { ...fx.delay },
       reverb: { ...fx.reverb },
     };
-    localStorage.setItem(`${STORAGE_PREFIX}${trackId}`, JSON.stringify(templateToSave));
+    const serialized = JSON.stringify(templateToSave);
+    localStorage.setItem(`${STORAGE_PREFIX}${trackId}`, serialized);
+    const cleanEmail = userEmail?.trim().toLowerCase();
+    if (cleanEmail) {
+      localStorage.setItem(`${STORAGE_PREFIX}${cleanEmail}_${trackId}`, serialized);
+    }
   } catch (err) {
     console.warn(`Error saving FX template for track ${trackId}:`, err);
   }
@@ -34,11 +40,14 @@ export function saveUserChannelFXTemplate(trackId: VocalTrackId, fx: VocalFX) {
 export function loadUserChannelFXTemplate(
   trackId: VocalTrackId,
   currentBeat: BeatData | null,
-  fallbackFX: VocalFX
+  fallbackFX: VocalFX,
+  userEmail?: string | null
 ): VocalFX {
   if (typeof window === 'undefined') return fallbackFX;
   try {
-    const raw = localStorage.getItem(`${STORAGE_PREFIX}${trackId}`);
+    const cleanEmail = userEmail?.trim().toLowerCase();
+    const raw = (cleanEmail ? localStorage.getItem(`${STORAGE_PREFIX}${cleanEmail}_${trackId}`) : null) ||
+      localStorage.getItem(`${STORAGE_PREFIX}${trackId}`);
     if (!raw) return fallbackFX;
     const parsed = JSON.parse(raw);
 
@@ -93,11 +102,12 @@ export function loadUserChannelFXTemplate(
  */
 export function applyUserFXTemplatesToTracks(
   tracks: VocalTrack[],
-  currentBeat: BeatData | null
+  currentBeat: BeatData | null,
+  userEmail?: string | null
 ): VocalTrack[] {
   return tracks.map((track) => ({
     ...track,
-    fx: loadUserChannelFXTemplate(track.id, currentBeat, track.fx),
+    fx: loadUserChannelFXTemplate(track.id, currentBeat, track.fx, userEmail),
   }));
 }
 
