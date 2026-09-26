@@ -115,10 +115,10 @@ export const TopBar: React.FC<TopBarProps> = ({
     <>
       <header
         style={{ paddingTop: 'max(8px, calc(env(safe-area-inset-top, 0px) + 6px))' }}
-        className="sticky top-0 z-30 flex flex-nowrap items-center justify-between w-full h-14 sm:h-16 px-2 sm:px-5 pb-1 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80 gap-1.5 sm:gap-3 box-border overflow-hidden"
+        className="sticky top-0 z-30 flex flex-nowrap items-center justify-between w-full min-h-[52px] sm:min-h-[58px] px-2 sm:px-4 py-1.5 sm:py-2 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80 gap-1 sm:gap-2.5 box-border"
       >
         {/* LEFT ZONE: Logo & Beat Chip */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink">
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink">
           <a
             href="/"
             onClick={(e) => {
@@ -127,13 +127,13 @@ export const TopBar: React.FC<TopBarProps> = ({
                 onSaveAndExit();
               }
             }}
-            className="flex items-center group shrink-0 h-8 sm:h-10 px-0.5 rounded-lg hover:bg-white/[0.06] transition-all cursor-pointer"
+            className="flex items-center group shrink-0 h-7 sm:h-9 px-0.5 rounded-lg hover:bg-white/[0.06] transition-all cursor-pointer"
             title="Guardar y volver a la tienda principal"
           >
             <img
               src="/images/rgodbeat-studio-logo.png"
               alt="RGodbeat Studio"
-              className="h-6 sm:h-8 w-auto max-w-[85px] sm:max-w-[130px] object-contain filter brightness-125 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-all duration-200"
+              className="h-5 sm:h-7 w-auto max-w-[80px] sm:max-w-[125px] object-contain filter brightness-125 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-all duration-200"
             />
           </a>
 
@@ -145,7 +145,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             title="Cambiar beat o cargar archivo de audio"
           >
             <Music className="w-3 h-3 text-amber-400 shrink-0" />
-            <span className="text-zinc-200 max-w-[70px] sm:max-w-[130px] truncate font-medium">
+            <span className="text-zinc-200 max-w-[60px] xs:max-w-[90px] sm:max-w-[130px] truncate font-medium">
               {currentBeatTitle || 'Beat'}
             </span>
             {currentBeatBpm ? (

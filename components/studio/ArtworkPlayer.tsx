@@ -1,7 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Play,
   Pause,
+  Square,
+  Mic,
   RotateCcw,
   RotateCw,
   Repeat,
@@ -10,8 +12,11 @@ import {
   Sparkles,
   Music2,
   Check,
+  Timer,
+  Headphones,
+  AlertTriangle,
 } from 'lucide-react';
-import { BeatData, LoopSettings, MusicalKey, ScaleMode } from '@/lib/studio/types/audio';
+import { BeatData, LoopSettings, MusicalKey, ScaleMode, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative, getRelativeKey, NOTE_NAMES, SPANISH_NAMES } from '@/lib/studio/audio/beatAnalyzer';
 
 interface ArtworkPlayerProps {
@@ -32,7 +37,18 @@ interface ArtworkPlayerProps {
   isAnalyzingBeat?: boolean;
   onChangeBpm?: (bpm: number) => void;
   onChangeTonality?: (rootKey: MusicalKey, scaleMode: ScaleMode) => void;
+  // Unified recording controls
   isRecording?: boolean;
+  selectedTrack?: VocalTrack;
+  onStartRecord?: (trackId: VocalTrackId) => void;
+  onStopRecord?: () => void;
+  countInEnabled?: boolean;
+  onToggleCountIn?: () => void;
+  bluetoothSyncEnabled?: boolean;
+  bluetoothOffsetMs?: number;
+  onToggleBluetoothSync?: () => void;
+  getMicLevel?: () => number;
+  getMicStatus?: () => { level: number; isSaturated: boolean; gainReductionDb: number };
 }
 
 export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
@@ -52,10 +68,74 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   onChangeBpm,
   onChangeTonality,
   isRecording = false,
+  selectedTrack,
+  onStartRecord,
+  onStopRecord,
+  countInEnabled = false,
+  onToggleCountIn,
+  bluetoothSyncEnabled = false,
+  bluetoothOffsetMs = 185,
+  onToggleBluetoothSync,
+  getMicLevel,
+  getMicStatus,
 }) => {
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [isEditingBpm, setIsEditingBpm] = useState(false);
   const [tempBpm, setTempBpm] = useState('');
+
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [micLevel, setMicLevel] = useState(0);
+  const [isSaturated, setIsSaturated] = useState(false);
+  const [gainReductionDb, setGainReductionDb] = useState(0);
+
+  const getMicStatusRef = useRef(getMicStatus);
+  getMicStatusRef.current = getMicStatus;
+  const getMicLevelRef = useRef(getMicLevel);
+  getMicLevelRef.current = getMicLevel;
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    let animId: number | null = null;
+
+    if (isRecording) {
+      setElapsedSec(0);
+      const start = Date.now();
+      interval = setInterval(() => {
+        setElapsedSec(Math.floor((Date.now() - start) / 1000));
+      }, 200);
+
+      const trackStatus = () => {
+        if (getMicStatusRef.current) {
+          const status = getMicStatusRef.current();
+          setMicLevel(status.level);
+          setIsSaturated(status.isSaturated);
+          setGainReductionDb(status.gainReductionDb);
+        } else if (getMicLevelRef.current) {
+          const lvl = getMicLevelRef.current();
+          setMicLevel(lvl);
+          setIsSaturated(lvl >= 0.88);
+        }
+        animId = requestAnimationFrame(trackStatus);
+      };
+      animId = requestAnimationFrame(trackStatus);
+    } else {
+      setElapsedSec(0);
+      setMicLevel(0);
+      setIsSaturated(false);
+      setGainReductionDb(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [isRecording]);
+
+  const formatElapsed = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${mins}:${s.toString().padStart(2, '0')}`;
+  };
 
   const duration = beat ? beat.duration : 0;
   const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
@@ -378,77 +458,163 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
         </div>
       </div>
 
-      {/* 5. Main Transport Player Controls (Flow iPod) */}
-      <div className="w-full flex items-center justify-between px-3 mt-3">
-        {/* Loop toggle button */}
-        <button
-          type="button"
-          onClick={onToggleLoop}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            onOpenLoopSettings();
-          }}
-          className={`flex items-center justify-center w-10 h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
-            loopSettings.enabled
-              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-          }`}
-          title="Repetir compases (Click derecho para configurar)"
-        >
-          <div className="relative flex items-center justify-center">
-            <Repeat className="w-4 h-4" />
-            {loopSettings.enabled && (
-              <span className="absolute -bottom-2 text-[7px] font-mono font-bold text-amber-400">
-                {loopSettings.bars === 'all' ? 'TODO' : `${loopSettings.bars}B`}
-              </span>
+      {/* 5. Main Transport Player Controls: UNIFIED DECK (1 Play, 1 Rec) */}
+      <div className="w-full flex flex-col items-center px-2 mt-3">
+        <div className="w-full flex items-center justify-between gap-1 sm:gap-2">
+          {/* Left tools: Loop & Rewind */}
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            {/* Loop toggle button */}
+            <button
+              type="button"
+              onClick={onToggleLoop}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onOpenLoopSettings();
+              }}
+              className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
+                loopSettings.enabled
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+              }`}
+              title="Repetir compases (Click derecho para configurar)"
+            >
+              <div className="relative flex items-center justify-center">
+                <Repeat className="w-4 h-4" />
+                {loopSettings.enabled && (
+                  <span className="absolute -bottom-2 text-[7px] font-mono font-bold text-amber-400">
+                    {loopSettings.bars === 'all' ? 'TODO' : `${loopSettings.bars}B`}
+                  </span>
+                )}
+              </div>
+            </button>
+
+            {/* Rewind 5s */}
+            <button
+              type="button"
+              onClick={() => onSeek(Math.max(0, currentTime - 5))}
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all cursor-pointer"
+              title="Retroceder 5 segundos"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Center: THE TWO UNIFIED BUTTONS: 1 PLAY & 1 REC */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* 1. PLAY / PAUSE BUTTON */}
+            <button
+              type="button"
+              onClick={onPlayPause}
+              className={`h-12 w-12 sm:h-14 sm:w-14 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-lg active:scale-90 ${
+                isPlaying
+                  ? 'bg-amber-400 text-zinc-950 shadow-amber-400/20'
+                  : 'bg-white text-zinc-950 hover:bg-amber-300 shadow-[0_4px_20px_rgba(255,255,255,0.18)]'
+              }`}
+              title={isPlaying ? 'Pausar (Espacio)' : 'Reproducir (Espacio)'}
+            >
+              {isPlaying ? (
+                <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
+              ) : (
+                <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-current ml-0.5" />
+              )}
+            </button>
+
+            {/* 2. REC / STOP BUTTON */}
+            {onStartRecord && (
+              isRecording ? (
+                <button
+                  type="button"
+                  onClick={onStopRecord}
+                  className="h-12 sm:h-14 px-3 sm:px-4 rounded-full flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-extrabold shadow-[0_0_20px_rgba(239,68,68,0.6)] border border-red-300 animate-pulse active:scale-95 transition-all cursor-pointer select-none"
+                  title="Detener grabación"
+                >
+                  <Square className="w-4 h-4 fill-current shrink-0" />
+                  <span className="truncate">STOP ({formatElapsed(elapsedSec)})</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => selectedTrack && onStartRecord(selectedTrack.id)}
+                  className="h-12 w-12 sm:h-14 sm:w-14 rounded-full flex items-center justify-center bg-red-600 hover:bg-red-500 text-white shadow-[0_4px_20px_rgba(239,68,68,0.35)] border border-red-400/50 active:scale-90 transition-all cursor-pointer"
+                  title={`Grabar en ${selectedTrack?.name || 'Vocal'} (Punch-in automático)`}
+                >
+                  <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white shadow-inner" />
+                </button>
+              )
             )}
           </div>
-        </button>
 
-        {/* Center: Rewind / Play / Forward */}
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => onSeek(Math.max(0, currentTime - 5))}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all cursor-pointer"
-            title="Retroceder 5 segundos"
-          >
-            <RotateCcw className="w-4 h-4" />
-          </button>
+          {/* Right tools: Forward & Count-In / BT Sync */}
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            {/* Forward 5s */}
+            <button
+              type="button"
+              onClick={() => onSeek(Math.min(duration, currentTime + 5))}
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all cursor-pointer"
+              title="Avanzar 5 segundos"
+            >
+              <RotateCw className="w-4 h-4" />
+            </button>
 
-          {/* Primary iPod-Style Play / Pause Button */}
-          <button
-            type="button"
-            onClick={onPlayPause}
-            className="w-14 h-14 rounded-full flex items-center justify-center bg-white text-zinc-950 hover:bg-amber-400 active:scale-90 transition-all shadow-[0_4px_20px_rgba(255,255,255,0.15)] cursor-pointer"
-            title={isPlaying ? 'Pausar Beat' : 'Reproducir Beat'}
-          >
-            {isPlaying ? (
-              <Pause className="w-6 h-6 fill-current" />
-            ) : (
-              <Play className="w-6 h-6 fill-current ml-0.5" />
+            {/* Count-In Toggle (1-Bar Timer) */}
+            {onToggleCountIn && (
+              <button
+                type="button"
+                onClick={onToggleCountIn}
+                className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
+                  countInEnabled
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                }`}
+                title={countInEnabled ? 'Conteo previo activo (1 compás)' : 'Activar conteo previo de 1 compás'}
+              >
+                <Timer className="w-4 h-4" />
+              </button>
             )}
-          </button>
 
-          <button
-            type="button"
-            onClick={() => onSeek(Math.min(duration, currentTime + 5))}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all cursor-pointer"
-            title="Avanzar 5 segundos"
-          >
-            <RotateCw className="w-4 h-4" />
-          </button>
+            {/* Bluetooth Sync Toggle */}
+            {onToggleBluetoothSync && (
+              <button
+                type="button"
+                onClick={onToggleBluetoothSync}
+                className={`hidden xs:flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
+                  bluetoothSyncEnabled
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                }`}
+                title={
+                  bluetoothSyncEnabled
+                    ? `Bluetooth Sync Activo (-${bluetoothOffsetMs}ms)`
+                    : 'Calibrar audífonos Bluetooth (AirPods, etc.)'
+                }
+              >
+                <Headphones className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Loop Settings Trigger Pill */}
-        <button
-          type="button"
-          onClick={onOpenLoopSettings}
-          className="flex items-center justify-center px-2 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700 text-[10px] font-mono cursor-pointer transition-all"
-          title="Configurar compases del Loop"
-        >
-          <span>{loopSettings.bars === 'all' ? 'Loop' : `${loopSettings.bars} Bar`}</span>
-        </button>
+        {/* Dynamic Mic Level Meter line when recording */}
+        {isRecording && (
+          <div className="w-full max-w-[280px] mt-2 flex flex-col items-center gap-1 animate-in fade-in duration-200">
+            <div className="w-full h-1.5 rounded-full overflow-hidden bg-zinc-950 border border-zinc-850">
+              <div
+                className={`h-full transition-all duration-75 ${
+                  isSaturated
+                    ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]'
+                    : 'bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-400'
+                }`}
+                style={{ width: `${Math.min(100, Math.max(8, micLevel * 100))}%` }}
+              />
+            </div>
+            {isSaturated && (
+              <div className="text-center text-[9px] font-mono text-red-400 font-bold animate-pulse flex items-center justify-center gap-1">
+                <AlertTriangle className="w-2.5 h-2.5" />
+                <span>¡Saturando! Auto-reduciendo ganancia</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 6. Subtle Beat Volume Slider */}

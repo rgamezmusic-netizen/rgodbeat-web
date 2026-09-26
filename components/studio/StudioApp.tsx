@@ -40,6 +40,7 @@ import {
 import { TopBar } from './TopBar';
 import { ArtworkPlayer } from './ArtworkPlayer';
 import { RecordControlBar } from './RecordControlBar';
+import { VocalTrackDropdown } from './VocalTrackDropdown';
 import { VocalTracksList } from './VocalTracksList';
 import { TimelineWorkspace } from './TimelineWorkspace';
 import { VocalFXModal } from './VocalFXModal';
@@ -2340,7 +2341,7 @@ export default function App() {
       }`}>
         {activeView === 'studio' ? (
           <div className="w-full max-w-xl flex flex-col items-center">
-            {/* Core Artwork & Transport Player (Flow iPod) */}
+            {/* Core Artwork & Unified Transport Player (1 Play, 1 Rec, Tempo & Escalas) */}
             <ArtworkPlayer
               beat={currentBeat}
               isPlaying={isPlaying}
@@ -2356,6 +2357,16 @@ export default function App() {
               onDetectKeyAndBpm={handleDetectCurrentBeat}
               isAnalyzingBeat={isAnalyzingBeat}
               isRecording={isRecording}
+              selectedTrack={selectedTrack}
+              onStartRecord={handleStartRecord}
+              onStopRecord={handleStopRecord}
+              countInEnabled={countInEnabled}
+              onToggleCountIn={() => setCountInEnabled(!countInEnabled)}
+              bluetoothSyncEnabled={bluetoothSyncEnabled}
+              bluetoothOffsetMs={bluetoothOffsetMs}
+              onToggleBluetoothSync={handleToggleBluetoothSync}
+              getMicLevel={() => (engine ? engine.getMicInputLevel() : 0)}
+              getMicStatus={() => (engine ? engine.getMicInputStatus() : { level: 0, isSaturated: false, gainReductionDb: 0 })}
               onChangeBpm={(newBpm) => {
                 if (currentBeat) {
                   const updated = { ...currentBeat, bpm: newBpm };
@@ -2367,109 +2378,31 @@ export default function App() {
               onChangeTonality={handleChangeTonality}
             />
 
-            {/* Dedicated Main Record Control Bar */}
-            <RecordControlBar
-              selectedTrack={selectedTrack}
+            {/* Vocal Track Selector Dropdown (Lista Desplegable - minimal space) */}
+            <VocalTrackDropdown
               tracks={tracks}
+              selectedTrackId={selectedTrackId}
               onSelectTrack={handleSelectTrack}
+              onToggleMute={handleToggleMute}
+              onToggleSolo={handleToggleSolo}
+              onChangeVolume={handleChangeTrackVolume}
+              onChangePan={handleChangeTrackPan}
+              onOpenFX={(trackId) => setActiveFXTrackId(trackId)}
+              onAddBackingTrack={handleAddBackingTrack}
+              canAddMoreTracks={canAddMoreTracks}
               isRecording={isRecording}
-              recordingTrackId={activeRecordingTrackId}
-              countInEnabled={countInEnabled}
-              onToggleCountIn={() => setCountInEnabled(!countInEnabled)}
-              bluetoothSyncEnabled={bluetoothSyncEnabled}
-              bluetoothOffsetMs={bluetoothOffsetMs}
-              onToggleBluetoothSync={handleToggleBluetoothSync}
-              onStartRecord={handleStartRecord}
-              onStopRecord={handleStopRecord}
-              onGenerateTestTake={handleGenerateTestTake}
-              getMicLevel={() => (engine ? engine.getMicInputLevel() : 0)}
-              getMicStatus={() => (engine ? engine.getMicInputStatus() : { level: 0, isSaturated: false, gainReductionDb: 0 })}
+              activeRecordingTrackId={activeRecordingTrackId}
               canUndo={undoStack.length > 0}
               canRedo={redoStack.length > 0}
               onUndo={handleUndo}
               onRedo={handleRedo}
-              undoCount={undoStack.length}
-              redoCount={redoStack.length}
             />
-
-            {/* Multitrack Voices Workspace: identical to the editor view */}
-            <div className="w-full mt-2">
-              <TimelineWorkspace
-                beat={currentBeat}
-                tracks={tracks}
-                currentTime={currentTime}
-                isPlaying={isPlaying}
-                onPlayPause={handlePlayPause}
-                onSeek={handleSeek}
-                onMoveTake={handleMoveTake}
-                onStartDragMove={handleStartDragMove}
-                onCommitDragMove={handleCommitDragMove}
-                onDuplicateTake={handleDuplicateTake}
-                onDeleteTake={handleDeleteTake}
-                onToggleMute={handleToggleMute}
-                onToggleSolo={handleToggleSolo}
-                onChangeVolume={handleChangeTrackVolume}
-                onChangePan={handleChangeTrackPan}
-                beatVolume={beatFX.volume}
-                onChangeBeatVolume={(vol) => setBeatFX((prev) => ({ ...prev, volume: vol }))}
-                onAddBackingTrack={handleAddBackingTrack}
-                canAddMoreTracks={canAddMoreTracks}
-                onDeleteTrack={handleDeleteCustomTrack}
-                onOpenFX={(trackId) => setActiveFXTrackId(trackId)}
-                selectedTrackId={selectedTrackId}
-                onSelectTrack={handleSelectTrack}
-                canUndo={undoStack.length > 0}
-                canRedo={redoStack.length > 0}
-                onUndo={handleUndo}
-                onRedo={handleRedo}
-                undoCount={undoStack.length}
-                redoCount={redoStack.length}
-                onOpenLoadBeat={() => setShowLoadBeatModal(true)}
-                currentBeatSlotIndex={currentBeatSlotIndex}
-                totalSavedBeatsCount={savedCustomBeats.length}
-                loopSettings={loopSettings}
-                onOpenLoopModal={() => setShowLoopModal(true)}
-                isRecording={isRecording}
-                activeRecordingTrackId={activeRecordingTrackId}
-                onStartRecord={handleStartRecord}
-                onStopRecord={handleStopRecord}
-                onSplitTake={handleSplitTake}
-                onToggleLockTake={handleToggleLockTake}
-              />
-            </div>
           </div>
         ) : (
           /* Dedicated Editing Workspace (Timeline with Beat + Vocal Tracks, moveable clips, micro-latency nudge, 2 leads) */
           <div className="w-full max-w-4xl flex flex-col items-center flex-1 min-h-0 relative overflow-hidden">
             {/* Signature collage watermark pattern */}
             <SignatureCollageBackdrop />
-
-            {/* Direct Quick Record Bar in Editor Mode - Fixed at the top */}
-            <div className="w-full shrink-0 relative z-10 px-1 sm:px-0">
-              <RecordControlBar
-                selectedTrack={selectedTrack}
-                tracks={tracks}
-                onSelectTrack={handleSelectTrack}
-                isRecording={isRecording}
-                recordingTrackId={activeRecordingTrackId}
-                countInEnabled={countInEnabled}
-                onToggleCountIn={() => setCountInEnabled(!countInEnabled)}
-                bluetoothSyncEnabled={bluetoothSyncEnabled}
-                bluetoothOffsetMs={bluetoothOffsetMs}
-                onToggleBluetoothSync={handleToggleBluetoothSync}
-                onStartRecord={handleStartRecord}
-                onStopRecord={handleStopRecord}
-                onGenerateTestTake={handleGenerateTestTake}
-                getMicLevel={() => (engine ? engine.getMicInputLevel() : 0)}
-                getMicStatus={() => (engine ? engine.getMicInputStatus() : { level: 0, isSaturated: false, gainReductionDb: 0 })}
-                canUndo={undoStack.length > 0}
-                canRedo={redoStack.length > 0}
-                onUndo={handleUndo}
-                onRedo={handleRedo}
-                undoCount={undoStack.length}
-                redoCount={redoStack.length}
-              />
-            </div>
 
             {/* Multitrack Workspace: Action buttons fixed above, and tracks independently scrolling below */}
             <div className="w-full flex-1 min-h-0 flex flex-col relative z-10">
