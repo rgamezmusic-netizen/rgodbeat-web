@@ -12,7 +12,7 @@ import {
   Check,
 } from 'lucide-react';
 import { BeatData, LoopSettings, MusicalKey, ScaleMode } from '@/lib/studio/types/audio';
-import { parseKeyAndGetRelative, NOTE_NAMES, SPANISH_NAMES } from '@/lib/studio/audio/beatAnalyzer';
+import { parseKeyAndGetRelative, getRelativeKey, NOTE_NAMES, SPANISH_NAMES } from '@/lib/studio/audio/beatAnalyzer';
 
 interface ArtworkPlayerProps {
   beat: BeatData | null;
@@ -275,7 +275,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             {/* Note & Scale Mode Selector */}
             {onChangeTonality ? (
               <div className="flex items-center gap-1">
-                {/* Root Note Selector (A, B, C...) */}
+                {/* Root Note Selector with Relative Key directly inside */}
                 <select
                   value={keyInfo.rootKey}
                   onChange={(e) => {
@@ -283,13 +283,16 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                     onChangeTonality(newRoot, keyInfo.scaleMode);
                   }}
                   className="bg-zinc-800 text-amber-300 font-bold font-mono text-xs px-2 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
-                  title="Nota fundamental para el Beat y el Auto-Tune"
+                  title="Nota fundamental y tonalidad relativa directa para afinar"
                 >
-                  {NOTE_NAMES.map((n) => (
-                    <option key={n} value={n}>
-                      {n} ({SPANISH_NAMES[n]})
-                    </option>
-                  ))}
+                  {NOTE_NAMES.map((n) => {
+                    const rel = getRelativeKey(n, keyInfo.scaleMode);
+                    return (
+                      <option key={n} value={n}>
+                        {n} (Rel. {rel.relativeRoot})
+                      </option>
+                    );
+                  })}
                 </select>
 
                 {/* Scale Mode (Menor / Mayor) */}
@@ -309,15 +312,6 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             ) : (
               <span className="text-zinc-100 font-bold text-xs">{keyInfo.tonalityName}</span>
             )}
-
-            {/* Relative Scale Guidance Tag */}
-            <div
-              className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/25 text-[10px] font-mono text-amber-300"
-              title={`Escala musical armónica para cantar sin desentonar: ${keyInfo.relativeTonalityName}`}
-            >
-              <span>Relativa:</span>
-              <strong className="text-amber-200 font-bold">{keyInfo.relativeTonalityName}</strong>
-            </div>
 
             {/* Auto-detect button (subtle) */}
             {onDetectKeyAndBpm && beat && (
