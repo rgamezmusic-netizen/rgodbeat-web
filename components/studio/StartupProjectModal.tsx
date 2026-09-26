@@ -80,14 +80,19 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
             className="w-full text-left p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/15 via-zinc-900/90 to-zinc-900/90 border border-amber-500/40 hover:border-amber-400 transition-all hover:scale-[1.01] active:scale-[0.99] group cursor-pointer shadow-lg shadow-amber-500/5 space-y-2"
           >
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-500 text-black flex items-center justify-center font-bold shadow-md shrink-0">
-                  <Play className="w-4 h-4 fill-current ml-0.5" />
-                </div>
+              <div className="flex items-center gap-3">
+                <img
+                  src="/images/rg-project-vinyl.jpg"
+                  alt="RG Project Vinyl"
+                  className="w-11 h-11 rounded-xl object-cover border border-amber-500/50 shadow-md group-hover:scale-105 transition-transform shrink-0"
+                />
                 <div>
                   <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
                     Continuar Sesión
                   </h3>
+                  <p className="text-[10px] font-mono text-zinc-400">
+                    Proyecto RG guardado en tu memoria
+                  </p>
                 </div>
               </div>
               <span className="text-xs text-amber-400 font-mono font-bold group-hover:translate-x-0.5 transition-transform">
@@ -115,9 +120,16 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
               className="w-full text-left p-3.5 rounded-2xl bg-zinc-900/85 hover:bg-zinc-800/90 border border-zinc-800 hover:border-amber-500/40 transition-all hover:scale-[1.01] active:scale-[0.99] group cursor-pointer"
             >
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-purple-950/70 border border-purple-500/40 text-purple-300 group-hover:text-purple-200 flex items-center justify-center font-bold shrink-0">
-                    <FolderOpen className="w-4 h-4 text-purple-400" />
+                <div className="flex items-center gap-3">
+                  <div className="relative shrink-0">
+                    <img
+                      src="/images/rg-project-vinyl.jpg"
+                      alt="RG Vinyl"
+                      className="w-11 h-11 rounded-xl object-cover border border-purple-500/40 shadow-md group-hover:scale-105 transition-transform"
+                    />
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-[9px] shadow">
+                      <FolderOpen className="w-2.5 h-2.5" />
+                    </div>
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-zinc-200 group-hover:text-white transition-colors flex items-center gap-1.5">
@@ -126,6 +138,9 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
                         .rgodbeat
                       </span>
                     </h3>
+                    <p className="text-[10px] font-mono text-zinc-400">
+                      Cargar paquete completo con vinilo RG
+                    </p>
                   </div>
                 </div>
                 <span className="text-xs text-purple-400 group-hover:text-purple-300 font-mono font-bold group-hover:translate-x-0.5 transition-transform">

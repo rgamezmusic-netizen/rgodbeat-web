@@ -48,8 +48,9 @@ export interface StoredBeatData {
 }
 
 export interface StoredStudioSession {
-  id: string; // 'latest_active_session'
+  id: string; // 'latest_active_session' or `session_${userEmail}`
   timestamp: number;
+  userEmail?: string | null;
   beatId?: string | null;
   beatData?: StoredBeatData | null;
   beatVolume?: number;
@@ -57,6 +58,20 @@ export interface StoredStudioSession {
   currentTime?: number;
   activeView?: 'studio' | 'editor';
   tracks: StoredTrackData[];
+}
+
+let currentSessionUser: string | null = null;
+
+export function setSessionStorageUser(userEmail?: string | null): void {
+  currentSessionUser = userEmail && userEmail.trim().length > 0 ? userEmail.trim().toLowerCase() : null;
+}
+
+export function getSessionStorageKey(userIdentifier?: string | null): string {
+  const resolved = (userIdentifier !== undefined ? userIdentifier : currentSessionUser);
+  if (resolved && typeof resolved === 'string' && resolved.trim().length > 0) {
+    return `session_${resolved.trim().toLowerCase()}`;
+  }
+  return 'latest_active_session';
 }
 
 let dbInstance: IDBDatabase | null = null;
@@ -103,17 +118,19 @@ export async function saveStudioSession(
   loopSettings?: LoopSettings,
   currentTime?: number,
   beatVolume?: number,
-  activeView?: 'studio' | 'editor'
+  activeView?: 'studio' | 'editor',
+  userIdentifier?: string | null
 ): Promise<boolean> {
   try {
     const db = await getDB();
+    const sessionKey = getSessionStorageKey(userIdentifier);
 
     // Check existing session to preserve beatData if not explicitly provided
     let existingSession: StoredStudioSession | null = null;
     try {
       existingSession = await new Promise((res) => {
         const tx = db.transaction([SESSIONS_STORE], 'readonly');
-        const req = tx.objectStore(SESSIONS_STORE).get('latest_active_session');
+        const req = tx.objectStore(SESSIONS_STORE).get(sessionKey);
         req.onsuccess = () => res(req.result || null);
         req.onerror = () => res(null);
       });
@@ -231,8 +248,9 @@ export async function saveStudioSession(
       : storedTracks;
 
     const sessionPayload: StoredStudioSession = {
-      id: 'latest_active_session',
+      id: sessionKey,
       timestamp: Date.now(),
+      userEmail: userIdentifier || null,
       beatId: resolvedBeatId,
       beatData: storedBeatData,
       beatVolume: beatVolume !== undefined ? beatVolume : existingSession?.beatVolume ?? 1.0,
@@ -264,15 +282,17 @@ export async function saveStudioSession(
  */
 export async function saveLastProjectBeat(
   beat: BeatData,
-  beatVolume?: number
+  beatVolume?: number,
+  userIdentifier?: string | null
 ): Promise<boolean> {
   try {
     const db = await getDB();
+    const sessionKey = getSessionStorageKey(userIdentifier);
     let existingSession: StoredStudioSession | null = null;
     try {
       existingSession = await new Promise((res) => {
         const tx = db.transaction([SESSIONS_STORE], 'readonly');
-        const req = tx.objectStore(SESSIONS_STORE).get('latest_active_session');
+        const req = tx.objectStore(SESSIONS_STORE).get(sessionKey);
         req.onsuccess = () => res(req.result || null);
         req.onerror = () => res(null);
       });
@@ -308,8 +328,9 @@ export async function saveLastProjectBeat(
     };
 
     const sessionPayload: StoredStudioSession = {
-      id: 'latest_active_session',
+      id: sessionKey,
       timestamp: Date.now(),
+      userEmail: userIdentifier || null,
       beatId: beat.id,
       beatData: storedBeatData,
       beatVolume: beatVolume !== undefined ? beatVolume : existingSession?.beatVolume ?? 1.0,
@@ -337,7 +358,8 @@ export async function saveLastProjectBeat(
  * waveform samples, timeline clips, vocal FX parameters, AND the exact Beat.
  */
 export async function restoreLastStudioSession(
-  audioCtx: AudioContext
+  audioCtx: AudioContext,
+  userIdentifier?: string | null
 ): Promise<{
   tracks: VocalTrack[];
   beat?: BeatData | null;
@@ -350,14 +372,26 @@ export async function restoreLastStudioSession(
 } | null> {
   try {
     const db = await getDB();
+    const sessionKey = getSessionStorageKey(userIdentifier);
 
-    const session: StoredStudioSession | null = await new Promise((resolve) => {
+    let session: StoredStudioSession | null = await new Promise((resolve) => {
       const tx = db.transaction([SESSIONS_STORE], 'readonly');
       const store = tx.objectStore(SESSIONS_STORE);
-      const req = store.get('latest_active_session');
+      const req = store.get(sessionKey);
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => resolve(null);
     });
+
+    // Fallback: If session with user key doesn't exist yet, check legacy unkeyed session for migration
+    if (!session && userIdentifier) {
+      session = await new Promise((resolve) => {
+        const tx = db.transaction([SESSIONS_STORE], 'readonly');
+        const store = tx.objectStore(SESSIONS_STORE);
+        const req = store.get('latest_active_session');
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      });
+    }
 
     if (!session) {
       return null;
@@ -470,13 +504,14 @@ export async function restoreLastStudioSession(
 /**
  * Clears the stored studio session (e.g. when starting a new project)
  */
-export async function clearSavedStudioSession(): Promise<boolean> {
+export async function clearSavedStudioSession(userIdentifier?: string | null): Promise<boolean> {
   try {
     const db = await getDB();
+    const sessionKey = getSessionStorageKey(userIdentifier);
     return new Promise((resolve) => {
       const tx = db.transaction([SESSIONS_STORE], 'readwrite');
       const store = tx.objectStore(SESSIONS_STORE);
-      const req = store.delete('latest_active_session');
+      const req = store.delete(sessionKey);
       req.onsuccess = () => resolve(true);
       req.onerror = () => resolve(false);
     });
@@ -512,6 +547,7 @@ export interface RGODBeatExportFile {
   version: 1;
   exportedAt: number;
   beatTitle: string;
+  projectArtwork?: string;
   sessionData: {
     beatId?: string | null;
     beatData?: {
@@ -650,6 +686,7 @@ export async function exportProjectToDeviceFile(
       version: 1,
       exportedAt: Date.now(),
       beatTitle: beat?.title || 'Mi Proyecto',
+      projectArtwork: '/images/rg-project-vinyl.jpg',
       sessionData: {
         beatId: beat?.id,
         beatData: storedBeatData,

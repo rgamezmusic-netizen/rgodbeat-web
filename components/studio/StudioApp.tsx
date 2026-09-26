@@ -37,7 +37,9 @@ import {
   clearSavedStudioSession,
   exportProjectToDeviceFile,
   importProjectFromDeviceFile,
+  setSessionStorageUser,
 } from '@/lib/studio/audio/sessionStorage';
+import { signOutClient } from '@/lib/auth/client';
 import { TopBar } from './TopBar';
 import { ArtworkPlayer } from './ArtworkPlayer';
 import { RecordControlBar } from './RecordControlBar';
@@ -490,12 +492,37 @@ export default function App() {
           email: data.email,
           name: data.name || 'Artista',
         });
+        if (data.email) {
+          setSessionStorageUser(data.email);
+        }
         if (data.hasActivePass) {
           showToast(`¡Pase activo verificado! ${data.daysRemaining || 30} días restantes.`, 'success');
         }
       }
     } catch (err) {
       console.error('Error checking studio access:', err);
+    }
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await signOutClient();
+      setSessionStorageUser(null);
+      setAccessStatus({
+        isDemo: true,
+        isLoggedIn: false,
+        hasActivePass: false,
+        daysRemaining: 0,
+        expiresAt: null,
+        email: null,
+        name: 'Artista',
+      });
+      showToast('Sesión cerrada. Memoria desconectada.', 'info');
+      // Reload window so audio context and session re-initialize cleanly for fresh state
+      window.location.reload();
+    } catch (logoutErr) {
+      console.error('Error during logout:', logoutErr);
+      showToast('Error al cerrar sesión', 'error');
     }
   }, []);
 
@@ -2325,6 +2352,7 @@ export default function App() {
           setUnlockModalReason('general');
           setIsUnlockModalOpen(true);
         }}
+        onLogout={handleLogout}
         onSaveCloudProject={handleSaveCloudProject}
         onLoadCloudProject={handleLoadCloudProject}
         onNewProject={handleNewProject}

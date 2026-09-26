@@ -268,8 +268,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
         <div className="grid grid-cols-2 gap-2 divide-x divide-zinc-800/80">
           {/* LEFT: TEMPO (BPM) WITH SMOOTH DRAGGABLE SLIDER */}
           <div className="flex flex-col items-center justify-center px-1 space-y-1.5">
-            <span className="text-[10px] font-mono text-zinc-400 font-semibold tracking-wider uppercase">
-              TEMPO // VELOCIDAD
+            <span className="text-[10px] font-mono text-zinc-400 font-bold tracking-wider uppercase">
+              TEMPO
             </span>
 
             {/* BPM Value & Precision Steppers */}
@@ -341,7 +341,6 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
               )}
             </div>
 
-
             {/* Quick 1x / 2x Double-time Toggle */}
             {onChangeBpm && beat && (
               <div className="flex items-center gap-1 pt-0.5">
@@ -381,51 +380,55 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             )}
           </div>
 
-          {/* RIGHT: ESCALAS & AUTOTUNE */}
-          <div className="flex flex-col items-center justify-center px-1 space-y-1">
-            <span className="text-[10px] font-mono text-zinc-400 font-semibold tracking-wider uppercase">
-              ESCALA // AFINACIÓN
+          {/* RIGHT: AFINACIÓN */}
+          <div className="flex flex-col items-center justify-center px-1 space-y-1.5">
+            <span className="text-[10px] font-mono text-zinc-400 font-bold tracking-wider uppercase">
+              AFINACIÓN
             </span>
 
-            {/* Note & Scale Mode Selector */}
+            {/* Note & Scale Mode Selector (Encuadrado proporcional sin desborde) */}
             {onChangeTonality ? (
-              <div className="flex items-center gap-1">
-                {/* Root Note Selector with Relative Key directly inside */}
-                <select
-                  value={keyInfo.rootKey}
-                  onChange={(e) => {
-                    const newRoot = e.target.value as MusicalKey;
-                    onChangeTonality(newRoot, keyInfo.scaleMode);
-                  }}
-                  className="bg-zinc-800 text-amber-300 font-bold font-mono text-xs px-2 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
-                  title="Nota fundamental y tonalidad relativa directa para afinar"
-                >
-                  {NOTE_NAMES.map((n) => {
-                    const rel = getRelativeKey(n, keyInfo.scaleMode);
-                    return (
+              <div className="flex flex-col items-center w-full max-w-[170px] space-y-1">
+                <div className="flex items-center gap-1.5 w-full justify-center">
+                  {/* Root Note Selector */}
+                  <select
+                    value={keyInfo.rootKey}
+                    onChange={(e) => {
+                      const newRoot = e.target.value as MusicalKey;
+                      onChangeTonality(newRoot, keyInfo.scaleMode);
+                    }}
+                    className="w-14 bg-zinc-800 text-amber-300 font-extrabold font-mono text-xs px-1.5 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer text-center shrink-0 shadow-sm"
+                    title="Nota fundamental para afinación"
+                  >
+                    {NOTE_NAMES.map((n) => (
                       <option key={n} value={n}>
-                        {n} (Rel. {rel.relativeRoot})
+                        {n}
                       </option>
-                    );
-                  })}
-                </select>
+                    ))}
+                  </select>
 
-                {/* Scale Mode (5 Escalas Conectadas) */}
-                <select
-                  value={keyInfo.scaleMode}
-                  onChange={(e) => {
-                    const newMode = e.target.value as ScaleMode;
-                    onChangeTonality(keyInfo.rootKey, newMode);
-                  }}
-                  className="bg-zinc-800 text-zinc-200 font-bold font-mono text-xs px-2 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
-                  title="Escala de afinación vocal (Auto-Tune)"
-                >
-                  {MAIN_SCALES.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.shortName}
-                    </option>
-                  ))}
-                </select>
+                  {/* Scale Mode (5 Escalas Conectadas) */}
+                  <select
+                    value={keyInfo.scaleMode}
+                    onChange={(e) => {
+                      const newMode = e.target.value as ScaleMode;
+                      onChangeTonality(keyInfo.rootKey, newMode);
+                    }}
+                    className="flex-1 min-w-0 bg-zinc-800 text-zinc-200 font-bold font-mono text-xs px-2 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer truncate shadow-sm"
+                    title="Escala de afinación vocal (Auto-Tune)"
+                  >
+                    {MAIN_SCALES.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.shortName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Subtitle with relative key */}
+                <span className="text-[9px] font-mono text-zinc-400 tracking-tight truncate">
+                  Relativa: <strong className="text-amber-400">{getRelativeKey(keyInfo.rootKey, keyInfo.scaleMode).relativeRoot}</strong>
+                </span>
               </div>
             ) : (
               <span className="text-zinc-100 font-bold text-xs">{keyInfo.tonalityName}</span>
@@ -592,8 +595,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                     }`}
                     title={
                       isRecArmed
-                        ? `Grabar en ${selectedTrack?.name || 'Vocal'} (Toca el botón arriba para desactivar micrófono y escuchar en Hi-Fi)`
-                        : 'Micrófono desactivado (Modo Hi-Fi). Toca para reactivar grabación REC.'
+                        ? `Grabar en ${selectedTrack?.name || 'Vocal'}`
+                        : 'Micrófono en reposo. Toca para grabar.'
                     }
                   >
                     {isRecArmed ? (
@@ -602,29 +605,6 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                       <MicOff className="w-5 h-5 text-zinc-400" />
                     )}
                   </button>
-
-                  {/* Arm/Disarm Quick Toggle Badge */}
-                  {onToggleRecArmed && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleRecArmed();
-                      }}
-                      className={`absolute -top-1.5 -right-1.5 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold transition-all shadow-md cursor-pointer ${
-                        isRecArmed
-                          ? 'bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30'
-                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
-                      }`}
-                      title={
-                        isRecArmed
-                          ? 'Desactivar REC para escuchar en Modo Hi-Fi sin filtros de llamada'
-                          : 'Activar REC para grabar voces'
-                      }
-                    >
-                      {isRecArmed ? 'ARM' : 'HI-FI'}
-                    </button>
-                  )}
                 </div>
               )
             )}

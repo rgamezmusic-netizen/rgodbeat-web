@@ -20,6 +20,8 @@ import {
   LogOut,
   ChevronDown,
   Music,
+  User,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -42,11 +44,14 @@ interface TopBarProps {
   currentBeatBpm?: number;
   accessStatus?: {
     isDemo: boolean;
+    isLoggedIn?: boolean;
     hasActivePass: boolean;
     daysRemaining: number;
     email?: string | null;
+    name?: string;
   };
   onOpenUnlockModal?: () => void;
+  onLogout?: () => void;
   onOpenInstallModal?: () => void;
   onSaveCloudProject?: () => void;
   onLoadCloudProject?: () => void;
@@ -79,6 +84,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   currentBeatBpm,
   accessStatus,
   onOpenUnlockModal,
+  onLogout,
   onOpenInstallModal,
   onSaveCloudProject,
   onLoadCloudProject,
@@ -95,21 +101,38 @@ export const TopBar: React.FC<TopBarProps> = ({
   const deviceFileInputRef = useRef<HTMLInputElement>(null);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close menu on click outside
+  // Close menus on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowProjectMenu(false);
       }
+      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
+        setShowAccountMenu(false);
+      }
     };
-    if (showProjectMenu) {
+    if (showProjectMenu || showAccountMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showProjectMenu]);
+  }, [showProjectMenu, showAccountMenu]);
+
+  const isUserLoggedIn = Boolean(accessStatus?.isLoggedIn || accessStatus?.email);
+  const isSuperAdmin = ['admin@rgodbeat.com', 'rgamezmusic@gmail.com', 'rgodbeat@gmail.com'].includes(
+    accessStatus?.email?.toLowerCase() || ''
+  );
+  const daysText = isSuperAdmin
+    ? 'Pase VIP'
+    : accessStatus?.daysRemaining && accessStatus.daysRemaining > 0
+    ? `${accessStatus.daysRemaining} ${accessStatus.daysRemaining === 1 ? 'día' : 'días'}`
+    : accessStatus?.hasActivePass
+    ? 'Pase Activo'
+    : 'Conectado';
 
   return (
     <>
@@ -347,6 +370,75 @@ export const TopBar: React.FC<TopBarProps> = ({
               </div>
             )}
           </div>
+
+          {/* Account / Login Pill Button (Shows Days Remaining & Prevents Multiple Logins) */}
+          {isUserLoggedIn ? (
+            <div className="relative" ref={accountMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowAccountMenu(!showAccountMenu)}
+                className="flex items-center gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-mono font-medium bg-zinc-900 text-zinc-200 border border-emerald-500/40 hover:border-emerald-400 transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+                title={`Cuenta activa: ${accessStatus?.email || 'Conectado'} (${daysText})`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="text-[11px] sm:text-xs font-bold text-emerald-300">
+                  {daysText}
+                </span>
+                <ChevronDown className="w-3 h-3 text-zinc-500 hidden sm:inline" />
+              </button>
+
+              {/* Account Dropdown Menu */}
+              {showAccountMenu && (
+                <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#0e0e14] border border-zinc-700/80 shadow-2xl z-50 p-3 space-y-2.5 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center gap-2.5 pb-2 border-b border-zinc-800">
+                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 font-bold text-xs shrink-0">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-mono font-bold text-white truncate">
+                        {accessStatus?.email || 'Usuario Conectado'}
+                      </p>
+                      <p className="text-[10px] font-mono text-emerald-400 flex items-center gap-1 font-semibold">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        {daysText} restantes
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] font-mono text-zinc-400 leading-relaxed px-0.5">
+                    Tu memoria de proyectos y grabaciones está vinculada exclusivamente a esta cuenta.
+                  </p>
+
+                  {onLogout && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAccountMenu(false);
+                        onLogout();
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-mono font-bold bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 hover:border-red-400 transition-all cursor-pointer shadow-sm active:scale-95"
+                    >
+                      <LogOut className="w-3.5 h-3.5 text-red-400" />
+                      <span>Cerrar Sesión (Desloguear)</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            onOpenUnlockModal && (
+              <button
+                type="button"
+                onClick={onOpenUnlockModal}
+                className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-mono font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 hover:border-amber-400 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
+                title="Iniciar Sesión en RGODBEAT Studio"
+              >
+                <User className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden xs:inline">Iniciar Sesión</span>
+                <span className="xs:hidden">Login</span>
+              </button>
+            )
+          )}
 
           {/* Hidden file input for opening .rgodbeat files */}
           {onLoadDeviceProject && (
