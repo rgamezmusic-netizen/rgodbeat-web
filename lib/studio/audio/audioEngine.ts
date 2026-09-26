@@ -40,6 +40,7 @@ export class AudioEngine {
   private beatHighPassNode: BiquadFilterNode | null = null;
   private beatLowPassNode: BiquadFilterNode | null = null;
   private beatGainNode: GainNode | null = null;
+  private isBeatMuted: boolean = false;
 
   // Master
   private masterGainNode: GainNode | null = null;
@@ -326,6 +327,13 @@ export class AudioEngine {
     }
   }
 
+  public setBeatMuted(muted: boolean) {
+    this.isBeatMuted = muted;
+    if (!this.ctx || !this.beatGainNode) return;
+    const vol = muted ? 0 : (typeof this.beatFX?.volume === 'number' ? Math.max(0, Math.min(1.5, this.beatFX.volume)) : 1.0);
+    this.beatGainNode.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.03);
+  }
+
   public setBeatFX(fx: BeatFX) {
     this.beatFX = fx;
     if (!this.ctx) return;
@@ -345,7 +353,8 @@ export class AudioEngine {
       );
     }
     if (this.beatGainNode) {
-      this.beatGainNode.gain.setTargetAtTime(Math.max(0, Math.min(1.5, fx.volume)), t, 0.05);
+      const vol = this.isBeatMuted ? 0 : Math.max(0, Math.min(1.5, fx.volume));
+      this.beatGainNode.gain.setTargetAtTime(vol, t, 0.05);
     }
   }
 
@@ -564,7 +573,9 @@ export class AudioEngine {
 
     // Ensure beat gain and master gain nodes are configured and audible
     if (this.beatGainNode) {
-      const vol = typeof this.beatFX?.volume === 'number' ? Math.max(0, Math.min(1.5, this.beatFX.volume)) : 1.0;
+      const vol = this.isBeatMuted
+        ? 0
+        : (typeof this.beatFX?.volume === 'number' ? Math.max(0, Math.min(1.5, this.beatFX.volume)) : 1.0);
       try {
         this.beatGainNode.gain.cancelScheduledValues(this.ctx.currentTime);
         this.beatGainNode.gain.setValueAtTime(vol, this.ctx.currentTime);

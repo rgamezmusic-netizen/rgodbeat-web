@@ -4,6 +4,7 @@ import {
   Pause,
   Square,
   Mic,
+  MicOff,
   RotateCcw,
   RotateCw,
   Repeat,
@@ -47,6 +48,8 @@ interface ArtworkPlayerProps {
   bluetoothSyncEnabled?: boolean;
   bluetoothOffsetMs?: number;
   onToggleBluetoothSync?: () => void;
+  isRecArmed?: boolean;
+  onToggleRecArmed?: () => void;
   getMicLevel?: () => number;
   getMicStatus?: () => { level: number; isSaturated: boolean; gainReductionDb: number };
 }
@@ -76,6 +79,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   bluetoothSyncEnabled = false,
   bluetoothOffsetMs = 185,
   onToggleBluetoothSync,
+  isRecArmed = true,
+  onToggleRecArmed,
   getMicLevel,
   getMicStatus,
 }) => {
@@ -497,11 +502,11 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
         </div>
       </div>
 
-      {/* 5. Main Transport Player Controls: UNIFIED DECK (1 Play, 1 Rec) */}
+      {/* 5. Main Transport Player Controls: UNIFIED DECK (1 Play, 1 Rec) - Perfectly Centered */}
       <div className="w-full flex flex-col items-center px-2 mt-3">
         <div className="w-full flex items-center justify-between gap-1 sm:gap-2">
-          {/* Left tools: Bluetooth Sync, Loop & Rewind */}
-          <div className="flex items-center gap-1 sm:gap-1.5">
+          {/* Left tools: Bluetooth Sync & Rewind (2 buttons) */}
+          <div className="flex items-center justify-start gap-1 sm:gap-2 w-1/3">
             {/* Bluetooth Latency Compensation - Discreet, symmetrical to Count-in on the right */}
             {onToggleBluetoothSync && (
               <button
@@ -522,31 +527,6 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
               </button>
             )}
 
-            {/* Loop toggle button */}
-            <button
-              type="button"
-              onClick={onToggleLoop}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                onOpenLoopSettings();
-              }}
-              className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
-                loopSettings.enabled
-                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
-              }`}
-              title="Repetir compases (Click derecho para configurar)"
-            >
-              <div className="relative flex items-center justify-center">
-                <Repeat className="w-4 h-4" />
-                {loopSettings.enabled && (
-                  <span className="absolute -bottom-2 text-[7px] font-mono font-bold text-amber-400">
-                    {loopSettings.bars === 'all' ? 'TODO' : `${loopSettings.bars}B`}
-                  </span>
-                )}
-              </div>
-            </button>
-
             {/* Rewind 5s */}
             <button
               type="button"
@@ -558,8 +538,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             </button>
           </div>
 
-          {/* Center: THE TWO UNIFIED BUTTONS: 1 PLAY & 1 REC */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Center: THE TWO UNIFIED BUTTONS: 1 PLAY & 1 REC (100% DEAD CENTERED) */}
+          <div className="flex items-center justify-center gap-2 sm:gap-3 shrink-0">
             {/* 1. PLAY / PAUSE BUTTON */}
             <button
               type="button"
@@ -578,7 +558,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
               )}
             </button>
 
-            {/* 2. REC / STOP BUTTON */}
+            {/* 2. REC / STOP BUTTON (With Arm/Disarm Hi-Fi Toggle) */}
             {onStartRecord && (
               isRecording ? (
                 <button
@@ -591,20 +571,63 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                   <span className="truncate">STOP ({formatElapsed(elapsedSec)})</span>
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => selectedTrack && onStartRecord(selectedTrack.id)}
-                  className="h-12 w-12 sm:h-14 sm:w-14 rounded-full flex items-center justify-center bg-red-600 hover:bg-red-500 text-white shadow-[0_4px_20px_rgba(239,68,68,0.35)] border border-red-400/50 active:scale-90 transition-all cursor-pointer"
-                  title={`Grabar en ${selectedTrack?.name || 'Vocal'} (Punch-in automático)`}
-                >
-                  <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white shadow-inner" />
-                </button>
+                <div className="relative flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isRecArmed) {
+                        onToggleRecArmed?.();
+                      } else {
+                        selectedTrack && onStartRecord(selectedTrack.id);
+                      }
+                    }}
+                    className={`h-12 w-12 sm:h-14 sm:w-14 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
+                      isRecArmed
+                        ? 'bg-red-600 hover:bg-red-500 text-white shadow-[0_4px_20px_rgba(239,68,68,0.35)] border border-red-400/50'
+                        : 'bg-zinc-900 border border-zinc-700 text-zinc-400 hover:border-amber-400/50 hover:text-white'
+                    }`}
+                    title={
+                      isRecArmed
+                        ? `Grabar en ${selectedTrack?.name || 'Vocal'} (Toca el botón arriba para desactivar micrófono y escuchar en Hi-Fi)`
+                        : 'Micrófono desactivado (Modo Hi-Fi). Toca para reactivar grabación REC.'
+                    }
+                  >
+                    {isRecArmed ? (
+                      <span className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white shadow-inner" />
+                    ) : (
+                      <MicOff className="w-5 h-5 text-zinc-400" />
+                    )}
+                  </button>
+
+                  {/* Arm/Disarm Quick Toggle Badge */}
+                  {onToggleRecArmed && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleRecArmed();
+                      }}
+                      className={`absolute -top-1.5 -right-1.5 px-1.5 py-0.5 rounded-full text-[8px] font-mono font-bold transition-all shadow-md cursor-pointer ${
+                        isRecArmed
+                          ? 'bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-red-500/30'
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                      }`}
+                      title={
+                        isRecArmed
+                          ? 'Desactivar REC para escuchar en Modo Hi-Fi sin filtros de llamada'
+                          : 'Activar REC para grabar voces'
+                      }
+                    >
+                      {isRecArmed ? 'ARM' : 'HI-FI'}
+                    </button>
+                  )}
+                </div>
               )
             )}
           </div>
 
-          {/* Right tools: Forward & Count-In */}
-          <div className="flex items-center gap-1 sm:gap-1.5">
+          {/* Right tools: Forward & Count-In (2 buttons) */}
+          <div className="flex items-center justify-end gap-1 sm:gap-2 w-1/3">
             {/* Forward 5s */}
             <button
               type="button"

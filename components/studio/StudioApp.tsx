@@ -446,6 +446,8 @@ export default function App() {
     highPass: 20,
     volume: 1.0,
   });
+  const [isBeatMuted, setIsBeatMuted] = useState<boolean>(false);
+  const [isRecArmed, setIsRecArmed] = useState<boolean>(true);
 
   // Studio Access & Subscription state
   const [accessStatus, setAccessStatus] = useState<{
@@ -1220,6 +1222,35 @@ export default function App() {
     }));
   };
 
+  const handleToggleBeatMute = useCallback(() => {
+    setIsBeatMuted((prev) => {
+      const next = !prev;
+      if (engine) {
+        engine.setBeatMuted(next);
+      }
+      showToast(next ? 'Pista del Beat silenciada (Muted)' : 'Pista del Beat activada', 'info');
+      return next;
+    });
+  }, [engine, showToast]);
+
+  const handleToggleRecArmed = useCallback(() => {
+    setIsRecArmed((prev) => {
+      const next = !prev;
+      if (!next) {
+        if (isRecording) {
+          handleStopRecord();
+        }
+        if (engine) {
+          engine.releaseMicrophone();
+        }
+        showToast('Modo Escucha Hi-Fi activado: Micrófono desconectado para reproducir sin filtros de llamada.', 'info');
+      } else {
+        showToast('Botón REC reactivado: Listo para grabar nuevas tomas.', 'info');
+      }
+      return next;
+    });
+  }, [engine, isRecording, showToast]);
+
   // Channel selection with live recording migration:
   // If user taps another track while recording is active, cleanly commit the take on the current track
   // and immediately switch recording to the new track without stopping the beat!
@@ -1248,6 +1279,10 @@ export default function App() {
       setUnlockModalReason('tracks');
       setIsUnlockModalOpen(true);
       return;
+    }
+
+    if (!isRecArmed) {
+      setIsRecArmed(true);
     }
 
     // Check if punching in over existing take
@@ -2361,6 +2396,8 @@ export default function App() {
               onDetectKeyAndBpm={handleDetectCurrentBeat}
               isAnalyzingBeat={isAnalyzingBeat}
               isRecording={isRecording}
+              isRecArmed={isRecArmed}
+              onToggleRecArmed={handleToggleRecArmed}
               selectedTrack={selectedTrack}
               onStartRecord={handleStartRecord}
               onStopRecord={handleStopRecord}
@@ -2428,6 +2465,8 @@ export default function App() {
               onChangePan={handleChangeTrackPan}
               beatVolume={beatFX.volume}
               onChangeBeatVolume={(vol) => setBeatFX((prev) => ({ ...prev, volume: vol }))}
+              isBeatMuted={isBeatMuted}
+              onToggleBeatMute={handleToggleBeatMute}
               onAddBackingTrack={handleAddBackingTrack}
               canAddMoreTracks={canAddMoreTracks}
               onDeleteTrack={handleDeleteCustomTrack}

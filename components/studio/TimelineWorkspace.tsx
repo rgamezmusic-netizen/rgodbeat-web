@@ -86,6 +86,8 @@ interface TimelineWorkspaceProps {
   onChangePan?: (trackId: VocalTrackId, pan: number) => void;
   beatVolume?: number;
   onChangeBeatVolume?: (volume: number) => void;
+  isBeatMuted?: boolean;
+  onToggleBeatMute?: () => void;
   onAddBackingTrack?: () => void;
   canAddMoreTracks?: boolean;
   onDeleteTrack?: (trackId: VocalTrackId) => void;
@@ -129,6 +131,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   onChangePan,
   beatVolume,
   onChangeBeatVolume,
+  isBeatMuted = false,
+  onToggleBeatMute,
   onAddBackingTrack,
   canAddMoreTracks = false,
   onDeleteTrack,
@@ -430,9 +434,6 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           <div>
             <h3 className="text-xs sm:text-sm font-bold font-display uppercase tracking-wider text-zinc-100 flex items-center gap-1.5">
               <span>EDICIÓN MULTIPISTA</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                {tracks.length} Pistas Vocales
-              </span>
             </h3>
             <p className="text-[10px] sm:text-[11px] font-mono text-zinc-400">
               Organiza, recorta y sincroniza tus tomas vocales en tiempo real.
@@ -819,15 +820,34 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                     {beat ? beat.title : 'Beat Principal'}
                   </span>
                 </div>
-                {onOpenLoadBeat && (
-                  <button
-                    onClick={onOpenLoadBeat}
-                    className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-amber-500 hover:text-black font-mono font-semibold text-zinc-300 transition-colors shrink-0 border border-zinc-700/80"
-                    title="Administrar / cambiar beat"
-                  >
-                    Beat
-                  </button>
-                )}
+                <div className="flex items-center gap-1 shrink-0">
+                  {onToggleBeatMute && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleBeatMute();
+                      }}
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        isBeatMuted
+                          ? 'bg-red-500 text-white shadow-sm'
+                          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
+                      }`}
+                      title={isBeatMuted ? 'Activar beat (Desmutear)' : 'Silenciar beat (Mute)'}
+                    >
+                      {isBeatMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
+                      <span>{isBeatMuted ? 'MUTED' : 'MUTE'}</span>
+                    </button>
+                  )}
+                  {onOpenLoadBeat && (
+                    <button
+                      onClick={onOpenLoadBeat}
+                      className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-amber-500 hover:text-black font-mono font-semibold text-zinc-300 transition-colors shrink-0 border border-zinc-700/80"
+                      title="Administrar / cambiar beat"
+                    >
+                      Beat
+                    </button>
+                  )}
+                </div>
               </div>
               {(() => {
                 const keyInfo = parseKeyAndGetRelative(beat?.key, beat?.scale);
@@ -892,7 +912,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
               {beat && (
                 <div
-                  className="absolute top-2 bottom-2 left-0 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/40 flex items-center px-2 overflow-hidden pointer-events-none z-10"
+                  className={`absolute top-2 bottom-2 left-0 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/40 flex items-center px-2 overflow-hidden pointer-events-none z-10 transition-opacity ${
+                    isBeatMuted ? 'opacity-30 grayscale' : ''
+                  }`}
                   style={{ width: `${beat.duration * basePixelsPerSec}px` }}
                 >
                   <div className="w-full h-8 flex items-center gap-0.5 opacity-75">
@@ -905,7 +927,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                     ))}
                   </div>
                   <span className="absolute left-2.5 bottom-1 text-[9px] font-mono text-amber-300 font-semibold drop-shadow">
-                    BEAT · {Math.round(beat.duration)}s
+                    BEAT · {Math.round(beat.duration)}s {isBeatMuted && '(SILENCIADO)'}
                   </span>
                 </div>
               )}
