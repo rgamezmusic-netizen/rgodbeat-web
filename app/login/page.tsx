@@ -40,11 +40,7 @@ function AuthForm() {
       const { user, error } = await signInWithEmail(cleanEmail, password);
 
       if (error || !user) {
-        setErrorMessage(
-          error?.message === "Invalid login credentials"
-            ? "Credenciales incorrectas. Verifica tu correo y contraseña."
-            : error?.message || "Error al iniciar sesión. Inténtalo de nuevo."
-        );
+        setErrorMessage(error?.message || "Credenciales incorrectas. Verifica tu correo y contraseña.");
         return;
       }
 
@@ -92,8 +88,9 @@ function AuthForm() {
         const destination = redirectParam || (isAdmin ? "/admin" : "/account");
         window.location.href = destination;
       } else {
-        // Confirmation required or account registered
-        setSuccessMessage("¡Cuenta creada exitosamente! Revisa tu correo o inicia sesión para continuar.");
+        // Fallback if session creation required manual sign in
+        setSuccessMessage("¡Cuenta creada exitosamente! Por favor ingresa con tu contraseña.");
+        setEmail(cleanEmail);
         setMode("signin");
       }
     });

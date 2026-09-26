@@ -68,8 +68,13 @@ async function runAuthVerification() {
     .filter((k) => k.startsWith("NEXT_PUBLIC_"));
 
   assert(
-    publicKeys.every((k) => k === "NEXT_PUBLIC_SUPABASE_URL" || k === "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"),
-    "No secret keys exposed via NEXT_PUBLIC_ variables (Only URL and Publishable Key present)"
+    publicKeys.every(
+      (k) =>
+        k === "NEXT_PUBLIC_SUPABASE_URL" ||
+        k === "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" ||
+        k === "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"
+    ),
+    "No secret keys exposed via NEXT_PUBLIC_ variables (Only Supabase and Stripe public keys present)"
   );
 
   // 4. Test Middleware Route Protection: Unauthenticated request to /admin redirects to /login
