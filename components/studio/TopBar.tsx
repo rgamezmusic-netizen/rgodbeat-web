@@ -114,11 +114,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <>
       <header
-        style={{ paddingTop: 'max(10px, calc(env(safe-area-inset-top, 0px) + 8px))' }}
-        className="sticky top-0 z-30 flex items-center justify-between w-full px-3 sm:px-6 pb-2.5 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80 gap-2 sm:gap-4 box-border"
+        style={{ paddingTop: 'max(8px, calc(env(safe-area-inset-top, 0px) + 6px))' }}
+        className="sticky top-0 z-30 flex flex-nowrap items-center justify-between w-full h-14 sm:h-16 px-2 sm:px-5 pb-1 bg-[#09090b]/95 backdrop-blur-md border-b border-zinc-800/80 gap-1.5 sm:gap-3 box-border overflow-hidden"
       >
         {/* LEFT ZONE: Logo & Beat Chip */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink">
           <a
             href="/"
             onClick={(e) => {
@@ -127,13 +127,13 @@ export const TopBar: React.FC<TopBarProps> = ({
                 onSaveAndExit();
               }
             }}
-            className="flex items-center group shrink-0 h-9 sm:h-10 px-1 py-0.5 rounded-xl hover:bg-white/[0.06] transition-all cursor-pointer"
+            className="flex items-center group shrink-0 h-8 sm:h-10 px-0.5 rounded-lg hover:bg-white/[0.06] transition-all cursor-pointer"
             title="Guardar y volver a la tienda principal"
           >
             <img
               src="/images/rgodbeat-studio-logo.png"
               alt="RGodbeat Studio"
-              className="h-7 sm:h-9 w-auto max-w-[110px] sm:max-w-[140px] object-contain filter brightness-125 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-all duration-200"
+              className="h-6 sm:h-8 w-auto max-w-[85px] sm:max-w-[130px] object-contain filter brightness-125 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-all duration-200"
             />
           </a>
 
@@ -141,80 +141,57 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={onOpenLoadBeat}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/90 border border-zinc-750 hover:border-amber-500/50 cursor-pointer text-xs font-mono transition-all shadow-sm shrink-0 active:scale-95"
+            className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-zinc-900/90 border border-zinc-750 hover:border-amber-500/50 cursor-pointer text-[10px] sm:text-xs font-mono transition-all shadow-sm shrink min-w-0 active:scale-95"
             title="Cambiar beat o cargar archivo de audio"
           >
             <Music className="w-3 h-3 text-amber-400 shrink-0" />
-            <span className="text-zinc-200 max-w-[90px] sm:max-w-[140px] truncate font-medium">
-              {currentBeatTitle || 'Cargar Beat'}
+            <span className="text-zinc-200 max-w-[70px] sm:max-w-[130px] truncate font-medium">
+              {currentBeatTitle || 'Beat'}
             </span>
             {currentBeatBpm ? (
-              <span className="text-amber-400 font-bold text-[10px]">
-                {currentBeatBpm} BPM
+              <span className="text-amber-400 font-bold text-[9px] sm:text-[10px] hidden sm:inline shrink-0">
+                {currentBeatBpm}BPM
               </span>
             ) : null}
           </button>
-
-          {/* Access status badge (Demo / Active) */}
-          {accessStatus?.hasActivePass ? (
-            <button
-              type="button"
-              onClick={onOpenUnlockModal}
-              className="hidden md:flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 text-[10px] font-mono font-bold shrink-0 cursor-pointer"
-              title={`Pase activo: ${accessStatus.daysRemaining} días restantes`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{accessStatus.daysRemaining}d Activo</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onOpenUnlockModal}
-              className="hidden md:flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 text-[10px] font-mono font-bold cursor-pointer"
-              title="Modo Demo. Inicia sesión para guardar proyectos en la nube."
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              <span>Demo</span>
-            </button>
-          )}
         </div>
 
         {/* CENTER ZONE: Unified Minimal View Switcher (Flow iPod vs Flow BandLab) */}
-        <div className="flex items-center bg-zinc-900/95 p-1 rounded-xl border border-zinc-800 shadow-inner shrink-0">
+        <div className="flex items-center bg-zinc-900/95 p-0.5 sm:p-1 rounded-xl border border-zinc-800 shadow-inner shrink-0">
           <button
             type="button"
             onClick={() => onChangeView('studio')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-mono font-bold transition-all cursor-pointer ${
               activeView === 'studio'
                 ? 'bg-zinc-800 text-amber-300 shadow-sm border border-zinc-700'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
-            title="Vista Grabador & Reproductor (Estilo iPod minimalista)"
+            title="Vista Grabador & Reproductor"
           >
-            <Disc3 className="w-3.5 h-3.5" />
-            <span className="hidden xs:inline">Grabador</span>
+            <Disc3 className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Grabador</span>
           </button>
 
           <button
             type="button"
             onClick={() => onChangeView('editor')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer relative ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-mono font-bold transition-all cursor-pointer relative ${
               activeView === 'editor'
                 ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20 font-extrabold'
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
-            title="Vista Multitrack & Edición de Tomas (Estilo BandLab)"
+            title="Vista Multitrack & Edición"
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span className="hidden xs:inline">Multitrack</span>
+            <Layers className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Multitrack</span>
             {hasRecordings && (
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
             )}
           </button>
         </div>
 
         {/* RIGHT ZONE: Project Menu & Export Button */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Subtle Undo / Redo for quick correction */}
           <div className="hidden lg:flex items-center bg-zinc-900/90 p-0.5 rounded-lg border border-zinc-800 shrink-0">
             <button
@@ -244,12 +221,12 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => setShowProjectMenu(!showProjectMenu)}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-mono font-medium bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800 hover:text-white transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
-              title="Menú de Proyecto (Guardar, Cargar, Nuevo)"
+              className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-xs font-mono font-medium bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-zinc-800 hover:text-white transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+              title="Menú de Proyecto"
             >
-              <FolderKanban className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Proyecto</span>
-              <ChevronDown className="w-3 h-3 text-zinc-500" />
+              <FolderKanban className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="hidden md:inline">Proyecto</span>
+              <ChevronDown className="w-3 h-3 text-zinc-500 hidden sm:inline" />
             </button>
 
             {/* Dropdown Menu Box */}

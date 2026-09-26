@@ -2392,25 +2392,51 @@ export default function App() {
               redoCount={redoStack.length}
             />
 
-            {/* Vocal Tracks Mixer & Recorders (Lead 1, Lead 2, Double, Harmony 1, Harmony 2, Adlibs, Backings) */}
-            <VocalTracksList
-              tracks={tracks}
-              selectedTrackId={selectedTrackId}
-              onSelectTrack={handleSelectTrack}
-              activeRecordingTrackId={activeRecordingTrackId}
-              isRecording={isRecording}
-              onStartRecord={handleStartRecord}
-              onStopRecord={handleStopRecord}
-              onToggleMute={handleToggleMute}
-              onToggleSolo={handleToggleSolo}
-              onChangeVolume={handleChangeTrackVolume}
-              onChangePan={handleChangeTrackPan}
-              onAddBackingTrack={handleAddBackingTrack}
-              canAddMoreTracks={canAddMoreTracks}
-              onDeleteTrack={handleDeleteCustomTrack}
-              onDeleteTake={handleDeleteTake}
-              onOpenFX={(trackId) => setActiveFXTrackId(trackId)}
-            />
+            {/* Multitrack Voices Workspace: identical to the editor view */}
+            <div className="w-full mt-2">
+              <TimelineWorkspace
+                beat={currentBeat}
+                tracks={tracks}
+                currentTime={currentTime}
+                isPlaying={isPlaying}
+                onPlayPause={handlePlayPause}
+                onSeek={handleSeek}
+                onMoveTake={handleMoveTake}
+                onStartDragMove={handleStartDragMove}
+                onCommitDragMove={handleCommitDragMove}
+                onDuplicateTake={handleDuplicateTake}
+                onDeleteTake={handleDeleteTake}
+                onToggleMute={handleToggleMute}
+                onToggleSolo={handleToggleSolo}
+                onChangeVolume={handleChangeTrackVolume}
+                onChangePan={handleChangeTrackPan}
+                beatVolume={beatFX.volume}
+                onChangeBeatVolume={(vol) => setBeatFX((prev) => ({ ...prev, volume: vol }))}
+                onAddBackingTrack={handleAddBackingTrack}
+                canAddMoreTracks={canAddMoreTracks}
+                onDeleteTrack={handleDeleteCustomTrack}
+                onOpenFX={(trackId) => setActiveFXTrackId(trackId)}
+                selectedTrackId={selectedTrackId}
+                onSelectTrack={handleSelectTrack}
+                canUndo={undoStack.length > 0}
+                canRedo={redoStack.length > 0}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                undoCount={undoStack.length}
+                redoCount={redoStack.length}
+                onOpenLoadBeat={() => setShowLoadBeatModal(true)}
+                currentBeatSlotIndex={currentBeatSlotIndex}
+                totalSavedBeatsCount={savedCustomBeats.length}
+                loopSettings={loopSettings}
+                onOpenLoopModal={() => setShowLoopModal(true)}
+                isRecording={isRecording}
+                activeRecordingTrackId={activeRecordingTrackId}
+                onStartRecord={handleStartRecord}
+                onStopRecord={handleStopRecord}
+                onSplitTake={handleSplitTake}
+                onToggleLockTake={handleToggleLockTake}
+              />
+            </div>
           </div>
         ) : (
           /* Dedicated Editing Workspace (Timeline with Beat + Vocal Tracks, moveable clips, micro-latency nudge, 2 leads) */

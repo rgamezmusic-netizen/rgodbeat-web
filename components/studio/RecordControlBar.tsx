@@ -213,48 +213,50 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
           </div>
         </div>
 
-        {/* Row 2: The Primary Recording Action Button & Minimal Audio Level Meter */}
-        {isRecording ? (
-          <div className="space-y-1">
+        {/* Row 2: The Primary Recording Action Button (Compact, centered, not spanning corner to corner) */}
+        <div className="flex flex-col items-center justify-center pt-0.5">
+          {isRecording ? (
+            <div className="flex flex-col items-center gap-1 w-full max-w-[280px]">
+              <button
+                type="button"
+                onClick={onStopRecord}
+                className="px-5 py-2 rounded-full bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold flex items-center justify-center gap-2 shadow-[0_0_16px_rgba(239,68,68,0.5)] active:scale-95 transition-all animate-pulse cursor-pointer border border-red-400/50"
+              >
+                <Square className="w-3.5 h-3.5 fill-current" />
+                <span>DETENER ({formatElapsed(elapsedSec)}) · {selectedTrack.name.toUpperCase()}</span>
+              </button>
+
+              {/* Sleek audio level meter line */}
+              <div className="w-full h-1 rounded-full overflow-hidden bg-zinc-950">
+                <div
+                  className={`h-full transition-all duration-75 ${
+                    isSaturated
+                      ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]'
+                      : 'bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(8, micLevel * 100))}%` }}
+                />
+              </div>
+
+              {isSaturated && (
+                <div className="text-center text-[9px] font-mono text-red-400 font-bold animate-pulse flex items-center justify-center gap-1">
+                  <AlertTriangle className="w-2.5 h-2.5" />
+                  <span>¡Saturando! Auto-reduciendo ganancia</span>
+                </div>
+              )}
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={onStopRecord}
-              className="w-full py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold flex items-center justify-center gap-2 shadow-[0_0_16px_rgba(239,68,68,0.4)] active:scale-98 transition-all animate-pulse cursor-pointer"
+              onClick={() => onStartRecord(selectedTrack.id)}
+              className="px-5 py-2 rounded-full font-mono text-xs font-bold inline-flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md bg-red-600 hover:bg-red-500 text-white shadow-red-600/30 cursor-pointer border border-red-500/40"
+              title="Grabar en esta pista (Punch-in automático)"
             >
-              <Square className="w-3.5 h-3.5 fill-current" />
-              <span>DETENER GRABACIÓN ({formatElapsed(elapsedSec)}) · {selectedTrack.name.toUpperCase()}</span>
+              <span className="w-2 h-2 rounded-full bg-white shadow-inner animate-pulse" />
+              <span>REC · {selectedTrack.name.toUpperCase()}</span>
             </button>
-
-            {/* Sleek audio level meter line */}
-            <div className="w-full h-1 rounded-full overflow-hidden bg-zinc-950">
-              <div
-                className={`h-full transition-all duration-75 ${
-                  isSaturated
-                    ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]'
-                    : 'bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-400'
-                }`}
-                style={{ width: `${Math.min(100, Math.max(8, micLevel * 100))}%` }}
-              />
-            </div>
-
-            {isSaturated && (
-              <div className="text-center text-[9px] font-mono text-red-400 font-bold animate-pulse flex items-center justify-center gap-1">
-                <AlertTriangle className="w-2.5 h-2.5" />
-                <span>¡Saturando! Auto-reduciendo ganancia ({gainReductionDb < 0 ? `${gainReductionDb}dB` : '-1.5dB'})</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onStartRecord(selectedTrack.id)}
-            className="w-full py-2.5 px-3 rounded-xl font-mono text-xs font-bold flex items-center justify-center gap-2 active:scale-98 transition-all shadow-md bg-red-600 hover:bg-red-500 text-white shadow-red-600/30 cursor-pointer"
-            title="Grabar en esta pista (Punch-in automático)"
-          >
-            <Mic className="w-4 h-4 fill-current" />
-            <span>GRABAR VOZ ({selectedTrack.name.toUpperCase()})</span>
-          </button>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
