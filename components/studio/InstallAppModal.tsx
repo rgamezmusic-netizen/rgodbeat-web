@@ -191,29 +191,40 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
               </div>
             </div>
 
-            {/* TAB 1: IPHONE (SAFARI) TOUR */}
+            {/* TAB 1: IPHONE (SAFARI & CHROME) TOUR */}
             {activeOs === 'ios' && (
               <div className="space-y-3">
+                {/* Banner explaining that Home Screen removes the bottom browser bar */}
+                <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 to-emerald-500/10 border border-amber-500/40 text-[11px] font-mono flex items-start gap-2.5">
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-amber-300 font-bold">¡Elimina la barra inferior del explorador!</strong>
+                    <p className="text-zinc-300 text-[10px] mt-0.5 leading-relaxed">
+                      Al instalar el acceso en tu pantalla de inicio y abrirlo desde allí, <strong>la barra inferior con la URL y botones del explorador desaparece al 100%</strong>. Se ejecuta a pantalla completa como una App nativa.
+                    </p>
+                  </div>
+                </div>
+
                 {activeStep === 1 && (
                   <div className="space-y-2">
                     <p className="text-xs font-mono text-zinc-200">
-                      <strong>Paso 1:</strong> En la barra inferior de <strong>Safari</strong>, presiona el botón{' '}
-                      <span className="text-amber-300 font-bold">Compartir</span> (el cuadrado con la flecha arriba).
+                      <strong>Paso 1:</strong> En la barra inferior de <strong>Safari</strong> o <strong>Chrome</strong> en tu iPhone, presiona el botón{' '}
+                      <span className="text-amber-300 font-bold">Compartir</span> (el cuadrado con la flecha arriba) o los <span className="text-amber-300 font-bold">tres puntos (...)</span>.
                     </p>
-                    {/* Visual Mockup of Safari Bottom Bar */}
+                    {/* Visual Mockup of Safari / Chrome Bottom Bar */}
                     <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between max-w-sm mx-auto shadow-lg relative overflow-hidden">
                       <div className="text-zinc-600 text-xs">‹</div>
-                      <div className="text-zinc-600 text-xs">›</div>
+                      <div className="text-zinc-600 text-xs">❐</div>
                       {/* Highlighted Beacon Button */}
                       <div className="relative group">
                         <div className="absolute -inset-2 bg-amber-500/40 rounded-xl blur animate-pulse" />
                         <div className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 text-black font-bold text-xs shadow-lg animate-bounce">
                           <Share className="w-4 h-4 stroke-[2.5]" />
-                          <span>Toca aquí</span>
+                          <span>Toca Compartir / ...</span>
                         </div>
                       </div>
-                      <div className="text-zinc-600 text-xs">📖</div>
-                      <div className="text-zinc-600 text-xs">⊞</div>
+                      <div className="text-zinc-600 text-xs">↻</div>
+                      <div className="text-zinc-600 text-xs">•••</div>
                     </div>
                   </div>
                 )}

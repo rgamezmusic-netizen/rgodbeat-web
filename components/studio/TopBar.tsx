@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Download, Upload, Mic, Layers, Disc3, Undo2, Redo2, HardDrive, Smartphone, Cloud, CloudUpload, Plus, Loader2, FolderOpen, Save, FolderKanban, X } from 'lucide-react';
+import { Download, Upload, Mic, Layers, Disc3, Undo2, Redo2, HardDrive, Smartphone, Cloud, CloudUpload, Plus, Loader2, FolderOpen, Save, FolderKanban, X, LogOut } from 'lucide-react';
 
 interface TopBarProps {
   onOpenLoadBeat: () => void;
@@ -36,6 +36,8 @@ interface TopBarProps {
   isSavingCloud?: boolean;
   isLoadingCloud?: boolean;
   hasCloudProject?: boolean;
+  onSaveAndExit?: () => void;
+  isSavingAndExiting?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -66,6 +68,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   isSavingCloud = false,
   isLoadingCloud = false,
   hasCloudProject = false,
+  onSaveAndExit,
+  isSavingAndExiting = false,
 }) => {
   const deviceFileInputRef = useRef<HTMLInputElement>(null);
   const [showMobileProjectMenu, setShowMobileProjectMenu] = useState(false);
@@ -80,8 +84,14 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
         <a
           href="/"
-          className="flex items-center group shrink-0 h-10 sm:h-12 px-1 py-0.5 rounded-xl hover:bg-white/[0.06] transition-all"
-          title="Volver a la tienda principal"
+          onClick={(e) => {
+            if (onSaveAndExit) {
+              e.preventDefault();
+              onSaveAndExit();
+            }
+          }}
+          className="flex items-center group shrink-0 h-10 sm:h-12 px-1 py-0.5 rounded-xl hover:bg-white/[0.06] transition-all cursor-pointer"
+          title="Guardar y volver a la tienda principal"
         >
           <img
             src="/images/rgodbeat-studio-logo.png"
@@ -328,6 +338,22 @@ export const TopBar: React.FC<TopBarProps> = ({
               <span className="hidden md:inline">Instalar App</span>
             </button>
           )}
+
+          {onSaveAndExit && (
+            <button
+              onClick={onSaveAndExit}
+              disabled={isSavingAndExiting}
+              className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-mono font-medium bg-zinc-900 text-zinc-300 border border-zinc-800 hover:bg-red-950/40 hover:text-red-300 hover:border-red-500/40 transition-all shrink-0 active:scale-95"
+              title="Guardar sesión actual y salir a la tienda"
+            >
+              {isSavingAndExiting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-red-400" />
+              ) : (
+                <LogOut className="w-3.5 h-3.5 text-red-400" />
+              )}
+              <span className="hidden md:inline">Salir</span>
+            </button>
+          )}
         </div>
 
         {/* Universal Beat Library Button */}
@@ -504,6 +530,26 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <div>
                   <div className="text-xs font-mono font-bold text-zinc-200">Instalar como App</div>
                   <div className="text-[10px] text-zinc-400">Crear acceso directo en pantalla de inicio</div>
+                </div>
+              </button>
+            )}
+
+            {onSaveAndExit && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMobileProjectMenu(false);
+                  onSaveAndExit();
+                }}
+                disabled={isSavingAndExiting}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-red-950/30 hover:bg-red-950/50 border border-red-500/40 text-left transition-all active:scale-98"
+              >
+                <div className="p-2 rounded-lg bg-red-500/20 text-red-400">
+                  {isSavingAndExiting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+                </div>
+                <div>
+                  <div className="text-xs font-mono font-bold text-red-300">Guardar y Salir</div>
+                  <div className="text-[10px] text-zinc-400">Guarda beat + voces en tu teléfono y vuelve a la tienda</div>
                 </div>
               </button>
             )}

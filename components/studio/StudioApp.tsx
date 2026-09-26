@@ -499,6 +499,7 @@ export default function App() {
   const [cloudProjectInfo, setCloudProjectInfo] = useState<CloudProjectCheckResult | null>(null);
   const [isSavingCloud, setIsSavingCloud] = useState<boolean>(false);
   const [isSavingDevice, setIsSavingDevice] = useState<boolean>(false);
+  const [isSavingAndExiting, setIsSavingAndExiting] = useState<boolean>(false);
   const [isLoadingCloud, setIsLoadingCloud] = useState<boolean>(false);
   const [dismissExpirationBanner, setDismissExpirationBanner] = useState<boolean>(false);
 
@@ -2093,6 +2094,49 @@ export default function App() {
     }
   };
 
+  // Safe Exit and Auto-Save (returns to main store cleanly)
+  const handleSaveAndExit = async () => {
+    try {
+      setIsSavingAndExiting(true);
+      showToast('💾 Guardando proyecto antes de salir...', 'info');
+
+      if (engine && isPlaying) {
+        engine.pause();
+        setIsPlaying(false);
+      }
+
+      // Always save local session in IndexedDB
+      await saveStudioSession(
+        tracksRef.current,
+        currentBeatRef.current,
+        loopSettings,
+        currentTime,
+        beatFX.volume,
+        activeViewRef.current
+      );
+
+      // Save to cloud if user has an account / pass
+      if (accessStatus.hasActivePass || accessStatus.email) {
+        try {
+          await saveProjectToCloud(tracksRef.current, currentBeatRef.current, loopSettings);
+        } catch {
+          // Non-blocking cloud save
+        }
+      }
+
+      showToast('✅ Proyecto guardado. Hasta pronto.', 'success');
+
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 500);
+    } catch (err) {
+      console.error('Error in handleSaveAndExit:', err);
+      window.location.href = '/';
+    } finally {
+      setIsSavingAndExiting(false);
+    }
+  };
+
   // Open Project File (.rgodbeat) from Device (phone or PC)
   const handleImportDeviceProject = async (file: File) => {
     if (!engine) return;
@@ -2226,6 +2270,8 @@ export default function App() {
         isSavingCloud={isSavingCloud}
         isLoadingCloud={isLoadingCloud}
         hasCloudProject={Boolean(cloudProjectInfo?.hasProject)}
+        onSaveAndExit={handleSaveAndExit}
+        isSavingAndExiting={isSavingAndExiting}
       />
 
       {/* 3-Day Expiration Alert Banner */}
