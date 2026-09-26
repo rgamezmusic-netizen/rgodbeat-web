@@ -1,5 +1,16 @@
-import React, { useRef } from 'react';
-import { Play, Pause, RotateCcw, RotateCw, Repeat, Sliders, Volume2, Music, Sparkles, ShieldCheck } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  RotateCw,
+  Repeat,
+  Sliders,
+  Volume2,
+  Sparkles,
+  Music2,
+  Check,
+} from 'lucide-react';
 import { BeatData, LoopSettings, MusicalKey, ScaleMode } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative, NOTE_NAMES, SPANISH_NAMES } from '@/lib/studio/audio/beatAnalyzer';
 
@@ -34,8 +45,6 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   onToggleLoop,
   onOpenLoopSettings,
   onOpenBeatFX,
-  onNextBeat,
-  onPrevBeat,
   beatVolume,
   onChangeBeatVolume,
   onDetectKeyAndBpm,
@@ -45,8 +54,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   isRecording = false,
 }) => {
   const progressBarRef = useRef<HTMLDivElement>(null);
-  const [isEditingBpm, setIsEditingBpm] = React.useState(false);
-  const [tempBpm, setTempBpm] = React.useState('');
+  const [isEditingBpm, setIsEditingBpm] = useState(false);
+  const [tempBpm, setTempBpm] = useState('');
 
   const duration = beat ? beat.duration : 0;
   const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
@@ -65,19 +74,25 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
     onSeek(ratio * duration);
   };
 
+  const keyInfo = parseKeyAndGetRelative(beat?.key, beat?.scale);
+  const currentBpm = beat?.bpm || 140;
+  const isDoubleTime = currentBpm >= 115;
+  const halfTimeBpm = isDoubleTime ? Math.round(currentBpm / 2) : currentBpm;
+  const doubleTimeBpm = isDoubleTime ? currentBpm : Math.round(currentBpm * 2);
+
   return (
-    <div className="w-full max-w-md mx-auto flex flex-col items-center px-4 pt-2 pb-4">
-      {/* Vinyl / Artwork Showcase */}
-      <div className="relative group w-52 h-52 sm:w-60 sm:h-60 my-2 flex items-center justify-center">
+    <div className="w-full max-w-md mx-auto flex flex-col items-center px-3 pt-1 pb-3">
+      {/* 1. FLOW IPOD: Focal Disc & Album Art */}
+      <div className="relative group w-48 h-48 sm:w-56 sm:h-56 my-2 flex items-center justify-center">
         {/* Glow ambient background */}
         <div
-          className="absolute inset-0 rounded-full blur-2xl opacity-25 transition-opacity duration-700 pointer-events-none"
+          className="absolute inset-0 rounded-full blur-2xl opacity-20 transition-opacity duration-700 pointer-events-none"
           style={{ background: beat ? beat.artworkGradient : '#27272a' }}
         />
 
         {/* Outer Vinyl Disc */}
         <div
-          className={`relative w-full h-full rounded-full p-2.5 shadow-2xl border border-zinc-700/50 bg-[#0d0d11] transition-transform ${
+          className={`relative w-full h-full rounded-full p-2.5 shadow-2xl border border-zinc-750/70 bg-[#0c0c10] transition-transform ${
             isPlaying ? 'animate-vinyl-spin' : 'animate-vinyl-spin-paused'
           }`}
           style={{
@@ -91,7 +106,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
         >
           {/* Inner Album Label */}
           <div
-            className="w-full h-full rounded-full flex flex-col items-center justify-center relative overflow-hidden shadow-inner border border-zinc-600/40"
+            className="w-full h-full rounded-full flex flex-col items-center justify-center relative overflow-hidden shadow-inner border border-zinc-600/30"
             style={{
               background: beat ? beat.artworkGradient : 'linear-gradient(135deg, #18181b 0%, #27272a 100%)',
             }}
@@ -102,269 +117,238 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             </div>
 
             {/* Label Typography */}
-            <div className="absolute top-5 text-center px-4 pointer-events-none">
-              <p className="text-[10px] tracking-widest uppercase font-mono text-zinc-300 font-semibold opacity-80">
+            <div className="absolute top-4 text-center px-4 pointer-events-none">
+              <p className="text-[9px] tracking-widest uppercase font-mono text-zinc-300 font-semibold opacity-80">
                 RGODBEAT
               </p>
             </div>
-            <div className="absolute bottom-5 text-center px-4 pointer-events-none">
-              <p className="text-[9px] tracking-wider uppercase font-mono text-amber-300 font-medium">
-                {beat ? `${beat.bpm} BPM` : 'DEMO'}
+            <div className="absolute bottom-4 text-center px-4 pointer-events-none">
+              <p className="text-[9px] tracking-wider uppercase font-mono text-amber-300 font-bold">
+                {currentBpm} BPM
               </p>
             </div>
           </div>
         </div>
 
-        {/* Small floating quick action tags */}
+        {/* Quick Beat FX Floating Pill */}
         <button
+          type="button"
           onClick={onOpenBeatFX}
-          title="Beat FX Controls"
-          className="absolute -bottom-2 -right-1 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/90 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/80 shadow-lg text-[11px] font-medium backdrop-blur-md transition-all active:scale-95"
+          title="Ajustes de filtro y volumen del Beat"
+          className="absolute -bottom-1 -right-1 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/95 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-750 shadow-lg text-[10px] font-mono backdrop-blur-md transition-all active:scale-95 cursor-pointer"
         >
           <Sliders className="w-3 h-3 text-amber-400" />
           <span>Beat FX</span>
         </button>
       </div>
 
-      {/* Beat Information & Key */}
-      <div className="w-full text-center mt-3 mb-2">
-        {/* Status badges: Saved Beat in memory */}
-        {beat?.isCustomUpload && (
-          <div className="flex items-center justify-center gap-2 mb-1.5">
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] font-mono text-emerald-300">
-              <ShieldCheck className="w-3 h-3 text-emerald-400" />
-              <span>Guardado en memoria</span>
-            </span>
-          </div>
-        )}
-
-        <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white font-display truncate px-4">
-          {beat ? beat.title : 'No Beat Loaded'}
+      {/* 2. Beat Title */}
+      <div className="w-full text-center mt-2 mb-1 px-4">
+        <h2 className="text-lg sm:text-xl font-extrabold tracking-tight text-white truncate">
+          {beat ? beat.title : 'Selecciona un Beat'}
         </h2>
-
-        {/* BPM & Relative Key Section */}
-        {(() => {
-          const keyInfo = parseKeyAndGetRelative(beat?.key, beat?.scale);
-          return (
-            <div className="flex flex-col items-center justify-center gap-1.5 mt-1.5 text-xs text-zinc-400 font-mono-numbers">
-              {/* Top row: BPM Controls with x2 and /2 */}
-              <div className="flex flex-wrap items-center justify-center gap-1.5">
-                <div className="inline-flex items-center bg-zinc-900/90 border border-zinc-800 rounded-lg px-2 py-0.5 gap-1 shadow-sm">
-                  {onChangeBpm && beat && (
-                    <button
-                      onClick={() => onChangeBpm(Math.max(40, beat.bpm - 1))}
-                      className="text-zinc-500 hover:text-amber-400 font-bold px-1 transition-colors text-xs select-none"
-                      title="Reducir 1 BPM"
-                    >
-                      -
-                    </button>
-                  )}
-                  {isEditingBpm ? (
-                    <input
-                      type="number"
-                      min="40"
-                      max="300"
-                      value={tempBpm}
-                      autoFocus
-                      onChange={(e) => setTempBpm(e.target.value)}
-                      onBlur={() => {
-                        const val = parseInt(tempBpm);
-                        if (!isNaN(val) && val >= 40 && val <= 300 && onChangeBpm) {
-                          onChangeBpm(val);
-                        }
-                        setIsEditingBpm(false);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const val = parseInt(tempBpm);
-                          if (!isNaN(val) && val >= 40 && val <= 300 && onChangeBpm) {
-                            onChangeBpm(val);
-                          }
-                          setIsEditingBpm(false);
-                        } else if (e.key === 'Escape') {
-                          setIsEditingBpm(false);
-                        }
-                      }}
-                      className="w-14 bg-zinc-950 text-amber-400 font-bold text-xs text-center border border-amber-500 rounded px-0.5 py-0 focus:outline-none"
-                    />
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onChangeBpm && beat) {
-                          setTempBpm(String(beat.bpm || 140));
-                          setIsEditingBpm(true);
-                        }
-                      }}
-                      className="text-amber-400 font-bold px-0.5 hover:text-amber-300 hover:underline cursor-pointer select-none"
-                      title="Toca para ingresar el BPM numérico exacto"
-                    >
-                      {beat?.bpm || 140} BPM
-                    </button>
-                  )}
-                  {onChangeBpm && beat && (
-                    <button
-                      onClick={() => onChangeBpm(Math.min(300, beat.bpm + 1))}
-                      className="text-zinc-500 hover:text-amber-400 font-bold px-1 transition-colors text-xs select-none"
-                      title="Aumentar 1 BPM"
-                    >
-                      +
-                    </button>
-                  )}
-                </div>
-
-                {onChangeBpm && beat && (() => {
-                  const currentBpm = beat.bpm || 140;
-                  const isDoubleTime = currentBpm >= 115;
-                  const halfTimeBpm = isDoubleTime ? Math.round(currentBpm / 2) : currentBpm;
-                  const doubleTimeBpm = isDoubleTime ? currentBpm : Math.round(currentBpm * 2);
-
-                  // 1.5x Tresillo ratio: converts between 95 and 142 BPM (e.g. 95 * 1.5 = 142.5 ~ 142)
-                  const tresilloBpm = currentBpm <= 112
-                    ? Math.min(300, Math.round(currentBpm * 1.5))
-                    : Math.max(40, Math.round(currentBpm / 1.5));
-
-                  return (
-                    <div className="inline-flex items-center gap-1 bg-zinc-900/90 border border-zinc-800 rounded-lg p-0.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isDoubleTime) {
-                            onChangeBpm(Math.max(40, halfTimeBpm));
-                          }
-                        }}
-                        className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold transition-all select-none ${
-                          !isDoubleTime
-                            ? 'bg-amber-500 text-black shadow-sm font-extrabold'
-                            : 'bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200'
-                        }`}
-                        title={`Modo 1x tiempo base (${halfTimeBpm} BPM)`}
-                      >
-                        1x
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onChangeBpm(tresilloBpm);
-                        }}
-                        className="text-[10px] px-2 py-0.5 rounded font-mono font-bold transition-all select-none bg-zinc-800/80 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/30"
-                        title={`Ajuste Tresillo 1.5x (${currentBpm} ⇄ ${tresilloBpm} BPM)`}
-                      >
-                        1.5x
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!isDoubleTime) {
-                            onChangeBpm(Math.min(300, doubleTimeBpm));
-                          }
-                        }}
-                        className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold transition-all select-none ${
-                          isDoubleTime
-                            ? 'bg-amber-500 text-black shadow-sm font-extrabold'
-                            : 'bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200'
-                        }`}
-                        title={`Modo x2 tiempo doble (${doubleTimeBpm} BPM)`}
-                      >
-                        x2
-                      </button>
-                    </div>
-                  );
-                })()}
-
-                {onDetectKeyAndBpm && beat && (
-                  <button
-                    onClick={onDetectKeyAndBpm}
-                    disabled={isAnalyzingBeat}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-[10px] font-mono transition-all active:scale-95 shadow-sm"
-                    title="Detectar automáticamente BPM, tonalidad y relativa con el motor DSP"
-                  >
-                    <Sparkles className={`w-3 h-3 text-amber-400 ${isAnalyzingBeat ? 'animate-spin' : ''}`} />
-                    <span>{isAnalyzingBeat ? 'Analizando...' : '⚡ Re-Detectar'}</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Bottom row: Musical Key & Relative Key Display + Interactive Tonality/Scale Selector */}
-              <div className="flex flex-wrap items-center justify-center gap-1.5 mt-1">
-                <div className="inline-flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 px-2.5 py-1 rounded-xl shadow-sm">
-                  {onChangeTonality ? (
-                    <div className="flex items-center gap-1">
-                      {/* Root Note Selector (C, C#, D...) */}
-                      <select
-                        value={keyInfo.rootKey}
-                        onChange={(e) => {
-                          const newRoot = e.target.value as MusicalKey;
-                          onChangeTonality(newRoot, keyInfo.scaleMode);
-                        }}
-                        className="bg-zinc-800 text-amber-300 font-bold font-mono text-xs px-2 py-0.5 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
-                        title="Cambiar nota fundamental (Root Key) para el beat y el Autotune"
-                      >
-                        {NOTE_NAMES.map((n) => (
-                          <option key={n} value={n}>
-                            {n} ({SPANISH_NAMES[n]})
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Scale Mode Selector (Menor / Mayor) */}
-                      <select
-                        value={keyInfo.scaleMode === 'minor' ? 'minor' : 'major'}
-                        onChange={(e) => {
-                          const newMode = e.target.value as ScaleMode;
-                          onChangeTonality(keyInfo.rootKey, newMode);
-                        }}
-                        className="bg-zinc-800 text-zinc-200 font-bold font-mono text-xs px-2 py-0.5 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
-                        title="Cambiar modo de escala (Menor / Mayor) para todas las pistas"
-                      >
-                        <option value="minor">Menor</option>
-                        <option value="major">Mayor</option>
-                      </select>
-                    </div>
-                  ) : (
-                    <span className="text-zinc-100 font-bold text-xs">{keyInfo.tonalityName}</span>
-                  )}
-
-                  <span className="text-zinc-600 font-mono text-xs">⇄</span>
-                  <span
-                    className="text-amber-300/95 font-medium text-[11px] bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/25 font-mono"
-                    title={`Tonalidad relativa directa para cantar o armonizar sin confusiones: ${keyInfo.relativeTonalityName}`}
-                  >
-                    Relativa: <strong className="text-amber-200">{keyInfo.relativeTonalityName}</strong>
-                  </span>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
       </div>
 
-      {/* Waveform Scrubber & Progress Bar */}
-      <div className="w-full px-2 mt-2">
+      {/* 3. THE "TEMPO & ESCALAS" HUD CARD (Simple, crystal-clear, functional) */}
+      <div className="w-full bg-[#0e0e14]/90 border border-zinc-800 rounded-2xl p-3 my-2 shadow-xl backdrop-blur-md">
+        <div className="grid grid-cols-2 gap-2 divide-x divide-zinc-800/80">
+          {/* LEFT: TEMPO (BPM) */}
+          <div className="flex flex-col items-center justify-center px-1 space-y-1">
+            <span className="text-[10px] font-mono text-zinc-400 font-semibold tracking-wider uppercase">
+              TEMPO // VELOCIDAD
+            </span>
+
+            {/* BPM Value & Steppers */}
+            <div className="flex items-center gap-1.5">
+              {onChangeBpm && beat && (
+                <button
+                  type="button"
+                  onClick={() => onChangeBpm(Math.max(40, currentBpm - 1))}
+                  className="w-6 h-6 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-amber-400 font-bold text-xs flex items-center justify-center transition-colors cursor-pointer select-none"
+                  title="Reducir 1 BPM"
+                >
+                  -
+                </button>
+              )}
+
+              {isEditingBpm ? (
+                <input
+                  type="number"
+                  min="40"
+                  max="300"
+                  value={tempBpm}
+                  autoFocus
+                  onChange={(e) => setTempBpm(e.target.value)}
+                  onBlur={() => {
+                    const val = parseInt(tempBpm);
+                    if (!isNaN(val) && val >= 40 && val <= 300 && onChangeBpm) {
+                      onChangeBpm(val);
+                    }
+                    setIsEditingBpm(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const val = parseInt(tempBpm);
+                      if (!isNaN(val) && val >= 40 && val <= 300 && onChangeBpm) {
+                        onChangeBpm(val);
+                      }
+                      setIsEditingBpm(false);
+                    } else if (e.key === 'Escape') {
+                      setIsEditingBpm(false);
+                    }
+                  }}
+                  className="w-14 bg-zinc-950 text-amber-400 font-mono font-extrabold text-sm text-center border border-amber-500 rounded-md px-1 py-0.5 focus:outline-none"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onChangeBpm && beat) {
+                      setTempBpm(String(currentBpm));
+                      setIsEditingBpm(true);
+                    }
+                  }}
+                  className="text-base sm:text-lg font-mono font-extrabold text-amber-400 hover:text-amber-300 cursor-pointer select-none px-1 tracking-tight"
+                  title="Toca para ingresar el BPM numérico exacto"
+                >
+                  {currentBpm} <span className="text-[11px] font-medium text-zinc-400">BPM</span>
+                </button>
+              )}
+
+              {onChangeBpm && beat && (
+                <button
+                  type="button"
+                  onClick={() => onChangeBpm(Math.min(300, currentBpm + 1))}
+                  className="w-6 h-6 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-amber-400 font-bold text-xs flex items-center justify-center transition-colors cursor-pointer select-none"
+                  title="Aumentar 1 BPM"
+                >
+                  +
+                </button>
+              )}
+            </div>
+
+            {/* Quick 1x / 2x Double-time Toggle */}
+            {onChangeBpm && beat && (
+              <div className="flex items-center gap-1 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isDoubleTime) {
+                      onChangeBpm(Math.max(40, halfTimeBpm));
+                    }
+                  }}
+                  className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold transition-all cursor-pointer ${
+                    !isDoubleTime
+                      ? 'bg-amber-500 text-black shadow-sm font-extrabold'
+                      : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                  title={`Modo 1x tiempo base (${halfTimeBpm} BPM)`}
+                >
+                  1x ({halfTimeBpm})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!isDoubleTime) {
+                      onChangeBpm(Math.min(300, doubleTimeBpm));
+                    }
+                  }}
+                  className={`text-[9px] px-2 py-0.5 rounded font-mono font-bold transition-all cursor-pointer ${
+                    isDoubleTime
+                      ? 'bg-amber-500 text-black shadow-sm font-extrabold'
+                      : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                  title={`Modo x2 tiempo doble (${doubleTimeBpm} BPM)`}
+                >
+                  2x ({doubleTimeBpm})
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT: ESCALAS & AUTOTUNE */}
+          <div className="flex flex-col items-center justify-center px-1 space-y-1">
+            <span className="text-[10px] font-mono text-zinc-400 font-semibold tracking-wider uppercase">
+              ESCALA // AFINACIÓN
+            </span>
+
+            {/* Note & Scale Mode Selector */}
+            {onChangeTonality ? (
+              <div className="flex items-center gap-1">
+                {/* Root Note Selector (A, B, C...) */}
+                <select
+                  value={keyInfo.rootKey}
+                  onChange={(e) => {
+                    const newRoot = e.target.value as MusicalKey;
+                    onChangeTonality(newRoot, keyInfo.scaleMode);
+                  }}
+                  className="bg-zinc-800 text-amber-300 font-bold font-mono text-xs px-2 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
+                  title="Nota fundamental para el Beat y el Auto-Tune"
+                >
+                  {NOTE_NAMES.map((n) => (
+                    <option key={n} value={n}>
+                      {n} ({SPANISH_NAMES[n]})
+                    </option>
+                  ))}
+                </select>
+
+                {/* Scale Mode (Menor / Mayor) */}
+                <select
+                  value={keyInfo.scaleMode === 'minor' ? 'minor' : 'major'}
+                  onChange={(e) => {
+                    const newMode = e.target.value as ScaleMode;
+                    onChangeTonality(keyInfo.rootKey, newMode);
+                  }}
+                  className="bg-zinc-800 text-zinc-200 font-bold font-mono text-xs px-2 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
+                  title="Modo de escala (Menor o Mayor)"
+                >
+                  <option value="minor">Menor</option>
+                  <option value="major">Mayor</option>
+                </select>
+              </div>
+            ) : (
+              <span className="text-zinc-100 font-bold text-xs">{keyInfo.tonalityName}</span>
+            )}
+
+            {/* Relative Scale Guidance Tag */}
+            <div
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/25 text-[10px] font-mono text-amber-300"
+              title={`Escala musical armónica para cantar sin desentonar: ${keyInfo.relativeTonalityName}`}
+            >
+              <span>Relativa:</span>
+              <strong className="text-amber-200 font-bold">{keyInfo.relativeTonalityName}</strong>
+            </div>
+
+            {/* Auto-detect button (subtle) */}
+            {onDetectKeyAndBpm && beat && (
+              <button
+                type="button"
+                onClick={onDetectKeyAndBpm}
+                disabled={isAnalyzingBeat}
+                className="text-[9px] font-mono text-zinc-500 hover:text-amber-400 flex items-center gap-1 transition-colors cursor-pointer"
+                title="Re-analizar tempo y escala con el motor DSP"
+              >
+                <Sparkles className={`w-2.5 h-2.5 ${isAnalyzingBeat ? 'animate-spin text-amber-400' : ''}`} />
+                <span>{isAnalyzingBeat ? 'Analizando...' : 'Auto-detectar'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Scrubber & Progress Bar */}
+      <div className="w-full px-2 mt-1">
         <div
           ref={progressBarRef}
           onClick={handleProgressClick}
-          className="relative w-full h-8 flex items-center cursor-pointer group select-none py-2"
+          className="relative w-full h-7 flex items-center cursor-pointer group select-none"
         >
           {/* Background Track */}
-          <div className="w-full h-2 bg-zinc-800/80 rounded-full overflow-hidden relative">
-            {/* Waveform Bars subtle overlay if available */}
-            {beat?.waveformSample && (
-              <div className="absolute inset-0 flex items-center justify-between px-0.5 opacity-30 pointer-events-none">
-                {beat.waveformSample.slice(0, 36).map((val, i) => (
-                  <div
-                    key={i}
-                    className="w-1 bg-white rounded-full"
-                    style={{ height: `${Math.max(20, val * 100)}%` }}
-                  />
-                ))}
-              </div>
-            )}
-
+          <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden relative">
             {/* Loop Region highlight */}
             {loopSettings.enabled && duration > 0 && (
               <div
-                className="absolute top-0 bottom-0 bg-amber-500/25 border-x border-amber-400/60"
+                className="absolute top-0 bottom-0 bg-amber-500/30 border-x border-amber-400/80"
                 style={{
                   left: `${(loopSettings.startSec / duration) * 100}%`,
                   width: `${((loopSettings.endSec - loopSettings.startSec) / duration) * 100}%`,
@@ -381,16 +365,16 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
 
           {/* Scrubber Thumb */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg border border-zinc-900 pointer-events-none group-hover:scale-125 transition-transform"
-            style={{ left: `calc(${progressPercent}% - 8px)` }}
+            className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-lg border border-zinc-900 pointer-events-none group-hover:scale-125 transition-transform"
+            style={{ left: `calc(${progressPercent}% - 7px)` }}
           />
         </div>
 
         {/* Timestamps */}
-        <div className="flex items-center justify-between text-xs font-mono font-medium text-zinc-400 px-0.5 mt-0.5">
+        <div className="flex items-center justify-between text-[11px] font-mono font-medium text-zinc-400 px-0.5">
           {isRecording ? (
             <span className="flex items-center gap-1.5 text-red-400 font-bold font-mono animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
               🔴 REC {formatTime(currentTime)}
             </span>
           ) : (
@@ -400,79 +384,82 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
         </div>
       </div>
 
-      {/* Main Transport Player Controls */}
-      <div className="w-full flex items-center justify-between px-2 mt-4">
-        {/* Loop toggle button with bar badge */}
+      {/* 5. Main Transport Player Controls (Flow iPod) */}
+      <div className="w-full flex items-center justify-between px-3 mt-3">
+        {/* Loop toggle button */}
         <button
+          type="button"
           onClick={onToggleLoop}
           onContextMenu={(e) => {
             e.preventDefault();
             onOpenLoopSettings();
           }}
-          className={`flex items-center justify-center w-11 h-11 rounded-full transition-all active:scale-90 ${
+          className={`flex items-center justify-center w-10 h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
             loopSettings.enabled
               ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-              : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-850'
+              : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
           }`}
-          title="Toggle Loop (Long-press / right-click for loop length)"
+          title="Repetir compases (Click derecho para configurar)"
         >
           <div className="relative flex items-center justify-center">
-            <Repeat className="w-5 h-5" />
+            <Repeat className="w-4 h-4" />
             {loopSettings.enabled && (
-              <span className="absolute -bottom-2 text-[8px] font-mono font-bold text-amber-400">
-                {loopSettings.bars === 'all' ? 'TODO' : `${loopSettings.bars} Bar`}
+              <span className="absolute -bottom-2 text-[7px] font-mono font-bold text-amber-400">
+                {loopSettings.bars === 'all' ? 'TODO' : `${loopSettings.bars}B`}
               </span>
             )}
           </div>
         </button>
 
-        {/* Center transport buttons: Prev (5s back) / Play / Next (5s forward) */}
+        {/* Center: Rewind / Play / Forward */}
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={() => onSeek(Math.max(0, currentTime - 5))}
-            className="w-11 h-11 rounded-full flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all"
-            title="Rewind 5s"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all cursor-pointer"
+            title="Retroceder 5 segundos"
           >
-            <RotateCcw className="w-5 h-5" />
+            <RotateCcw className="w-4 h-4" />
           </button>
 
-          {/* Giant Primary Tactile Play Button */}
+          {/* Primary iPod-Style Play / Pause Button */}
           <button
+            type="button"
             onClick={onPlayPause}
-            className="w-16 h-16 rounded-full flex items-center justify-center bg-white text-zinc-950 hover:bg-amber-400 active:scale-90 transition-all shadow-[0_4px_24px_rgba(255,255,255,0.15)] focus-visible:ring-2 focus-visible:ring-amber-400"
-            title={isPlaying ? 'Pause' : 'Play Beat'}
+            className="w-14 h-14 rounded-full flex items-center justify-center bg-white text-zinc-950 hover:bg-amber-400 active:scale-90 transition-all shadow-[0_4px_20px_rgba(255,255,255,0.15)] cursor-pointer"
+            title={isPlaying ? 'Pausar Beat' : 'Reproducir Beat'}
           >
             {isPlaying ? (
-              <Pause className="w-7 h-7 fill-current" />
+              <Pause className="w-6 h-6 fill-current" />
             ) : (
-              <Play className="w-7 h-7 fill-current ml-1" />
+              <Play className="w-6 h-6 fill-current ml-0.5" />
             )}
           </button>
 
           <button
+            type="button"
             onClick={() => onSeek(Math.min(duration, currentTime + 5))}
-            className="w-11 h-11 rounded-full flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all"
-            title="Forward 5s"
+            className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-300 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all cursor-pointer"
+            title="Avanzar 5 segundos"
           >
-            <RotateCw className="w-5 h-5" />
+            <RotateCw className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Loop setting trigger or cycle beat */}
+        {/* Loop Settings Trigger Pill */}
         <button
+          type="button"
           onClick={onOpenLoopSettings}
-          className="flex items-center justify-center w-11 h-11 rounded-full text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-all"
-          title="Configure Loop Length"
+          className="flex items-center justify-center px-2 py-1 rounded-lg bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700 text-[10px] font-mono cursor-pointer transition-all"
+          title="Configurar compases del Loop"
         >
-          <span className="text-[11px] font-mono font-semibold px-2 py-1 rounded bg-zinc-800/80 border border-zinc-700">
-            {loopSettings.bars === 'all' ? 'Loop' : `${loopSettings.bars} Bar`}
-          </span>
+          <span>{loopSettings.bars === 'all' ? 'Loop' : `${loopSettings.bars} Bar`}</span>
         </button>
       </div>
 
-      {/* Beat Volume Slider */}
-      <div className="w-full flex items-center gap-3 px-3 mt-4 pt-2 border-t border-zinc-900">
-        <Volume2 className="w-4 h-4 text-zinc-500 shrink-0" />
+      {/* 6. Subtle Beat Volume Slider */}
+      <div className="w-full flex items-center gap-2 px-3 mt-3 pt-2 border-t border-zinc-900">
+        <Volume2 className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
         <input
           type="range"
           min="0"
@@ -480,10 +467,10 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
           step="0.02"
           value={beatVolume}
           onChange={(e) => onChangeBeatVolume(parseFloat(e.target.value))}
-          className="w-full"
-          title="Beat Volume"
+          className="w-full accent-amber-400 cursor-pointer h-1 bg-zinc-800 rounded-lg appearance-none"
+          title="Volumen del Beat"
         />
-        <span className="text-[11px] font-mono text-zinc-500 w-8 text-right tabular-nums">
+        <span className="text-[10px] font-mono text-zinc-500 w-7 text-right tabular-nums">
           {Math.round(beatVolume * 100)}%
         </span>
       </div>

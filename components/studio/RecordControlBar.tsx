@@ -53,7 +53,6 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
   const [isSaturated, setIsSaturated] = useState(false);
   const [gainReductionDb, setGainReductionDb] = useState(0);
 
-  // Store callbacks in refs so changes in parent render don't re-run effect or clear interval
   const getMicStatusRef = useRef(getMicStatus);
   getMicStatusRef.current = getMicStatus;
   const getMicLevelRef = useRef(getMicLevel);
@@ -66,7 +65,6 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
     if (isRecording) {
       setElapsedSec(0);
       const start = Date.now();
-      // Tick every 200ms to calculate elapsed seconds steadily without drift
       interval = setInterval(() => {
         setElapsedSec(Math.floor((Date.now() - start) / 1000));
       }, 200);
@@ -107,58 +105,60 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
   const hasTake = selectedTrack.buffer !== null;
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 my-3">
-      <div className={`p-3 rounded-2xl border shadow-xl backdrop-blur-md transition-colors ${
-        isSaturated && isRecording
-          ? 'bg-red-950/40 border-red-500/60 shadow-red-500/20'
-          : 'bg-zinc-900/90 border-zinc-800'
-      }`}>
-        {/* Top Info Bar */}
-        <div className="flex items-center justify-between mb-2.5 px-1">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 font-semibold">
-              PISTA ACTIVA:
+    <div className="w-full max-w-md mx-auto px-3 my-2">
+      <div
+        className={`p-3 rounded-2xl border shadow-xl backdrop-blur-md transition-colors ${
+          isSaturated && isRecording
+            ? 'bg-red-950/40 border-red-500/60 shadow-red-500/20'
+            : 'bg-[#0e0e14]/90 border-zinc-800'
+        }`}
+      >
+        {/* Top Header: Track Name & Quick Utility Badges */}
+        <div className="flex items-center justify-between mb-2 px-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-semibold">
+              PISTA:
             </span>
-            <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+            <span className="px-2 py-0.5 rounded-md text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
               {selectedTrack.name.toUpperCase()}
             </span>
             {hasTake && (
               <span className="text-[10px] font-mono text-emerald-400 font-medium">
-                (Con toma)
+                ● Grabada
               </span>
             )}
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Bluetooth Latency Compensation Button */}
+            {/* Bluetooth Latency Compensation */}
             {onToggleBluetoothSync && (
               <button
                 type="button"
                 onClick={onToggleBluetoothSync}
-                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono font-bold transition-all cursor-pointer ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-all cursor-pointer ${
                   bluetoothSyncEnabled
                     ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/20'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+                    : 'bg-zinc-850 text-zinc-400 hover:text-zinc-200 border border-zinc-750'
                 }`}
                 title={
                   bluetoothSyncEnabled
-                    ? `Compensación de latencia activa (-${bluetoothOffsetMs}ms). Tu voz grabada con audífonos Bluetooth se sincroniza al beat automáticamente.`
-                    : 'Activar si grabas con audífonos Bluetooth (AirPods, auriculares inalámbricos) para calibrar el retraso de audio y que tu voz no quede desfasada.'
+                    ? `Compensación de latencia activa (-${bluetoothOffsetMs}ms). Tu voz con audífonos Bluetooth se sincroniza al beat.`
+                    : 'Activar para audífonos Bluetooth (AirPods, inalámbricos) para calibrar el retraso de audio.'
                 }
               >
-                <Headphones className="w-3 h-3 text-current" />
-                <span>{bluetoothSyncEnabled ? 'Modo BT: ON' : 'Modo BT'}</span>
+                <Headphones className="w-3 h-3" />
+                <span>{bluetoothSyncEnabled ? 'BT ON' : 'Sync BT'}</span>
               </button>
             )}
 
-            {/* Quick Count-in switch */}
+            {/* Metronome Count-in switch */}
             <button
               type="button"
               onClick={onToggleCountIn}
-              className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono transition-all cursor-pointer ${
+              className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-mono transition-all cursor-pointer ${
                 countInEnabled
                   ? 'bg-zinc-800 text-amber-300 border border-amber-500/30'
-                  : 'bg-zinc-900 text-zinc-500 border border-zinc-800'
+                  : 'bg-zinc-850 text-zinc-500 border border-zinc-750'
               }`}
               title="Conteo de 1 compás antes de grabar"
             >
@@ -168,9 +168,9 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
           </div>
         </div>
 
-        {/* Track Switcher Pills: Allows instant 1-tap switching between channels, even during active recording */}
+        {/* Track Switcher Pills (BandLab flow) */}
         {tracks && onSelectTrack && tracks.length > 1 && (
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 mb-2.5 no-scrollbar scroll-smooth">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 mb-2 no-scrollbar scroll-smooth">
             {tracks.map((t) => {
               const isSelected = t.id === selectedTrack.id;
               const isRecThis = isRecording && _recordingTrackId === t.id;
@@ -180,12 +180,12 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                   key={t.id}
                   type="button"
                   onClick={() => onSelectTrack(t.id)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold transition-all shrink-0 cursor-pointer active:scale-95 ${
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all shrink-0 cursor-pointer active:scale-95 ${
                     isRecThis
                       ? 'bg-red-500 text-white animate-pulse shadow-md shadow-red-500/40 ring-1 ring-red-400'
                       : isSelected
-                      ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 ring-1 ring-amber-400'
-                      : 'bg-zinc-800/90 text-zinc-300 hover:text-white hover:bg-zinc-750 border border-zinc-750'
+                      ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20 ring-1 ring-amber-400'
+                      : 'bg-zinc-850/90 text-zinc-300 hover:text-white hover:bg-zinc-750 border border-zinc-750'
                   }`}
                   title={isRecording ? `Cambiar grabación a ${t.name}` : `Seleccionar ${t.name}`}
                 >
@@ -203,118 +203,117 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
           </div>
         )}
 
-        {/* Real-time Recording Timer Banner */}
+        {/* Recording Banner & Meter */}
         {isRecording && (
-          <div className="flex items-center justify-between bg-red-950/70 border border-red-500/60 rounded-xl px-3 py-2 mb-2.5 shadow-lg shadow-red-500/10">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
-              </span>
-              <span className="text-xs font-mono font-bold text-red-200 uppercase tracking-wider">
-                GRABANDO EN {selectedTrack.name.toUpperCase()}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 font-mono text-base font-extrabold text-white bg-black/50 px-2.5 py-0.5 rounded-lg border border-red-500/40">
-              <span className="text-red-400 animate-pulse text-xs">● REC</span>
-              <span>{formatElapsed(elapsedSec)}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Live Audio Level Meter & Anti-Saturation Protection Indicator */}
-        {isRecording && (
-          <div className="space-y-1 mb-2.5">
-            <div className="flex items-center justify-between text-[10px] font-mono">
-              <span className="text-zinc-400 font-semibold">ENERGÍA DE VOZ</span>
-              {isSaturated ? (
-                <span className="text-red-400 font-bold flex items-center gap-1 animate-pulse">
-                  <AlertTriangle className="w-3 h-3 text-red-400" />
-                  <span>¡SATURANDO! Reduciendo automáticamente ({gainReductionDb < 0 ? `${gainReductionDb} dB` : '-1.5 dB'})</span>
+          <div className="space-y-1.5 mb-2">
+            <div className="flex items-center justify-between bg-red-950/70 border border-red-500/60 rounded-xl px-3 py-1.5 shadow-lg shadow-red-500/10">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                <span className="text-xs font-mono font-bold text-red-200 uppercase tracking-wider">
+                  GRABANDO EN {selectedTrack.name.toUpperCase()}
                 </span>
-              ) : (
-                <span className="text-emerald-400 font-medium">
-                  {Math.round(micLevel * 100)}% {gainReductionDb < 0 ? `(Protegido ${gainReductionDb} dB)` : 'Nivel Óptimo'}
-                </span>
-              )}
+              </div>
+              <span className="font-mono text-sm font-extrabold text-white bg-black/60 px-2 py-0.5 rounded-md border border-red-500/40">
+                {formatElapsed(elapsedSec)}
+              </span>
             </div>
 
-            {/* Meter Bar: turns completely bright RED if saturated */}
-            <div className={`w-full h-2 rounded-full overflow-hidden transition-all ${
-              isSaturated ? 'bg-red-950/80 border border-red-500/60 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-zinc-950'
-            }`}>
+            {/* Level Meter Bar */}
+            <div className="space-y-0.5">
+              <div className="flex items-center justify-between text-[9px] font-mono">
+                <span className="text-zinc-400 font-semibold">NIVEL DE MICRÓFONO</span>
+                {isSaturated ? (
+                  <span className="text-red-400 font-bold flex items-center gap-1 animate-pulse">
+                    <AlertTriangle className="w-2.5 h-2.5 text-red-400" />
+                    <span>¡SATURANDO! Reduciendo automáticamente</span>
+                  </span>
+                ) : (
+                  <span className="text-emerald-400 font-medium">
+                    {Math.round(micLevel * 100)}% {gainReductionDb < 0 ? `(Protegido ${gainReductionDb}dB)` : 'Óptimo'}
+                  </span>
+                )}
+              </div>
+
               <div
-                className={`h-full transition-all duration-75 ${
-                  isSaturated
-                    ? 'bg-red-500 shadow-[0_0_12px_rgba(239,68,68,1)]'
-                    : 'bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-400'
+                className={`w-full h-1.5 rounded-full overflow-hidden transition-all ${
+                  isSaturated ? 'bg-red-950/80 border border-red-500/60' : 'bg-zinc-950'
                 }`}
-                style={{ width: `${Math.min(100, Math.max(8, micLevel * 100))}%` }}
-              />
+              >
+                <div
+                  className={`h-full transition-all duration-75 ${
+                    isSaturated
+                      ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,1)]'
+                      : 'bg-gradient-to-r from-emerald-500 via-amber-400 to-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(8, micLevel * 100))}%` }}
+                />
+              </div>
             </div>
           </div>
         )}
 
-        {/* Giant Tactile Record / Stop Action Button (Full Width, No Test Button) */}
+        {/* Giant Tactile Record / Stop Action Button */}
         {isRecording ? (
           <button
+            type="button"
             onClick={onStopRecord}
-            className="w-full py-3.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-mono text-sm font-bold flex items-center justify-center gap-2.5 shadow-[0_0_25px_rgba(239,68,68,0.4)] active:scale-98 transition-all animate-pulse"
+            className="w-full py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-mono text-sm font-bold flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-98 transition-all animate-pulse cursor-pointer"
           >
-            <Square className="w-5 h-5 fill-current" />
+            <Square className="w-4 h-4 fill-current" />
             <span>DETENER GRABACIÓN ({formatElapsed(elapsedSec)})</span>
           </button>
         ) : (
           <button
+            type="button"
             onClick={() => onStartRecord(selectedTrack.id)}
-            className="w-full py-3.5 px-4 rounded-xl font-mono text-sm font-bold flex items-center justify-center gap-2.5 active:scale-98 transition-all shadow-lg bg-red-600 hover:bg-red-500 text-white shadow-red-600/30"
-            title="Grabar en esta pista (Sobrescritura Punch-In: solo reemplaza el tramo que cantes, manteniendo el resto de la pista intacto)"
+            className="w-full py-3 px-4 rounded-xl font-mono text-sm font-bold flex items-center justify-center gap-2 active:scale-98 transition-all shadow-lg bg-red-600 hover:bg-red-500 text-white shadow-red-600/30 cursor-pointer"
+            title="Grabar en esta pista (Punch-in automático)"
           >
-            <Mic className="w-5 h-5 fill-current" />
+            <Mic className="w-4 h-4 fill-current" />
             <span>GRABAR VOZ ({selectedTrack.name.toUpperCase()})</span>
           </button>
         )}
 
-        {/* Undo & Redo centered action buttons right below REC button */}
+        {/* Subtle Undo / Redo controls */}
         {(onUndo || onRedo) && (
-          <div className="flex items-center justify-center gap-2 mt-2.5 pt-2 border-t border-zinc-800/80">
+          <div className="flex items-center justify-center gap-2 mt-2 pt-1.5 border-t border-zinc-800/80">
             <button
               type="button"
               onClick={onUndo}
               disabled={!canUndo}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-mono font-medium transition-all ${
+              className={`flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-mono font-medium transition-all ${
                 canUndo
-                  ? 'bg-zinc-800/90 text-amber-300 hover:bg-zinc-750 hover:text-amber-200 border border-zinc-700 active:scale-95 shadow-sm cursor-pointer'
+                  ? 'bg-zinc-850 text-amber-300 hover:bg-zinc-750 hover:text-amber-200 border border-zinc-700 active:scale-95 cursor-pointer'
                   : 'bg-zinc-900/40 text-zinc-600 border border-zinc-850 cursor-not-allowed opacity-40'
               }`}
               title="Deshacer última acción (Ctrl+Z)"
             >
-              <Undo2 className="w-3.5 h-3.5" />
+              <Undo2 className="w-3 h-3" />
               <span>Deshacer</span>
               {undoCount > 0 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-900 font-bold text-zinc-400">
+                <span className="text-[9px] px-1 py-0.2 rounded bg-zinc-900 font-bold text-zinc-400">
                   {undoCount}
                 </span>
               )}
             </button>
 
-            <div className="w-[1px] h-4 bg-zinc-800" />
+            <div className="w-[1px] h-3.5 bg-zinc-800" />
 
             <button
               type="button"
               onClick={onRedo}
               disabled={!canRedo}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-mono font-medium transition-all ${
+              className={`flex items-center gap-1 px-3 py-1 rounded-lg text-[11px] font-mono font-medium transition-all ${
                 canRedo
-                  ? 'bg-zinc-800/90 text-amber-300 hover:bg-zinc-750 hover:text-amber-200 border border-zinc-700 active:scale-95 shadow-sm cursor-pointer'
+                  ? 'bg-zinc-850 text-amber-300 hover:bg-zinc-750 hover:text-amber-200 border border-zinc-700 active:scale-95 cursor-pointer'
                   : 'bg-zinc-900/40 text-zinc-600 border border-zinc-850 cursor-not-allowed opacity-40'
               }`}
               title="Rehacer acción (Ctrl+Y)"
             >
-              <Redo2 className="w-3.5 h-3.5" />
+              <Redo2 className="w-3 h-3" />
               <span>Rehacer</span>
               {redoCount > 0 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-900 font-bold text-zinc-400">
+                <span className="text-[9px] px-1 py-0.2 rounded bg-zinc-900 font-bold text-zinc-400">
                   {redoCount}
                 </span>
               )}

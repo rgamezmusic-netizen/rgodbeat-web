@@ -2334,83 +2334,13 @@ export default function App() {
         </div>
       )}
 
-      {/* View Switcher Pill Bar */}
-      <div className="w-full max-w-md mx-auto px-4 pt-2.5 shrink-0 flex items-center justify-center gap-2 z-20">
-        <button
-          onClick={() => setActiveView('studio')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all ${
-            activeView === 'studio'
-              ? 'bg-zinc-800 text-amber-300 border border-amber-500/40 shadow-lg'
-              : 'bg-zinc-900/80 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
-          }`}
-        >
-          <Disc3 className="w-4 h-4" />
-          <span>REPRODUCTOR & MIC</span>
-        </button>
-
-        <button
-          onClick={() => setActiveView('editor')}
-          className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-mono font-bold transition-all relative ${
-            activeView === 'editor'
-              ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20 font-extrabold'
-              : 'bg-zinc-900/80 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span>ESPACIO DE EDICIÓN</span>
-          {hasRecordings && (
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          )}
-        </button>
-      </div>
-
       {/* Main Studio Viewport Canvas */}
       <main className={`flex-1 min-h-0 flex flex-col items-center w-full mx-auto ${
         activeView === 'editor' ? 'overflow-hidden px-1 sm:px-4 pb-1 pt-1' : 'pb-8 pt-1'
       }`}>
         {activeView === 'studio' ? (
           <div className="w-full max-w-xl flex flex-col items-center">
-            {/* Physical Beat Dock Shelf - Tangible visual anchor for the user's beat */}
-            {currentBeat && (
-              <div className="w-full flex items-center justify-between px-3.5 py-2 mb-2 rounded-2xl bg-zinc-900/90 border border-zinc-800 text-xs font-mono shadow-md backdrop-blur-sm">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
-                    <HardDrive className="w-3.5 h-3.5 text-amber-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-semibold">
-                        Espacio Físico Beat
-                      </span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
-                        SLOT {currentBeatSlotIndex}/23
-                      </span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold hidden sm:inline">
-                        GUARDADO ({savedCustomBeats.length}/23)
-                      </span>
-                    </div>
-                    <div className="text-zinc-100 font-bold text-xs truncate max-w-[180px] sm:max-w-[280px]">
-                      {currentBeat.title}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-amber-400 font-bold text-[11px] bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800">
-                    {currentBeat.bpm} BPM
-                  </span>
-                  <button
-                    onClick={() => setShowLoadBeatModal(true)}
-                    className="text-[10px] px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 font-medium transition-colors active:scale-95"
-                    title="Administrar los 23 slots de beats"
-                  >
-                    23 Slots
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Core Artwork & Transport Player */}
+            {/* Core Artwork & Transport Player (Flow iPod) */}
             <ArtworkPlayer
               beat={currentBeat}
               isPlaying={isPlaying}
