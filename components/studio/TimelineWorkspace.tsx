@@ -53,7 +53,7 @@ export const getTrackClips = (track: VocalTrack): VocalClip[] => {
  * so the waveform spans 100% of the recorded take from start to finish.
  */
 export const getInterpolatedWaveform = (peaks: number[] | undefined, targetBars: number): number[] => {
-  const source = peaks && peaks.length > 0 ? peaks : Array(36).fill(0.35);
+  const source = peaks && peaks.length > 0 ? peaks : Array(36).fill(0);
   const count = Math.max(16, targetBars);
   const result: number[] = [];
   for (let i = 0; i < count; i++) {
@@ -62,7 +62,7 @@ export const getInterpolatedWaveform = (peaks: number[] | undefined, targetBars:
     const i0 = Math.floor(sourceIdx);
     const i1 = Math.min(source.length - 1, Math.ceil(sourceIdx));
     const frac = sourceIdx - i0;
-    const v = (source[i0] ?? 0.3) * (1 - frac) + (source[i1] ?? 0.3) * frac;
+    const v = (source[i0] ?? 0) * (1 - frac) + (source[i1] ?? 0) * frac;
     result.push(Number(v.toFixed(3)));
   }
   return result;
@@ -1110,17 +1110,26 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           )}
                         </div>
 
-                        {/* Continuous Waveform Across Full Clip Duration */}
+                        {/* Continuous Waveform: Clean 2px flatline during silence, dynamic peaks when singing */}
                         <div className="flex-1 h-8 flex items-center gap-[2px] overflow-hidden w-full px-1">
-                          {interpolatedPeaks.map((val, idx) => (
-                            <div
-                              key={idx}
-                              className={`flex-1 min-w-[2px] max-w-[4px] rounded-full shrink-0 ${
-                                clip.isLocked ? 'bg-amber-400/90' : 'bg-emerald-400'
-                              }`}
-                              style={{ height: `${Math.max(15, val * 100)}%` }}
-                            />
-                          ))}
+                          {interpolatedPeaks.map((val, idx) => {
+                            const isSilent = val <= 0.02;
+                            return (
+                              <div
+                                key={idx}
+                                className={`flex-1 min-w-[2px] max-w-[4px] rounded-full shrink-0 transition-all ${
+                                  isSilent
+                                    ? 'bg-zinc-700/50'
+                                    : clip.isLocked
+                                    ? 'bg-amber-400'
+                                    : 'bg-emerald-400'
+                                }`}
+                                style={{
+                                  height: isSilent ? '2px' : `${Math.max(10, Math.min(100, val * 100))}%`,
+                                }}
+                              />
+                            );
+                          })}
                         </div>
 
                         {/* Clip Meta Tag */}

@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { Play, Pause, RotateCcw, RotateCw, Repeat, Sliders, Volume2, Music, Sparkles, ShieldCheck } from 'lucide-react';
-import { BeatData, LoopSettings } from '@/lib/studio/types/audio';
-import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
+import { BeatData, LoopSettings, MusicalKey, ScaleMode } from '@/lib/studio/types/audio';
+import { parseKeyAndGetRelative, NOTE_NAMES, SPANISH_NAMES } from '@/lib/studio/audio/beatAnalyzer';
 
 interface ArtworkPlayerProps {
   beat: BeatData | null;
@@ -20,6 +20,7 @@ interface ArtworkPlayerProps {
   onDetectKeyAndBpm?: () => void;
   isAnalyzingBeat?: boolean;
   onChangeBpm?: (bpm: number) => void;
+  onChangeTonality?: (rootKey: MusicalKey, scaleMode: ScaleMode) => void;
   isRecording?: boolean;
 }
 
@@ -40,6 +41,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   onDetectKeyAndBpm,
   isAnalyzingBeat = false,
   onChangeBpm,
+  onChangeTonality,
   isRecording = false,
 }) => {
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -283,13 +285,47 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 )}
               </div>
 
-              {/* Bottom row: Musical Key & Relative Key Display */}
-              <div className="flex flex-wrap items-center justify-center gap-1.5 mt-0.5">
-                <div className="inline-flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 px-2.5 py-1 rounded-lg shadow-sm">
-                  <span className="text-zinc-100 font-bold">
-                    {keyInfo.tonalityName}
-                  </span>
-                  <span className="text-zinc-600 font-mono">⇄</span>
+              {/* Bottom row: Musical Key & Relative Key Display + Interactive Tonality/Scale Selector */}
+              <div className="flex flex-wrap items-center justify-center gap-1.5 mt-1">
+                <div className="inline-flex items-center gap-1.5 bg-zinc-900/90 border border-zinc-800 px-2.5 py-1 rounded-xl shadow-sm">
+                  {onChangeTonality ? (
+                    <div className="flex items-center gap-1">
+                      {/* Root Note Selector (C, C#, D...) */}
+                      <select
+                        value={keyInfo.rootKey}
+                        onChange={(e) => {
+                          const newRoot = e.target.value as MusicalKey;
+                          onChangeTonality(newRoot, keyInfo.scaleMode);
+                        }}
+                        className="bg-zinc-800 text-amber-300 font-bold font-mono text-xs px-2 py-0.5 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
+                        title="Cambiar nota fundamental (Root Key) para el beat y el Autotune"
+                      >
+                        {NOTE_NAMES.map((n) => (
+                          <option key={n} value={n}>
+                            {n} ({SPANISH_NAMES[n]})
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Scale Mode Selector (Menor / Mayor) */}
+                      <select
+                        value={keyInfo.scaleMode === 'minor' ? 'minor' : 'major'}
+                        onChange={(e) => {
+                          const newMode = e.target.value as ScaleMode;
+                          onChangeTonality(keyInfo.rootKey, newMode);
+                        }}
+                        className="bg-zinc-800 text-zinc-200 font-bold font-mono text-xs px-2 py-0.5 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
+                        title="Cambiar modo de escala (Menor / Mayor) para todas las pistas"
+                      >
+                        <option value="minor">Menor</option>
+                        <option value="major">Mayor</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <span className="text-zinc-100 font-bold text-xs">{keyInfo.tonalityName}</span>
+                  )}
+
+                  <span className="text-zinc-600 font-mono text-xs">⇄</span>
                   <span
                     className="text-amber-300/95 font-medium text-[11px] bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/25 font-mono"
                     title={`Tonalidad relativa directa para cantar o armonizar sin confusiones: ${keyInfo.relativeTonalityName}`}

@@ -15,7 +15,12 @@ export interface AudioEngineCallbacks {
   onTimeUpdate: (currentTime: number) => void;
   onPlaybackEnded: () => void;
   onCountInBeat: (beat: number) => void;
-  onRecordingFinished: (trackId: VocalTrackId, buffer: AudioBuffer, waveform: number[]) => void;
+  onRecordingFinished: (
+    trackId: VocalTrackId,
+    buffer: AudioBuffer,
+    waveform: number[],
+    explicitStartOffset?: number
+  ) => void;
   onRecordingAborted: () => void;
   onError: (msg: string) => void;
 }
@@ -121,9 +126,12 @@ export class AudioEngine {
         window.AudioContext ||
         (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       try {
+        // Optimal audio sweet spot: 'interactive' latency requests the smallest hardware
+        // buffer (128-256 samples). Omitting hardcoded sampleRate allows CoreAudio (iOS/Mac)
+        // and AAudio (Android) to use the device DAC's native hardware rate directly,
+        // eliminating heavy CPU and memory bandwidth kernel resampling.
         this.ctx = new AudioCtxClass({
           latencyHint: 'interactive',
-          sampleRate: 48000,
         });
       } catch {
         this.ctx = new AudioCtxClass();
@@ -649,16 +657,18 @@ export class AudioEngine {
             const source = this.ctx.createBufferSource();
             source.buffer = playBuffer;
             source.connect(trackNodes.lowCut);
-            const when = this.playbackStartCtxTime + trackOffset;
+            const when = Math.max(this.ctx.currentTime, this.playbackStartCtxTime + trackOffset);
             source.start(when, 0);
             this.vocalSources.set(sourceKey, source);
           } else if (startPos >= trackOffset && startPos < trackOffset + trackDur) {
-            const source = this.ctx.createBufferSource();
-            source.buffer = playBuffer;
-            source.connect(trackNodes.lowCut);
-            const offsetInTake = startPos - trackOffset;
-            source.start(startTime, offsetInTake);
-            this.vocalSources.set(sourceKey, source);
+            const offsetInTake = Math.max(0, startPos - trackOffset);
+            if (offsetInTake < playBuffer.duration - 0.01) {
+              const source = this.ctx.createBufferSource();
+              source.buffer = playBuffer;
+              source.connect(trackNodes.lowCut);
+              source.start(startTime, offsetInTake);
+              this.vocalSources.set(sourceKey, source);
+            }
           }
         }
       } catch (trackPlayErr) {
@@ -1010,7 +1020,22 @@ export class AudioEngine {
           }
           this.callbacks.onCountInBeat(beat);
           this.playClick(beat === 1 ? 1200 : 800, 0.06);
-          await new Promise((resolve) => setTimeout(resolve, secPerBeat * 1000));
+
+          // Subdivide the beat wait into 15ms responsive checks so touching screen cancels instantly
+          const beatDurationMs = secPerBeat * 1000;
+          const sliceMs = 15;
+          let elapsed = 0;
+          while (elapsed < beatDurationMs) {
+            if (this.cancelCountIn || !this.isRecording) {
+              this.callbacks.onCountInBeat(0);
+              this.releaseMicrophone();
+              this.callbacks.onRecordingAborted();
+              return false;
+            }
+            const sleepChunk = Math.min(sliceMs, beatDurationMs - elapsed);
+            await new Promise((resolve) => setTimeout(resolve, sleepChunk));
+            elapsed += sleepChunk;
+          }
         }
         this.callbacks.onCountInBeat(0); // clear count-in overlay
       } else {
@@ -1202,6 +1227,7 @@ export class AudioEngine {
     }
 
     const previousTrackId = this.recordingTrackId;
+    const previousStartBeatTime = this.recordingStartBeatTime;
     const previousChunks = [...this.recordedPCMChunks];
     this.recordedPCMChunks = [];
     this.mediaRecorderChunks = [];
@@ -1232,13 +1258,25 @@ export class AudioEngine {
 
         if (prevBuffer.duration >= 0.2) {
           const waveform = extractWaveformPeaks(prevBuffer, 48);
-          // Commit previous take
-          this.callbacks.onRecordingFinished(previousTrackId, prevBuffer, waveform);
+          // Commit previous take with its exact original start offset
+          this.callbacks.onRecordingFinished(previousTrackId, prevBuffer, waveform, previousStartBeatTime);
         }
       }
     }
 
     return true;
+  }
+
+  /**
+   * Immediately aborts an active count-in when the user taps anywhere on the screen.
+   */
+  public abortCountIn(): void {
+    this.cancelCountIn = true;
+    this.isRecording = false;
+    this.recordingTrackId = null;
+    this.callbacks.onCountInBeat(0);
+    this.releaseMicrophone();
+    this.callbacks.onRecordingAborted();
   }
 
   /**
@@ -1261,6 +1299,7 @@ export class AudioEngine {
       }
 
       const targetTrackId = this.recordingTrackId;
+      const finalTakeStartBeatTime = this.recordingStartBeatTime;
       this.isRecording = false;
       this.recordingTrackId = null;
 
@@ -1367,8 +1406,8 @@ export class AudioEngine {
     // Extract waveform thumbnail
     const waveform = extractWaveformPeaks(finalBuffer, 48);
 
-    // Notify callback
-    this.callbacks.onRecordingFinished(targetTrackId, finalBuffer, waveform);
+    // Notify callback with the exact take start offset
+    this.callbacks.onRecordingFinished(targetTrackId, finalBuffer, waveform, finalTakeStartBeatTime);
     } finally {
       this.releaseMicrophone();
       this.isFinalizingRecording = false;

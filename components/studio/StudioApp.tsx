@@ -10,6 +10,9 @@ import {
   BeatData,
   BeatFX,
   LoopSettings,
+  MusicalKey,
+  PopularTonalityId,
+  ScaleMode,
   VocalClip,
   VocalFX,
   VocalTrack,
@@ -552,7 +555,7 @@ export default function App() {
       onCountInBeat: (beat) => {
         setCountInBeat(beat);
       },
-      onRecordingFinished: (trackId, buffer, waveform) => {
+      onRecordingFinished: (trackId, buffer, waveform, explicitOffset?: number) => {
         const isStillRecording = audioEngine.getIsRecording();
         if (!isStillRecording) {
           setIsRecording(false);
@@ -565,7 +568,9 @@ export default function App() {
         // Record history snapshot before adding take so user can undo it
         pushUndoSnapshot('Grabación de voz');
 
-        const startOffset = audioEngine.getRecordingStartBeatTime();
+        const startOffset = typeof explicitOffset === 'number'
+          ? Math.max(0, explicitOffset)
+          : Math.max(0, audioEngine.getRecordingStartBeatTime());
         const newClipId = `clip-${trackId}-${Date.now()}`;
         const audioCtx = audioEngine.getAudioContext() || new (window.AudioContext || (window as any).webkitAudioContext)();
 
@@ -1105,6 +1110,7 @@ export default function App() {
       };
 
       setCurrentBeat(updatedBeat);
+      currentBeatRef.current = updatedBeat;
       if (engine) engine.setBeat(updatedBeat);
 
       // Auto-sync vocal tune root key & scale mode to all tracks
@@ -1134,6 +1140,47 @@ export default function App() {
       setIsAnalyzingBeat(false);
       showToast('No se pudo analizar el beat', 'error');
     }
+  };
+
+  // Manual key and scale change handler - Automatically syncs AutoTune on all tracks
+  const handleChangeTonality = (rootKey: MusicalKey, scaleMode: ScaleMode) => {
+    if (!currentBeat) return;
+    const scaleName = scaleMode === 'minor' ? 'Menor Natural' : 'Mayor';
+    const matchingTonalityId = `${rootKey.toLowerCase().replace('#', 's')}_${scaleMode}` as PopularTonalityId;
+
+    const updatedBeat: BeatData = {
+      ...currentBeat,
+      key: rootKey,
+      scale: scaleName,
+      detectedKey: rootKey,
+    };
+
+    setCurrentBeat(updatedBeat);
+    currentBeatRef.current = updatedBeat;
+    if (engine) {
+      engine.setBeat(updatedBeat);
+    }
+
+    // Auto-sync vocal tune root key & scale mode to all tracks
+    setTracks((prev) => {
+      const next = prev.map((t) => ({
+        ...t,
+        fx: {
+          ...t.fx,
+          tune: {
+            ...(t.fx.tune || defaultVocalFX().tune),
+            rootKey,
+            scaleMode,
+            tonalityId: matchingTonalityId,
+          },
+        },
+        tunedBuffer: null,
+      }));
+      tracksRef.current = next;
+      return next;
+    });
+
+    showToast(`Escala cambiada a ${rootKey} ${scaleName}. Autotune actualizado en todas las pistas.`, 'success');
   };
 
   // Transport Handlers
@@ -1229,6 +1276,16 @@ export default function App() {
     if (!engine) return;
     engine.stopRecording();
   };
+
+  const handleCancelCountIn = useCallback(() => {
+    if (engine) {
+      engine.abortCountIn();
+    }
+    setCountInBeat(0);
+    setIsRecording(false);
+    setActiveRecordingTrackId(null);
+    showToast('Conteo cancelado', 'info');
+  }, [engine, showToast]);
 
   // Move / Edit take position along timeline
   const handleMoveTake = (
@@ -2133,7 +2190,7 @@ export default function App() {
       activeView === 'editor' ? 'h-screen max-h-screen overflow-hidden' : 'min-h-screen overflow-x-hidden justify-between'
     }`}>
       {/* 1-Bar Count In Metronome Visual Overlay */}
-      <CountInOverlay beatNumber={countInBeat} />
+      <CountInOverlay beatNumber={countInBeat} onCancel={handleCancelCountIn} />
 
       {/* Top Bar Header */}
       <TopBar
@@ -2331,6 +2388,7 @@ export default function App() {
                   if (engine) engine.updateBeatBpm(newBpm);
                 }
               }}
+              onChangeTonality={handleChangeTonality}
             />
 
             {/* Dedicated Main Record Control Bar */}

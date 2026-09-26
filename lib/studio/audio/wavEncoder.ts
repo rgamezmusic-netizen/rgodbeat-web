@@ -92,12 +92,17 @@ export function audioBufferToWav(buffer: AudioBuffer, bitDepth: 16 | 24 = 24): B
 }
 
 /**
- * Extracts a normalized waveform array (e.g. 50 points) from an AudioBuffer.
+ * Extracts a normalized waveform array (e.g. 60 points) from an AudioBuffer.
+ * Accurately differentiates true silence (flatline 0) from vocal singing peaks
+ * so silent pauses don't show phantom waveforms.
  */
 export function extractWaveformPeaks(buffer: AudioBuffer, points: number = 60): number[] {
   const channelData = buffer.getChannelData(0);
+  if (!channelData || channelData.length === 0) return Array(points).fill(0);
+
   const step = Math.floor(channelData.length / points);
-  const peaks: number[] = [];
+  const rawPeaks: number[] = [];
+  let absoluteMax = 0;
 
   for (let i = 0; i < points; i++) {
     const start = i * step;
@@ -106,12 +111,19 @@ export function extractWaveformPeaks(buffer: AudioBuffer, points: number = 60): 
       const absVal = Math.abs(channelData[start + j]);
       if (absVal > max) max = absVal;
     }
-    peaks.push(Number(max.toFixed(3)));
+    rawPeaks.push(max);
+    if (max > absoluteMax) absoluteMax = max;
   }
 
-  // Normalize to 0.1 - 1.0
-  const maxPeak = Math.max(...peaks, 0.01);
-  return peaks.map((p) => Math.max(0.12, p / maxPeak));
+  // Realistic silence gate threshold: background ambient room noise is < 4% of singing peak
+  const silenceThreshold = Math.max(0.005, absoluteMax * 0.04);
+
+  return rawPeaks.map((p) => {
+    if (p < silenceThreshold) return 0; // True silence -> flatline
+    const normalized = absoluteMax > 0.001 ? p / absoluteMax : 0;
+    // Map singing peaks dynamically between 0.10 and 1.0
+    return Number((0.10 + normalized * 0.90).toFixed(3));
+  });
 }
 
 /**
