@@ -5,16 +5,11 @@ import {
   Sparkles,
   Music,
   Mic,
-  Sliders,
   Play,
   Pause,
   Download,
-  CheckCircle2,
-  FolderPlus,
-  RefreshCw,
   X,
-  Upload,
-  ArrowRight,
+  RefreshCw,
   Disc,
 } from 'lucide-react';
 import { BeatData, BeatAnalysisResult } from '@/lib/studio/types/audio';
@@ -39,16 +34,14 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
   const musicInputRef = useRef<HTMLInputElement>(null);
   const vocalInputRef = useRef<HTMLInputElement>(null);
 
-  // Prompt & Style
+  // Prompt & Parameters
   const [prompt, setPrompt] = useState<string>('');
-  const [showAdvancedParams, setShowAdvancedParams] = useState<boolean>(false);
   const [customBpm, setCustomBpm] = useState<string>('');
   const [customKey, setCustomKey] = useState<string>('');
   const [instrumentalOnly, setInstrumentalOnly] = useState<boolean>(true);
 
   // State
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [generationStep, setGenerationStep] = useState<string>('');
   const [generatedResult, setGeneratedResult] = useState<{
     title: string;
     bpm: number;
@@ -62,36 +55,36 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const [isLoadingIntoStudio, setIsLoadingIntoStudio] = useState<boolean>(false);
-  const [savedToPark, setSavedToPark] = useState<boolean>(false);
 
-  const stylePresets = [
-    { label: '🔥 Reggaeton Comercial', text: 'Beat de reggaeton moderno 96 BPM estilo Feid, bajo 808 profundo y sintes melódicos' },
-    { label: '🌑 Trap Oscuro', text: 'Dark trap beat 140 BPM con bajos 808 pesados, hi-hats rápidos y campanas oscuras' },
-    { label: '🌴 Afrobeat Melódico', text: 'Afrobeat suave 105 BPM con percusión orgánica, guitarra limpia y bajo cálido' },
-    { label: '⚡ Dembow Urbano', text: 'Dembow rápido 118 BPM con ritmo enérgico de batería y bajo punzante' },
+  // Popular Genre References
+  const genres = [
+    { label: '🔥 Reggaeton', text: 'Beat de reggaeton comercial, bajo 808 profundo, sintes melódicos', bpm: '96', key: 'D minor' },
+    { label: '🌑 Trap', text: 'Dark trap beat con 808 pesado, hi-hats rápidos y campana menor', bpm: '140', key: 'C minor' },
+    { label: '🌴 Afrobeat', text: 'Afrobeat moderno con percusión orgánica, guitarra limpia y bajo cálido', bpm: '104', key: 'A minor' },
+    { label: '⚡ Dembow', text: 'Dembow enérgico con ritmo bailable, bajo corto y percusión agresiva', bpm: '118', key: 'F minor' },
+    { label: '🚀 Drill', text: 'Drill agresivo con 808 slides, melodía oscura de piano y cuerdas', bpm: '142', key: 'G minor' },
+    { label: '🎸 Guitar Melodic', text: 'Trap melódico con guitarra acústica triste, bajo suave y ritmo limpio', bpm: '130', key: 'E minor' },
+    { label: '🎹 R&B / Soul', text: 'Smooth R&B beat con acordes de Rhodes, bajo suave y batería lenta', bpm: '85', key: 'Bb major' },
   ];
+
+  const handleSelectGenre = (g: typeof genres[0]) => {
+    setPrompt(g.text);
+    if (!customBpm) setCustomBpm(g.bpm);
+    if (!customKey) setCustomKey(g.key);
+  };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!prompt.trim() && !musicRefFile && !vocalRefFile) {
-      alert('Por favor escribe una idea de estilo o sube un archivo de referencia de música o voz.');
+      alert('Escribe una idea o selecciona un género arriba.');
       return;
     }
 
     setIsGenerating(true);
     setGeneratedResult(null);
     setIsPlaying(false);
-    setSavedToPark(false);
 
     try {
-      setGenerationStep('Analizando referencias de audio y melodía...');
-      await new Promise((r) => setTimeout(r, 600));
-
-      setGenerationStep('Conectando con el motor ACE-Step (Apple Silicon M3 Pro)...');
-      await new Promise((r) => setTimeout(r, 800));
-
-      setGenerationStep('Componiendo y renderizando instrumentación...');
-
       const response = await fetch('/api/ai/generate-music', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -117,7 +110,6 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
       alert(err.message || 'Error en la generación de música');
     } finally {
       setIsGenerating(false);
-      setGenerationStep('');
     }
   };
 
@@ -137,13 +129,11 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
     setIsLoadingIntoStudio(true);
 
     try {
-      // Pause preview
       if (audioPreviewRef.current) {
         audioPreviewRef.current.pause();
         setIsPlaying(false);
       }
 
-      // Fetch the audio file and decode
       const res = await fetch(generatedResult.audioUrl);
       const arrayBuffer = await res.arrayBuffer();
       const arrayBufferForStorage = arrayBuffer.slice(0);
@@ -165,7 +155,6 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
 
       const decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
 
-      // Analyze BPM and Key
       let analysisResult: BeatAnalysisResult | null = null;
       try {
         analysisResult = await analyzeBeatAudio(decodedBuffer);
@@ -183,7 +172,7 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
       const newBeat: BeatData = {
         id: `ai-beat-${Date.now()}`,
         title: generatedResult.title || 'AI Beat Instrumental',
-        producer: 'ACE-Step IA (M3 Pro)',
+        producer: 'ACE IA (M3 Pro)',
         bpm: finalBpm,
         key: finalKey,
         scale: analysisResult ? (analysisResult.scaleMode === 'minor' ? 'Menor Natural' : 'Mayor') : 'Menor',
@@ -198,309 +187,202 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
         isLocked: true,
       };
 
+      // Also register in The Park catalog
+      try {
+        ParkStorage.createProjectFromBeat({
+          title: newBeat.title,
+          bpm: newBeat.bpm,
+          key: newBeat.key,
+          scale: newBeat.scale.includes('Mayor') ? 'Major' : 'Minor',
+          genre: 'IA Urban',
+          audioMasterUrl: generatedResult.audioUrl,
+        });
+      } catch {
+        // ignore
+      }
+
       onUploadBeat(newBeat, analysisResult || undefined, arrayBufferForStorage);
       onClose();
     } catch (err: any) {
       console.error('Error loading AI beat into Studio:', err);
-      alert('Error cargando el audio en RGodbeat Studio: ' + err.message);
+      alert('Error cargando el audio en Studio: ' + err.message);
     } finally {
       setIsLoadingIntoStudio(false);
     }
   };
 
-  const handleSaveToThePark = () => {
-    if (!generatedResult) return;
-    try {
-      ParkStorage.createProjectFromBeat({
-        title: generatedResult.title || 'AI Beat Instrumental',
-        bpm: generatedResult.bpm,
-        key: generatedResult.key,
-        scale: generatedResult.key.toLowerCase().includes('major') ? 'Major' : 'Minor',
-        genre: 'Urbano / IA',
-        mood: 'Comercial',
-        notes: `Generado con ACE-Step 1.5 en Apple Silicon M3 Pro. Modo: ${generatedResult.instrumentalOnly ? 'Solo Instrumental' : 'Con Voz'}.`,
-        audioMasterUrl: generatedResult.audioUrl,
-      });
-      setSavedToPark(true);
-    } catch (e: any) {
-      console.error('Error saving to The Park:', e);
-      alert('Error guardando en The Park: ' + e.message);
-    }
-  };
-
   return (
-    <div className="space-y-4">
-      {/* Header Info */}
-      <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-        <div>
-          <h3 className="text-xs font-bold font-mono text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
-            GENERADOR DE BEATS & MÚSICA CON IA (ACE-STEP 1.5)
-          </h3>
-          <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
-            Crea música original desde texto o arrastra audios de referencia. Sube la pista instrumental, tu guía de voz y llévalo directo al estudio.
-          </p>
-        </div>
-        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950/60 text-cyan-300 border border-cyan-800/50 shrink-0">
-          Apple M3 Pro Native
-        </span>
+    <div className="space-y-3 font-sans">
+      {/* Hidden file inputs */}
+      <input
+        ref={musicInputRef}
+        type="file"
+        accept="audio/*"
+        className="hidden"
+        onChange={(e) => setMusicRefFile(e.target.files?.[0] || null)}
+      />
+      <input
+        ref={vocalInputRef}
+        type="file"
+        accept="audio/*"
+        className="hidden"
+        onChange={(e) => setVocalRefFile(e.target.files?.[0] || null)}
+      />
+
+      {/* 1. Referencias de Géneros (Chips interactivos) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        {genres.map((g, idx) => (
+          <button
+            key={idx}
+            type="button"
+            onClick={() => handleSelectGenre(g)}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-mono font-medium bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-cyan-300 whitespace-nowrap transition-colors shrink-0"
+          >
+            {g.label}
+          </button>
+        ))}
       </div>
 
-      <form onSubmit={handleGenerate} className="space-y-4">
-        {/* Dual Reference Boxes: Music Reference & Vocal Reference */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Reference 1: Music / Beat */}
-          <div
-            onClick={() => musicInputRef.current?.click()}
-            className={`p-3 rounded-xl border border-dashed transition-all cursor-pointer flex flex-col justify-between ${
-              musicRefFile
-                ? 'bg-cyan-950/20 border-cyan-500/60'
-                : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
-            }`}
-          >
-            <input
-              ref={musicInputRef}
-              type="file"
-              accept="audio/*"
-              className="hidden"
-              onChange={(e) => setMusicRefFile(e.target.files?.[0] || null)}
-            />
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center shrink-0">
-                  <Music className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-xs font-mono font-bold text-zinc-200 block">
-                    1. Referencia Musical (Pista)
-                  </span>
-                  <span className="text-[10px] font-mono text-zinc-500 block">
-                    {musicRefFile ? musicRefFile.name : 'Opcional • Sube beat o canción de guía'}
-                  </span>
-                </div>
-              </div>
-              {musicRefFile && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMusicRefFile(null);
-                  }}
-                  className="text-zinc-500 hover:text-red-400 p-1"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-            {!musicRefFile && (
-              <div className="mt-2 text-[10px] font-mono text-cyan-400/80 flex items-center gap-1">
-                <Upload className="w-3 h-3" />
-                <span>Haz clic para elegir MP3 / WAV</span>
-              </div>
-            )}
-          </div>
-
-          {/* Reference 2: Vocal Reference */}
-          <div
-            onClick={() => vocalInputRef.current?.click()}
-            className={`p-3 rounded-xl border border-dashed transition-all cursor-pointer flex flex-col justify-between ${
-              vocalRefFile
-                ? 'bg-amber-950/20 border-amber-500/60'
-                : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
-            }`}
-          >
-            <input
-              ref={vocalInputRef}
-              type="file"
-              accept="audio/*"
-              className="hidden"
-              onChange={(e) => setVocalRefFile(e.target.files?.[0] || null)}
-            />
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
-                  <Mic className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-xs font-mono font-bold text-zinc-200 block">
-                    2. Referencia Vocal (Guía)
-                  </span>
-                  <span className="text-[10px] font-mono text-zinc-500 block">
-                    {vocalRefFile ? vocalRefFile.name : 'Opcional • Sube melodía cantada o tarareo'}
-                  </span>
-                </div>
-              </div>
-              {vocalRefFile && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setVocalRefFile(null);
-                  }}
-                  className="text-zinc-500 hover:text-red-400 p-1"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-            {!vocalRefFile && (
-              <div className="mt-2 text-[10px] font-mono text-amber-400/80 flex items-center gap-1">
-                <Upload className="w-3 h-3" />
-                <span>Haz clic para subir voz o melodía</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Style / Prompt Input */}
+      <form onSubmit={handleGenerate} className="space-y-3">
+        {/* 2. Textarea Prompt Minimalista */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-mono font-bold text-zinc-300">
-              Estilo / Idea de la Música *
-            </label>
-            <span className="text-[10px] font-mono text-zinc-500">
-              Funciona solo con la idea si no pones referencias
-            </span>
-          </div>
           <textarea
             rows={2}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="ej. Beat de reggaeton comercial 96 BPM con bajos 808 profundos, percusión dinámica y sintetizadores melódicos oscuros..."
-            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-sans"
+            placeholder="Describe tu beat o selecciona un género arriba..."
+            className="w-full bg-zinc-900/90 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-cyan-500 font-sans resize-none"
           />
-
-          {/* Quick Style Chips */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pt-1.5 pb-1 scrollbar-none">
-            {stylePresets.map((chip, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => setPrompt(chip.text)}
-                className="px-2 py-1 rounded-md text-[10px] font-mono bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-cyan-300 whitespace-nowrap transition-colors"
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
         </div>
 
-        {/* Mode Selector & Optional Parameters (Tempo & Scale) */}
-        <div className="bg-zinc-900/40 p-3 rounded-xl border border-zinc-800 space-y-3">
-          {/* Mode Switch: Instrumental vs With Vocals */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/60 pb-3">
-            <div>
-              <span className="text-xs font-mono font-bold text-zinc-200 block">Modo de Exportación</span>
-              <span className="text-[10px] font-mono text-zinc-400 block">
-                {instrumentalOnly
-                  ? '🎛️ Solo Instrumental (Ideal para cantar en Studio)'
-                  : '🎤 Canción Completa con Voz (Escucha y descarga completa)'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 shrink-0">
-              <button
-                type="button"
-                onClick={() => setInstrumentalOnly(true)}
-                className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all ${
-                  instrumentalOnly
-                    ? 'bg-cyan-500 text-black shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                Solo Instrumental
-              </button>
-              <button
-                type="button"
-                onClick={() => setInstrumentalOnly(false)}
-                className={`px-3 py-1 rounded text-xs font-mono font-bold transition-all ${
-                  !instrumentalOnly
-                    ? 'bg-amber-500 text-black shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                Con Voz
-              </button>
-            </div>
-          </div>
-
-          {/* Optional Tempo & Scale Toggle */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowAdvancedParams(!showAdvancedParams)}
-              className="flex items-center gap-1.5 text-xs font-mono text-zinc-400 hover:text-cyan-400 transition-colors"
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>{showAdvancedParams ? 'Ocultar' : 'Ajustes opcionales de Tempo (BPM) y Escala'}</span>
-              <span className="text-[10px] text-zinc-600">
-                ({customBpm ? `${customBpm} BPM` : 'Auto'} • {customKey || 'Auto'})
-              </span>
-            </button>
-
-            {showAdvancedParams && (
-              <div className="grid grid-cols-2 gap-3 pt-3">
-                <div>
-                  <label className="block text-[11px] font-mono text-zinc-400 mb-1">
-                    Tempo / BPM (Opcional)
-                  </label>
-                  <input
-                    type="number"
-                    min={60}
-                    max={200}
-                    placeholder="ej. 96 (Auto si está vacío)"
-                    value={customBpm}
-                    onChange={(e) => setCustomBpm(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-mono text-zinc-400 mb-1">
-                    Escala / Tono (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="ej. D minor, F# minor (Auto)"
-                    value={customKey}
-                    onChange={(e) => setCustomKey(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Generate Action Button */}
-        <div>
+        {/* 3. Barra de Controles Compacta (Referencias + Tempo/Escala + Modo) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {/* Referencia Musical */}
           <button
-            type="submit"
-            disabled={isGenerating}
-            className={`w-full py-3 rounded-xl font-mono font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-              isGenerating
-                ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black shadow-lg shadow-cyan-500/20 active:scale-[0.99] cursor-pointer'
+            type="button"
+            onClick={() => musicInputRef.current?.click()}
+            className={`h-9 px-2.5 rounded-lg border text-[11px] font-mono flex items-center justify-between gap-1.5 transition-all truncate ${
+              musicRefFile
+                ? 'bg-cyan-950/40 border-cyan-500 text-cyan-300'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
             }`}
+            title={musicRefFile ? musicRefFile.name : 'Subir pista de referencia'}
           >
-            {isGenerating ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
-                <span>{generationStep || 'Componiendo música con IA...'}</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4 text-black" />
-                <span>GENERAR MÚSICA & BEAT AHORA</span>
-              </>
+            <div className="flex items-center gap-1.5 truncate">
+              <Music className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+              <span className="truncate">{musicRefFile ? musicRefFile.name : 'Pista Ref'}</span>
+            </div>
+            {musicRefFile && (
+              <X
+                className="w-3 h-3 text-zinc-500 hover:text-red-400 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMusicRefFile(null);
+                }}
+              />
             )}
           </button>
+
+          {/* Referencia Vocal */}
+          <button
+            type="button"
+            onClick={() => vocalInputRef.current?.click()}
+            className={`h-9 px-2.5 rounded-lg border text-[11px] font-mono flex items-center justify-between gap-1.5 transition-all truncate ${
+              vocalRefFile
+                ? 'bg-amber-950/40 border-amber-500 text-amber-300'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+            }`}
+            title={vocalRefFile ? vocalRefFile.name : 'Subir voz de referencia'}
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <Mic className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span className="truncate">{vocalRefFile ? vocalRefFile.name : 'Voz Ref'}</span>
+            </div>
+            {vocalRefFile && (
+              <X
+                className="w-3 h-3 text-zinc-500 hover:text-red-400 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setVocalRefFile(null);
+                }}
+              />
+            )}
+          </button>
+
+          {/* Tempo BPM & Key (Minimalistas) */}
+          <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg px-2 h-9">
+            <span className="text-[10px] font-mono text-zinc-500">BPM</span>
+            <input
+              type="number"
+              placeholder="Auto"
+              value={customBpm}
+              onChange={(e) => setCustomBpm(e.target.value)}
+              className="w-12 bg-transparent text-xs text-zinc-200 font-mono text-center focus:outline-none"
+            />
+            <span className="text-zinc-700">|</span>
+            <input
+              type="text"
+              placeholder="Tono"
+              value={customKey}
+              onChange={(e) => setCustomKey(e.target.value)}
+              className="w-14 bg-transparent text-xs text-zinc-200 font-mono text-center focus:outline-none"
+            />
+          </div>
+
+          {/* Selector de Modo */}
+          <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-lg p-0.5 h-9">
+            <button
+              type="button"
+              onClick={() => setInstrumentalOnly(true)}
+              className={`flex-1 h-full rounded text-[10px] font-mono font-bold transition-all ${
+                instrumentalOnly
+                  ? 'bg-cyan-500 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              Beat
+            </button>
+            <button
+              type="button"
+              onClick={() => setInstrumentalOnly(false)}
+              className={`flex-1 h-full rounded text-[10px] font-mono font-bold transition-all ${
+                !instrumentalOnly
+                  ? 'bg-amber-500 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              Con Voz
+            </button>
+          </div>
         </div>
+
+        {/* 4. Botón Generar Minimalista */}
+        <button
+          type="submit"
+          disabled={isGenerating}
+          className={`w-full h-10 rounded-xl font-mono font-bold text-xs flex items-center justify-center gap-2 transition-all ${
+            isGenerating
+              ? 'bg-zinc-800 text-zinc-400 cursor-not-allowed'
+              : 'bg-cyan-400 hover:bg-cyan-300 text-black shadow-md shadow-cyan-500/20 active:scale-[0.99] cursor-pointer'
+          }`}
+        >
+          {isGenerating ? (
+            <>
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+              <span>Generando beat con IA...</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-3.5 h-3.5 text-black" />
+              <span>Generar Beat</span>
+            </>
+          )}
+        </button>
       </form>
 
-      {/* Generated Result Preview Section */}
+      {/* 5. Reproductor de Resultado (Ultra Limpio) */}
       {generatedResult && (
-        <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-cyan-950/40 via-zinc-900 to-zinc-950 border border-cyan-500/40 space-y-3">
+        <div className="p-3 rounded-xl bg-zinc-900 border border-cyan-500/50 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in">
           <audio
             ref={audioPreviewRef}
             src={generatedResult.audioUrl}
@@ -508,86 +390,49 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
             className="hidden"
           />
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={togglePlayPreview}
-                className="w-10 h-10 rounded-full bg-cyan-400 hover:bg-cyan-300 text-black flex items-center justify-center shadow-md shadow-cyan-400/30 transition-transform active:scale-95"
-              >
-                {isPlaying ? <Pause className="w-5 h-5 fill-black" /> : <Play className="w-5 h-5 fill-black ml-0.5" />}
-              </button>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={togglePlayPreview}
+              className="w-9 h-9 rounded-full bg-cyan-400 hover:bg-cyan-300 text-black flex items-center justify-center shrink-0 shadow-sm transition-transform active:scale-95"
+            >
+              {isPlaying ? <Pause className="w-4 h-4 fill-black" /> : <Play className="w-4 h-4 fill-black ml-0.5" />}
+            </button>
 
-              <div>
-                <h4 className="text-xs font-bold text-white font-mono flex items-center gap-2">
-                  <span>{generatedResult.title}</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-800/60">
-                    {generatedResult.instrumentalOnly ? 'Solo Instrumental' : 'Con Voz'}
-                  </span>
-                </h4>
-                <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-400 mt-0.5">
-                  <span className="text-cyan-400 font-bold">{generatedResult.bpm} BPM</span>
-                  <span>•</span>
-                  <span>{generatedResult.key}</span>
-                  <span>•</span>
-                  <span>{isPlaying ? 'Reproduciendo vista previa...' : 'Listo'}</span>
-                </div>
-              </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-white font-mono truncate">{generatedResult.title}</p>
+              <p className="text-[10px] font-mono text-cyan-400">
+                {generatedResult.bpm} BPM • {generatedResult.key}
+              </p>
             </div>
+          </div>
 
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <a
               href={generatedResult.audioUrl}
               download={`${generatedResult.title || 'beat'}.mp3`}
-              className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white transition-colors flex items-center gap-1.5 text-[11px] font-mono"
-              title="Descargar audio MP3"
+              className="h-8 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] font-mono flex items-center justify-center gap-1 transition-colors"
+              title="Descargar MP3"
             >
               <Download className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Descargar</span>
             </a>
-          </div>
 
-          {/* Action Buttons: Studio & The Park */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-zinc-800/80">
-            {/* Load directly into RGodbeat Studio */}
             <button
               type="button"
               onClick={handleLoadIntoStudio}
               disabled={isLoadingIntoStudio}
-              className="w-full py-2.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 transition-all active:scale-[0.98]"
+              className="flex-1 sm:flex-initial h-8 px-3.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95"
             >
               {isLoadingIntoStudio ? (
                 <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Cargando en Studio...</span>
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  <span>Cargando...</span>
                 </>
               ) : (
                 <>
-                  <Disc className="w-3.5 h-3.5" />
-                  <span>🚀 CARGAR A RGODBEAT STUDIO</span>
-                </>
-              )}
-            </button>
-
-            {/* Save into The Park Rights Control Center */}
-            <button
-              type="button"
-              onClick={handleSaveToThePark}
-              disabled={savedToPark}
-              className={`w-full py-2.5 px-3 rounded-lg font-mono font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${
-                savedToPark
-                  ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/60'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 hover:text-white'
-              }`}
-            >
-              {savedToPark ? (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>REGISTRADO EN THE PARK</span>
-                </>
-              ) : (
-                <>
-                  <FolderPlus className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>📁 Guardar en The Park</span>
+                  <Disc className="w-3 h-3" />
+                  <span>Cargar al Studio</span>
                 </>
               )}
             </button>
