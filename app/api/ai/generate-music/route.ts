@@ -78,17 +78,50 @@ export async function POST(req: NextRequest) {
 
         if (aceRes.ok) {
           const aceData = await aceRes.json();
-          const taskResultUrl = aceData.audio_url || `http://127.0.0.1:8001/v1/audio?path=${aceData.audio_path || ""}`;
+          const taskId = aceData.data?.task_id;
 
-          return NextResponse.json({
-            success: true,
-            title,
-            bpm: finalBpm,
-            key: finalKey,
-            audioUrl: taskResultUrl,
-            source: "ace_step_local_m3",
-            instrumentalOnly,
-          });
+          if (taskId) {
+            console.log(`[AI Engine] Task queued with ID: ${taskId}. Waiting for completion on M3 Pro...`);
+            // Poll for task completion (up to 45 seconds)
+            let finished = false;
+            let audioPath = "";
+
+            for (let i = 0; i < 30; i++) {
+              await new Promise((r) => setTimeout(r, 1500));
+              try {
+                const queryRes = await fetch("http://127.0.0.1:8001/query_result", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ task_id_list: [taskId] }),
+                });
+
+                if (queryRes.ok) {
+                  const qData = await queryRes.json();
+                  const item = qData.data?.[0];
+                  if (item && item.status === 1) {
+                    const resParsed = JSON.parse(item.result || "[]");
+                    audioPath = resParsed[0]?.file || "";
+                    finished = true;
+                    break;
+                  }
+                }
+              } catch (qErr) {
+                console.warn("[AI Engine] Query poll warning:", qErr);
+              }
+            }
+
+            if (finished && audioPath) {
+              return NextResponse.json({
+                success: true,
+                title,
+                bpm: finalBpm,
+                key: finalKey,
+                audioUrl: `http://127.0.0.1:8001/v1/audio?path=${encodeURIComponent(audioPath)}`,
+                source: "ace_step_local_m3",
+                instrumentalOnly,
+              });
+            }
+          }
         }
       } catch (err: any) {
         console.error("[AI Engine] Error dispatching to local ACE-Step:", err);
