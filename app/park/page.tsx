@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ParkNav } from '@/components/park/ParkNav';
+import { MinimalistRegistrationTracker } from '@/components/park/MinimalistRegistrationTracker';
 import { ParkStorage } from '@/lib/park/storage';
 import { ParkProject, MasterProfile } from '@/lib/park/types';
 import { analyzeProject } from '@/lib/park/engine';
@@ -120,69 +121,8 @@ export default function ParkDashboardPage() {
           </div>
         </div>
 
-        {/* Featured Test Project Spotlight: DIVINA */}
-        {divinaProject && divinaAnalysis && (
-          <div className="p-6 sm:p-8 rounded-3xl bg-[#0b0b12] border border-cyan-500/30 shadow-2xl space-y-6 relative overflow-hidden">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-850 pb-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 uppercase">
-                    PROYECTO ACTIVO EN EL RADAR
-                  </span>
-                  <span className="text-xs font-mono text-zinc-400">
-                    Etapa: <strong className="text-white">{divinaAnalysis.stageLabel}</strong>
-                  </span>
-                </div>
-
-                <h2 className="text-2xl sm:text-3xl font-bold font-display text-white flex items-center gap-3">
-                  <span>{divinaProject.title}</span>
-                  <span className="text-xs font-mono font-normal text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded-md border border-zinc-800">
-                    {divinaProject.bpm} BPM · {divinaProject.key} {divinaProject.scale}
-                  </span>
-                </h2>
-              </div>
-
-              <Link
-                href={`/park/projects/${divinaProject.slug}`}
-                className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-md active:scale-95 self-start sm:self-auto"
-              >
-                <span>Abrir Control de Derechos</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-
-            {/* Quick Status Cards for DIVINA */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
-              <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-850 space-y-1">
-                <span className="text-[10px] uppercase text-zinc-500 font-bold">Estado Legal</span>
-                <div className="text-sm font-bold text-zinc-200">BEAT / INSTRUMENTAL</div>
-                <p className="text-[11px] text-zinc-400 font-sans">
-                  No se confunde con una canción completa ni un master lanzado. No requiere ISRC ni UPC aún.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-850 space-y-1">
-                <span className="text-[10px] uppercase text-zinc-500 font-bold">Siguiente Acción Clara</span>
-                <div className="text-sm font-bold text-cyan-300">
-                  {divinaAnalysis.nextAction}
-                </div>
-                <p className="text-[11px] text-zinc-400 font-sans">
-                  El sistema recalculará los requisitos automáticamente cuando evolucione.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-850 space-y-1">
-                <span className="text-[10px] uppercase text-zinc-500 font-bold">Completitud Aplicable</span>
-                <div className="text-sm font-bold text-emerald-400">
-                  {divinaAnalysis.readinessPercentage}% AL DÍA
-                </div>
-                <p className="text-[11px] text-zinc-400 font-sans">
-                  Solo se evalúan los servicios que aplican a esta etapa actual.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Minimalist Step-by-Step Registration Checklist Tracker */}
+        <MinimalistRegistrationTracker />
 
         {/* Master Profile Callout: Enter Once -> Reuse Everywhere */}
         <div className="p-6 rounded-3xl bg-zinc-900/40 border border-zinc-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
