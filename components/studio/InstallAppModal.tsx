@@ -528,8 +528,19 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
           )}
         </div>
 
-        {/* Action Controls: Only ONE Primary CTA Button */}
+        {/* Action Controls: Primary CTA Button and APK Download */}
         <div className="space-y-2 mt-auto">
+          {activeOs === 'android' && (
+            <a
+              href="/downloads/RGodbeat-Studio.apk"
+              download="RGodbeat-Studio.apk"
+              className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500/20 to-amber-600/10 hover:from-amber-500/30 hover:to-amber-600/20 border border-amber-500/50 text-amber-300 font-mono font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+            >
+              <Download className="w-3.5 h-3.5 text-amber-400" />
+              <span>Descargar APK Oficial (Android)</span>
+            </a>
+          )}
+
           <button
             type="button"
             onClick={handleNext}
