@@ -60,11 +60,11 @@ export const INITIAL_DIVINA_PROJECT: ParkProject = {
   type: 'beat',
   stage: 'beat_instrumental', // PURE BEAT / INSTRUMENTAL
   bpm: 95,
-  key: 'A',
+  key: 'Am',
   scale: 'Minor',
-  genre: 'Reggaeton / Urban',
-  mood: 'Dark Melodic / Sensual',
-  durationSec: 166, // 2:46
+  genre: 'Reggaeton',
+  mood: 'Dark',
+  durationSec: 167, // 2:47
   producerName: 'RGODBEAT',
   primaryArtistName: '',
   featuredArtists: [],

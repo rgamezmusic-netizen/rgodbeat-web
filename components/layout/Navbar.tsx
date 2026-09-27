@@ -81,15 +81,16 @@ export function Navbar() {
           >
             SERVICES
           </a>
-          <a
-            href="/#the-park"
-            className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200 flex items-center gap-1.5"
+          <Link
+            href="/park"
+            className="hover:text-cyan-300 transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-cyan-400 hover:after:w-full after:transition-all after:duration-200 flex items-center gap-1.5"
+            title="Master Rights & Release Control Center"
           >
             <span>THE PARK</span>
-            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-              STUDIO
+            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+              RIGHTS
             </span>
-          </a>
+          </Link>
           <a
             href="/#about"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
@@ -249,16 +250,16 @@ export function Navbar() {
               <span>SERVICES</span>
               <span className="text-zinc-600 text-xs">02</span>
             </a>
-            <a
-              href="/#the-park"
+            <Link
+              href="/park"
               onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
+              className="hover:text-cyan-300 py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
             >
-              <span>THE PARK</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                STUDIO
+              <span className="font-bold text-white text-base">THE PARK</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
+                RIGHTS & RELEASES 🛡️
               </span>
-            </a>
+            </Link>
             <a
               href="/#about"
               onClick={() => setMobileMenuOpen(false)}
