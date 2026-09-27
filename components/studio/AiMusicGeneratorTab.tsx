@@ -56,6 +56,36 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
   const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
   const [isLoadingIntoStudio, setIsLoadingIntoStudio] = useState<boolean>(false);
 
+  // Engine live status
+  const [engineStatus, setEngineStatus] = useState<{ running: boolean; checking: boolean }>({
+    running: false,
+    checking: true,
+  });
+
+  // Check ACE status on mount and poll
+  React.useEffect(() => {
+    let isMounted = true;
+    const checkEngine = async () => {
+      try {
+        const res = await fetch('/api/ai/status');
+        const data = await res.json();
+        if (isMounted) {
+          setEngineStatus({ running: Boolean(data.running), checking: false });
+        }
+      } catch {
+        if (isMounted) {
+          setEngineStatus({ running: false, checking: false });
+        }
+      }
+    };
+    checkEngine();
+    const interval = setInterval(checkEngine, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
   // Popular Genre References
   const genres = [
     { label: '🔥 Reggaeton', text: 'Beat de reggaeton comercial, bajo 808 profundo, sintes melódicos', bpm: '96', key: 'D minor' },
@@ -85,17 +115,17 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
     setIsPlaying(false);
 
     try {
+      const formData = new FormData();
+      formData.append('prompt', prompt.trim());
+      if (musicRefFile) formData.append('musicReference', musicRefFile);
+      if (vocalRefFile) formData.append('vocalReference', vocalRefFile);
+      if (customBpm) formData.append('bpm', customBpm);
+      if (customKey) formData.append('key', customKey.trim());
+      formData.append('instrumentalOnly', String(instrumentalOnly));
+
       const response = await fetch('/api/ai/generate-music', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: prompt.trim(),
-          musicReferenceName: musicRefFile ? musicRefFile.name : undefined,
-          vocalReferenceName: vocalRefFile ? vocalRefFile.name : undefined,
-          bpm: customBpm ? parseInt(customBpm, 10) : undefined,
-          key: customKey.trim() || undefined,
-          instrumentalOnly,
-        }),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -228,6 +258,23 @@ export const AiMusicGeneratorTab: React.FC<AiMusicGeneratorTabProps> = ({
         className="hidden"
         onChange={(e) => setVocalRefFile(e.target.files?.[0] || null)}
       />
+
+      {/* Motor Status Header */}
+      <div className="flex items-center justify-between px-1">
+        <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
+          Géneros Recomendados
+        </span>
+        <div className="flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-full border bg-zinc-950/80 border-zinc-800">
+          <span className={`w-1.5 h-1.5 rounded-full ${engineStatus.running ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+          <span className={engineStatus.running ? 'text-emerald-400 font-bold' : 'text-zinc-400'}>
+            {engineStatus.checking
+              ? 'Verificando...'
+              : engineStatus.running
+              ? 'ACE M3 Pro: Conectado'
+              : 'ACE: Apagado'}
+          </span>
+        </div>
+      </div>
 
       {/* 1. Referencias de Géneros (Chips interactivos) */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
