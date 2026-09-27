@@ -9,6 +9,7 @@ import { AtmosphericBackground } from "@/components/atmosphere";
 import { TheParkSection } from "@/components/home/TheParkSection";
 import { ServicesSection } from "@/components/home/ServicesSection";
 import { AboutSection } from "@/components/home/AboutSection";
+import { AppDownloadBanner } from "@/components/home/AppDownloadBanner";
 import { CtaSection } from "@/components/home/CtaSection";
 import { FLOW_CATEGORIES } from "@/lib/mock-data";
 import { getFeaturedBeats, getPublishedBeats } from "@/lib/data/beats";
@@ -109,7 +110,10 @@ export default async function HomePage() {
       {/* 05. About Rafael Gámez (RGODBEAT) */}
       <AboutSection />
 
-      {/* 06. Final Commercial Licensing CTA */}
+      {/* 06. Android App Installer Banner */}
+      <AppDownloadBanner />
+
+      {/* 07. Final Commercial Licensing CTA */}
       <CtaSection />
 
       {/* Footer */}

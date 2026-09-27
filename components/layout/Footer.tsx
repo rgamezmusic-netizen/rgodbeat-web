@@ -42,6 +42,14 @@ export function Footer() {
               <li><a href="/beats?genre=reggaeton" className="hover:text-white transition-colors">Reggaeton Beats</a></li>
               <li><a href="/beats?genre=rnb" className="hover:text-white transition-colors">R&B / Soul</a></li>
               <li><a href="/beats?genre=afrobeat" className="hover:text-white transition-colors">Afrobeat</a></li>
+              <li className="pt-1">
+                <a href="/download" className="text-amber-400 hover:text-amber-300 font-semibold transition-colors flex items-center gap-1.5">
+                  <span>App Android (.apk)</span>
+                  <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300">
+                    OFICIAL
+                  </span>
+                </a>
+              </li>
             </ul>
           </div>
 
