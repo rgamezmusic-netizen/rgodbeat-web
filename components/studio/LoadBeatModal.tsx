@@ -21,7 +21,6 @@ import { BeatAnalysisResult, BeatData } from '@/lib/studio/types/audio';
 import { extractWaveformPeaks } from '@/lib/studio/audio/wavEncoder';
 import { analyzeBeatAudio, parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
 import { MAX_SAVED_BEATS } from '@/lib/studio/audio/beatStorage';
-import { AiMusicGeneratorTab } from './AiMusicGeneratorTab';
 
 interface LoadBeatModalProps {
   currentBeat: BeatData | null;
@@ -45,7 +44,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
   audioCtx,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'upload' | 'slots' | 'presets' | 'ai_generator'>('ranking');
+  const [activeTab, setActiveTab] = useState<'ranking' | 'upload' | 'slots' | 'presets'>('ranking');
   const [rankingBeats, setRankingBeats] = useState<any[]>([]);
   const [isLoadingRanking, setIsLoadingRanking] = useState(false);
   const [votedBeatIds, setVotedBeatIds] = useState<Record<string, boolean>>({});
@@ -426,7 +425,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
           </div>
 
                     {/* Navigation Tabs */}
-          <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-5 gap-1.5 mt-3 pt-2 border-t border-zinc-800/80">
+          <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2 border-t border-zinc-800/80">
             <button
               onClick={() => setActiveTab('ranking')}
               className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center gap-1 ${
@@ -471,30 +470,11 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
               <Disc className="w-3.5 h-3.5 shrink-0" />
               <span className="truncate">Demo</span>
             </button>
-            <button
-              onClick={() => setActiveTab('ai_generator')}
-              className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center gap-1 ${
-                activeTab === 'ai_generator'
-                  ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-black shadow-md font-black'
-                  : 'bg-zinc-900 text-cyan-400 hover:text-cyan-300 border border-cyan-800/50 hover:bg-cyan-950/30'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
-              <span className="truncate">Crear con IA</span>
-            </button>
           </div>
         </div>
 
         {/* Scrollable Body Content */}
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
-          {/* TAB: AI MUSIC GENERATOR (ACE-STEP 1.5) */}
-          {activeTab === 'ai_generator' && (
-            <AiMusicGeneratorTab
-              onUploadBeat={onUploadBeat}
-              audioCtx={audioCtx}
-              onClose={onClose}
-            />
-          )}
           {/* TAB 0: TOP 23 CATALOG & WEEKLY VOTES */}
           {activeTab === 'ranking' && (
             <div className="space-y-3">
