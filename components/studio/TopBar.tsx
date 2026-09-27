@@ -162,47 +162,47 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
 
         {/* CENTER ZONE: 4 Centered Buttons (View Switchers are LARGER in the center, Beat and Options symmetrical & square) */}
-        <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 flex-1 min-w-0 px-0.5 sm:px-2">
+        <div className="flex items-center justify-center gap-1.5 sm:gap-3 flex-1 min-w-0 px-0.5 sm:px-2">
           {/* Button 1 (Opción Izquierda): Beat Selector (Mismo tamaño cuadrado que el de Opciones) */}
           <button
             type="button"
             onClick={onOpenLoadBeat}
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 hover:bg-zinc-850 cursor-pointer transition-all shadow-sm shrink-0 active:scale-95"
+            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 hover:bg-zinc-850 cursor-pointer transition-all shadow-sm shrink-0 active:scale-95"
             title={`Beat: ${currentBeatTitle || 'Beat actual'}. Clic para cambiar beat o cargar audio`}
           >
-            <Music className="w-4 h-4 text-amber-400 shrink-0" />
+            <Music className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400 shrink-0" />
           </button>
 
-          {/* VIEW SWITCHER CLUSTER: MÁS GRANDES EN TODO EL CENTRO */}
-          <div className="flex items-center bg-zinc-900/95 p-1 rounded-2xl border border-zinc-800 shadow-inner shrink-0 gap-1 sm:gap-1.5">
+          {/* VIEW SWITCHER CLUSTER: MÁS GRANDE Y OCUPANDO EL CENTRO */}
+          <div className="flex-1 max-w-[340px] sm:max-w-[440px] h-10 sm:h-11 flex items-center bg-zinc-900/95 p-1 rounded-2xl border border-zinc-800 shadow-inner gap-1 min-w-0">
             {/* Button 2: Ventana Principal (Grabador) */}
             <button
               type="button"
               onClick={() => onChangeView('studio')}
-              className={`h-9 sm:h-10 px-3 sm:px-4 flex items-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer ${
+              className={`flex-1 h-full px-2 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer min-w-0 ${
                 activeView === 'studio'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 font-black scale-[1.02]'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
               }`}
               title="Ventana Principal: Grabador & Reproductor"
             >
-              <Disc3 className="w-4.5 h-4.5 sm:w-5 sm:h-5 shrink-0" />
-              <span className="hidden xs:inline font-bold">Grabador</span>
+              <Disc3 className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
+              <span className="font-bold whitespace-nowrap text-[11px] sm:text-xs">Grabador</span>
             </button>
 
             {/* Button 3: Ventana de Edición (Multitrack) */}
             <button
               type="button"
               onClick={() => onChangeView('editor')}
-              className={`h-9 sm:h-10 px-3 sm:px-4 flex items-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer relative ${
+              className={`flex-1 h-full px-2 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer relative min-w-0 ${
                 activeView === 'editor'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 font-black scale-[1.02]'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
               }`}
               title="Ventana de Edición: Multitrack & Tomas"
             >
-              <Layers className="w-4.5 h-4.5 sm:w-5 sm:h-5 shrink-0" />
-              <span className="hidden xs:inline font-bold">Edición</span>
+              <Layers className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
+              <span className="font-bold whitespace-nowrap text-[11px] sm:text-xs">Edición</span>
               {hasRecordings && (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               )}
@@ -214,10 +214,10 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => setShowProjectMenu(!showProjectMenu)}
-              className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 hover:bg-zinc-850 text-zinc-300 hover:text-white transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+              className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 hover:bg-zinc-850 text-zinc-300 hover:text-white transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
               title="Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)"
             >
-              <FolderKanban className="w-4 h-4 text-amber-400 shrink-0" />
+              <FolderKanban className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400 shrink-0" />
             </button>
 
             {/* Dropdown Menu Box */}

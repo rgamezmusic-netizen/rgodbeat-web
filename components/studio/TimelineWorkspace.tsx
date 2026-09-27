@@ -32,6 +32,7 @@ import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
 
 const BASE_TRACK_HEADER_WIDTH = 120; // px (clean compact default with ample breathing room)
 const EXPANDED_TRACK_HEADER_WIDTH = 192; // px (full mixer with faders and pan)
+const TIMELINE_GUTTER = 20; // px (lead-in margin so Bar 1 & waveforms never touch or bleed behind track headers)
 
 export const getTrackClips = (track: VocalTrack): VocalClip[] => {
   if (track.clips && track.clips.length > 0) return track.clips;
@@ -219,7 +220,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     const updateTimeFromX = (x: number) => {
       if (!timelineEl) return;
       const rect = timelineEl.getBoundingClientRect();
-      const clickX = x - rect.left - trackHeaderWidth;
+      const clickX = x - rect.left - trackHeaderWidth - TIMELINE_GUTTER;
       const newTime = Math.max(0, Math.min(duration, clickX / basePixelsPerSec));
       onSeek(Math.round(newTime * 1000) / 1000);
     };
@@ -284,7 +285,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       return;
     }
     const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
+    const clickX = e.clientX - rect.left - TIMELINE_GUTTER;
     const newTime = Math.max(0, Math.min(duration, clickX / basePixelsPerSec));
     onSeek(Math.round(newTime * 1000) / 1000);
   };
@@ -638,13 +639,13 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
         <div
           ref={timelineContentRef}
           className="relative min-w-full"
-          style={{ width: `${timelineWidth + trackHeaderWidth + 40}px` }}
+          style={{ width: `${timelineWidth + trackHeaderWidth + TIMELINE_GUTTER + 40}px` }}
         >
           {/* Time Ruler (Seconds & Musical Bars) */}
-          <div className="sticky top-0 z-30 h-9 bg-[#12121a] border-b border-zinc-800 flex items-center shadow-md">
+          <div className="sticky top-0 z-30 h-9 bg-[#12121a] border-b border-zinc-800 flex items-stretch shadow-md">
             {/* Left Header Column */}
             <div
-              className="shrink-0 sticky left-0 z-45 px-3 text-[10px] font-mono text-zinc-400 font-bold border-r border-zinc-800 uppercase tracking-wider flex items-center justify-between bg-[#12121a] shadow-[2px_0_10px_rgba(0,0,0,0.5)] transition-all"
+              className="shrink-0 sticky left-0 z-50 px-3 text-[10px] font-mono text-zinc-400 font-bold border-r border-zinc-800 uppercase tracking-wider flex items-center justify-between bg-[#12121a] shadow-[4px_0_12px_rgba(0,0,0,0.7)] transition-all h-full"
               style={{ width: `${trackHeaderWidth}px` }}
             >
               <button
@@ -672,7 +673,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               }
             >
               {gridTicks.map((tick, idx) => {
-                const leftPos = tick.sec * basePixelsPerSec;
+                const leftPos = TIMELINE_GUTTER + tick.sec * basePixelsPerSec;
                 if (tick.isDownbeat) {
                   // Beat 1: Tiempo Fuerte Principal (Compás entero) - Alta visibilidad
                   return (
@@ -684,13 +685,13 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       {/* Bold vertical downbeat tick */}
                       <div className="w-[2px] h-3 bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
 
-                      {/* Clear, High-Contrast Bar Badge (with offset for Bar 1 to avoid playhead overlap) */}
-                      <div className={`absolute top-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-950/95 border border-amber-500/70 shadow-md ${tick.bar === 1 ? 'left-2.5' : 'left-1'}`}>
-                        <span className="text-[10px] font-mono font-black text-amber-300 tracking-tight">
+                      {/* Clear, High-Contrast Bar Badge: Single-line without wrap */}
+                      <div className="absolute top-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-950/95 border border-amber-500/70 shadow-md whitespace-nowrap flex-nowrap">
+                        <span className="text-[10px] font-mono font-black text-amber-300 tracking-tight whitespace-nowrap">
                           Bar {tick.bar}
                         </span>
                         {zoomLevel >= 1.2 && (
-                          <span className="text-[8px] font-mono text-zinc-400">
+                          <span className="text-[8px] font-mono text-zinc-400 whitespace-nowrap">
                             {formatTime(tick.sec)}
                           </span>
                         )}
@@ -741,7 +742,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             <div
               className="absolute top-0 bottom-0 pointer-events-none bg-amber-400/10 border-x-2 border-amber-400 z-30"
               style={{
-                left: `${trackHeaderWidth + loopSettings.startSec * basePixelsPerSec}px`,
+                left: `${trackHeaderWidth + TIMELINE_GUTTER + loopSettings.startSec * basePixelsPerSec}px`,
                 width: `${Math.max(4, (loopSettings.endSec - loopSettings.startSec) * basePixelsPerSec)}px`,
               }}
             >
@@ -753,11 +754,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
           {/* Vertical Playhead Cursor Line with Full-Height Grab Area and Dual Top & Bottom Handles */}
           <div
-            className={`absolute top-0 bottom-0 z-40 w-0.5 bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.95)] ${
+            className={`absolute top-0 bottom-0 z-35 w-0.5 bg-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.95)] ${
               isPlaying ? 'pointer-events-none' : 'pointer-events-auto'
             }`}
             style={{
-              left: `${trackHeaderWidth + currentTime * basePixelsPerSec}px`,
+              left: `${trackHeaderWidth + TIMELINE_GUTTER + currentTime * basePixelsPerSec}px`,
             }}
           >
             {/* Full-height touch/grab hit-box: allows dragging playhead from ANY height of the timeline */}
@@ -809,7 +810,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           <div className="flex items-stretch border-b border-zinc-800/80 bg-zinc-950/70 h-24 group hover:bg-zinc-900/40 transition-colors border-l-4 border-l-transparent">
             {/* Track Info Header */}
             <div
-              className="shrink-0 sticky left-0 z-30 p-2 border-r border-zinc-800 flex flex-col justify-between bg-zinc-900/98 shadow-[2px_0_10px_rgba(0,0,0,0.5)] transition-all"
+              className="shrink-0 sticky left-0 z-40 p-2 border-r border-zinc-800 flex flex-col justify-between bg-zinc-900 shadow-[4px_0_12px_rgba(0,0,0,0.7)] transition-all"
               style={{ width: `${trackHeaderWidth}px` }}
             >
               {showFaders ? (
@@ -959,16 +960,16 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       ? 'border-l border-zinc-800/40 z-0'
                       : 'border-l border-zinc-900/25 z-0'
                   }`}
-                  style={{ left: `${tick.sec * basePixelsPerSec}px` }}
+                  style={{ left: `${TIMELINE_GUTTER + tick.sec * basePixelsPerSec}px` }}
                 />
               ))}
 
               {beat && (
                 <div
-                  className={`absolute top-2 bottom-2 left-0 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/40 flex items-center px-2 overflow-hidden pointer-events-none z-10 transition-opacity ${
+                  className={`absolute top-2 bottom-2 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/40 flex items-center px-2 overflow-hidden pointer-events-none z-10 transition-opacity ${
                     isBeatMuted ? 'opacity-30 grayscale' : ''
                   }`}
-                  style={{ width: `${beat.duration * basePixelsPerSec}px` }}
+                  style={{ left: `${TIMELINE_GUTTER}px`, width: `${beat.duration * basePixelsPerSec}px` }}
                 >
                   <div className="w-full h-8 flex items-center gap-0.5 opacity-75">
                     {(beat.waveformSample || Array(60).fill(0.5)).map((val, idx) => (
@@ -1018,7 +1019,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               >
                 {/* Track Left Header (Controls: FX, Mute, Solo, Volume, Pan) */}
                 <div
-                  className="shrink-0 sticky left-0 z-30 p-2 border-r border-zinc-800 flex flex-col justify-between bg-[#111116] shadow-[2px_0_10px_rgba(0,0,0,0.5)] transition-all"
+                  className="shrink-0 sticky left-0 z-40 p-2 border-r border-zinc-800 flex flex-col justify-between bg-[#111116] shadow-[4px_0_12px_rgba(0,0,0,0.7)] transition-all"
                   style={{ width: `${trackHeaderWidth}px` }}
                 >
                   {showFaders ? (
@@ -1212,7 +1213,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           ? 'border-l border-zinc-800/40 z-0'
                           : 'border-l border-zinc-900/25 z-0'
                       }`}
-                      style={{ left: `${tick.sec * basePixelsPerSec}px` }}
+                      style={{ left: `${TIMELINE_GUTTER + tick.sec * basePixelsPerSec}px` }}
                     />
                   ))}
 
@@ -1253,7 +1254,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                             : 'bg-gradient-to-r from-emerald-700/25 to-teal-800/20 border-emerald-500/50 hover:border-emerald-400'
                         } ${isTargetOfDrag ? 'shadow-[0_0_20px_rgba(16,185,129,0.6)] scale-[1.01]' : ''}`}
                         style={{
-                          left: `${clipStartPx}px`,
+                          left: `${TIMELINE_GUTTER + clipStartPx}px`,
                           width: `${clipWidthPx}px`,
                         }}
                       >
