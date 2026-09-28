@@ -158,6 +158,13 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
         const hasNewPreview = Boolean(previewState.file);
         const hasNewWav = Boolean(wavState.file);
 
+        if (coverState.file && coverState.file.size > 52428800) {
+          throw new Error(`La portada de reemplazo (${(coverState.file.size / 1024 / 1024).toFixed(1)} MB) supera los 50 MB.`);
+        }
+        if (previewState.file && previewState.file.size > 52428800) {
+          throw new Error(`El audio MP3 de reemplazo (${(previewState.file.size / 1024 / 1024).toFixed(1)} MB) supera los 50 MB.`);
+        }
+
         if (hasNewCover || hasNewPreview || hasNewWav) {
           const coverExt = coverState.file
             ? (coverState.file.name.split(".").pop()?.toLowerCase() || "jpg")
@@ -519,7 +526,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-xs font-mono font-bold text-white uppercase">Cover Artwork</span>
-                  <span className="text-[10px] font-mono text-zinc-500 block">Bucket: rgodbeat-public (Max 15MB, JPG/PNG/WebP)</span>
+                  <span className="text-[10px] font-mono text-zinc-500 block">Bucket: rgodbeat-public (Max 50MB, JPG/PNG/WebP)</span>
                 </div>
                 {beat.cover_path ? (
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -568,7 +575,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-xs font-mono font-bold text-white uppercase">Preview MP3 (Tagged/Watermarked)</span>
-                  <span className="text-[10px] font-mono text-zinc-500 block">Bucket: rgodbeat-public (Max 15MB, MP3)</span>
+                  <span className="text-[10px] font-mono text-zinc-500 block">Bucket: rgodbeat-public (Max 50MB, MP3)</span>
                 </div>
                 {beat.preview_path ? (
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -613,7 +620,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-xs font-mono font-bold text-white uppercase">Master 24-Bit WAV Audio</span>
-                  <span className="text-[10px] font-mono text-zinc-500 block">Bucket: rgodbeat-private (Max 2GB, WAV)</span>
+                  <span className="text-[10px] font-mono text-zinc-500 block">Bucket: rgodbeat-private (Max 50MB Free / 2GB Pro, WAV)</span>
                 </div>
                 {beat.wav_file ? (
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -640,7 +647,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
                 </div>
               )}
 
-              <div className="pt-2">
+              <div className="pt-2 space-y-2">
                 <label className="text-[11px] font-mono text-purple-400 block mb-1">
                   Upload replacement master WAV (optional):
                 </label>
@@ -654,6 +661,17 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
                   <p className="text-[11px] font-mono text-emerald-400 mt-1">
                     ✓ Replacement staged: {wavState.file.name} ({(wavState.file.size / 1024 / 1024).toFixed(2)} MB)
                   </p>
+                )}
+                {wavState.file && wavState.file.size > 52428800 && (
+                  <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-200 space-y-1">
+                    <div className="font-bold flex items-center gap-1 text-amber-300">
+                      <span>⚠️</span>
+                      <span>WAV mayor a 50MB ({(wavState.file.size / 1024 / 1024).toFixed(1)} MB)</span>
+                    </div>
+                    <p className="text-zinc-300 leading-normal">
+                      Si tu plan de Supabase es gratuito, el límite por archivo es 50MB. Exporta el audio en <strong>16-bit 44.1kHz</strong> (~30MB) o amplía el límite en <em>Supabase Dashboard &gt; Project Settings &gt; Storage</em>.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>

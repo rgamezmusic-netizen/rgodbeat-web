@@ -141,6 +141,15 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
       }
     }
 
+    if (coverState.file && coverState.file.size > 52428800) {
+      setFormError(`La portada seleccionada (${(coverState.file.size / (1024 * 1024)).toFixed(1)} MB) supera el límite de 50 MB. Por favor optimízala en JPG/WebP.`);
+      return;
+    }
+    if (previewState.file && previewState.file.size > 52428800) {
+      setFormError(`El audio MP3 (${(previewState.file.size / (1024 * 1024)).toFixed(1)} MB) supera el límite de 50 MB. Por favor comprímelo a MP3 estándar.`);
+      return;
+    }
+
     startTransition(async () => {
       try {
         setUploadProgressStatus("Preparing secure storage upload...");
@@ -490,7 +499,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                 PUBLIC BUCKET
               </span>
               <h3 className="text-xs font-bold text-white uppercase">Cover Artwork</h3>
-              <p className="text-[11px] text-zinc-400">1:1 square image (.jpg, .png, .webp). Max 15MB.</p>
+              <p className="text-[11px] text-zinc-400">1:1 square image (.jpg, .png, .webp). Max 50MB.</p>
             </div>
 
             <div className="pt-2">
@@ -512,7 +521,9 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                   }`}
                 >
                   <span className="text-xs font-mono block truncate">
-                    {coverState.file ? `✓ ${coverState.file.name}` : "+ CHOOSE COVER"}
+                    {coverState.file
+                      ? `✓ ${coverState.file.name} (${(coverState.file.size / (1024 * 1024)).toFixed(1)} MB)`
+                      : "+ CHOOSE COVER"}
                   </span>
                 </div>
               </label>
@@ -532,7 +543,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
               </div>
               <h3 className="text-xs font-bold text-white uppercase">Preview Audio (MP3) <span className="text-purple-400">*</span></h3>
               <p className="text-[11px] text-zinc-400">
-                Audio MP3 optimizado para reproducción instantánea en la web y entrega de licencia MP3.
+                Audio MP3 optimizado para reproducción web y entrega de licencia MP3. Max 50MB.
               </p>
             </div>
 
@@ -557,7 +568,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                 >
                   <span className="text-xs font-mono block truncate">
                     {previewState.file
-                      ? `✓ ${previewState.file.name}`
+                      ? `✓ ${previewState.file.name} (${(previewState.file.size / (1024 * 1024)).toFixed(1)} MB)`
                       : "+ ELEGIR AUDIO MP3"}
                   </span>
                 </div>
@@ -572,10 +583,10 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                 PRIVATE BUCKET (PROTECTED)
               </span>
               <h3 className="text-xs font-bold text-white uppercase">Master Audio (WAV)</h3>
-              <p className="text-[11px] text-zinc-400">Full 24-bit studio WAV file (.wav). Max 2GB.</p>
+              <p className="text-[11px] text-zinc-400">Audio WAV de estudio (.wav). Máx 50MB (Supabase Free) o 2GB (Pro).</p>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-2 space-y-2">
               <label className="block cursor-pointer">
                 <input
                   type="file"
@@ -590,15 +601,31 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                 <div
                   className={`p-3 rounded-lg border text-center transition-all ${
                     wavState.file
-                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                      ? (wavState.file.size > 52428800
+                          ? "bg-amber-500/10 border-amber-500/40 text-amber-300"
+                          : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300")
                       : "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:border-white/20"
                   }`}
                 >
                   <span className="text-xs font-mono block truncate">
-                    {wavState.file ? `✓ ${wavState.file.name}` : "+ CHOOSE WAV"}
+                    {wavState.file
+                      ? `✓ ${wavState.file.name} (${(wavState.file.size / (1024 * 1024)).toFixed(1)} MB)`
+                      : "+ CHOOSE WAV"}
                   </span>
                 </div>
               </label>
+
+              {wavState.file && wavState.file.size > 52428800 && (
+                <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-200 space-y-1">
+                  <div className="font-bold flex items-center gap-1 text-amber-300">
+                    <span>⚠️</span>
+                    <span>WAV mayor a 50MB ({(wavState.file.size / (1024 * 1024)).toFixed(1)} MB)</span>
+                  </div>
+                  <p className="text-zinc-300 leading-normal">
+                    Si tu plan de Supabase es gratuito, el límite por archivo es 50MB. Te recomendamos exportar el WAV en <strong>16-bit 44.1kHz</strong> (~30MB) o subir el límite en <em>Supabase Dashboard &gt; Project Settings &gt; Storage</em>.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

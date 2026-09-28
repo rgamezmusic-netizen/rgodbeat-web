@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/Button";
 interface BeatGridProps {
   beats: Beat[];
   onResetFilters?: () => void;
+  isProUser?: boolean;
+  top23BeatIds?: string[];
 }
 
-export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
+export function BeatGrid({ beats, onResetFilters, isProUser = false, top23BeatIds = [] }: BeatGridProps) {
   if (beats.length === 0) {
     return (
       <div className="py-20 text-center flex flex-col items-center justify-center space-y-4 rounded-2xl border border-white/[0.06] bg-[#0c0c10]/50 p-8">
@@ -37,9 +39,10 @@ export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-7">
-      {beats.map((beat) => (
-        <BeatCard key={beat.id} beat={beat} />
-      ))}
+      {beats.map((beat) => {
+        const isLocked = !isProUser && top23BeatIds.includes(beat.id);
+        return <BeatCard key={beat.id} beat={beat} isLocked={isLocked} />;
+      })}
     </div>
   );
 }

@@ -13,7 +13,7 @@ VALUES (
     'rgodbeat-public',
     'rgodbeat-public',
     true,
-    15728640, -- 15 MB limit per asset (covers & previews)
+    52428800, -- 50 MB limit per asset (covers & previews)
     ARRAY['image/jpeg', 'image/png', 'image/webp', 'audio/mpeg', 'audio/mp3']
 )
 ON CONFLICT (id) DO UPDATE SET

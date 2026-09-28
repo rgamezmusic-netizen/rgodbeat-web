@@ -296,6 +296,7 @@ export interface Database {
           email: string;
           name: string | null;
           stripe_customer_id: string | null;
+          studio_access_until: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -304,6 +305,7 @@ export interface Database {
           email: string;
           name?: string | null;
           stripe_customer_id?: string | null;
+          studio_access_until?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -312,6 +314,7 @@ export interface Database {
           email?: string;
           name?: string | null;
           stripe_customer_id?: string | null;
+          studio_access_until?: string | null;
           created_at?: string;
           updated_at?: string;
         };

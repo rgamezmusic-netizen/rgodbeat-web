@@ -12,9 +12,10 @@ import { useAtmosphere } from "@/components/atmosphere";
 
 interface BeatCardProps {
   beat: Beat;
+  isLocked?: boolean;
 }
 
-export function BeatCard({ beat }: BeatCardProps) {
+export function BeatCard({ beat, isLocked = false }: BeatCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const { currentBeat, isPlaying, togglePlay } = usePlayer();
   const { addToCart } = useCart();
@@ -100,32 +101,46 @@ export function BeatCard({ beat }: BeatCardProps) {
 
         {/* Play Action Trigger Overlay */}
         <div
-          className={`absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center transition-opacity duration-200 pointer-events-none ${
-            isHovered || isCurrentPlaying ? "opacity-100" : "opacity-0"
+          className={`absolute inset-0 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center transition-opacity duration-200 pointer-events-none ${
+            isHovered || isCurrentPlaying || isLocked ? "opacity-100" : "opacity-0"
           }`}
         >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              togglePlay(beat);
-            }}
-            aria-label={isCurrentPlaying ? `Pause preview of ${beat.title}` : `Play preview of ${beat.title}`}
-            className={`pointer-events-auto w-13 h-13 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all cursor-pointer ${
-              isCurrentPlaying ? "bg-purple-500 text-white shadow-purple-500/40" : "bg-white text-black"
-            }`}
-          >
-            {isCurrentPlaying ? (
-              <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                <rect x="6" y="4" width="4" height="16" />
-                <rect x="14" y="4" width="4" height="16" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5 fill-current translate-x-0.5" viewBox="0 0 24 24">
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-            )}
-          </button>
+          {isLocked ? (
+            <div className="flex flex-col items-center justify-center pointer-events-none">
+              <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-full flex items-center justify-center bg-zinc-900/80 text-zinc-400 border border-zinc-700 shadow-xl backdrop-blur-md mb-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </div>
+              <span className="text-[10px] font-mono tracking-widest uppercase px-2 py-0.5 rounded bg-amber-500 text-black font-bold">
+                PRO ONLY
+              </span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                togglePlay(beat);
+              }}
+              aria-label={isCurrentPlaying ? `Pause preview of ${beat.title}` : `Play preview of ${beat.title}`}
+              className={`pointer-events-auto w-13 h-13 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all cursor-pointer ${
+                isCurrentPlaying ? "bg-purple-500 text-white shadow-purple-500/40" : "bg-white text-black"
+              }`}
+            >
+              {isCurrentPlaying ? (
+                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                  <rect x="6" y="4" width="4" height="16" />
+                  <rect x="14" y="4" width="4" height="16" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 fill-current translate-x-0.5" viewBox="0 0 24 24">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Top Genre Badge */}
@@ -190,14 +205,24 @@ export function BeatCard({ beat }: BeatCardProps) {
               <span>{likesCount}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => addToCart(beat, "mp3")}
-              aria-label={`Add ${beat.title} MP3 license to cart`}
-              className="text-xs font-mono text-purple-300 hover:text-white px-2 py-0.5 rounded hover:bg-purple-500/15 transition-colors cursor-pointer"
-            >
-              + LICENSE
-            </button>
+            {isLocked ? (
+              <div className="text-xs font-mono text-zinc-600 px-2 py-0.5 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <span>LOCKED</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => addToCart(beat, "mp3")}
+                aria-label={`Add ${beat.title} MP3 license to cart`}
+                className="text-xs font-mono text-purple-300 hover:text-white px-2 py-0.5 rounded hover:bg-purple-500/15 transition-colors cursor-pointer"
+              >
+                + LICENSE
+              </button>
+            )}
           </div>
         </div>
       </div>
