@@ -22,6 +22,484 @@ export interface CreateBeatResponse {
   error?: string;
 }
 
+export interface BeatLicenseInput {
+  licenseTypeId: string;
+  priceOverride?: number | null;
+}
+
+export interface CreateBeatDirectInput {
+  beatId: string;
+  title: string;
+  slug: string;
+  description?: string | null;
+  genreId?: string | null;
+  mood?: string | null;
+  bpm?: number | null;
+  key?: string | null;
+  duration?: string | null;
+  featured?: boolean;
+  published: boolean;
+  coverPath?: string | null;
+  previewPath?: string | null;
+  previewFileSize?: number | null;
+  wavPath?: string | null;
+  wavFileName?: string | null;
+  wavFileSize?: number | null;
+  licenses: BeatLicenseInput[];
+}
+
+export interface UpdateBeatDirectInput {
+  beatId: string;
+  title: string;
+  slug: string;
+  description?: string | null;
+  genreId?: string | null;
+  mood?: string | null;
+  bpm?: number | null;
+  key?: string | null;
+  duration?: string | null;
+  featured?: boolean;
+  published: boolean;
+  coverPath?: string | null;
+  previewPath?: string | null;
+  previewFileSize?: number | null;
+  wavPath?: string | null;
+  wavFileName?: string | null;
+  wavFileSize?: number | null;
+  licenses: BeatLicenseInput[];
+}
+
+export interface UploadUrlTarget {
+  signedUrl: string;
+  path: string;
+}
+
+export interface PrepareUploadResponse {
+  success: boolean;
+  error?: string;
+  beatId?: string;
+  cover?: UploadUrlTarget;
+  preview?: UploadUrlTarget;
+  wav?: UploadUrlTarget;
+}
+
+/**
+ * Generates presigned / signed upload URLs so large files can be uploaded directly
+ * from the client browser to storage, bypassing Vercel's 4.5 MB request payload limit.
+ */
+export async function getBeatUploadUrlsAction(params: {
+  beatId?: string;
+  coverExt?: string;
+  hasPreview?: boolean;
+  wavFileName?: string;
+}): Promise<PrepareUploadResponse> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { success: false, error: "Unauthorized: Admin session required." };
+  }
+
+  const supabase = createAdminClient();
+  const beatId = params.beatId || crypto.randomUUID();
+
+  let cover: UploadUrlTarget | undefined;
+  let preview: UploadUrlTarget | undefined;
+  let wav: UploadUrlTarget | undefined;
+
+  try {
+    if (params.coverExt) {
+      const ext = (params.coverExt.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg") as "jpg" | "png" | "webp";
+      const path = getPublicCoverPath(beatId, ext);
+      const { data, error } = await supabase.storage
+        .from(PUBLIC_STORAGE_BUCKET)
+        .createSignedUploadUrl(path, { upsert: true });
+
+      if (error || !data) {
+        throw new Error(`Failed to generate upload URL for cover: ${error?.message}`);
+      }
+      cover = { signedUrl: data.signedUrl, path };
+    }
+
+    if (params.hasPreview) {
+      const path = getPublicPreviewPath(beatId);
+      const { data, error } = await supabase.storage
+        .from(PUBLIC_STORAGE_BUCKET)
+        .createSignedUploadUrl(path, { upsert: true });
+
+      if (error || !data) {
+        throw new Error(`Failed to generate upload URL for preview: ${error?.message}`);
+      }
+      preview = { signedUrl: data.signedUrl, path };
+    }
+
+    if (params.wavFileName) {
+      const cleanWavName = params.wavFileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = getPrivateBeatWavPath(beatId, cleanWavName);
+      const { data, error } = await supabase.storage
+        .from(PRIVATE_STORAGE_BUCKET)
+        .createSignedUploadUrl(path, { upsert: true });
+
+      if (error || !data) {
+        throw new Error(`Failed to generate upload URL for WAV: ${error?.message}`);
+      }
+      wav = { signedUrl: data.signedUrl, path };
+    }
+
+    return {
+      success: true,
+      beatId,
+      cover,
+      preview,
+      wav,
+    };
+  } catch (err: any) {
+    console.error("[GetUploadUrls] Error:", err);
+    return {
+      success: false,
+      error: err.message || "Failed to prepare asset uploads.",
+    };
+  }
+}
+
+/**
+ * Creates a beat record after the browser has uploaded all large media directly to storage.
+ * Completely immune to Vercel payload limits and timeouts.
+ */
+export async function createBeatDirectAction(
+  input: CreateBeatDirectInput
+): Promise<CreateBeatResponse> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { success: false, error: "Unauthorized: Admin session required." };
+  }
+
+  const supabase = createAdminClient();
+
+  const title = input.title?.trim();
+  const slug = input.slug?.trim().toLowerCase();
+  const beatId = input.beatId?.trim();
+
+  if (!title || !slug || !beatId) {
+    return { success: false, error: "Title, slug, and beat ID are required fields." };
+  }
+
+  // Check slug uniqueness
+  const { data: existingSlug } = await supabase
+    .from("beats")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (existingSlug) {
+    return { success: false, error: `The URL slug "${slug}" is already taken by another beat.` };
+  }
+
+  const bpm = input.bpm !== undefined && input.bpm !== null ? Number(input.bpm) : null;
+  if (bpm !== null && (isNaN(bpm) || bpm <= 0 || bpm > 300)) {
+    return { success: false, error: "BPM must be a valid number between 30 and 300." };
+  }
+
+  let durationSeconds: number | null = null;
+  if (input.duration) {
+    if (input.duration.includes(":")) {
+      const [m, s] = input.duration.split(":").map(Number);
+      durationSeconds = (m || 0) * 60 + (s || 0);
+    } else {
+      const val = parseInt(input.duration, 10);
+      if (!isNaN(val)) {
+        durationSeconds = val < 10 ? val * 60 : val;
+      }
+    }
+  }
+
+  if (input.published) {
+    if (!input.coverPath) {
+      return { success: false, error: "Cannot publish: A cover artwork file is required." };
+    }
+    if (!input.wavPath) {
+      return { success: false, error: "Cannot publish: A master WAV audio file is required." };
+    }
+  }
+
+  try {
+    // 1. Insert beat record
+    const { data: newBeat, error: insertError } = await supabase
+      .from("beats")
+      .insert({
+        id: beatId,
+        title,
+        slug,
+        description: input.description || null,
+        genre_id: input.genreId || null,
+        mood: input.mood || null,
+        bpm,
+        musical_key: input.key || null,
+        duration_seconds: durationSeconds,
+        featured: Boolean(input.featured),
+        published: Boolean(input.published),
+        cover_path: input.coverPath || null,
+        preview_path: input.previewPath || null,
+        local_sync_status: "pending",
+        ranking_status: input.published ? "new" : "draft",
+      })
+      .select("id")
+      .single();
+
+    if (insertError || !newBeat) {
+      console.error("[CreateBeatDirect] Error inserting beat:", insertError);
+      return { success: false, error: insertError?.message || "Failed to create beat record." };
+    }
+
+    // 2. Insert Preview into beat_files if provided
+    if (input.previewPath) {
+      await supabase.from("beat_files").insert({
+        beat_id: beatId,
+        file_type: "preview",
+        storage_path: input.previewPath,
+        file_name: `${slug}-preview.mp3`,
+        mime_type: "audio/mpeg",
+        file_size: input.previewFileSize || 0,
+      });
+    }
+
+    // 3. Insert Master WAV into beat_files if provided
+    if (input.wavPath) {
+      await supabase.from("beat_files").insert({
+        beat_id: beatId,
+        file_type: "wav",
+        storage_path: input.wavPath,
+        file_name: input.wavFileName || `${slug}-master.wav`,
+        mime_type: "audio/wav",
+        file_size: input.wavFileSize || 0,
+      });
+    }
+
+    // 4. Configure Licenses
+    if (Array.isArray(input.licenses) && input.licenses.length > 0) {
+      const licenseRows = input.licenses.map((lic) => ({
+        beat_id: beatId,
+        license_type_id: lic.licenseTypeId,
+        price_override: lic.priceOverride !== undefined && lic.priceOverride !== null ? Number(lic.priceOverride) : null,
+        active: true,
+      }));
+
+      const { error: licError } = await supabase.from("beat_licenses").insert(licenseRows);
+      if (licError) {
+        console.warn("[CreateBeatDirect] Warning inserting licenses:", licError);
+      }
+    }
+
+    // 5. Local SSD sync (safe in cloud)
+    try {
+      if (process.env.LOCAL_MASTER_LIBRARY_PATH) {
+        const { runSync } = await import("@/scripts/sync-companion");
+        await runSync({ slug });
+      }
+    } catch (syncErr) {
+      console.warn("[CreateBeatDirect] Companion sync warning:", syncErr);
+    }
+
+    // 6. Revalidate routes
+    revalidatePath("/beats");
+    revalidatePath("/admin/beats");
+    revalidatePath("/admin");
+
+    return {
+      success: true,
+      beatId,
+      slug,
+    };
+  } catch (err: any) {
+    console.error("[CreateBeatDirect] Execution failure:", err);
+    return {
+      success: false,
+      error: err.message || "An unexpected error occurred during beat creation.",
+    };
+  }
+}
+
+/**
+ * Updates a beat record after the browser has uploaded any replaced files directly to storage.
+ */
+export async function updateBeatDirectAction(
+  input: UpdateBeatDirectInput
+): Promise<CreateBeatResponse> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { success: false, error: "Unauthorized: Admin session required." };
+  }
+
+  const supabase = createAdminClient();
+
+  const title = input.title?.trim();
+  const slug = input.slug?.trim().toLowerCase();
+  const beatId = input.beatId?.trim();
+
+  if (!title || !slug || !beatId) {
+    return { success: false, error: "Title, slug, and beat ID are required fields." };
+  }
+
+  // Slug Uniqueness Check (excluding current beat)
+  const { data: slugCheck } = await supabase
+    .from("beats")
+    .select("id")
+    .eq("slug", slug)
+    .neq("id", beatId)
+    .maybeSingle();
+
+  if (slugCheck) {
+    return { success: false, error: `The URL slug "${slug}" is already taken by another beat.` };
+  }
+
+  const bpm = input.bpm !== undefined && input.bpm !== null ? Number(input.bpm) : null;
+  if (bpm !== null && (isNaN(bpm) || bpm <= 0 || bpm > 300)) {
+    return { success: false, error: "BPM must be a valid number between 30 and 300." };
+  }
+
+  let durationSeconds: number | null = null;
+  if (input.duration) {
+    if (input.duration.includes(":")) {
+      const [m, s] = input.duration.split(":").map(Number);
+      durationSeconds = (m || 0) * 60 + (s || 0);
+    } else {
+      const val = parseInt(input.duration, 10);
+      if (!isNaN(val)) {
+        durationSeconds = val < 10 ? val * 60 : val;
+      }
+    }
+  }
+
+  try {
+    // 1. Fetch current beat
+    const { data: existingBeat, error: fetchErr } = await supabase
+      .from("beats")
+      .select("id, cover_path, preview_path, beat_files(id, file_type, storage_path)")
+      .eq("id", beatId)
+      .single();
+
+    if (fetchErr || !existingBeat) {
+      return { success: false, error: "Beat not found." };
+    }
+
+    const coverPath = input.coverPath || existingBeat.cover_path;
+    const previewPath = input.previewPath || existingBeat.preview_path;
+    const hasWav = Boolean(
+      input.wavPath ||
+      (Array.isArray(existingBeat.beat_files) &&
+        existingBeat.beat_files.some((f: any) => f.file_type === "wav"))
+    );
+
+    if (input.published) {
+      if (!coverPath) {
+        return { success: false, error: "Cannot publish: Cover artwork is required." };
+      }
+      if (!hasWav) {
+        return { success: false, error: "Cannot publish: Master WAV audio is required." };
+      }
+    }
+
+    // 2. If new preview uploaded, update beat_files
+    if (input.previewPath && input.previewPath !== existingBeat.preview_path) {
+      await supabase.from("beat_files").delete().eq("beat_id", beatId).eq("file_type", "preview");
+      await supabase.from("beat_files").insert({
+        beat_id: beatId,
+        file_type: "preview",
+        storage_path: input.previewPath,
+        file_name: `${slug}-preview.mp3`,
+        mime_type: "audio/mpeg",
+        file_size: input.previewFileSize || 0,
+      });
+    }
+
+    // 3. If new WAV uploaded, update beat_files
+    if (input.wavPath) {
+      await supabase.from("beat_files").delete().eq("beat_id", beatId).eq("file_type", "wav");
+      await supabase.from("beat_files").insert({
+        beat_id: beatId,
+        file_type: "wav",
+        storage_path: input.wavPath,
+        file_name: input.wavFileName || `${slug}-master.wav`,
+        mime_type: "audio/wav",
+        file_size: input.wavFileSize || 0,
+      });
+    }
+
+    // 4. Update beat licenses
+    if (Array.isArray(input.licenses)) {
+      await supabase.from("beat_licenses").delete().eq("beat_id", beatId);
+      if (input.licenses.length > 0) {
+        const licenseRows = input.licenses.map((lic) => ({
+          beat_id: beatId,
+          license_type_id: lic.licenseTypeId,
+          price_override: lic.priceOverride !== undefined && lic.priceOverride !== null ? Number(lic.priceOverride) : null,
+          active: true,
+        }));
+        await supabase.from("beat_licenses").insert(licenseRows);
+      }
+    }
+
+    // 5. Update beats record
+    const { error: updateError } = await supabase
+      .from("beats")
+      .update({
+        title,
+        slug,
+        description: input.description || null,
+        genre_id: input.genreId || null,
+        mood: input.mood || null,
+        bpm,
+        musical_key: input.key || null,
+        duration_seconds: durationSeconds,
+        featured: Boolean(input.featured),
+        published: Boolean(input.published),
+        cover_path: coverPath,
+        preview_path: previewPath,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", beatId);
+
+    if (updateError) {
+      throw new Error(`Failed to update beat record: ${updateError.message}`);
+    }
+
+    // 6. Clean up old replaced files if paths changed
+    if (input.coverPath && existingBeat.cover_path && input.coverPath !== existingBeat.cover_path) {
+      try {
+        await supabase.storage.from(PUBLIC_STORAGE_BUCKET).remove([existingBeat.cover_path]);
+      } catch (e) {
+        console.warn("[UpdateBeatDirect] Cleanup old cover warning:", e);
+      }
+    }
+
+    // 7. Companion sync (safe in cloud)
+    try {
+      if (process.env.LOCAL_MASTER_LIBRARY_PATH) {
+        const { runSync } = await import("@/scripts/sync-companion");
+        await runSync({ slug });
+      }
+    } catch (syncErr) {
+      console.warn("[UpdateBeatDirect] Local SSD auto-sync warning:", syncErr);
+    }
+
+    // 8. Revalidate
+    revalidatePath("/beats");
+    revalidatePath(`/beats/${slug}`);
+    revalidatePath("/admin/beats");
+    revalidatePath("/admin");
+
+    return {
+      success: true,
+      beatId,
+      slug,
+    };
+  } catch (err: any) {
+    console.error("[UpdateBeatDirect] Execution failure:", err);
+    return {
+      success: false,
+      error: err.message || "An unexpected error occurred during beat update.",
+    };
+  }
+}
+
 export async function createBeatAction(formData: FormData): Promise<CreateBeatResponse> {
   // 1. Verify administrative authentication
   const user = await getCurrentUser();

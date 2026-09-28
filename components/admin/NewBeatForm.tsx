@@ -4,7 +4,8 @@ import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { createBeatAction } from "@/lib/actions/beats";
+import { getBeatUploadUrlsAction, createBeatDirectAction } from "@/lib/actions/beats";
+import { uploadFileToSignedUrl } from "@/lib/storage/upload-client";
 import { formatCurrency } from "@/lib/utils";
 
 interface CategoryOption {
@@ -63,6 +64,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
   // Submission Status
   const [formError, setFormError] = useState<string | null>(null);
   const [uploadProgressStatus, setUploadProgressStatus] = useState<string | null>(null);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
 
   // Auto detect duration from audio file
   const detectDuration = (file: File) => {
@@ -115,66 +117,138 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
     }));
   };
 
-  // Submit Handler
+  // Direct-to-storage Submit Handler (Bypasses Vercel 4.5 MB payload limit)
   const handleSubmit = async (publishImmediate: boolean) => {
     setFormError(null);
 
     if (!title.trim() || !slug.trim()) {
-      setFormError("Title and slug are required.");
+      setFormError("Title and URL slug are required.");
       return;
     }
 
     if (publishImmediate) {
       if (!coverState.file) {
-        setFormError("A cover artwork file is required to publish.");
+        setFormError("Cover artwork file (.jpg, .png, .webp) is required to publish.");
+        return;
+      }
+      if (!previewState.file) {
+        setFormError("Preview MP3 audio file is required to publish so customers can listen in the web store.");
         return;
       }
       if (!wavState.file) {
-        setFormError("A master WAV audio file is required to publish.");
+        setFormError("Master WAV audio file is required to publish.");
         return;
       }
     }
 
     startTransition(async () => {
-      setUploadProgressStatus(publishImmediate ? "Publishing & uploading assets..." : "Saving draft & uploading assets...");
+      try {
+        setUploadProgressStatus("Preparing secure storage upload...");
+        setUploadPercent(0);
 
-      const formData = new FormData();
-      formData.set("title", title);
-      formData.set("slug", slug);
-      formData.set("description", description);
-      formData.set("genreId", genreId);
-      formData.set("mood", mood);
-      formData.set("bpm", bpm);
-      formData.set("key", key);
-      formData.set("duration", duration);
-      formData.set("featured", String(featured));
-      formData.set("published", String(publishImmediate));
+        // 1. Request presigned upload URLs (pure metadata request, 0 audio bytes sent to Vercel)
+        const coverExt = coverState.file ? (coverState.file.name.split(".").pop()?.toLowerCase() || "jpg") : undefined;
+        const uploadUrlsRes = await getBeatUploadUrlsAction({
+          coverExt,
+          hasPreview: Boolean(previewState.file),
+          wavFileName: wavState.file ? wavState.file.name : undefined,
+        });
 
-      if (coverState.file) formData.set("coverFile", coverState.file);
-      if (previewState.file) formData.set("previewFile", previewState.file);
-      if (wavState.file) formData.set("wavFile", wavState.file);
+        if (!uploadUrlsRes.success || !uploadUrlsRes.beatId) {
+          throw new Error(uploadUrlsRes.error || "Failed to generate upload authorization.");
+        }
 
-      // Package licenses
-      const licensesPayload = Object.entries(selectedLicenses)
-        .filter(([_, conf]) => conf.enabled)
-        .map(([id, conf]) => ({
-          licenseTypeId: id,
-          priceOverride: conf.overridePrice ? parseFloat(conf.overridePrice) : null,
-        }));
-      formData.set("licenses", JSON.stringify(licensesPayload));
+        const beatId = uploadUrlsRes.beatId;
+        let coverPath: string | null = null;
+        let previewPath: string | null = null;
+        let wavPath: string | null = null;
 
-      const res = await createBeatAction(formData);
+        // 2. Upload Cover directly from browser to Supabase Storage (rgodbeat-public)
+        if (coverState.file && uploadUrlsRes.cover) {
+          setUploadProgressStatus("Step 1/3: Uploading cover artwork...");
+          setUploadPercent(10);
+          await uploadFileToSignedUrl(
+            uploadUrlsRes.cover.signedUrl,
+            coverState.file,
+            coverState.file.type || "image/jpeg",
+            (pct) => setUploadPercent(Math.round(pct * 0.2)) // 0-20%
+          );
+          coverPath = uploadUrlsRes.cover.path;
+        }
 
-      if (!res.success) {
-        setFormError(res.error || "Failed to create beat.");
+        // 3. Upload Preview MP3 directly from browser to Supabase Storage (rgodbeat-public)
+        if (previewState.file && uploadUrlsRes.preview) {
+          setUploadProgressStatus("Step 2/3: Uploading streaming MP3 preview...");
+          await uploadFileToSignedUrl(
+            uploadUrlsRes.preview.signedUrl,
+            previewState.file,
+            previewState.file.type || "audio/mpeg",
+            (pct) => setUploadPercent(20 + Math.round(pct * 0.3)) // 20-50%
+          );
+          previewPath = uploadUrlsRes.preview.path;
+        }
+
+        // 4. Upload Master WAV directly from browser to Supabase Storage (rgodbeat-private)
+        if (wavState.file && uploadUrlsRes.wav) {
+          setUploadProgressStatus("Step 3/3: Uploading 24-bit Master WAV...");
+          await uploadFileToSignedUrl(
+            uploadUrlsRes.wav.signedUrl,
+            wavState.file,
+            "audio/wav",
+            (pct) => {
+              setUploadPercent(50 + Math.round(pct * 0.45)); // 50-95%
+              setUploadProgressStatus(`Step 3/3: Uploading Master WAV (${pct}%)...`);
+            }
+          );
+          wavPath = uploadUrlsRes.wav.path;
+        }
+
+        // 5. Finalize beat registration in database
+        setUploadProgressStatus("Finalizing beat and licenses in catalog...");
+        setUploadPercent(98);
+
+        const licensesPayload = Object.entries(selectedLicenses)
+          .filter(([_, conf]) => conf.enabled)
+          .map(([id, conf]) => ({
+            licenseTypeId: id,
+            priceOverride: conf.overridePrice ? parseFloat(conf.overridePrice) : null,
+          }));
+
+        const res = await createBeatDirectAction({
+          beatId,
+          title,
+          slug,
+          description,
+          genreId,
+          mood,
+          bpm: bpm ? parseInt(bpm, 10) : null,
+          key,
+          duration,
+          featured,
+          published: publishImmediate,
+          coverPath,
+          previewPath,
+          previewFileSize: previewState.file?.size || null,
+          wavPath,
+          wavFileName: wavState.file?.name || null,
+          wavFileSize: wavState.file?.size || null,
+          licenses: licensesPayload,
+        });
+
+        if (!res.success) {
+          throw new Error(res.error || "Failed to record beat in database.");
+        }
+
+        setUploadPercent(100);
+        setUploadProgressStatus("Beat created successfully! Redirecting...");
+        router.push("/admin/beats");
+        router.refresh();
+      } catch (err: any) {
+        console.error("[NewBeatForm] Upload error:", err);
+        setFormError(err.message || "An error occurred while uploading the beat.");
         setUploadProgressStatus(null);
-        return;
+        setUploadPercent(null);
       }
-
-      // Success
-      setUploadProgressStatus("Done! Redirecting to catalog...");
-      router.push("/admin/beats");
-      router.refresh();
     });
   };
 
@@ -222,11 +296,26 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
         </div>
       )}
 
-      {/* Progress Toast */}
+      {/* Progress Toast with Visual Bar */}
       {uploadProgressStatus && (
-        <div className="p-4 rounded-xl bg-purple-950/30 border border-purple-500/30 text-xs text-purple-300 flex items-center gap-3">
-          <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-          <span>{uploadProgressStatus}</span>
+        <div className="p-5 rounded-2xl bg-purple-950/40 border border-purple-500/40 text-xs text-purple-200 space-y-3 shadow-xl shadow-purple-900/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-ping" />
+              <span className="font-mono font-bold uppercase tracking-wider">{uploadProgressStatus}</span>
+            </div>
+            {uploadPercent !== null && (
+              <span className="font-mono font-extrabold text-sm text-purple-300">{uploadPercent}%</span>
+            )}
+          </div>
+          {uploadPercent !== null && (
+            <div className="w-full bg-white/[0.08] rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-purple-500 to-emerald-400 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${uploadPercent}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -437,15 +526,13 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                 <span className="text-[10px] font-mono text-purple-400 uppercase tracking-wider block">
                   PUBLIC STREAMING
                 </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
-                  AUTO-CONVERT
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold">
+                  MP3 320KBPS
                 </span>
               </div>
-              <h3 className="text-xs font-bold text-white uppercase">Preview Audio (MP3)</h3>
+              <h3 className="text-xs font-bold text-white uppercase">Preview Audio (MP3) <span className="text-purple-400">*</span></h3>
               <p className="text-[11px] text-zinc-400">
-                {wavState.file && !previewState.file
-                  ? "⚡ Se auto-convertirá de tu WAV a 320kbps automáticamente."
-                  : "Opcional. Si no subes MP3, se generará del WAV automáticamente."}
+                Audio MP3 optimizado para reproducción instantánea en la web y entrega de licencia MP3.
               </p>
             </div>
 
@@ -465,17 +552,13 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                   className={`p-3 rounded-lg border text-center transition-all ${
                     previewState.file
                       ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-                      : wavState.file
-                      ? "bg-purple-500/10 border-purple-500/30 text-purple-300"
                       : "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:border-white/20"
                   }`}
                 >
                   <span className="text-xs font-mono block truncate">
                     {previewState.file
                       ? `✓ ${previewState.file.name}`
-                      : wavState.file
-                      ? "⚡ AUTO-GENERAR DE WAV"
-                      : "+ SUBIR MP3 MANUAL (OPCIONAL)"}
+                      : "+ ELEGIR AUDIO MP3"}
                   </span>
                 </div>
               </label>

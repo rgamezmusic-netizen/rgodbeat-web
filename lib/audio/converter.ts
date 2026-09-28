@@ -63,7 +63,7 @@ export async function convertWavBufferToMp3(
 
     // 2. Run FFmpeg conversion
     await new Promise<void>((resolve, reject) => {
-      const proc = spawn(ffmpegBin, [
+      const proc = spawn(/*turbopackIgnore: true*/ ffmpegBin, [
         "-y",
         "-i",
         inputWavPath,

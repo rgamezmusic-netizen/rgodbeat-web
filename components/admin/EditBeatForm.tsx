@@ -4,7 +4,8 @@ import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
-import { updateBeatAction, deleteBeatAction } from "@/lib/actions/beats";
+import { updateBeatDirectAction, deleteBeatAction, getBeatUploadUrlsAction } from "@/lib/actions/beats";
+import { uploadFileToSignedUrl } from "@/lib/storage/upload-client";
 import { formatCurrency } from "@/lib/utils";
 import type { BeatEditData } from "@/types";
 
@@ -72,6 +73,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
   // Status & Feedback
   const [formError, setFormError] = useState<string | null>(null);
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -132,7 +134,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
     }));
   };
 
-  // Submit Handler
+  // Submit Handler with Direct-to-Storage Upload
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -143,45 +145,116 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
     }
 
     startTransition(async () => {
-      setProgressStatus("Saving changes & updating assets...");
+      try {
+        setProgressStatus("Saving changes & updating assets...");
+        setUploadPercent(0);
 
-      const formData = new FormData();
-      formData.set("beatId", beat.id);
-      formData.set("title", title);
-      formData.set("slug", slug);
-      formData.set("description", description);
-      formData.set("genreId", genreId);
-      formData.set("mood", mood);
-      formData.set("bpm", bpm);
-      formData.set("key", key);
-      formData.set("duration", duration);
-      formData.set("featured", String(featured));
-      formData.set("published", String(published));
+        let newCoverPath = beat.cover_path;
+        let newPreviewPath = beat.preview_path;
+        let newWavPath: string | null = null;
 
-      if (coverState.file) formData.set("coverFile", coverState.file);
-      if (previewState.file) formData.set("previewFile", previewState.file);
-      if (wavState.file) formData.set("wavFile", wavState.file);
+        // Check if any new file was selected for replacement
+        const hasNewCover = Boolean(coverState.file);
+        const hasNewPreview = Boolean(previewState.file);
+        const hasNewWav = Boolean(wavState.file);
 
-      // Package licenses
-      const licensesPayload = Object.entries(selectedLicenses)
-        .filter(([_, conf]) => conf.enabled)
-        .map(([id, conf]) => ({
-          licenseTypeId: id,
-          priceOverride: conf.overridePrice ? parseFloat(conf.overridePrice) : null,
-        }));
-      formData.set("licenses", JSON.stringify(licensesPayload));
+        if (hasNewCover || hasNewPreview || hasNewWav) {
+          const coverExt = coverState.file
+            ? (coverState.file.name.split(".").pop()?.toLowerCase() || "jpg")
+            : undefined;
 
-      const res = await updateBeatAction(formData);
+          const uploadUrlsRes = await getBeatUploadUrlsAction({
+            beatId: beat.id,
+            coverExt,
+            hasPreview: hasNewPreview,
+            wavFileName: wavState.file ? wavState.file.name : undefined,
+          });
 
-      if (!res.success) {
-        setFormError(res.error || "Failed to update beat.");
+          if (!uploadUrlsRes.success) {
+            throw new Error(uploadUrlsRes.error || "Failed to generate upload authorizations.");
+          }
+
+          if (coverState.file && uploadUrlsRes.cover) {
+            setProgressStatus("Uploading replacement cover artwork...");
+            await uploadFileToSignedUrl(
+              uploadUrlsRes.cover.signedUrl,
+              coverState.file,
+              coverState.file.type || "image/jpeg",
+              (pct) => setUploadPercent(pct)
+            );
+            newCoverPath = uploadUrlsRes.cover.path;
+          }
+
+          if (previewState.file && uploadUrlsRes.preview) {
+            setProgressStatus("Uploading replacement preview MP3...");
+            await uploadFileToSignedUrl(
+              uploadUrlsRes.preview.signedUrl,
+              previewState.file,
+              previewState.file.type || "audio/mpeg",
+              (pct) => setUploadPercent(pct)
+            );
+            newPreviewPath = uploadUrlsRes.preview.path;
+          }
+
+          if (wavState.file && uploadUrlsRes.wav) {
+            setProgressStatus("Uploading replacement Master WAV...");
+            await uploadFileToSignedUrl(
+              uploadUrlsRes.wav.signedUrl,
+              wavState.file,
+              "audio/wav",
+              (pct) => {
+                setUploadPercent(pct);
+                setProgressStatus(`Uploading Master WAV (${pct}%)...`);
+              }
+            );
+            newWavPath = uploadUrlsRes.wav.path;
+          }
+        }
+
+        setProgressStatus("Updating database record...");
+        setUploadPercent(100);
+
+        const licensesPayload = Object.entries(selectedLicenses)
+          .filter(([_, conf]) => conf.enabled)
+          .map(([id, conf]) => ({
+            licenseTypeId: id,
+            priceOverride: conf.overridePrice ? parseFloat(conf.overridePrice) : null,
+          }));
+
+        const res = await updateBeatDirectAction({
+          beatId: beat.id,
+          title,
+          slug,
+          description,
+          genreId,
+          mood,
+          bpm: bpm ? parseInt(bpm, 10) : null,
+          key,
+          duration,
+          featured,
+          published,
+          coverPath: newCoverPath,
+          previewPath: newPreviewPath,
+          previewFileSize: previewState.file?.size || null,
+          wavPath: newWavPath,
+          wavFileName: wavState.file?.name || null,
+          wavFileSize: wavState.file?.size || null,
+          licenses: licensesPayload,
+        });
+
+        if (!res.success) {
+          throw new Error(res.error || "Failed to update beat.");
+        }
+
+        setProgressStatus("Saved! Redirecting to catalog...");
+        router.push("/admin/beats");
+        router.refresh();
+      } catch (err: any) {
+        console.error("[EditBeatForm] Error:", err);
+        setFormError(err.message || "Failed to update beat.");
         setProgressStatus(null);
-        return;
+        setUploadPercent(null);
       }
-
-      setProgressStatus("Saved! Redirecting to catalog...");
-      router.push("/admin/beats");
-      router.refresh();
     });
   };
 
@@ -253,11 +326,26 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
         </div>
       )}
 
-      {/* Progress Toast */}
+      {/* Progress Toast with Visual Bar */}
       {progressStatus && (
-        <div className="p-4 rounded-xl bg-purple-950/30 border border-purple-500/30 text-xs text-purple-300 flex items-center gap-3">
-          <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
-          <span>{progressStatus}</span>
+        <div className="p-5 rounded-2xl bg-purple-950/40 border border-purple-500/40 text-xs text-purple-200 space-y-3 shadow-xl shadow-purple-900/20">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-ping" />
+              <span className="font-mono font-bold uppercase tracking-wider">{progressStatus}</span>
+            </div>
+            {uploadPercent !== null && (
+              <span className="font-mono font-extrabold text-sm text-purple-300">{uploadPercent}%</span>
+            )}
+          </div>
+          {uploadPercent !== null && (
+            <div className="w-full bg-white/[0.08] rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-purple-500 to-emerald-400 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${uploadPercent}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
 
