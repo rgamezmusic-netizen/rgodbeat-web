@@ -219,7 +219,7 @@ export async function saveStudioSession(
           }] : []);
 
       for (const clip of clipsToProcess) {
-        if (!clip.buffer) continue;
+        if (!clip.buffer) throw new Error('Falta el audio de una toma. No se pudo guardar el proyecto completo.');
         try {
           // Convert audio buffer to WAV binary ArrayBuffer for lossless persistent storage
           const audioWavData = await encodeStoredAudio(clip.buffer);
@@ -539,14 +539,17 @@ export async function clearSavedStudioSession(userIdentifier?: string | null): P
 }
 
 // Convert ArrayBuffer to Base64 safely
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  let binary = '';
+async function arrayBufferToBase64(buffer: ArrayBuffer): Promise<string> {
   const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  const parts: string[] = [];
+  // Multiples of three keep padding only at the end. Bounded chunks avoid a huge
+  // intermediate binary string and leave the phone's UI time to update.
+  const chunkSize = 3 * 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    parts.push(btoa(String.fromCharCode(...bytes.subarray(i, i + chunkSize))));
+    if (i > 0 && i % (chunkSize * 32) === 0) await new Promise(resolve => setTimeout(resolve, 0));
   }
-  return btoa(binary);
+  return parts.join('');
 }
 
 // Convert Base64 to ArrayBuffer safely
@@ -645,10 +648,10 @@ export async function exportProjectToDeviceFile(
 
       const storedClips = [];
       for (const clip of clipsToProcess) {
-        if (!clip.buffer) continue;
+        if (!clip.buffer) throw new Error('Falta el audio de una toma. No se pudo exportar el proyecto completo.');
         try {
           const buf = await encodeStoredAudio(clip.buffer);
-          const base64 = arrayBufferToBase64(buf);
+          const base64 = await arrayBufferToBase64(buf);
           storedClips.push({
             id: clip.id,
             name: clip.name,
@@ -680,12 +683,8 @@ export async function exportProjectToDeviceFile(
     if (beat) {
       let audioWavBase64: string | undefined = undefined;
       if (beat.buffer) {
-        try {
-          const buf = await encodeStoredAudio(beat.buffer);
-          audioWavBase64 = arrayBufferToBase64(buf);
-        } catch (e) {
-          console.warn('Beat encode error in export:', e);
-        }
+        const buf = await encodeStoredAudio(beat.buffer);
+        audioWavBase64 = await arrayBufferToBase64(buf);
       }
       storedBeatData = {
         id: beat.id,
@@ -746,7 +745,8 @@ export async function importProjectFromDeviceFile(
   file: File,
   audioCtx: AudioContext,
   projectId = crypto.randomUUID(),
-  userIdentifier?: string | null
+  userIdentifier?: string | null,
+  availableBeats: BeatData[] = []
 ): Promise<{
   projectId: string;
   tracks: VocalTrack[];
@@ -790,6 +790,12 @@ export async function importProjectFromDeviceFile(
       } catch (decErr) {
         throw decErr;
       }
+    }
+
+    if (s.beatData && !restoredBeat) {
+      const available = availableBeats.find(beat => beat.id === s.beatData!.id && beat.buffer);
+      if (!available) throw new Error('Este archivo antiguo no incluye el audio del beat. Carga ese mismo beat en tu biblioteca antes de abrirlo.');
+      restoredBeat = { ...available, ...s.beatData, buffer: available.buffer };
     }
 
     // 2. Reconstruct tracks and clips

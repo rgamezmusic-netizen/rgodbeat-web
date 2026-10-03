@@ -12,7 +12,7 @@ async function main() {
   await fs.mkdir(output, { recursive: true });
   const bundle = await esbuild.build({
     stdin: {
-      contents: `export { AudioEngine } from './lib/studio/audio/audioEngine'; export { saveStudioSession, restoreLastStudioSession, clearSavedStudioSession } from './lib/studio/audio/sessionStorage'; export { saveProjectToCloud, loadProjectFromCloud, setCloudProjectUser } from './lib/studio/cloudProject'; export { appendRecordingCheckpoint, recoverRecordingCheckpoints, retireRecordingCheckpoints } from './lib/studio/audio/recordingRecovery';`,
+      contents: `export { AudioEngine } from './lib/studio/audio/audioEngine'; export { saveStudioSession, restoreLastStudioSession, clearSavedStudioSession, exportProjectToDeviceFile, importProjectFromDeviceFile } from './lib/studio/audio/sessionStorage'; export { saveProjectToCloud, loadProjectFromCloud, setCloudProjectUser } from './lib/studio/cloudProject'; export { appendRecordingCheckpoint, recoverRecordingCheckpoints, retireRecordingCheckpoints } from './lib/studio/audio/recordingRecovery';`,
       resolveDir: path.resolve(scriptDirectory, '..'),
     },
     bundle: true, write: false, format: 'iife', globalName: 'StudioTest', platform: 'browser',
@@ -63,6 +63,50 @@ async function main() {
     assert(await page.getByRole('button', { name: /Mover al Cabezal/ }).isVisible(), 'fine editing controls must be reachable on mobile');
     await page.screenshot({ path: path.join(output, 'mobile-edit-controls.png'), fullPage: true });
 
+    await page.getByRole('button', { name: 'DESBLOQUEAR PARA MOVER', exact: true }).click();
+    const originalOffset = await page.getByLabel('Inicio (s)', { exact: true }).inputValue();
+    await page.getByLabel('Inicio (s)', { exact: true }).fill('2.123');
+    await page.getByLabel('Inicio (s)', { exact: true }).press('Enter');
+    assert.equal(await page.getByLabel('Inicio (s)', { exact: true }).inputValue(), '2.123');
+    await page.getByRole('button', { name: /Deshacer/ }).first().click();
+    assert.equal(await page.getByLabel('Inicio (s)', { exact: true }).inputValue(), originalOffset);
+    await page.getByLabel('Duplicar toma a otra pista').selectOption('double');
+    assert.equal(await page.locator('[data-clip-item]').count(), 3);
+    await page.getByRole('button', { name: /Deshacer/ }).first().click();
+    assert.equal(await page.locator('[data-clip-item]').count(), 2);
+    await page.getByRole('button', { name: /Rehacer/ }).first().click();
+    assert.equal(await page.locator('[data-clip-item]').count(), 3);
+    await page.getByRole('button', { name: /Deshacer/ }).first().click();
+    const downloadReady = page.waitForEvent('download');
+    await page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
+    await page.getByRole('button', { name: 'Descargar archivo (.rgodbeat)', exact: true }).click();
+    const download = await downloadReady;
+    const projectFile = path.join(output, 'edited-project.rgodbeat');
+    await download.saveAs(projectFile);
+    const exported = JSON.parse(await fs.readFile(projectFile, 'utf8'));
+    assert.equal(exported.sessionData.tracks.flatMap(track => track.clips || []).length, 2);
+    assert(exported.sessionData.beatData.audioWavBase64, 'download must contain the beat audio');
+    assert(exported.sessionData.tracks.flatMap(track => track.clips || []).every(clip => clip.audioWavBase64));
+    await page.reload();
+    await page.getByRole('button', { name: /Continuar Sesión/ }).click();
+    await page.getByRole('button', { name: 'Edición', exact: true }).click();
+    assert.equal(await page.locator('[data-clip-item]').count(), 2, 'voices survive reloading after editing and downloading');
+    page.on('dialog', dialog => dialog.accept());
+    await page.locator('input[type="file"][accept*="rgodbeat"]').first().setInputFiles(projectFile);
+    await page.getByText('Proyecto cargado con éxito desde tu dispositivo.', { exact: false }).waitFor();
+    assert.equal(await page.locator('[data-clip-item]').count(), 2, 'downloaded project reopens with all voices');
+    const incomplete = structuredClone(exported);
+    delete incomplete.sessionData.tracks.find(track => track.clips.length).clips[0].audioWavBase64;
+    await page.locator('input[type="file"][accept*="rgodbeat"]').first().setInputFiles({
+      name: 'incomplete.rgodbeat', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(incomplete)),
+    });
+    await page.getByText('Falta audio en el archivo de proyecto.', { exact: false }).waitFor();
+    assert.equal(await page.locator('[data-clip-item]').count(), 2, 'a damaged import must preserve the open voices');
+    await page.reload();
+    await page.getByRole('button', { name: /Continuar Sesión/ }).click();
+    await page.getByRole('button', { name: 'Edición', exact: true }).click();
+    assert.equal(await page.locator('[data-clip-item]').count(), 2, 'a damaged import must preserve the local backup too');
+
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const result = await page.evaluate(async () => {
       const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -96,7 +140,11 @@ async function main() {
       const switched = await engine.switchRecordingTrack('lead2', tracks);
       oscillator.frequency.value = 660;
       await sleep(900);
-      await engine.stopRecording();
+      const stop = engine.stopRecording();
+      const duplicateStop = engine.stopRecording();
+      const sharedStop = stop === duplicateStop;
+      engine.releaseMicrophone();
+      await Promise.all([stop, duplicateStop]);
       oscillator.stop();
       const takeInfo = takes.map(take => {
         const samples = take.buffer.getChannelData(0);
@@ -132,6 +180,22 @@ async function main() {
       const restored = await StudioTest.restoreLastStudioSession(ctx, 'test-local');
       const restoredLength = restored?.tracks[0]?.clips[0]?.buffer.length;
       const mixRestored = restored?.beatFX?.lowPass === 2500 && restored?.isBeatMuted === true;
+      const badVoice = { ...vocal, clips: [{ ...vocal.clips[0], buffer: null }] };
+      const rejectedIncompleteSave = !(await StudioTest.saveStudioSession([badVoice], engine.getBeat(), undefined, 0, 1, 'editor', 'test-local'));
+      const protectedLocal = await StudioTest.restoreLastStudioSession(ctx, 'test-local');
+      const preservedCompleteSave = protectedLocal?.tracks[0]?.clips[0]?.buffer.length === restoredLength;
+      const brokenBeat = { ...engine.getBeat(), buffer: { length: 10, sampleRate: ctx.sampleRate, numberOfChannels: 1,
+        getChannelData() { throw new Error('Simulated failed beat encoding'); } } };
+      const rejectedIncompleteExport = !(await StudioTest.exportProjectToDeviceFile([vocal], brokenBeat)).success;
+      const legacyFile = new File([JSON.stringify({ format: 'RGODBEAT_PROJECT_V1', sessionData: {
+        tracks: [], beatData: { id: 'test', title: 'Legacy Beat', bpm: 120, key: 'A', scale: 'minor' },
+      } })], 'legacy.rgodbeat', { type: 'application/json' });
+      let rejectedMissingLegacyBeat = false;
+      try { await StudioTest.importProjectFromDeviceFile(legacyFile, ctx, 'legacy-project', 'legacy-test'); }
+      catch { rejectedMissingLegacyBeat = true; }
+      const legacyProject = await StudioTest.importProjectFromDeviceFile(legacyFile, ctx, 'legacy-project', 'legacy-test', [engine.getBeat()]);
+      const matchedLegacyBeat = legacyProject.beat.id === 'test' && legacyProject.beat.buffer === engine.getBeat().buffer;
+      await StudioTest.clearSavedStudioSession('legacy-test');
       const pendingSave = StudioTest.saveStudioSession([vocal], engine.getBeat(), undefined, 0, 1, 'editor', 'test-local');
       const emptySave = StudioTest.saveStudioSession([], engine.getBeat(), undefined, 0, 1, 'editor', 'test-local');
       await Promise.all([pendingSave, emptySave]);
@@ -222,13 +286,16 @@ async function main() {
       const confirmedAfterTimeout = (await StudioTest.saveProjectToCloud([vocal], engine.getBeat())).success;
       window.fetch = nativeFetch;
       engine.dispose();
-      return { stagedLargeAudio, stagedDebug, confirmedAfterTimeout, serialized, unchangedAudioOmitted, incompleteRejected, mixRestored, cloudMixStored, cloudMixRestored, cloudSave: cloudSave.success, cloudBeatStored, cloudBeatRestored, cloudLockRestored, saved, restoredLength, emptyTracks, started, switched, usingWorklet, takeInfo, unmutePeak, exportDuration, rawDuration, engineErrors };
+      return { rejectedMissingLegacyBeat, matchedLegacyBeat, rejectedIncompleteSave, preservedCompleteSave, rejectedIncompleteExport, sharedStop, deviceProjectRoundTrip: true, stagedLargeAudio, stagedDebug, confirmedAfterTimeout, serialized, unchangedAudioOmitted, incompleteRejected, mixRestored, cloudMixStored, cloudMixRestored, cloudSave: cloudSave.success, cloudBeatStored, cloudBeatRestored, cloudLockRestored, saved, restoredLength, emptyTracks, started, switched, usingWorklet, takeInfo, unmutePeak, exportDuration, rawDuration, engineErrors };
     });
     assert(result.stagedLargeAudio && result.confirmedAfterTimeout && result.serialized && result.unchangedAudioOmitted && result.incompleteRejected, JSON.stringify({ stagedLargeAudio: result.stagedLargeAudio, stagedDebug: result.stagedDebug, confirmedAfterTimeout: result.confirmedAfterTimeout, serialized: result.serialized, unchangedAudioOmitted: result.unchangedAudioOmitted, incompleteRejected: result.incompleteRejected }));
     assert(result.mixRestored && result.cloudMixStored && result.cloudMixRestored, 'project filters and beat mute must survive save/restore');
     assert(result.cloudSave && result.cloudBeatStored && result.cloudBeatRestored && result.cloudLockRestored, 'mocked cloud save must include catalog beat audio and restore locks');
     assert(result.saved && result.restoredLength > 0 && result.emptyTracks === 0, 'save/restore must preserve edits and intentional deletions');
     assert(result.started && result.switched && result.usingWorklet, JSON.stringify(result));
+    assert(result.sharedStop, 'concurrent stops share the capture finalization');
+    assert(result.rejectedIncompleteSave && result.preservedCompleteSave && result.rejectedIncompleteExport, 'failed encoding must preserve the complete backup and reject incomplete exports');
+    assert(result.rejectedMissingLegacyBeat && result.matchedLegacyBeat, 'legacy files require their actual beat, never an arbitrary replacement');
     assert.equal(result.takeInfo.length, 2);
     assert(result.takeInfo[0].duration > 0.5 && result.takeInfo[0].duration < 1);
     assert(result.takeInfo[1].duration > 0.7 && result.takeInfo[1].duration < 1.2);
@@ -246,6 +313,9 @@ async function main() {
     let account = 'recovery-a@example.test';
     let allowCloud = false;
     let deleted = false;
+    let newerCloud = false;
+    let cloudPosts = 0;
+    let newerCloudTab;
     await context.addInitScript(() => localStorage.setItem('rgodbeat_install_prompt_seen', 'true'));
     await context.route('**/api/studio/access', async route => {
       await new Promise(resolve => setTimeout(resolve, 350));
@@ -253,8 +323,12 @@ async function main() {
     });
     await context.route('**/api/studio/project', async route => {
       const method = route.request().method();
-      if (method === 'GET') return route.fulfill({ json: { hasProject: false, revision: deleted ? 'deleted' : null } });
+      if (method === 'GET') return route.fulfill({ json: newerCloud ? {
+        hasProject: true, revision: 'another-device', ownerEmail: account,
+        project: { savedAt: Date.now() + 60000, beat: { title: 'Another Device Beat' }, tracks: [] },
+      } : { hasProject: false, revision: deleted ? 'deleted' : null } });
       if (method === 'DELETE') { deleted = true; return route.fulfill({ json: { success: true, revision: 'deleted' } }); }
+      if (route.request().frame().page() === newerCloudTab) cloudPosts++;
       return route.fulfill({ status: allowCloud ? 200 : 503, json: { success: allowCloud, revision: 'saved', error: 'Simulated offline backup' } });
     });
     const crashing = await context.newPage();
@@ -289,6 +363,21 @@ async function main() {
     });
     assert(recoveredInfo.duration > 1 && recoveredInfo.peak > 0, JSON.stringify(recoveredInfo));
     assert(recoveredInfo.otherAccountEmpty && recoveredInfo.journalRetired);
+    newerCloud = true;
+    const withNewerCloud = await context.newPage();
+    newerCloudTab = withNewerCloud;
+    await withNewerCloud.goto(process.env.STUDIO_TEST_URL || 'http://127.0.0.1:3000/studio');
+    await withNewerCloud.getByRole('button', { name: /Continuar Sesión/ }).waitFor();
+    assert(await withNewerCloud.getByText('1 toma', { exact: true }).isVisible(), 'a newer cloud project must not discard the local voice');
+    await withNewerCloud.getByRole('button', { name: /Continuar Sesión/ }).click();
+    await withNewerCloud.getByRole('button', { name: 'Edición', exact: true }).click();
+    assert.equal(await withNewerCloud.locator('[data-clip-item]').count(), 1);
+    const postsBeforeEdit = cloudPosts;
+    await withNewerCloud.getByRole('button', { name: 'SOLO', exact: true }).first().click();
+    await withNewerCloud.getByText('Copia local guardada', { exact: false }).waitFor();
+    await withNewerCloud.waitForTimeout(1500);
+    assert.equal(cloudPosts, postsBeforeEdit, 'editing a retained local project cannot overwrite the newer account copy automatically');
+    await withNewerCloud.close(); newerCloud = false;
     account = 'recovery-b@example.test';
     const secondAccount = await context.newPage();
     await secondAccount.goto(process.env.STUDIO_TEST_URL || 'http://127.0.0.1:3000/studio');
@@ -318,7 +407,7 @@ async function main() {
       return { takes: session?.tracks.flatMap(track => track.clips || []).length || 0, recovered: recovery.recovered, staleJournalCleaned: afterPrune.recovered === 0 };
     });
     assert.equal(cleared.takes, 0); assert.equal(cleared.recovered, 0); assert(cleared.staleJournalCleaned);
-    Object.assign(result, { crashRecovery: recoveredInfo, cleanNewProject: cleared });
+    Object.assign(result, { crashRecovery: recoveredInfo, newerCloudKeepsLocal: true, cleanNewProject: cleared });
     await context.close();
     await fs.writeFile(path.join(output, 'results.json'), JSON.stringify(result, null, 2));
     console.log('Studio browser regression tests passed:', JSON.stringify(result));

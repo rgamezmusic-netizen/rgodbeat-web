@@ -14,16 +14,16 @@ export default function CheckoutCancelPage() {
 
         <div className="space-y-2">
           <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-            CHECKOUT CANCELLED
+            PAGO CANCELADO
           </h1>
           <p className="text-sm text-zinc-400">
-            Your transaction was not completed and no payment was charged. Your cart items remain saved.
+            No se completó la transacción y no se realizó ningún cargo. Puedes volver a intentarlo desde tu carrito.
           </p>
         </div>
 
         <div className="pt-2 flex flex-col sm:flex-row gap-3">
           <Button href="/beats" variant="primary" size="md" className="w-full justify-center">
-            BROWSE BEATS
+            VOLVER A LOS BEATS
           </Button>
         </div>
       </div>

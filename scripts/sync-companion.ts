@@ -29,39 +29,69 @@ import * as path from "path";
 import * as os from "os";
 import { createClient } from "@supabase/supabase-js";
 
-// Load configuration
-const envPath = path.resolve(__dirname, "../.env.local");
-let supabaseUrl = "";
-let supabaseAnonKey = "";
-let supabaseServiceKey = "";
+// Load configuration robustly from environment variables or .env.local
+export function getConfig() {
+  let supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  let supabaseAnonKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    "";
+  let supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  let customLibraryRoot = process.env.LOCAL_MASTER_LIBRARY_PATH
+    ? process.env.LOCAL_MASTER_LIBRARY_PATH.replace(/^["']|["']$/g, "").trim()
+    : "";
 
-let customLibraryRoot = "";
+  const candidateEnvPaths = [
+    path.resolve(process.cwd(), ".env.local"),
+    path.resolve(__dirname, "../.env.local"),
+    path.resolve(__dirname, ".env.local"),
+    "/Volumes/RGodbeat XXX/Paginas Web/rgodbeat-v2/.env.local",
+  ];
 
-if (fs.existsSync(envPath)) {
-  const envContent = fs.readFileSync(envPath, "utf8");
-  const urlMatch = envContent.match(/NEXT_PUBLIC_SUPABASE_URL=(.*)/);
-  const anonMatch = envContent.match(/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=(.*)/);
-  const serviceMatch = envContent.match(/SUPABASE_SERVICE_ROLE_KEY=(.*)/);
-  const libraryMatch = envContent.match(/LOCAL_MASTER_LIBRARY_PATH=(.*)/);
-  supabaseUrl = urlMatch ? urlMatch[1].trim() : "";
-  supabaseAnonKey = anonMatch ? anonMatch[1].trim() : "";
-  supabaseServiceKey = serviceMatch ? serviceMatch[1].trim() : "";
-  customLibraryRoot = libraryMatch ? libraryMatch[1].trim().replace(/^["']|["']$/g, "") : "";
+  for (const envPath of candidateEnvPaths) {
+    if ((!supabaseUrl || !supabaseAnonKey || !customLibraryRoot) && fs.existsSync(/*turbopackIgnore: true*/ envPath)) {
+      try {
+        const envContent = fs.readFileSync(/*turbopackIgnore: true*/ envPath, "utf8");
+        const urlMatch = envContent.match(/NEXT_PUBLIC_SUPABASE_URL=(.*)/);
+        const anonMatch = envContent.match(/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=(.*)/);
+        const serviceMatch = envContent.match(/SUPABASE_SERVICE_ROLE_KEY=(.*)/);
+        const libraryMatch = envContent.match(/LOCAL_MASTER_LIBRARY_PATH=(.*)/);
+        if (!supabaseUrl && urlMatch) supabaseUrl = urlMatch[1].trim().replace(/^["']|["']$/g, "");
+        if (!supabaseAnonKey && anonMatch) supabaseAnonKey = anonMatch[1].trim().replace(/^["']|["']$/g, "");
+        if (!supabaseServiceKey && serviceMatch) supabaseServiceKey = serviceMatch[1].trim().replace(/^["']|["']$/g, "");
+        if (!customLibraryRoot && libraryMatch) customLibraryRoot = libraryMatch[1].trim().replace(/^["']|["']$/g, "");
+      } catch {
+        // ignore read error
+      }
+    }
+  }
+
+  const EXTERNAL_SSD_PATH = "/Volumes/RGodbeat XXX/RGODBEAT 23 SALE";
+  const INTERNAL_FALLBACK = path.join(os.homedir(), "RGODBEAT 23 SALE");
+
+  const libraryRoot =
+    customLibraryRoot ||
+    (fs.existsSync(EXTERNAL_SSD_PATH) ? EXTERNAL_SSD_PATH : INTERNAL_FALLBACK);
+
+  return {
+    supabaseUrl,
+    supabaseAnonKey,
+    supabaseServiceKey,
+    libraryRoot,
+  };
 }
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error("❌ Missing Supabase URL or Publishable key in configuration.");
-  process.exit(1);
+export function isLocalSyncAvailable(): boolean {
+  try {
+    const config = getConfig();
+    return Boolean(config.supabaseUrl && fs.existsSync(config.libraryRoot));
+  } catch {
+    return false;
+  }
 }
 
 // Master library root path on external SSD or configurable environment variable
-const EXTERNAL_SSD_PATH = "/Volumes/RGodbeat XXX/RGODBEAT 23 SALE";
-const INTERNAL_FALLBACK = path.join(os.homedir(), "RGODBEAT 23 SALE");
-
-export const MASTER_LIBRARY_ROOT =
-  process.env.LOCAL_MASTER_LIBRARY_PATH ||
-  customLibraryRoot ||
-  (fs.existsSync(EXTERNAL_SSD_PATH) ? EXTERNAL_SSD_PATH : INTERNAL_FALLBACK);
+export const MASTER_LIBRARY_ROOT = getConfig().libraryRoot;
 
 const CREDENTIALS_DIR = path.join(os.homedir(), ".rgodbeat");
 const CREDENTIALS_FILE = path.join(CREDENTIALS_DIR, "credentials.json");
@@ -76,10 +106,68 @@ interface LocalSyncReport {
 }
 
 export function ensureLibraryStructure(): string {
-  if (!fs.existsSync(/*turbopackIgnore: true*/ MASTER_LIBRARY_ROOT)) {
-    fs.mkdirSync(MASTER_LIBRARY_ROOT, { recursive: true });
+  const root = getConfig().libraryRoot;
+  if (!fs.existsSync(root)) {
+    fs.mkdirSync(root, { recursive: true });
   }
-  return MASTER_LIBRARY_ROOT;
+  return root;
+}
+
+/**
+ * Intelligent directory resolver that checks if a creator has already created
+ * a folder on the SSD for their Ableton project (e.g. "DAIMOND" or "SI TU SUPIERAS up soom").
+ * Preserves existing Ableton projects and avoids duplicate folders.
+ */
+export function resolveBeatDirectory(baseDir: string, beat: { slug: string; title: string }): string {
+  const directPath = path.join(baseDir, beat.slug);
+  if (fs.existsSync(directPath)) return directPath;
+
+  if (fs.existsSync(baseDir)) {
+    try {
+      const existingDirs = fs.readdirSync(baseDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+
+      const normalize = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      const normSlug = normalize(beat.slug);
+      const normTitle = normalize(beat.title);
+
+      // 1. Exact normalized match
+      for (const dirName of existingDirs) {
+        const normDir = normalize(dirName);
+        if (normDir && (normDir === normSlug || normDir === normTitle)) {
+          return path.join(baseDir, dirName);
+        }
+      }
+
+      // 2. Contains match or common typo / suffix check (e.g. daimond <-> diamond, si tu supieras up soom <-> si tu supieras)
+      for (const dirName of existingDirs) {
+        const normDir = normalize(dirName);
+        if (!normDir) continue;
+
+        const isDiamondDir = normDir.includes("diamond") || normDir.includes("daimond");
+        const isDiamondBeat = normSlug.includes("diamond") || normSlug.includes("daimond") || normTitle.includes("diamond") || normTitle.includes("daimond");
+        if (isDiamondDir && isDiamondBeat) {
+          return path.join(baseDir, dirName);
+        }
+
+        if (normSlug.length >= 4 && normDir.includes(normSlug)) {
+          return path.join(baseDir, dirName);
+        }
+        if (normTitle.length >= 4 && normDir.includes(normTitle)) {
+          return path.join(baseDir, dirName);
+        }
+        if (normDir.length >= 4 && normSlug.includes(normDir)) {
+          return path.join(baseDir, dirName);
+        }
+      }
+    } catch {
+      // directory read fallback
+    }
+  }
+
+  return directPath;
 }
 
 export function generateCanonicalMetadata(beat: any): object {
@@ -211,8 +299,8 @@ export function generateLicensePackage(beat: any): string {
 }
 
 export async function packageBeatLocally(beat: any, baseDir: string, client?: any): Promise<string> {
-  // Folder is named purely by slug (never by physical rank number)
-  const beatDir = path.join(baseDir, beat.slug);
+  // Use intelligent resolver to reuse existing creator folders (e.g. Ableton projects like DAIMOND or SI TU SUPIERAS up soom)
+  const beatDir = resolveBeatDirectory(baseDir, beat);
   if (!fs.existsSync(beatDir)) fs.mkdirSync(beatDir, { recursive: true });
 
   const subfolders = [
@@ -316,15 +404,21 @@ export async function packageBeatLocally(beat: any, baseDir: string, client?: an
 }
 
 export async function runSync(options: { dryRun?: boolean; slug?: string; beatId?: string; all?: boolean } = {}) {
+  const config = getConfig();
   console.log("==================================================================");
   console.log("📂 RGODBEAT 2.0 — LOCAL MASTER LIBRARY COMPANION");
   console.log("==================================================================");
-  console.log(`Library Root: ${MASTER_LIBRARY_ROOT}`);
+  console.log(`Library Root: ${config.libraryRoot}`);
+
+  if (!config.supabaseUrl || (!config.supabaseServiceKey && !config.supabaseAnonKey)) {
+    console.warn("⚠️ [Companion] Supabase credentials not found in environment or .env.local. Sync skipped.");
+    return [];
+  }
 
   const libraryRoot = ensureLibraryStructure();
   console.log(`✅ Verified master library root at ${libraryRoot}`);
 
-  const client = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey, {
+  const client = createClient(config.supabaseUrl, config.supabaseServiceKey || config.supabaseAnonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
@@ -363,7 +457,7 @@ export async function runSync(options: { dryRun?: boolean; slug?: string; beatId
           .update({
             local_sync_status: "synced",
             last_synced_at: now,
-            local_archive_path: beat.slug,
+            local_archive_path: path.basename(targetPath),
           })
           .eq("id", beat.id);
 
@@ -402,5 +496,10 @@ export async function runSync(options: { dryRun?: boolean; slug?: string; beatId
 
 // Direct execution
 if (require.main === module) {
+  const conf = getConfig();
+  if (!conf.supabaseUrl || !conf.supabaseAnonKey) {
+    console.error("❌ Missing Supabase URL or Publishable key in configuration.");
+    process.exit(1);
+  }
   runSync();
 }

@@ -219,6 +219,7 @@ export default function App() {
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const isRecordingRef = useRef<boolean>(false);
+  const recordingPreparationRef = useRef(0);
 
   const [activeRecordingTrackId, setActiveRecordingTrackId] = useState<VocalTrackId | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<VocalTrackId>('lead1');
@@ -283,7 +284,7 @@ export default function App() {
     };
   }, []);
 
-  // Bluetooth Latency Auto-Compensation & App Install Modal State
+  // Fixed latency presets; actual Bluetooth delay depends on the device.
   const [bluetoothSyncEnabled, setBluetoothSyncEnabled] = useState<boolean>(false);
   const [bluetoothOffsetMs] = useState<number>(185);
   const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
@@ -302,6 +303,7 @@ export default function App() {
   }, [isStartupResolved, showStartupModal]);
 
   const handleToggleBluetoothSync = () => {
+    if (isRecordingRef.current) return;
     const nextState = !bluetoothSyncEnabled;
     setBluetoothSyncEnabled(nextState);
     if (engine) {
@@ -309,7 +311,7 @@ export default function App() {
     }
     showToast(
       nextState
-        ? `⚡ Compensación Bluetooth ACTIVADA (-${bluetoothOffsetMs}ms). Tu voz grabada se sincronizará al beat automáticamente.`
+        ? `Compensación Bluetooth: -${bluetoothOffsetMs}ms. Es un ajuste fijo; el retraso puede variar según tus audífonos.`
         : '🎧 Modo normal (Cable / Altavoz). Compensación estándar activa (-25ms).',
       'info'
     );
@@ -476,6 +478,7 @@ export default function App() {
   }
   async function saveProjectToCloud(...args: Parameters<typeof persistCloudProject>) {
     if (replacingProjectRef.current) return { success: false, error: 'Se está cambiando de proyecto.' };
+    if (cloudConflictRef.current) return { success: false, conflict: true, error: 'Descarga tu copia local y carga la cuenta para resolver el cambio de otra sesión.' };
     cloudDirtyRef.current = true;
     setCloudBackupStatus('Respaldando en tu cuenta…');
     const result = await persistCloudProject(args[0], args[1], args[2], args[3] ?? beatMixRef.current);
@@ -580,6 +583,7 @@ export default function App() {
   const [isSavingDevice, setIsSavingDevice] = useState<boolean>(false);
   const [isSavingAndExiting, setIsSavingAndExiting] = useState<boolean>(false);
   const [isLoadingCloud, setIsLoadingCloud] = useState<boolean>(false);
+  const [isOpeningDeviceProject, setIsOpeningDeviceProject] = useState(false);
   const [dismissExpirationBanner, setDismissExpirationBanner] = useState<boolean>(false);
 
   const refreshCloudProjectStatus = useCallback(async () => {
@@ -720,9 +724,9 @@ export default function App() {
           setCloudProjectInfo(remote);
           if (remote.unavailable && !lastSession) throw new Error('No se pudo consultar tu respaldo de cuenta. Reintenta antes de iniciar otro proyecto.');
           if (remote.hasProject && lastSession && (remote.projectMeta?.savedAt || 0) > lastSession.timestamp + 1000) {
-            // Another device may have worked more recently. Load that complete revision before editing.
-            lastSession = null;
-            activeProjectIdRef.current = crypto.randomUUID();
+            // Keep local voices until the user explicitly chooses to replace the project.
+            cloudConflictRef.current = true;
+            setCloudBackupStatus('Hay una copia más reciente en tu cuenta. Tu proyecto local se conserva.');
           }
         }
         if (cancelled) return;
@@ -1180,6 +1184,7 @@ export default function App() {
 
   // Automatic Beat BPM & Key Detection on demand
   const handleDetectCurrentBeat = async () => {
+    if (isRecordingRef.current || replacingProjectRef.current || isAnalyzingBeat) return;
     if (!currentBeat || !currentBeat.buffer) {
       showToast('Carga un beat para analizarlo', 'info');
       return;
@@ -1190,9 +1195,11 @@ export default function App() {
       showToast('Analizando tempo y tonalidad del beat con motor DSP...', 'info');
 
       const result = await analyzeBeatAudio(currentBeat.buffer);
+      if (currentBeatRef.current?.buffer !== currentBeat.buffer || replacingProjectRef.current) return;
+      if (isRecordingRef.current) await handleStopRecord();
 
       const updatedBeat: BeatData = {
-        ...currentBeat,
+        ...currentBeatRef.current,
         bpm: result.bpm,
         key: result.key,
         scale: result.scaleMode === 'minor' ? 'Menor Natural' : 'Mayor',
@@ -1206,7 +1213,7 @@ export default function App() {
       if (engine) engine.setBeat(updatedBeat);
 
       // Auto-sync vocal tune root key & scale mode to all tracks
-      const newTracks = tracks.map((t) => ({
+      const newTracks = tracksRef.current.map((t) => ({
         ...t,
         fx: {
           ...t.fx,
@@ -1229,8 +1236,9 @@ export default function App() {
       );
     } catch (err) {
       console.error('Beat analysis error:', err);
-      setIsAnalyzingBeat(false);
       showToast('No se pudo analizar el beat', 'error');
+    } finally {
+      setIsAnalyzingBeat(false);
     }
   };
 
@@ -1296,10 +1304,10 @@ export default function App() {
     }
   };
 
-  const handleSeek = (timeSec: number) => {
+  const handleSeek = async (timeSec: number) => {
     if (!engine) return;
-    if (isRecording) {
-      handleStopRecord();
+    if (isRecordingRef.current) {
+      await handleStopRecord();
     }
     engine.seek(timeSec, tracksRef.current);
   };
@@ -1322,23 +1330,17 @@ export default function App() {
     });
   }, [engine, showToast]);
 
-  const handleToggleRecArmed = useCallback(() => {
-    setIsRecArmed((prev) => {
-      const next = !prev;
-      if (!next) {
-        if (isRecording) {
-          handleStopRecord();
-        }
-        if (engine) {
-          engine.releaseMicrophone();
-        }
-        showToast('Modo Escucha Hi-Fi activado: Micrófono desconectado para reproducir sin filtros de llamada.', 'info');
-      } else {
-        showToast('Botón REC reactivado: Listo para grabar nuevas tomas.', 'info');
-      }
-      return next;
-    });
-  }, [engine, isRecording, showToast]);
+  const handleToggleRecArmed = async () => {
+    const next = !isRecArmed;
+    setIsRecArmed(next);
+    if (!next) {
+      await handleStopRecord();
+      engine?.releaseMicrophone();
+      showToast('Modo Escucha Hi-Fi activado: Micrófono desconectado para reproducir sin filtros de llamada.', 'info');
+    } else {
+      showToast('Botón REC reactivado: Listo para grabar nuevas tomas.', 'info');
+    }
+  };
 
   // Channel selection with live recording migration:
   // If user taps another track while recording is active, cleanly commit the take on the current track
@@ -1391,10 +1393,12 @@ export default function App() {
     setActiveRecordingTrackId(trackId);
     isRecordingRef.current = true;
     setIsRecording(true);
+    const preparation = ++recordingPreparationRef.current;
 
     const settings = sessionSettingsRef.current;
     const protectedBaseline = await saveStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings,
       settings.currentTime, settings.beatVolume, activeViewRef.current);
+    if (preparation !== recordingPreparationRef.current || !isRecordingRef.current) return;
     if (!protectedBaseline) {
       isRecordingRef.current = false; setIsRecording(false); setActiveRecordingTrackId(null);
       showToast('No se pudo preparar el respaldo. Libera espacio o descarga tu proyecto antes de grabar.', 'error'); return;
@@ -1409,12 +1413,15 @@ export default function App() {
     }
   };
 
-  function handleStopRecord() {
+  async function handleStopRecord() {
+    ++recordingPreparationRef.current;
     if (!engine) return;
-    engine.stopRecording();
+    await engine.stopRecording();
   };
 
   const handleCancelCountIn = useCallback(() => {
+    ++recordingPreparationRef.current;
+    isRecordingRef.current = false;
     if (engine) {
       engine.abortCountIn();
     }
@@ -1541,8 +1548,8 @@ export default function App() {
       isLocked: true,
     };
 
-    const target = tracks.find((t) => t.id === targetTrackId);
-    const updated = tracks.map((t) => {
+    const target = tracksRef.current.find((t) => t.id === targetTrackId);
+    const updated = tracksRef.current.map((t) => {
       if (t.id !== targetTrackId) return t;
 
       const existingClips = (t.clips && t.clips.length > 0)
@@ -1611,16 +1618,7 @@ export default function App() {
         );
         tracksRef.current = next;
 
-        const updatedTrack = next.find((t) => t.id === trackId);
-        if (updatedTrack && updatedTrack.fx.tune?.enabled && updatedTrack.fx.tune.speed > 0.01) {
-          engine.updateTuneForTrack(updatedTrack).then((tuned) => {
-            if (tuned) {
-              updatedTrack.tunedBuffer = tuned;
-              setTracks([...next]);
-              tracksRef.current = [...next];
-            }
-          });
-        }
+        // The shared tuning effect applies results only to clips that still exist.
         return next;
       });
       const targetName = tracks.find((t) => t.id === trackId)?.name || trackId;
@@ -1732,8 +1730,10 @@ export default function App() {
 
   const handleDeleteTake = (trackId: VocalTrackId, clipId?: string) => {
     if (isRecordingRef.current) return;
+    const target = tracksRef.current.find(track => track.id === trackId);
+    if (!target || (clipId && !getTrackClips(target).some(clip => clip.id === clipId))) return;
     pushUndoSnapshot(clipId ? 'Borrar pedazo seleccionado' : 'Eliminar toma');
-    const updated = tracks.map((t) => {
+    const updated = tracksRef.current.map((t) => {
       if (t.id !== trackId) return t;
 
       if (clipId && t.clips && t.clips.length > 0) {
@@ -1835,7 +1835,9 @@ export default function App() {
 
   const handleSplitTake = async (trackId: VocalTrackId, clipId?: string, splitTimeSec = currentTime) => {
     if (!engine || isRecordingRef.current) return;
+    const projectId = activeProjectIdRef.current;
     const ctx = await engine.ensureAudioContext();
+    if (isRecordingRef.current || replacingProjectRef.current || activeProjectIdRef.current !== projectId) return;
     const track = tracksRef.current.find(t => t.id === trackId);
     if (!track) return;
     const clips = getTrackClips(track);
@@ -1849,7 +1851,9 @@ export default function App() {
 
   const handleTrimTake = async (trackId: VocalTrackId, clipId: string, edge: 'start' | 'end') => {
     if (!engine || isRecordingRef.current) return;
+    const projectId = activeProjectIdRef.current;
     const ctx = await engine.ensureAudioContext();
+    if (isRecordingRef.current || replacingProjectRef.current || activeProjectIdRef.current !== projectId) return;
     const track = tracksRef.current.find(t => t.id === trackId);
     const clips = track ? getTrackClips(track) : [];
     const clip = clips.find(c => c.id === clipId);
@@ -1900,7 +1904,9 @@ export default function App() {
   };
 
   // Explicitly select beat from library or demo list
-  const handleSelectBeat = (beat: BeatData) => {
+  const handleSelectBeat = async (beat: BeatData) => {
+    if (isRecordingRef.current) await handleStopRecord();
+    if (replacingProjectRef.current) return;
     currentBeatRef.current = beat;
     setCurrentBeat(beat);
     if (engine) engine.setBeat(beat);
@@ -1920,6 +1926,8 @@ export default function App() {
     detectedAnalysis?: BeatAnalysisResult,
     rawBuffer?: ArrayBuffer
   ) => {
+    if (isRecordingRef.current) await handleStopRecord();
+    if (replacingProjectRef.current) return;
     if (savedCustomBeats.length >= MAX_SAVED_BEATS) {
       showToast(`Capacidad máxima de ${MAX_SAVED_BEATS} beats alcanzada. Elimina uno para liberar espacio.`, 'error');
       return;
@@ -1949,12 +1957,12 @@ export default function App() {
 
     const slotNumber = nextSaved.findIndex((b) => b.id === uploadedBeat.id) + 1;
 
-    if (detectedAnalysis) {
+    if (detectedAnalysis && currentBeatRef.current?.buffer === uploadedBeat.buffer) {
       showToast(
         `⚡ ¡Beat asignado a Slot #${slotNumber} de ${MAX_SAVED_BEATS}!: ${detectedAnalysis.bpm} BPM • ${detectedAnalysis.tonalityName}`,
         'success'
       );
-      const newTracks = tracks.map((t) => ({
+      const newTracks = tracksRef.current.map((t) => ({
         ...t,
         fx: {
           ...t.fx,
@@ -2042,9 +2050,10 @@ export default function App() {
 
   // Load Saved Project from User Account Cloud
   const handleLoadCloudProject = async () => {
-    if (isRecordingRef.current) return;
+    if (isRecordingRef.current || replacingProjectRef.current) return;
     if (tracksRef.current.some(track => getTrackClips(track).length) && !window.confirm('Cargar la cuenta reemplaza las voces abiertas en este dispositivo. Descarga tu archivo .rgodbeat si quieres conservarlas. ¿Continuar?')) return;
     if (!engine) return;
+    replacingProjectRef.current = true;
     engine.stop();
     setIsPlaying(false);
     setIsLoadingCloud(true);
@@ -2060,6 +2069,7 @@ export default function App() {
       }
 
       // 1. Restore beat
+      let loadedBeat: BeatData | null = null;
       if (cloudData.beatData) {
         const beat = cloudData.beatData;
         if (beat.customBeatBuffer) {
@@ -2078,16 +2088,15 @@ export default function App() {
             detectedKey: beat.detectedKey,
             isLocked: true,
           };
-          setCurrentBeat(fullCustomBeat);
-          engine.setBeat(fullCustomBeat);
+          loadedBeat = fullCustomBeat;
         } else if (beat.id) {
           const found = demoBeats.find((b) => b.id === beat.id) || savedCustomBeats.find((b) => b.id === beat.id);
-          if (found) {
-            setCurrentBeat(found);
-            engine.setBeat(found);
-          }
+          loadedBeat = found ?? null;
         }
+        if (!loadedBeat) throw new Error('El respaldo no incluye el audio del beat y ese beat no está en tu biblioteca. Tu proyecto abierto se conserva.');
       }
+      setCurrentBeat(loadedBeat);
+      engine.setBeat(loadedBeat);
 
       // 2. Restore vocal tracks
       activeProjectIdRef.current = crypto.randomUUID();
@@ -2104,23 +2113,31 @@ export default function App() {
       }
 
       // 4. Synchronize immediately to local session storage
-      const locallySaved = await saveStudioSession(
+      const locallySaved = await persistStudioSession(
         cloudData.tracks,
         currentBeatRef.current,
         cloudData.loopSettings,
         currentTime,
         beatFX.volume,
-        activeViewRef.current
+        activeViewRef.current,
+        sessionOwnerRef.current,
+        beatMixRef.current,
+        activeProjectIdRef.current
       );
 
       if (!locallySaved) throw new Error('El proyecto se abrió, pero no se pudo proteger en este dispositivo. Descarga una copia.');
+      cloudConflictRef.current = false;
+      cloudDirtyRef.current = false;
+      setCloudBackupStatus('Respaldo de cuenta cargado');
+      setLocalBackupStatus('Copia local guardada');
       await retireRecordingCheckpoints(getSessionStorageKey(sessionOwnerRef.current));
       setIsStartupResolved(true);
       showToast('☁️ Proyecto cargado y sincronizado exitosamente.', 'success');
     } catch (err: unknown) {
       console.error('Error loading cloud project:', err);
-      showToast('Error al procesar proyecto de la nube.', 'error');
+      showToast(err instanceof Error ? err.message : 'Error al procesar proyecto de la nube.', 'error');
     } finally {
+      replacingProjectRef.current = false;
       setIsLoadingCloud(false);
     }
   };
@@ -2201,17 +2218,20 @@ export default function App() {
 
   // Open Project File (.rgodbeat) from Device (phone or PC)
   const handleImportDeviceProject = async (file: File) => {
-    if (isRecordingRef.current) return;
+    if (isRecordingRef.current || replacingProjectRef.current) return;
     if (sessionOwnerRef.current === undefined || startupError) return;
     if ((pendingStartupSession?.takesCount || tracksRef.current.some(track => getTrackClips(track).length)) && !window.confirm('Abrir este archivo reemplaza el proyecto activo. Comprueba que guardaste el anterior como .rgodbeat. ¿Continuar?')) return;
     if (!engine) return;
+    replacingProjectRef.current = true;
+    setIsOpeningDeviceProject(true);
     engine.stop();
     setIsPlaying(false);
 
     try {
       showToast('Abriendo archivo de proyecto desde tu dispositivo...', 'info');
       const audioCtx = await engine.ensureAudioContext();
-      const restored = await importProjectFromDeviceFile(file, audioCtx, crypto.randomUUID(), sessionOwnerRef.current);
+      const restored = await importProjectFromDeviceFile(file, audioCtx, crypto.randomUUID(), sessionOwnerRef.current,
+        [...(currentBeatRef.current ? [currentBeatRef.current] : []), ...savedCustomBeats, ...demoBeats]);
 
       if (!restored) {
         showToast('No se pudo leer el archivo de proyecto.', 'error');
@@ -2219,11 +2239,9 @@ export default function App() {
       }
 
       activeProjectIdRef.current = restored.projectId;
-      if (restored.beat) {
-        setCurrentBeat(restored.beat);
-        currentBeatRef.current = restored.beat;
-        engine.setBeat(restored.beat);
-      }
+      setCurrentBeat(restored.beat);
+      currentBeatRef.current = restored.beat;
+      engine.setBeat(restored.beat);
 
       currentBeatRef.current = engine.getBeat();
       restoreBeatMix(restored);
@@ -2252,7 +2270,10 @@ export default function App() {
       showToast('✅ Proyecto cargado con éxito desde tu dispositivo.', 'success');
     } catch (err: unknown) {
       console.error('Error importing project from device:', err);
-      showToast('Error al abrir el archivo de proyecto. Formato incompatible o dañado.', 'error');
+      showToast(err instanceof Error ? err.message : 'Error al abrir el archivo de proyecto. Formato incompatible o dañado.', 'error');
+    } finally {
+      replacingProjectRef.current = false;
+      setIsOpeningDeviceProject(false);
     }
   };
 
@@ -2310,6 +2331,14 @@ export default function App() {
     } flex flex-col selection:bg-amber-500/30 selection:text-amber-200 transition-colors duration-200`}>
       {/* 1-Bar Count In Metronome Visual Overlay */}
       <CountInOverlay beatNumber={countInBeat} onCancel={handleCancelCountIn} />
+      {(isLoadingCloud || isOpeningDeviceProject) && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          role="dialog" aria-modal="true" aria-label="Abriendo proyecto" aria-busy="true">
+          <p className="rounded-2xl border border-amber-500/40 bg-zinc-950 p-6 text-white" role="status">
+            Abriendo proyecto… Espera a que se carguen el beat y las voces.
+          </p>
+        </div>
+      )}
 
       {/* Top Bar Header */}
       <TopBar

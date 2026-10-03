@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import { getProjectDuration, getRenderDuration, splitClip, trimClip } from '../lib/studio/audio/clipEditing';
 import { audioBufferToWav, extractWaveformPeaks, punchInClips } from '../lib/studio/audio/wavEncoder';
 import { processVocalTune } from '../lib/studio/audio/pitchCorrection';
+import { AudioEngine } from '../lib/studio/audio/audioEngine';
 import type { VocalClip, VocalFX, VocalTrack } from '../lib/studio/types/audio';
 
 class TestBuffer {
@@ -86,6 +87,70 @@ async function main() {
   assert(messages[2].samples?.every(sample => sample === Math.fround(0.7)));
   recorder.process([[new Float32Array(128)]], [[output]]);
   assert.equal(messages.length, 4, 'capture stops after the final acknowledgement');
+  recorder.port.onmessage({ data: { type: 'start', startFrame: 256 } });
+  recorder.process([[]], [[output]]);
+  sandbox.currentFrame = 384;
+  recorder.process([[new Float32Array(128).fill(0.3)]], [[output]]);
+  sandbox.currentFrame = 512;
+  recorder.port.onmessage({ data: { type: 'stop', id: 3 } });
+  assert.equal(messages[4].samples?.length, 256, 'an absent input block must not shorten the timeline');
+  assert(messages[4].samples?.slice(0, 128).every(sample => sample === 0));
+  assert(messages[4].samples?.slice(128).every(sample => sample === Math.fround(0.3)));
+
+  // Late messages must use the take's original clock and calibration, not a later seek.
+  const finished: Array<{ start: number; buffer: AudioBuffer }> = [];
+  const checkpoints: Array<{ start: number; samples: Float32Array; index: number }> = [];
+  const engine = new AudioEngine({
+    onTimeUpdate() {}, onPlaybackEnded() {}, onCountInBeat() {}, onRecordingAborted() {}, onError(message) { throw new Error(message); },
+    onRecordingFinished(_id, buffer, _wave, start) { finished.push({ buffer, start: start! }); },
+    onRecordingCheckpoint(checkpoint) { checkpoints.push(checkpoint); },
+  });
+  const capture = engine as unknown as {
+    ctx: BaseAudioContext; recordingTimelineOrigin: number; takeLatencyCompensation: number;
+    playbackStartCtxTime: number; recordingLatencyCompensation: number; capturedFirstFrame: number | null;
+    recordingTrackId: string; recordingTakeId: string; isRecording: boolean; recordedPCMChunks: Float32Array[];
+    recordingStartBeatTime: number; collectPCM(samples: Float32Array, frame: number): void;
+    flushRecorder(type: string): Promise<number>; micStream: { getTracks(): Array<{ stop(): void }> };
+  };
+  capture.ctx = Object.assign(ctx, { sampleRate: 48000, currentTime: 1 });
+  capture.recordingTimelineOrigin = 1;
+  capture.takeLatencyCompensation = -0.025;
+  capture.playbackStartCtxTime = 90;
+  capture.recordingLatencyCompensation = -0.185;
+  capture.recordingTrackId = 'lead1'; capture.recordingTakeId = 'test-take'; capture.isRecording = true;
+  const pcm = Float32Array.from({ length: 4096 }, (_, i) => i / 8192);
+  capture.collectPCM(pcm, 48000);
+  assert.equal(checkpoints[0].start, 0);
+  assert.equal(checkpoints[0].samples.length, 2896, 'trim exactly the compensated pre-zero samples');
+  assert.equal(checkpoints[0].samples[0], pcm[1200]);
+  capture.collectPCM(new Float32Array(128), 52096);
+  assert.equal(checkpoints[1].index, 1);
+  assert.equal(checkpoints[1].samples.length, 128);
+  let acknowledge!: (frame: number) => void;
+  capture.flushRecorder = () => new Promise(resolve => { acknowledge = resolve; });
+  let released = false;
+  capture.micStream = { getTracks: () => [{ stop() { released = true; } }] };
+  const firstStop = engine.stopRecording();
+  const secondStop = engine.stopRecording();
+  assert.equal(firstStop, secondStop, 'all callers must await the same final capture');
+  engine.releaseMicrophone();
+  assert.equal(released, false, 'do not disconnect the mic before the final chunk arrives');
+  let stopped = false; void secondStop.then(() => { stopped = true; });
+  await Promise.resolve(); assert.equal(stopped, false);
+  capture.collectPCM(new Float32Array(64), 52224);
+  acknowledge(52288);
+  await Promise.all([firstStop, secondStop]);
+  assert.equal(released, true);
+  assert.equal(finished.length, 1);
+  assert.equal(finished[0].buffer.length, 3088, 'keep short takes and the final partial chunk');
+  assert.equal(finished[0].start, 0);
+  capture.capturedFirstFrame = null;
+  capture.recordingTrackId = 'lead1'; capture.isRecording = true;
+  capture.recordingTimelineOrigin = 0; capture.takeLatencyCompensation = -0.025;
+  capture.collectPCM(new Float32Array(128), 48000);
+  assert.equal(checkpoints.at(-1)!.start, 0.975, 'late messages keep the anchored offset after a seek/calibration change');
+  const lastStop = engine.stopRecording(); acknowledge(48128); await lastStop;
+  assert.equal(finished.at(-1)!.buffer.length, 128, 'a very short captured voice is still a take');
   console.log('Studio audio regression tests passed.');
 }
 void main().catch(error => { console.error(error); process.exitCode = 1; });

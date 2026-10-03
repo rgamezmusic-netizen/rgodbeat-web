@@ -17,10 +17,10 @@ export default async function CheckoutSuccessPage({ searchParams }: SuccessPageP
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 py-16">
         <div className="max-w-md w-full bg-[#0e0e13] border border-white/[0.08] p-8 rounded-2xl space-y-4">
-          <h1 className="text-xl font-extrabold text-white">Missing Session</h1>
-          <p className="text-sm text-zinc-400">No checkout session identifier was provided.</p>
+          <h1 className="text-xl font-extrabold text-white">No encontramos tu compra</h1>
+          <p className="text-sm text-zinc-400">Falta el identificador de la sesión de pago. Revisa tu cuenta o vuelve a la tienda.</p>
           <Button href="/beats" variant="primary" size="md">
-            Return to Store
+            Volver a la tienda
           </Button>
         </div>
       </div>
@@ -62,8 +62,8 @@ export default async function CheckoutSuccessPage({ searchParams }: SuccessPageP
     .eq("stripe_checkout_session_id", session_id)
     .maybeSingle();
 
-  // Resilient Fallback: If webhook was delayed or filtered in CLI, verify directly with Stripe
-  if (!order && session_id && session_id.startsWith("cs_")) {
+  // Recover fulfillment when the webhook is delayed or left an incomplete order.
+  if ((!order || order.status !== "completed" || order.payment_status !== "paid") && session_id.startsWith("cs_")) {
     try {
       const { getStripe, isStripeConfigured } = await import("@/lib/stripe/server");
       if (isStripeConfigured()) {
@@ -116,42 +116,45 @@ export default async function CheckoutSuccessPage({ searchParams }: SuccessPageP
 
   const customer = order?.customers as any;
   const purchases = (order?.purchases as any[]) || [];
+  const paymentConfirmed = order?.status === "completed" && order?.payment_status === "paid";
 
   return (
     <div className="min-h-screen bg-[#08080a] text-white py-16 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto space-y-8">
         {/* Header Confirmation Card */}
-        <div className="bg-[#0e0e14] border border-emerald-500/30 rounded-2xl p-8 sm:p-10 text-center relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 blur-3xl pointer-events-none rounded-full" />
+        <div className={`bg-[#0e0e14] border rounded-2xl p-8 sm:p-10 text-center relative overflow-hidden shadow-2xl ${paymentConfirmed ? "border-emerald-500/30" : "border-amber-500/30"}`}>
+          <div className={`absolute top-0 right-0 w-64 h-64 blur-3xl pointer-events-none rounded-full ${paymentConfirmed ? "bg-emerald-500/10" : "bg-amber-500/10"}`} />
           
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-5">
+          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full border mb-5 ${paymentConfirmed ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-amber-500/20 text-amber-300 border-amber-500/30"}`}>
             <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              {paymentConfirmed ? <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /> : <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" />}
             </svg>
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mb-2">
-            PAYMENT CONFIRMED
+            {paymentConfirmed ? "PAGO CONFIRMADO" : "CONFIRMANDO TU PAGO"}
           </h1>
           <p className="text-sm text-zinc-400 max-w-lg mx-auto">
-            Thank you for your purchase. Your digital master license and sound assets are ready for immediate download.
+            {paymentConfirmed
+              ? "Gracias por tu compra. Aquí encontrarás tus licencias y archivos disponibles."
+              : "Aún no pudimos confirmar tu pago. Si ya completaste el checkout, espera un momento y actualiza esta página."}
           </p>
 
           <div className="mt-6 inline-flex flex-wrap items-center justify-center gap-4 text-xs font-mono text-zinc-400 bg-white/[0.02] border border-white/[0.06] px-4 py-2 rounded-xl">
             {order ? (
               <>
-                <span>ORDER: <strong className="text-white">{order.id.slice(0, 8)}...</strong></span>
+                <span>ORDEN: <strong className="text-white">{order.id.slice(0, 8)}...</strong></span>
                 <span>•</span>
                 <span>TOTAL: <strong className="text-emerald-400">{formatCurrency(order.total_amount)}</strong></span>
                 {customer?.email && (
                   <>
                     <span>•</span>
-                    <span>DELIVERED TO: <strong className="text-white">{customer.email}</strong></span>
+                    <span>CORREO: <strong className="text-white">{customer.email}</strong></span>
                   </>
                 )}
               </>
             ) : (
-              <span>SESSION ID: <strong className="text-white">{session_id.slice(0, 16)}...</strong></span>
+              <span>SESIÓN: <strong className="text-white">{session_id.slice(0, 16)}...</strong></span>
             )}
           </div>
         </div>
@@ -160,20 +163,22 @@ export default async function CheckoutSuccessPage({ searchParams }: SuccessPageP
         <div className="bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-6 sm:p-8 space-y-6">
           <div className="flex items-center justify-between border-b border-white/[0.06] pb-4">
             <h2 className="text-lg font-bold tracking-wider text-white uppercase">
-              YOUR DOWNLOADABLE ASSETS
+              TUS ARCHIVOS Y LICENCIAS
             </h2>
             <span className="text-xs font-mono px-2.5 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-              {purchases.length} {purchases.length === 1 ? "LICENSE" : "LICENSES"}
+              {purchases.length} {purchases.length === 1 ? "LICENCIA" : "LICENCIAS"}
             </span>
           </div>
 
-          {purchases.length === 0 ? (
+          {!paymentConfirmed || purchases.length === 0 ? (
             <div className="text-center py-8 space-y-3">
               <p className="text-sm text-zinc-400">
-                Fulfillment is finalizing in the background via Stripe Webhook.
+                {paymentConfirmed
+                  ? "Tu pago está confirmado y estamos preparando tus archivos."
+                  : "Tu compra todavía no aparece como confirmada. No vuelvas a pagar; actualiza esta página en unos momentos."}
               </p>
               <p className="text-xs text-zinc-500 font-mono">
-                Refresh this page in a few moments if your assets do not appear immediately.
+                Si el problema continúa, contáctanos en rgodbeat@gmail.com e incluye el identificador de sesión mostrado arriba.
               </p>
             </div>
           ) : (
@@ -266,7 +271,7 @@ export default async function CheckoutSuccessPage({ searchParams }: SuccessPageP
             href="/beats"
             className="text-xs font-mono text-zinc-400 hover:text-white transition-colors uppercase tracking-wider"
           >
-            ← CONTINUE BROWSING STORE
+            ← VOLVER A LA TIENDA
           </Link>
         </div>
       </div>

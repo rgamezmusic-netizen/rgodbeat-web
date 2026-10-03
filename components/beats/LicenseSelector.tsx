@@ -34,10 +34,10 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
         <div>
           <span className="text-[11px] font-mono text-purple-400 uppercase tracking-widest block">
-            LICENSE & USAGE RIGHTS
+            LICENCIA Y DERECHOS DE USO
           </span>
           <h2 id="licensing-heading" className="text-xl sm:text-2xl font-bold text-white tracking-tight mt-0.5">
-            Select Your License
+            Elige tu licencia
           </h2>
         </div>
 
@@ -46,7 +46,7 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
             {formatCurrency(currentPrice)}
           </div>
           <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
-            One-time licensing payment
+            Pago único por la licencia
           </span>
         </div>
       </div>
@@ -122,7 +122,7 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
         {/* PDF Contract Delivery Notice */}
         <div className="pt-3 border-t border-white/[0.06] flex items-center gap-2 text-xs text-zinc-400">
           <span className="text-purple-400 font-mono">📄</span>
-          <span>Official RGODBEAT Beat License Agreement (PDF) is issued upon checkout.</span>
+          <span>El acuerdo oficial de licencia RGODBEAT en PDF se entrega al completar la compra.</span>
         </div>
       </div>
 
@@ -136,7 +136,7 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
           size="lg"
           className="w-full sm:flex-[1.4] justify-center font-bold tracking-wider text-sm shadow-[0_0_25px_rgba(255,255,255,0.18)]"
         >
-          BUY NOW — {formatCurrency(currentPrice)}
+          COMPRAR AHORA — {formatCurrency(currentPrice)}
         </Button>
 
         {/* Secondary Clean CTA */}
@@ -152,12 +152,12 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
             <circle cx="20" cy="21" r="1" />
             <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
           </svg>
-          <span>ADD TO CART</span>
+          <span>AGREGAR AL CARRITO</span>
         </Button>
       </div>
 
       <div className="text-center text-[11px] font-mono text-zinc-500 pt-1">
-        🔒 Encrypted Checkout • Instant Master File Download Link • Official Signed Contract
+        🔒 Pago seguro • Descarga digital • Contrato oficial
       </div>
     </section>
   );

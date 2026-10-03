@@ -8,7 +8,7 @@ export const LICENSE_OPTIONS: LicenseOption[] = [
     price: 29,
     format: "MP3 (320 kbps)",
     features: [
-      "Non-Exclusive",
+      "Licencia no exclusiva",
       "MP3 320 kbps",
     ],
   },
@@ -19,7 +19,7 @@ export const LICENSE_OPTIONS: LicenseOption[] = [
     price: 49,
     format: "MP3 320 kbps + WAV 24-bit / 48 kHz",
     features: [
-      "Non-Exclusive",
+      "Licencia no exclusiva",
       "MP3 320 kbps",
       "WAV 24-bit / 48 kHz",
     ],
@@ -30,12 +30,12 @@ export const LICENSE_OPTIONS: LicenseOption[] = [
     slug: "unlimited",
     name: "UNLIMITED",
     price: 199,
-    format: "MP3 + WAV + Stems on Request",
+    format: "MP3 + WAV + stems bajo solicitud",
     features: [
-      "Non-Exclusive",
+      "Licencia no exclusiva",
       "MP3",
       "WAV",
-      "Includes access to grouped stems upon request",
+      "Acceso a stems agrupados bajo solicitud",
     ],
   },
   {
@@ -43,12 +43,12 @@ export const LICENSE_OPTIONS: LicenseOption[] = [
     slug: "exclusive",
     name: "EXCLUSIVE",
     price: 499,
-    format: "Exclusive Ownership + Full Masters",
+    format: "Derechos exclusivos + masters completos",
     features: [
-      "Exclusive",
+      "Licencia exclusiva",
       "MP3",
       "WAV",
-      "Includes access to grouped stems upon request",
+      "Acceso a stems agrupados bajo solicitud",
     ],
   },
 ];

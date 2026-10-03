@@ -4,6 +4,29 @@ La propuesta que se desprende del código es un estudio vocal portátil: cargar 
 
 ## Cambios realizados
 
+### Ajustes del 3 de octubre de 2026
+
+- Detener una grabación devuelve la misma promesa a todos los controles. Desconectar el micrófono, buscar otra posición, cambiar de beat o guardar espera al cierre de la toma; el último fragmento del AudioWorklet se conserva antes de liberar el micrófono.
+- Cada grabación mantiene su origen temporal y su compensación de latencia, también al cambiar de pista. Los fragmentos recibidos tarde no usan la posición de una búsqueda posterior. Al empezar en cero se recortan exactamente las muestras compensadas que quedarían antes del inicio del proyecto. El diario de recuperación recibe el mismo PCM y la misma posición que la toma terminada.
+- Se conservan las tomas menores de 200 ms. Un bloque de entrada ausente se registra como silencio, sin acortar la línea de tiempo; esta posibilidad está descrita en la [documentación de AudioWorkletProcessor](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletProcessor/process).
+- Cancelar durante la preparación del respaldo impide que el micrófono comience a grabar después. El cambio de modo de escucha espera a terminar la toma y no ejecuta efectos dentro de un actualizador de estado.
+- El análisis y la carga de beats usan las pistas actuales al aplicar sus resultados. Un análisis de otro beat se descarta; se retiró otra aplicación tardía de afinación que podía reinstalar un estado anterior. Los cortes y recortes comprueban que el proyecto sigue siendo el mismo tras esperar al AudioContext.
+- Una referencia antigua a un clip borrado ya no elimina todas las voces de su pista. La selección visible y el botón de corte usan el clip vigente después de cortar o deshacer.
+- La copia local se ofrece aunque la cuenta tenga una revisión más reciente. En ese caso se detiene el respaldo automático a la cuenta hasta cargarla expresamente o comenzar un proyecto nuevo. Abrir un archivo o cargar la cuenta pausa las escrituras locales automáticas durante el reemplazo.
+- Guardar y descargar rechazan voces sin audio. Un fallo al codificar el beat rechaza el archivo completo. Un archivo antiguo que no contiene el beat solo se abre si ese mismo beat está disponible en la biblioteca; nunca se empareja silenciosamente con otra pista.
+- La conversión del archivo descargable a Base64 usa fragmentos limitados y cede tiempo a la interfaz. No construye una cadena binaria completa byte por byte. El medidor del micrófono se actualiza a 20 Hz para reducir trabajo de interfaz durante la grabación.
+- El editor explica cómo seleccionar, recortar y mover una toma. Corte y recorte solo se habilitan con el cabezal dentro del clip. Se aclara el botón «Desbloquear para mover», se conserva precisión de milisegundos al arrastrar y se limpia el gesto del cabezal si el navegador cancela un toque. La compensación Bluetooth se presenta como un ajuste fijo y se bloquea durante una toma.
+
+Comprobaciones de esta ronda:
+
+- `test-studio-audio.ts`: regresiones anteriores y nuevas de cierre simultáneo, último fragmento, tomas muy cortas, compensación al inicio, reloj inmutable y silencio por entrada ausente.
+- `test-studio-project-storage.ts`: sustitución, fallos, conflictos y aislamiento con almacenamiento simulado.
+- `test-studio-browser.mjs`: Chrome con audio simulado; edición, posición numérica, duplicación, deshacer/rehacer, descarga y reapertura real de `.rgodbeat`, recarga, archivo incompleto, guardado incompleto, fallo de codificación del beat, recuperación tras caída de pestaña y conservación local frente a una cuenta más reciente. APIs de cuenta/nube simuladas.
+- `test-studio-webkit.mjs`: WebKit de Playwright con interfaz móvil táctil; apertura del archivo generado en Chrome, corte, recorte, movimiento, deshacer y recuperación tras recarga con posiciones y duraciones originales. Grabación por dos canales usando un oscilador como micrófono, continuidad entre tomas y cierre simultáneo. Este navegador usa el motor de Safari, pero no reproduce el hardware de un iPhone.
+- TypeScript, ESLint de los archivos modificados sin errores y `git diff --check`. Permanecen advertencias previas de hooks, imágenes, funciones sin uso y navegación. La compilación de producción con webpack completó; sigue mostrando las advertencias previas sobre middleware y renderizado dinámico de la tienda.
+
+Las comprobaciones reales de R2 enumeradas más abajo pertenecen a la revisión anterior; no se repitieron en esta ronda ni se escribieron proyectos de clientes. Los resultados y capturas de navegador se generan en la carpeta temporal `rgodbeat-studio-qa`.
+
 - Captura PCM con AudioWorklet y un inicio programado según el reloj de audio. Se mantiene ScriptProcessor como alternativa para navegadores sin AudioWorklet.
 - Cambio de pista durante la grabación con cierre del segmento anterior antes de comenzar el siguiente. Se retiró la ruta que reutilizaba un único archivo MediaRecorder y podía incorporar audio de la pista anterior.
 - Cancelación de permisos/conteo pendientes, limpieza del micrófono y cierre del AudioContext al abandonar el estudio.
@@ -44,12 +67,22 @@ El flujo sigue siendo un estudio vocal sobre un beat. El Top 23 existente conect
 - TypeScript y revisión del diff sin errores. ESLint de los archivos de Studio revisados sin errores; permanecen advertencias de hooks, imágenes y código previo no utilizado. No se afirma que el lint de todo el repositorio esté limpio.
 - Compilación de producción mediante `npm run build -- --webpack` completada. El build predeterminado con Turbopack falla al abrir un puerto interno en este entorno. Next también informa sobre la convención middleware y mensajes de renderizado dinámico de la tienda.
 
-Para repetir la prueba de navegador se necesita Playwright y Chrome. Si Playwright está fuera del proyecto, indicar la ruta de su archivo `index.mjs` en `STUDIO_PLAYWRIGHT_PATH`. Se pueden configurar `STUDIO_TEST_URL` y `STUDIO_TEST_OUTPUT`.
+Para repetir la prueba de navegador se necesita Playwright y Chrome; la prueba adicional requiere instalar WebKit con Playwright. Si Playwright está fuera del proyecto, indicar la ruta de su archivo `index.mjs` en `STUDIO_PLAYWRIGHT_PATH`. Se pueden configurar `STUDIO_TEST_URL` y `STUDIO_TEST_OUTPUT`. Ejecutar primero `test-studio-browser.mjs`, que genera el archivo `edited-project.rgodbeat`, y después `test-studio-webkit.mjs`, que lo abre con el mismo directorio de resultados.
 
 ## Límites de esta entrega
 
-Las pruebas usaron Chrome y audio simulado. Se verificaron las operaciones de R2 con objetos aislados, pero falta una prueba de extremo a extremo con una cuenta real en la web publicada y proyectos largos bajo los límites de tiempo del hosting. Falta probar micrófono, auriculares, interrupciones del sistema y latencia en teléfonos Android/iPhone físicos. El navegador o el usuario pueden borrar IndexedDB; es necesaria la copia descargada. La nube depende de conexión y de confirmación del servidor. El ajuste Bluetooth sigue siendo una compensación fija, no una calibración automática del dispositivo.
+Las pruebas actuales usaron Chrome y WebKit con audio simulado. La revisión anterior verificó operaciones de R2 con objetos aislados, pero falta una prueba de extremo a extremo con una cuenta real en la web publicada y proyectos largos bajo los límites de tiempo del hosting. Falta probar micrófono, auriculares, interrupciones del sistema y latencia en teléfonos Android/iPhone físicos. El navegador o el usuario pueden borrar IndexedDB; es necesaria la copia descargada. La nube depende de conexión y de confirmación del servidor. El ajuste Bluetooth sigue siendo una compensación fija, no una calibración automática del dispositivo.
 
 La afinación implementada procesa tomas grabadas. No hay monitorización afinada del micrófono en directo. Exportar a 24 bits/48 kHz no aumenta la calidad original del micrófono ni de un archivo comprimido.
 
-Los cambios están en el código local de la web. No se publicó una versión ni se reconstruyó el APK. GitHub no tiene credenciales de escritura en este equipo y la CLI de Vercel aparece sin sesión; hace falta una conexión autorizada para desplegar y verificar el dominio público. Las modificaciones previas en `lib/actions/beats.ts` y `scripts/sync-companion.ts` se conservaron.
+Los cambios están en el código local de la web, disponibles para revisar en GitHub Desktop. Vercel, Supabase y Cloudflare son las integraciones existentes del proyecto; una sesión ausente en una CLI no significa que la web esté desconectada. Esta ronda no publicó una versión ni reconstruyó el APK. Las modificaciones previas en `lib/actions/beats.ts` y `scripts/sync-companion.ts` se conservaron.
+
+## Base existente para la siguiente etapa: Top 23 y catálogo
+
+- La web está creada con Next.js y React. Supabase contiene catálogo, licencias, cuentas y votos; Cloudflare R2 ya dispone de cliente y almacenamiento de proyectos/audio. Los archivos del catálogo conservan su ruta en `beat_files.storage_path`. Hay flujos de subida que usan Supabase Storage y otros que usan R2: antes de migrar se debe comprobar la ubicación real de cada archivo.
+- El selector del Studio consulta `/api/beats/ranking`; el voto pasa por `/api/beats/[id]/vote`. Hay una migración con un voto por usuario, beat y semana. La puntuación actual de esa ruta combina reproducciones, favoritos y ventas acumuladas. Eso todavía necesita una revisión si el resultado debe ser un ranking semanal.
+- `getPublishedBeats()` consulta el catálogo completo publicado, mientras el ranking limita a 23 por puntuación. La portada actual usa seis destacados en «Latest Releases». La presentación de programa musical solicitada puede construirse sobre estos datos, manteniendo una entrada separada al catálogo completo.
+- Salir del Top 23 debe cambiar la posición visible, conservando la publicación, las licencias, las compras y los archivos del beat. No se debe borrar un master por salir del ranking. Mover audio a R2 exige conservar referencias y descargas de compras existentes.
+- Antes de usar los votos como ranking definitivo hay que corregir su incremento como operación atómica: la ruta actual lee y luego escribe el contador, y puede continuar tras un fallo al insertar el voto. Dos votos simultáneos pueden perder un incremento o registrar un resultado inconsistente.
+
+Estos son hallazgos del código local; no confirman por sí solos qué migraciones están aplicadas o el estado de los archivos en producción. La implementación visual y los cambios de ranking quedan para la siguiente etapa pedida por el usuario.

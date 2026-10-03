@@ -31,12 +31,14 @@ class StudioPCMRecorder extends AudioWorkletProcessor {
   process(inputs, outputs) {
     for (const output of outputs) for (const channel of output) channel.fill(0);
     const input = inputs[0]?.[0];
-    if (!this.recording || !input) return true;
-    for (let i = 0; i < input.length; i++) {
+    if (!this.recording) return true;
+    // A missing input block is silence on the capture timeline, never a time cut.
+    const length = input?.length ?? outputs[0]?.[0]?.length ?? 0;
+    for (let i = 0; i < length; i++) {
       const frame = currentFrame + i;
       if (frame < this.startFrame) continue;
       if (!this.length) this.firstFrame = frame;
-      this.chunk[this.length++] = input[i];
+      this.chunk[this.length++] = input ? input[i] : 0;
       if (this.length === this.chunk.length) this.flush();
     }
     return true;

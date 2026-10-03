@@ -290,8 +290,8 @@ export async function createBeatDirectAction(
 
     // 5. Local SSD sync (safe in cloud)
     try {
-      if (process.env.LOCAL_MASTER_LIBRARY_PATH) {
-        const { runSync } = await import("@/scripts/sync-companion");
+      const { runSync, isLocalSyncAvailable } = await import("@/scripts/sync-companion");
+      if (isLocalSyncAvailable()) {
         await runSync({ slug });
       }
     } catch (syncErr) {
@@ -472,8 +472,8 @@ export async function updateBeatDirectAction(
 
     // 7. Companion sync (safe in cloud)
     try {
-      if (process.env.LOCAL_MASTER_LIBRARY_PATH) {
-        const { runSync } = await import("@/scripts/sync-companion");
+      const { runSync, isLocalSyncAvailable } = await import("@/scripts/sync-companion");
+      if (isLocalSyncAvailable()) {
         await runSync({ slug });
       }
     } catch (syncErr) {

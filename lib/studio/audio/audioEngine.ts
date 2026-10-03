@@ -107,6 +107,9 @@ export class AudioEngine {
   private recordingTakeId = '';
   private recordingStartBeatTime = 0;
   private recordingLatencyCompensation = -0.025; // -25ms default pocket calibration
+  private recordingTimelineOrigin = 0;
+  private takeLatencyCompensation = -0.025;
+  private finalizingRecording: Promise<void> | null = null;
 
   // Settings
   private loopSettings: LoopSettings = {
@@ -294,14 +297,14 @@ export class AudioEngine {
     return this.reverbImpulses.get(preset) || null;
   }
 
-  public setBeat(beat: BeatData) {
+  public setBeat(beat: BeatData | null) {
     const wasPlaying = this.isPlaying;
     this.stop();
     this.beatData = beat;
     this.currentPlaybackPosition = 0;
     this.callbacks.onTimeUpdate(0);
     this.updateLoopBounds();
-    if (wasPlaying) {
+    if (wasPlaying && beat) {
       this.play();
     }
   }
@@ -713,7 +716,7 @@ export class AudioEngine {
   }
 
   public stop() {
-    if (this.isRecording && !this.isFinalizingRecording) {
+    if (this.isRecording || this.isFinalizingRecording) {
       void this.stopRecording();
     } else {
       ++this.recordingRequestId;
@@ -911,6 +914,7 @@ export class AudioEngine {
    * Voice-Communication / Call mode and instantly restore uncompressed Hi-Fi stereo playback.
    */
   public releaseMicrophone() {
+    if (this.isFinalizingRecording && !this.disposed) return;
     if (this.scriptProcessor) this.scriptProcessor.onaudioprocess = null;
     if (this.pcmRecorder) this.pcmRecorder.port.onmessage = null;
     for (const node of [this.micSource, this.micHighPassFilter, this.micInputGain,
@@ -952,10 +956,14 @@ export class AudioEngine {
 
   private collectPCM(samples: Float32Array, frame: number) {
     if (!this.ctx) return;
+    // Keep the capture clock fixed for the whole recording, including late worklet messages.
+    const start = frame / this.ctx.sampleRate - this.recordingTimelineOrigin + this.takeLatencyCompensation;
+    const skip = Math.min(samples.length, Math.max(0, Math.round(-start * this.ctx.sampleRate)));
+    if (skip === samples.length) return;
+    if (skip) samples = samples.slice(skip);
     if (this.capturedFirstFrame === null) {
-      this.capturedFirstFrame = frame;
-      this.recordingStartBeatTime = Math.max(0,
-        frame / this.ctx.sampleRate - this.playbackStartCtxTime + this.recordingLatencyCompensation);
+      this.capturedFirstFrame = frame + skip;
+      this.recordingStartBeatTime = Math.max(0, start + skip / this.ctx.sampleRate);
     }
     let peak = 0;
     for (const value of samples) peak = Math.max(peak, Math.abs(value));
@@ -1042,7 +1050,7 @@ export class AudioEngine {
   private commitRecordedPCM(trackId: VocalTrackId, start: number, chunks: Float32Array[], takeId = this.recordingTakeId) {
     if (!this.ctx) return;
     const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-    if (length < this.ctx.sampleRate * 0.2) return;
+    if (!length) return;
     const buffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
     const output = buffer.getChannelData(0);
     let offset = 0;
@@ -1115,8 +1123,10 @@ export class AudioEngine {
       if (!wasPlaying) await this.play(vocalTracks);
       if (requestId !== this.recordingRequestId || !this.isRecording) return false;
       const start = Math.max(this.ctx.currentTime, this.playbackStartCtxTime + this.currentPlaybackPosition);
+      this.recordingTimelineOrigin = this.playbackStartCtxTime;
+      this.takeLatencyCompensation = this.recordingLatencyCompensation;
       this.captureStartFrame = Math.ceil(start * this.ctx.sampleRate);
-      this.recordingStartBeatTime = Math.max(0, start - this.playbackStartCtxTime + this.recordingLatencyCompensation);
+      this.recordingStartBeatTime = Math.max(0, start - this.recordingTimelineOrigin + this.takeLatencyCompensation);
       this.pcmRecorder?.port.postMessage({ type: 'start', startFrame: this.captureStartFrame });
       return true;
     } catch (error) {
@@ -1128,6 +1138,7 @@ export class AudioEngine {
     } finally {
       this.startingRecording = false;
       if (requestId !== this.recordingRequestId || this.captureStartFrame === Infinity) {
+        if (this.finalizingRecording) await this.finalizingRecording;
         this.isRecording = false;
         this.recordingTrackId = null;
         this.releaseMicrophone();
@@ -1152,7 +1163,7 @@ export class AudioEngine {
       this.capturedFirstFrame = null;
       this.recordingTrackId = newTrackId;
       this.recordingTakeId = `take-${crypto.randomUUID()}`;
-      this.recordingStartBeatTime = Math.max(0, boundary / this.ctx.sampleRate - this.playbackStartCtxTime + this.recordingLatencyCompensation);
+      this.recordingStartBeatTime = Math.max(0, boundary / this.ctx.sampleRate - this.recordingTimelineOrigin + this.takeLatencyCompensation);
       this.clearTrackSources(newTrackId);
       this.latestVocalTracks = vocalTracks;
       this.commitRecordedPCM(previousTrackId, start, chunks, takeId);
@@ -1170,10 +1181,17 @@ export class AudioEngine {
     this.callbacks.onRecordingAborted();
   }
 
-  public async stopRecording(): Promise<void> {
+  public stopRecording(): Promise<void> {
     ++this.recordingRequestId;
-    if (this.isFinalizingRecording) return;
+    if (this.finalizingRecording) return this.finalizingRecording;
     this.isFinalizingRecording = true;
+    this.finalizingRecording = this.finishRecording().finally(() => {
+      this.finalizingRecording = null;
+    });
+    return this.finalizingRecording;
+  }
+
+  private async finishRecording(): Promise<void> {
     try {
       this.callbacks.onCountInBeat(0);
       const trackId = this.recordingTrackId;
@@ -1183,15 +1201,15 @@ export class AudioEngine {
       this.recordingTrackId = null;
       const chunks = this.recordedPCMChunks;
       this.recordedPCMChunks = [];
-      if (trackId && chunks.reduce((sum, chunk) => sum + chunk.length, 0) >= (this.ctx?.sampleRate ?? 48000) * 0.2) {
+      if (trackId && chunks.some(chunk => chunk.length > 0)) {
         this.commitRecordedPCM(trackId, this.recordingStartBeatTime, chunks);
       } else {
         this.callbacks.onRecordingAborted();
       }
     } finally {
       this.captureStartFrame = Infinity;
-      this.releaseMicrophone();
       this.isFinalizingRecording = false;
+      this.releaseMicrophone();
     }
   }
 

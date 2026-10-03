@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
 import { AtmosphericBackground } from "@/components/atmosphere";
@@ -8,11 +8,6 @@ import { useCart } from "@/contexts/CartContext";
 
 export default function CartPage() {
   const { openCart, items, totalAmount, removeFromCart } = useCart();
-
-  useEffect(() => {
-    // Automatically trigger cart slideover
-    openCart();
-  }, [openCart]);
 
   return (
     <div className="relative min-h-screen bg-transparent text-white flex flex-col selection:bg-purple-500/30 selection:text-white">

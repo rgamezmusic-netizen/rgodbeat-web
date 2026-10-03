@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
 
     if (isEmbedded) {
       sessionParams.ui_mode = "embedded";
-      sessionParams.return_url = `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
+      sessionParams.redirect_on_completion = "never";
     } else {
       sessionParams.success_url = `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
       sessionParams.cancel_url = `${origin}/checkout/cancel`;

@@ -3,22 +3,18 @@ import {
   Play,
   Pause,
   Square,
-  Mic,
   MicOff,
   RotateCcw,
   RotateCw,
-  Repeat,
   Sliders,
   Volume2,
   Sparkles,
-  Music2,
-  Check,
   Timer,
   Headphones,
   AlertTriangle,
 } from 'lucide-react';
 import { BeatData, LoopSettings, MusicalKey, ScaleMode, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
-import { parseKeyAndGetRelative, getRelativeKey, NOTE_NAMES, SPANISH_NAMES } from '@/lib/studio/audio/beatAnalyzer';
+import { parseKeyAndGetRelative, getRelativeKey, NOTE_NAMES } from '@/lib/studio/audio/beatAnalyzer';
 import { MAIN_SCALES } from '@/lib/studio/audio/pitchCorrection';
 
 interface ArtworkPlayerProps {
@@ -62,8 +58,6 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   loopSettings,
   onPlayPause,
   onSeek,
-  onToggleLoop,
-  onOpenLoopSettings,
   onOpenBeatFX,
   beatVolume,
   onChangeBeatVolume,
@@ -92,47 +86,41 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   const [elapsedSec, setElapsedSec] = useState(0);
   const [micLevel, setMicLevel] = useState(0);
   const [isSaturated, setIsSaturated] = useState(false);
-  const [gainReductionDb, setGainReductionDb] = useState(0);
-
   const getMicStatusRef = useRef(getMicStatus);
-  getMicStatusRef.current = getMicStatus;
   const getMicLevelRef = useRef(getMicLevel);
-  getMicLevelRef.current = getMicLevel;
+  useEffect(() => {
+    getMicStatusRef.current = getMicStatus;
+    getMicLevelRef.current = getMicLevel;
+  }, [getMicStatus, getMicLevel]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
     let animId: number | null = null;
 
     if (isRecording) {
-      setElapsedSec(0);
       const start = Date.now();
-      interval = setInterval(() => {
-        setElapsedSec(Math.floor((Date.now() - start) / 1000));
-      }, 200);
+      let lastUpdate = -Infinity;
 
-      const trackStatus = () => {
-        if (getMicStatusRef.current) {
-          const status = getMicStatusRef.current();
-          setMicLevel(status.level);
-          setIsSaturated(status.isSaturated);
-          setGainReductionDb(status.gainReductionDb);
-        } else if (getMicLevelRef.current) {
-          const lvl = getMicLevelRef.current();
-          setMicLevel(lvl);
-          setIsSaturated(lvl >= 0.88);
+      const trackStatus = (timestamp: number) => {
+        // Meter updates at 20 Hz leave more main-thread time for mobile editing and storage.
+        if (timestamp - lastUpdate >= 50) {
+          lastUpdate = timestamp;
+          setElapsedSec(Math.floor((Date.now() - start) / 1000));
+          if (getMicStatusRef.current) {
+            const status = getMicStatusRef.current();
+            setMicLevel(status.level);
+            setIsSaturated(status.isSaturated);
+          } else if (getMicLevelRef.current) {
+            const lvl = getMicLevelRef.current();
+            setMicLevel(lvl);
+            setIsSaturated(lvl >= 0.88);
+          }
         }
         animId = requestAnimationFrame(trackStatus);
       };
       animId = requestAnimationFrame(trackStatus);
-    } else {
-      setElapsedSec(0);
-      setMicLevel(0);
-      setIsSaturated(false);
-      setGainReductionDb(0);
     }
 
     return () => {
-      if (interval) clearInterval(interval);
       if (animId) cancelAnimationFrame(animId);
     };
   }, [isRecording]);
@@ -439,7 +427,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
               <button
                 type="button"
                 onClick={onDetectKeyAndBpm}
-                disabled={isAnalyzingBeat}
+                disabled={isAnalyzingBeat || isRecording}
                 className="text-[9px] font-mono text-zinc-500 hover:text-amber-400 flex items-center gap-1 transition-colors cursor-pointer"
                 title="Re-analizar tempo y escala con el motor DSP"
               >
@@ -519,6 +507,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
               <button
                 type="button"
                 onClick={onToggleBluetoothSync}
+                disabled={isRecording}
                 className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
                   bluetoothSyncEnabled
                     ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
@@ -527,7 +516,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 title={
                   bluetoothSyncEnabled
                     ? `Bluetooth Sync Activo (-${bluetoothOffsetMs}ms)`
-                    : 'Calibrar audífonos Bluetooth (AirPods, etc.)'
+                    : 'Activar compensación fija para audífonos Bluetooth'
                 }
               >
                 <Headphones className="w-4 h-4" />
@@ -585,7 +574,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                       if (!isRecArmed) {
                         onToggleRecArmed?.();
                       } else {
-                        selectedTrack && onStartRecord(selectedTrack.id);
+                        if (selectedTrack) onStartRecord(selectedTrack.id);
                       }
                     }}
                     className={`h-12 w-12 sm:h-14 sm:w-14 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-90 ${

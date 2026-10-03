@@ -226,12 +226,14 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       window.removeEventListener('mouseup', onEnd);
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', onEnd);
     };
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onEnd);
     window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('touchend', onEnd);
+    window.addEventListener('touchcancel', onEnd);
   };
 
   const handlePlayheadMouseDown = (e: React.MouseEvent) => {
@@ -316,7 +318,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       const rawOffset = Math.max(0, dragInitialOffset + deltaSec);
       const newOffset = snapToBeat ? Math.round(rawOffset / secPerBeat) * secPerBeat : rawOffset;
       // Move smoothly without pushing to undo stack on intermediate drag frames
-      onMoveTake(dragTrackId, Math.round(newOffset * 100) / 100, dragClipId || undefined, false);
+      onMoveTake(dragTrackId, Math.round(newOffset * 1000) / 1000, dragClipId || undefined, false);
     };
 
     const handleEnd = () => {
@@ -354,6 +356,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const selectedClipTrack = tracks.find((t) => t.id === selectedTrackId);
   const selectedTrackClips = selectedClipTrack ? getTrackClips(selectedClipTrack) : [];
   const activeSelectedClip = selectedTrackClips.find((c) => c.id === selectedClipId) || selectedTrackClips[selectedTrackClips.length - 1];
+  const canCutSelectedClip = Boolean(activeSelectedClip && !isRecording &&
+    currentTime > activeSelectedClip.startBeatOffset && currentTime < activeSelectedClip.startBeatOffset + activeSelectedClip.duration);
 
   // Nudge adjustment
   const handleNudge = (deltaSec: number) => {
@@ -559,8 +563,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             <button
               onClick={() => {
                 const targetTrack = selectedTrackId;
-                onSplitTake(targetTrack, selectedClipId || undefined, currentTime);
+                onSplitTake(targetTrack, activeSelectedClip?.id, currentTime);
               }}
+              disabled={!canCutSelectedClip}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-amber-500/20 text-zinc-200 hover:text-amber-300 border border-zinc-700 hover:border-amber-500/40 font-mono text-xs font-semibold transition-all active:scale-95 cursor-pointer shadow-sm"
               title={`Cortar / Dividir toma en la posición del cabezal (${formatTime(currentTime)})`}
             >
@@ -1211,8 +1216,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   {clips.map((clip, clipIndex) => {
                     const isClipSelected =
                       isSelected &&
-                      (selectedClipId === clip.id ||
-                        (!selectedClipId && clipIndex === clips.length - 1));
+                      activeSelectedClip?.id === clip.id;
                     const isTargetOfDrag = isDraggingClip && dragClipId === clip.id;
                     const clipStartPx = clip.startBeatOffset * basePixelsPerSec;
                     const clipWidthPx = Math.max(30, (clip.duration || 1) * basePixelsPerSec);
@@ -1369,6 +1373,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       {/* Clip Editing & Fine Nudge Control Panel (Only visible when a take is selected) */}
       {selectedClipTrack && activeSelectedClip && (
         <div className="mt-3 p-3 bg-zinc-900/90 rounded-2xl border border-zinc-800 shadow-xl backdrop-blur-md">
+          <p className="mb-3 text-xs leading-relaxed text-zinc-400">
+            Selecciona una toma y coloca el cabezal dentro para cortar o recortar. Desbloquea la toma para moverla. Puedes deshacer los cambios.
+          </p>
           <div className="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-zinc-800">
             {/* Selected Take Info */}
             <div className="flex items-center gap-2">
@@ -1380,7 +1387,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               </span>
 
               {activeSelectedClip ? (
-                <div className="flex items-center gap-2 ml-1">
+                <div className="flex flex-wrap items-center gap-2 ml-1 min-w-0">
                   <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-zinc-800 text-amber-300 border border-zinc-700">
                     {activeSelectedClip.name || 'Toma'}
                   </span>
@@ -1405,6 +1412,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] font-mono text-zinc-400">Duplicar a:</span>
                   <select
+                    aria-label="Duplicar toma a otra pista"
+                    disabled={isRecording}
                     onChange={(e) => {
                       if (e.target.value) {
                         onDuplicateTake(selectedClipTrack.id, e.target.value as VocalTrackId, activeSelectedClip.id);
@@ -1429,10 +1438,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
                 {onTrimTake && (
                   <>
-                    <button type="button" disabled={isRecording} onClick={() => onTrimTake(selectedClipTrack.id, activeSelectedClip.id, 'start')}
+                    <button type="button" disabled={!canCutSelectedClip} onClick={() => onTrimTake(selectedClipTrack.id, activeSelectedClip.id, 'start')}
                       className="px-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-mono text-zinc-200 disabled:opacity-40"
                       title="Eliminar el audio anterior al cabezal en esta toma">Recortar inicio</button>
-                    <button type="button" disabled={isRecording} onClick={() => onTrimTake(selectedClipTrack.id, activeSelectedClip.id, 'end')}
+                    <button type="button" disabled={!canCutSelectedClip} onClick={() => onTrimTake(selectedClipTrack.id, activeSelectedClip.id, 'end')}
                       className="px-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-mono text-zinc-200 disabled:opacity-40"
                       title="Eliminar el audio posterior al cabezal en esta toma">Recortar final</button>
                   </>
@@ -1441,7 +1450,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                 {onSplitTake && (
                   <button
                     onClick={() => onSplitTake(selectedClipTrack.id, activeSelectedClip.id, currentTime)}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-mono font-bold transition-all active:scale-95 cursor-pointer shadow-sm shadow-amber-500/10"
+                    disabled={!canCutSelectedClip}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-mono font-bold transition-all active:scale-95 cursor-pointer shadow-sm shadow-amber-500/10 disabled:opacity-40"
                     title={`Cortar / Dividir esta toma exactamente en el cabezal (${formatTime(currentTime)})`}
                   >
                     <Scissors className="w-3.5 h-3.5 text-amber-400" />
@@ -1451,6 +1461,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
                 <button
                   onClick={() => onDeleteTake(selectedClipTrack.id, activeSelectedClip.id)}
+                  disabled={isRecording}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/70 text-red-300 hover:text-red-100 border border-red-500/50 hover:border-red-400 text-xs font-mono font-bold transition-all active:scale-95 shadow-sm shadow-red-950/40 cursor-pointer"
                   title={`Eliminar únicamente el pedazo seleccionado (${activeSelectedClip.name || 'Pedazo'}) sin alterar el resto de la pista`}
                 >
@@ -1472,6 +1483,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       onToggleLockTake(selectedClipTrack.id, activeSelectedClip.id);
                     }
                   }}
+                  disabled={isRecording}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-bold border transition-all active:scale-95 ${
                     activeSelectedClip.isLocked
                       ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.6)]'
@@ -1480,7 +1492,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   title={activeSelectedClip.isLocked ? 'Seguro ACTIVO: Clic para desbloquear' : 'Clic para activar seguro (Hold)'}
                 >
                   {activeSelectedClip.isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                  <span>{activeSelectedClip.isLocked ? 'SEGURO ACTIVO (HOLD)' : 'ACTIVAR SEGURO'}</span>
+                  <span>{activeSelectedClip.isLocked ? 'DESBLOQUEAR PARA MOVER' : 'BLOQUEAR POSICIÓN'}</span>
                 </button>
 
                 <div className="h-4 w-px bg-zinc-700 mx-1" />
