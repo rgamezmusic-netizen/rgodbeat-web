@@ -14,6 +14,18 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      beat_votes: {
+        Row: { id: string; user_id: string; beat_id: string; week_period: string; voted_at: string };
+        Insert: { id?: string; user_id: string; beat_id: string; week_period: string; voted_at?: string };
+        Update: { user_id?: string; beat_id?: string; week_period?: string };
+        Relationships: [];
+      };
+      beat_comments: {
+        Row: { id: string; beat_id: string; author_id: string; author_name: string; body: string; created_at: string; is_hidden: boolean };
+        Insert: { id?: string; beat_id: string; author_id: string; author_name: string; body: string; created_at?: string; is_hidden?: boolean };
+        Update: { is_hidden?: boolean };
+        Relationships: [];
+      };
       categories: {
         Row: {
           id: string;
@@ -886,7 +898,9 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      get_public_beat_activity: { Args: { p_week: string; p_previous_week: string }; Returns: Json };
+      cast_weekly_beat_vote: { Args: { p_user_id: string; p_beat_id: string }; Returns: Json };
+      post_beat_comment: { Args: { p_user_id: string; p_beat_id: string; p_author_name: string; p_body: string }; Returns: Json };
     };
     Enums: {
       [_ in never]: never;

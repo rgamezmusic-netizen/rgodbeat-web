@@ -86,3 +86,9 @@ Los cambios están en el código local de la web, disponibles para revisar en Gi
 - Antes de usar los votos como ranking definitivo hay que corregir su incremento como operación atómica: la ruta actual lee y luego escribe el contador, y puede continuar tras un fallo al insertar el voto. Dos votos simultáneos pueden perder un incremento o registrar un resultado inconsistente.
 
 Estos son hallazgos del código local; no confirman por sí solos qué migraciones están aplicadas o el estado de los archivos en producción. La implementación visual y los cambios de ranking quedan para la siguiente etapa pedida por el usuario.
+
+## Top 23 — actualización del 3 de octubre de 2026
+
+La página pública, los votos semanales y la conversación ya tienen implementación. Rafael ejecutó la migración de comunidad en Supabase y se confirmó su lectura. El diseño inicial utiliza blanco/dorado sobre un cristal con espacio animado, limitado a `/ranking` para revisión visual. La lista de beats del Studio usa la misma clasificación semanal y su contador distingue votos semanales de favoritos acumulados.
+
+Consultar `RANKING_REVIEW.md` para reglas, archivos modificados, comprobaciones realizadas y pendientes de almacenamiento/YouTube. R2 ya está conectado, pero los archivos comerciales actuales de `beat_files` todavía apuntan a Supabase; no se efectuó una migración de esos archivos ni se borraron originales.

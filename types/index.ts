@@ -70,6 +70,8 @@ export interface Beat {
   featured: boolean;
   published?: boolean;
   createdAt: string;
+  releasedAt?: string;
+  weeklyVotes?: number;
   tags: string[];
   pricing: Record<LicenseTier, number>;
   previewAudioUrl?: string;
@@ -184,4 +186,3 @@ export interface BeatRankingHistory {
   raw_metrics?: Record<string, any>;
   recorded_at: string;
 }
-

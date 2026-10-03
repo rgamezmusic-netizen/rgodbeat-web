@@ -102,12 +102,12 @@ export function Hero() {
         <div className="mt-9 sm:mt-11 flex flex-col sm:flex-row items-center justify-center gap-4 w-full sm:w-auto">
           {/* Primary CTA */}
           <Button
-            href="#beats"
+            href="/ranking"
             variant="primary"
             size="lg"
             className="w-full sm:w-auto shadow-lg hover:shadow-purple-500/15"
           >
-            <span>EXPLORE BEATS</span>
+            <span>DESCUBRE EL TOP 23</span>
             <span className="ml-1 text-base group-hover:translate-x-1 transition-transform duration-200">
               →
             </span>
@@ -115,12 +115,12 @@ export function Hero() {
 
           {/* Secondary CTA (Solid, high-readability, never looks empty) */}
           <Button
-            href="#services"
+            href="/beats"
             variant="secondary"
             size="lg"
             className="w-full sm:w-auto"
           >
-            <span>WORK WITH RGODBEAT</span>
+            <span>EXPLORAR CATÁLOGO</span>
           </Button>
         </div>
       </div>

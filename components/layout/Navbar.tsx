@@ -9,7 +9,7 @@ import { getBrowserUser } from "@/lib/auth/client";
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [currentUser, setCurrentUser] = useState<Awaited<ReturnType<typeof getBrowserUser>>>(null);
   const { openCart, itemCount } = useCart();
 
   useEffect(() => {
@@ -48,7 +48,8 @@ export function Navbar() {
         </Link>
 
         {/* Center Primary Navigation */}
-        <div className="hidden md:flex items-center gap-9 text-[13px] font-medium tracking-[0.14em] text-zinc-300">
+        <div className="hidden xl:flex items-center gap-6 text-[13px] font-medium tracking-[0.14em] text-zinc-300">
+          <Link href="/ranking" className="text-[#d8bc7c] hover:text-[#f0dbab] transition-colors py-1 whitespace-nowrap font-bold">TOP 23</Link>
           <Link
             href="/beats"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
@@ -75,12 +76,12 @@ export function Navbar() {
               v1.0
             </span>
           </Link>
-          <a
+          <Link
             href="/#services"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
           >
             SERVICES
-          </a>
+          </Link>
           <Link
             href="/park"
             className="hover:text-cyan-300 transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-cyan-400 hover:after:w-full after:transition-all after:duration-200 flex items-center gap-1.5"
@@ -91,12 +92,12 @@ export function Navbar() {
               RIGHTS
             </span>
           </Link>
-          <a
+          <Link
             href="/#about"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
           >
             ABOUT
-          </a>
+          </Link>
         </div>
 
         {/* Right Side Utility Actions */}
@@ -180,7 +181,7 @@ export function Navbar() {
         <button
           type="button"
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="md:hidden p-2.5 rounded-xl bg-white/[0.08] hover:bg-white/15 active:bg-white/25 border border-white/15 text-white focus:outline-none cursor-pointer transition-all active:scale-95 flex items-center justify-center min-w-[44px] min-h-[44px] shadow-sm relative z-50"
+          className="xl:hidden p-2.5 rounded-xl bg-white/[0.08] hover:bg-white/15 active:bg-white/25 border border-white/15 text-white focus:outline-none cursor-pointer transition-all active:scale-95 flex items-center justify-center min-w-[44px] min-h-[44px] shadow-sm relative z-50"
           aria-label="Toggle mobile menu"
         >
           <svg
@@ -210,8 +211,11 @@ export function Navbar() {
 
       {/* Mobile Drawer Overlay */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-b border-white/10 bg-[#08080a]/98 backdrop-blur-2xl px-6 py-6 space-y-6 max-h-[calc(100vh-100px)] overflow-y-auto shadow-2xl">
+        <div className="xl:hidden border-b border-white/10 bg-[#08080a]/98 backdrop-blur-2xl px-6 py-6 space-y-6 max-h-[calc(100vh-100px)] overflow-y-auto shadow-2xl">
           <div className="flex flex-col gap-4 text-sm tracking-[0.18em] font-medium text-zinc-300">
+            <Link href="/ranking" onClick={() => setMobileMenuOpen(false)} className="py-3 flex items-center justify-between border-b border-white/[0.06] text-[#d8bc7c]">
+              <span className="font-bold text-base">TOP 23</span><span className="text-xs font-mono">EL RANKING →</span>
+            </Link>
             <Link
               href="/beats"
               onClick={() => setMobileMenuOpen(false)}
@@ -242,14 +246,14 @@ export function Navbar() {
                 APK v1.0
               </span>
             </Link>
-            <a
+            <Link
               href="/#services"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
             >
               <span>SERVICES</span>
               <span className="text-zinc-600 text-xs">02</span>
-            </a>
+            </Link>
             <Link
               href="/park"
               onClick={() => setMobileMenuOpen(false)}
@@ -260,14 +264,14 @@ export function Navbar() {
                 RIGHTS & RELEASES 🛡️
               </span>
             </Link>
-            <a
+            <Link
               href="/#about"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-white py-3 transition-colors flex items-center justify-between pb-3"
             >
               <span>ABOUT</span>
               <span className="text-zinc-600 text-xs">04</span>
-            </a>
+            </Link>
           </div>
 
           <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3">

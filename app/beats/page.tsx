@@ -1,47 +1,26 @@
 import React from "react";
+import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
 import { BeatsShopClient } from "@/components/beats";
 import { AtmosphericBackground } from "@/components/atmosphere";
-import { getPublishedBeats } from "@/lib/data/beats";
+import { getPublicChart } from "@/lib/ranking/server";
 import { getCategories } from "@/lib/data/categories";
 import { Beat } from "@/types";
-import { getCurrentUser } from "@/lib/auth/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 
-export const revalidate = 60; // Cache on edge CDN for fast initial page load (revalidates every 60s)
+export const dynamic = 'force-dynamic';
 
 export default async function BeatsPage() {
   let beats: Beat[] = [];
   let categoryFilters: { id: string; label: string }[] = [{ id: "all", label: "ALL" }];
   let fetchError: string | null = null;
-  let isProUser = false;
 
   try {
-    const user = await getCurrentUser();
-    if (user && user.email) {
-      const ADMIN_EMAILS = ["admin@rgodbeat.com", "rgamezmusic@gmail.com", "rgodbeat@gmail.com"];
-      if (user.user_metadata?.role === "admin" || ADMIN_EMAILS.includes(user.email.toLowerCase())) {
-        isProUser = true;
-      } else {
-        const supabase = createAdminClient();
-        const { data: customer } = await supabase
-          .from("customers")
-          .select("studio_access_until")
-          .eq("email", user.email)
-          .maybeSingle();
-        
-        if (customer?.studio_access_until) {
-          isProUser = new Date(customer.studio_access_until) > new Date();
-        }
-      }
-    }
-
-    const [fetchedBeats, fetchedCategories] = await Promise.all([
-      getPublishedBeats(),
+    const [chart, fetchedCategories] = await Promise.all([
+      getPublicChart(),
       getCategories(),
     ]);
 
-    beats = fetchedBeats;
+    beats = [...chart.entries, ...chart.outside].map(entry => ({ ...entry.beat, currentRank: entry.rank, previousRank: entry.previousRank, rankingPeriod: chart.period, weeklyVotes: entry.votes }));
     categoryFilters = [
       { id: "all", label: "ALL" },
       ...fetchedCategories.map((c) => ({
@@ -49,8 +28,8 @@ export default async function BeatsPage() {
         label: c.name.toUpperCase(),
       })),
     ];
-  } catch (err: any) {
-    console.error("[BeatsPage] Error loading marketplace data from Supabase:", err.message);
+  } catch (err) {
+    console.error("[BeatsPage] Error loading marketplace data from Supabase:", err instanceof Error ? err.message : "Error desconocido");
     fetchError = "Unable to connect to the audio discography database. Please verify your connection or try again shortly.";
   }
 
@@ -102,19 +81,18 @@ export default async function BeatsPage() {
             </div>
 
             <div className="pt-2">
-              <a
+              <Link
                 href="/beats"
                 className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-xs font-mono tracking-wider uppercase text-white transition-all cursor-pointer"
               >
                 <span>↻ RETRY CONNECTION</span>
-              </a>
+              </Link>
             </div>
           </div>
         ) : (
           <BeatsShopClient
             initialBeats={beats}
             categories={categoryFilters}
-            isProUser={isProUser}
           />
         )}
       </main>

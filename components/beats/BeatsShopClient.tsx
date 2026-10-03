@@ -12,25 +12,13 @@ interface CategoryFilterItem {
 interface BeatsShopClientProps {
   initialBeats: Beat[];
   categories: CategoryFilterItem[];
-  isProUser?: boolean;
 }
 
-export function BeatsShopClient({ initialBeats, categories, isProUser = false }: BeatsShopClientProps) {
+export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeGenre, setActiveGenre] = useState("all");
   const [currentSort, setCurrentSort] = useState<SortOption>("latest");
   const [isProcessingService, setIsProcessingService] = useState<string | null>(null);
-
-  const top23BeatIds = useMemo(() => {
-    return [...initialBeats]
-      .sort((a, b) => {
-        const scoreA = a.performanceScore !== undefined ? a.performanceScore : ((a.performanceMetrics?.favorites || 0) * 5);
-        const scoreB = b.performanceScore !== undefined ? b.performanceScore : ((b.performanceMetrics?.favorites || 0) * 5);
-        return scoreB - scoreA;
-      })
-      .slice(0, 23)
-      .map((b) => b.id);
-  }, [initialBeats]);
 
   const handlePurchaseService = async (serviceId: string) => {
     try {
@@ -83,11 +71,8 @@ export function BeatsShopClient({ initialBeats, categories, isProUser = false }:
     // 3. Sort results
     result.sort((a, b) => {
       switch (currentSort) {
-        case "ranking": {
-          const scoreA = a.performanceScore !== undefined ? a.performanceScore : ((a.performanceMetrics?.favorites || 0) * 5);
-          const scoreB = b.performanceScore !== undefined ? b.performanceScore : ((b.performanceMetrics?.favorites || 0) * 5);
-          return scoreB - scoreA;
-        }
+        case "ranking":
+          return (a.currentRank ?? Number.MAX_SAFE_INTEGER) - (b.currentRank ?? Number.MAX_SAFE_INTEGER);
         case "price_asc":
           return a.price - b.price;
         case "price_desc":
@@ -215,8 +200,6 @@ export function BeatsShopClient({ initialBeats, categories, isProUser = false }:
       <BeatGrid
         beats={filteredAndSortedBeats}
         onResetFilters={handleResetFilters}
-        isProUser={isProUser}
-        top23BeatIds={top23BeatIds}
       />
     </>
   );

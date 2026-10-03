@@ -95,7 +95,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       if (res.ok && data.success) {
         setVotedBeatIds((prev) => ({ ...prev, [beatId]: true }));
         setRankingBeats((prev) =>
-          prev.map((b) => (b.id === beatId ? { ...b, favorites: data.favorites } : b))
+          prev.map((b) => (b.id === beatId ? { ...b, favorites: data.weeklyVotes ?? (b.favorites || 0) + 1 } : b))
         );
         setStatusMsg(data.message || "¡Voto registrado en el ranking de esta semana!");
       } else if (data.requireLogin) {

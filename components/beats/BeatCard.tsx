@@ -23,7 +23,7 @@ export function BeatCard({ beat, isLocked = false }: BeatCardProps) {
 
   // Weekly Ranking & Like / Vote State
   const [likesCount, setLikesCount] = useState<number>(
-    beat.performanceMetrics?.favorites || 0
+    beat.weeklyVotes ?? beat.performanceMetrics?.favorites ?? 0
   );
   const [hasVoted, setHasVoted] = useState<boolean>(false);
   const [isVoting, setIsVoting] = useState<boolean>(false);
@@ -40,7 +40,7 @@ export function BeatCard({ beat, isLocked = false }: BeatCardProps) {
 
       if (res.ok && data.success) {
         setHasVoted(true);
-        setLikesCount(data.favorites || likesCount + 1);
+        setLikesCount(beat.weeklyVotes !== undefined ? (data.weeklyVotes ?? likesCount + 1) : (data.favorites ?? likesCount + 1));
       } else if (data.alreadyVoted) {
         setHasVoted(true);
       } else if (data.requireLogin) {

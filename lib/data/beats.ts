@@ -73,6 +73,7 @@ function mapBeatRowToBeat(row: any): Beat {
     featured: Boolean(row.featured),
     published: Boolean(row.published),
     createdAt: row.created_at ? new Date(row.created_at).toISOString().split("T")[0] : "2026-03-20",
+    releasedAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     tags,
     pricing,
     previewAudioUrl: resolvedPreviewUrl || undefined,
