@@ -167,6 +167,9 @@ export const VocalFXModal: React.FC<VocalFXModalProps> = ({
               </div>
             </div>
 
+            <p className="text-[11px] text-zinc-400 leading-relaxed">
+              Afina las tomas grabadas al reproducir y exportar. La grabación original se conserva.
+            </p>
             {/* Tactile Rotary Knob with Mechanical 0-Detent Click */}
             <TuneKnob
               speed={currentTune.speed}

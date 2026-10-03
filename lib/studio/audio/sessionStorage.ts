@@ -1,5 +1,6 @@
-import { BeatData, LoopSettings, VocalClip, VocalTrack } from '../types/audio';
+import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalFX, BeatFX, BeatMixSettings } from '../types/audio';
 import { audioBufferToWav } from './wavEncoder';
+import { retireRecordingCheckpoints } from './recordingRecovery';
 
 const DB_NAME = 'RGODBEAT_STUDIO_DB';
 const DB_VERSION = 2; // Upgraded to support session persistence
@@ -22,9 +23,10 @@ export interface StoredTrackData {
   name: string;
   volume: number;
   pan?: number;
+  isCustom?: boolean;
   isMuted: boolean;
   isSolo: boolean;
-  fx: any;
+  fx: VocalFX;
   startBeatOffset?: number;
   duration?: number;
   clips: StoredClipData[];
@@ -48,12 +50,15 @@ export interface StoredBeatData {
 }
 
 export interface StoredStudioSession {
+  projectId?: string;
   id: string; // 'latest_active_session' or `session_${userEmail}`
   timestamp: number;
   userEmail?: string | null;
   beatId?: string | null;
   beatData?: StoredBeatData | null;
   beatVolume?: number;
+  beatFX?: BeatFX;
+  isBeatMuted?: boolean;
   loopSettings?: LoopSettings;
   currentTime?: number;
   activeView?: 'studio' | 'editor';
@@ -75,6 +80,16 @@ export function getSessionStorageKey(userIdentifier?: string | null): string {
 }
 
 let dbInstance: IDBDatabase | null = null;
+const saveVersions = new Map<string, number>();
+const encodedBuffers = new WeakMap<AudioBuffer, Promise<ArrayBuffer>>();
+function encodeStoredAudio(buffer: AudioBuffer): Promise<ArrayBuffer> {
+  let result = encodedBuffers.get(buffer);
+  if (!result) {
+    result = audioBufferToWav(buffer, 24).arrayBuffer();
+    encodedBuffers.set(buffer, result);
+  }
+  return result;
+}
 
 async function getDB(): Promise<IDBDatabase> {
   if (dbInstance) return dbInstance;
@@ -109,8 +124,8 @@ async function getDB(): Promise<IDBDatabase> {
 
 /**
  * Persists the client's current studio workspace (all vocal takes, FX, and full Beat data)
- * to client memory so if an incoming phone call, browser refresh, or tab crash occurs,
- * their work and the exact beat of their last project is 100% safe.
+ * to IndexedDB. Success means the transaction committed; browser storage can still
+ * be cleared by the user or OS, so the downloadable project remains necessary.
  */
 export async function saveStudioSession(
   tracks: VocalTrack[],
@@ -119,11 +134,15 @@ export async function saveStudioSession(
   currentTime?: number,
   beatVolume?: number,
   activeView?: 'studio' | 'editor',
-  userIdentifier?: string | null
+  userIdentifier?: string | null,
+  mix?: BeatMixSettings,
+  projectId?: string
 ): Promise<boolean> {
+  const sessionKey = getSessionStorageKey(userIdentifier);
+  const version = (saveVersions.get(sessionKey) ?? 0) + 1;
+  saveVersions.set(sessionKey, version);
   try {
     const db = await getDB();
-    const sessionKey = getSessionStorageKey(userIdentifier);
 
     // Check existing session to preserve beatData if not explicitly provided
     let existingSession: StoredStudioSession | null = null;
@@ -151,14 +170,11 @@ export async function saveStudioSession(
       let audioWavData: ArrayBuffer | undefined = undefined;
 
       // If existing session already has audio data for the same beat, reuse it to avoid re-encoding
-      if (existingSession?.beatData?.id === beat.id && existingSession.beatData.audioWavData) {
-        audioWavData = existingSession.beatData.audioWavData;
-      } else if (beat.buffer) {
+      if (beat.buffer) {
         try {
-          const wavBlob = audioBufferToWav(beat.buffer, 16);
-          audioWavData = await wavBlob.arrayBuffer();
+          audioWavData = await encodeStoredAudio(beat.buffer);
         } catch (wavErr) {
-          console.warn('Could not encode beat buffer for session:', wavErr);
+          throw wavErr;
         }
       }
 
@@ -178,7 +194,7 @@ export async function saveStudioSession(
         detectedConfidence: beat.detectedConfidence,
         audioWavData,
       };
-    } else if (!beat && existingSession?.beatData) {
+    } else if (beat === undefined && existingSession?.beatData) {
       // Retain previously stored beat
       storedBeatData = existingSession.beatData;
       resolvedBeatId = existingSession.beatId || existingSession.beatData.id;
@@ -206,8 +222,7 @@ export async function saveStudioSession(
         if (!clip.buffer) continue;
         try {
           // Convert audio buffer to WAV binary ArrayBuffer for lossless persistent storage
-          const wavBlob = audioBufferToWav(clip.buffer, 16);
-          const audioWavData = await wavBlob.arrayBuffer();
+          const audioWavData = await encodeStoredAudio(clip.buffer);
 
           storedClips.push({
             id: clip.id,
@@ -219,7 +234,7 @@ export async function saveStudioSession(
             isLocked: Boolean(clip.isLocked),
           });
         } catch (clipErr) {
-          console.warn('Error serializing clip audio:', clipErr);
+          throw clipErr;
         }
       }
 
@@ -228,6 +243,7 @@ export async function saveStudioSession(
         name: track.name,
         volume: track.volume,
         pan: track.pan,
+        isCustom: track.isCustom,
         isMuted: track.isMuted,
         isSolo: track.isSolo,
         fx: track.fx,
@@ -237,39 +253,37 @@ export async function saveStudioSession(
       });
     }
 
-    const incomingHasClips = storedTracks.some((t) => t.clips && t.clips.length > 0);
-    const existingHasClips = Boolean(existingSession?.tracks && existingSession.tracks.some((t) => t.clips && t.clips.length > 0));
-
-    // CRITICAL PROTECTION: If incoming tracks have no recorded takes (e.g. initial empty state on mount),
-    // but the existing session in storage already has recorded vocal takes, PRESERVE THEM!
-    // Never allow an empty state to silently destroy the user's recorded voices.
-    const finalTracks = (!incomingHasClips && existingHasClips && existingSession?.tracks)
-      ? existingSession.tracks
-      : storedTracks;
-
+    // Callers save only after startup restoration. Empty tracks can be an intentional deletion.
+    if (saveVersions.get(sessionKey) !== version) return false;
     const sessionPayload: StoredStudioSession = {
+      projectId: projectId ?? existingSession?.projectId ?? crypto.randomUUID(),
       id: sessionKey,
       timestamp: Date.now(),
       userEmail: userIdentifier || null,
       beatId: resolvedBeatId,
       beatData: storedBeatData,
       beatVolume: beatVolume !== undefined ? beatVolume : existingSession?.beatVolume ?? 1.0,
+      beatFX: mix?.beatFX ?? existingSession?.beatFX,
+      isBeatMuted: mix?.isBeatMuted ?? existingSession?.isBeatMuted ?? false,
       loopSettings: loopSettings || existingSession?.loopSettings,
       currentTime: currentTime || 0,
       activeView: activeView || existingSession?.activeView || 'studio',
-      tracks: finalTracks,
+      tracks: storedTracks,
     };
 
-    return new Promise((resolve) => {
+    const committed = await new Promise<boolean>((resolve) => {
       const tx = db.transaction([SESSIONS_STORE], 'readwrite');
       const store = tx.objectStore(SESSIONS_STORE);
       const req = store.put(sessionPayload);
-      req.onsuccess = () => resolve(true);
+      tx.oncomplete = () => resolve(true);
+      tx.onabort = () => resolve(false);
       req.onerror = (e) => {
         console.warn('Error saving studio session:', e);
         resolve(false);
       };
     });
+    if (committed) await retireRecordingCheckpoints(sessionKey, tracks, sessionPayload.projectId);
+    return committed;
   } catch (err) {
     console.warn('saveStudioSession failure:', err);
     return false;
@@ -303,8 +317,7 @@ export async function saveLastProjectBeat(
     let audioWavData: ArrayBuffer | undefined = undefined;
     if (beat.buffer) {
       try {
-        const wavBlob = audioBufferToWav(beat.buffer, 16);
-        audioWavData = await wavBlob.arrayBuffer();
+        audioWavData = await encodeStoredAudio(beat.buffer);
       } catch (wavErr) {
         console.warn('Could not encode beat buffer for session:', wavErr);
       }
@@ -328,12 +341,15 @@ export async function saveLastProjectBeat(
     };
 
     const sessionPayload: StoredStudioSession = {
+      projectId: existingSession?.projectId,
       id: sessionKey,
       timestamp: Date.now(),
       userEmail: userIdentifier || null,
       beatId: beat.id,
       beatData: storedBeatData,
       beatVolume: beatVolume !== undefined ? beatVolume : existingSession?.beatVolume ?? 1.0,
+      beatFX: existingSession?.beatFX,
+      isBeatMuted: existingSession?.isBeatMuted,
       loopSettings: existingSession?.loopSettings,
       currentTime: existingSession?.currentTime || 0,
       activeView: existingSession?.activeView || 'studio',
@@ -361,10 +377,13 @@ export async function restoreLastStudioSession(
   audioCtx: AudioContext,
   userIdentifier?: string | null
 ): Promise<{
+  projectId?: string;
   tracks: VocalTrack[];
   beat?: BeatData | null;
   beatId?: string | null;
   beatVolume?: number;
+  beatFX?: BeatFX;
+  isBeatMuted?: boolean;
   loopSettings?: LoopSettings;
   currentTime?: number;
   activeView?: 'studio' | 'editor';
@@ -374,7 +393,7 @@ export async function restoreLastStudioSession(
     const db = await getDB();
     const sessionKey = getSessionStorageKey(userIdentifier);
 
-    let session: StoredStudioSession | null = await new Promise((resolve) => {
+    const session: StoredStudioSession | null = await new Promise((resolve) => {
       const tx = db.transaction([SESSIONS_STORE], 'readonly');
       const store = tx.objectStore(SESSIONS_STORE);
       const req = store.get(sessionKey);
@@ -382,16 +401,7 @@ export async function restoreLastStudioSession(
       req.onerror = () => resolve(null);
     });
 
-    // Fallback: If session with user key doesn't exist yet, check legacy unkeyed session for migration
-    if (!session && userIdentifier) {
-      session = await new Promise((resolve) => {
-        const tx = db.transaction([SESSIONS_STORE], 'readonly');
-        const store = tx.objectStore(SESSIONS_STORE);
-        const req = store.get('latest_active_session');
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => resolve(null);
-      });
-    }
+    // Never automatically copy an anonymous user's voices into a different account.
 
     if (!session) {
       return null;
@@ -406,7 +416,7 @@ export async function restoreLastStudioSession(
           const arrayBufferCopy = session.beatData.audioWavData.slice(0);
           beatBuffer = await audioCtx.decodeAudioData(arrayBufferCopy);
         } catch (decErr) {
-          console.warn('Error decoding session beat audio data:', decErr);
+          throw decErr;
         }
       }
 
@@ -446,7 +456,7 @@ export async function restoreLastStudioSession(
         let latestWaveform: number[] | undefined;
 
         for (const sc of st.clips || []) {
-          if (!sc.audioWavData || sc.audioWavData.byteLength === 0) continue;
+          if (!sc.audioWavData || sc.audioWavData.byteLength === 0) throw new Error('Falta audio en el respaldo local.');
           try {
             // Decode WAV array buffer back to native WebAudio AudioBuffer
             const decoded = await audioCtx.decodeAudioData(sc.audioWavData.slice(0));
@@ -463,15 +473,16 @@ export async function restoreLastStudioSession(
             latestBuffer = decoded;
             latestWaveform = sc.waveformSample;
           } catch (decErr) {
-            console.warn('Error decoding restored vocal clip:', decErr);
+            throw decErr;
           }
         }
 
         restoredTracks.push({
-          id: st.id as any,
+          id: st.id,
           name: st.name,
           volume: st.volume ?? 1.0,
           pan: st.pan ?? 0,
+          isCustom: st.isCustom ?? st.id.startsWith('backing'),
           isMuted: Boolean(st.isMuted),
           isSolo: Boolean(st.isSolo),
           fx: st.fx,
@@ -486,10 +497,13 @@ export async function restoreLastStudioSession(
     }
 
     return {
+      projectId: session.projectId,
       tracks: restoredTracks,
       beat: restoredBeat,
       beatId: session.beatId || restoredBeat?.id,
       beatVolume: session.beatVolume,
+      beatFX: session.beatFX,
+      isBeatMuted: session.isBeatMuted,
       loopSettings: session.loopSettings,
       currentTime: session.currentTime,
       activeView: session.activeView,
@@ -497,7 +511,7 @@ export async function restoreLastStudioSession(
     };
   } catch (err) {
     console.warn('restoreLastStudioSession error:', err);
-    return null;
+    throw err;
   }
 }
 
@@ -505,16 +519,20 @@ export async function restoreLastStudioSession(
  * Clears the stored studio session (e.g. when starting a new project)
  */
 export async function clearSavedStudioSession(userIdentifier?: string | null): Promise<boolean> {
+  const key = getSessionStorageKey(userIdentifier);
+  saveVersions.set(key, (saveVersions.get(key) ?? 0) + 1);
   try {
     const db = await getDB();
     const sessionKey = getSessionStorageKey(userIdentifier);
-    return new Promise((resolve) => {
+    const committed = await new Promise<boolean>((resolve) => {
       const tx = db.transaction([SESSIONS_STORE], 'readwrite');
       const store = tx.objectStore(SESSIONS_STORE);
-      const req = store.delete(sessionKey);
-      req.onsuccess = () => resolve(true);
-      req.onerror = () => resolve(false);
+      store.delete(sessionKey);
+      tx.oncomplete = () => resolve(true);
+      tx.onabort = () => resolve(false);
     });
+    if (committed) await retireRecordingCheckpoints(key);
+    return committed;
   } catch {
     return false;
   }
@@ -564,6 +582,8 @@ export interface RGODBeatExportFile {
       audioWavBase64?: string;
     } | null;
     beatVolume?: number;
+    beatFX?: BeatFX;
+    isBeatMuted?: boolean;
     loopSettings?: LoopSettings;
     currentTime?: number;
     tracks: Array<{
@@ -571,9 +591,10 @@ export interface RGODBeatExportFile {
       name: string;
       volume: number;
       pan?: number;
+      isCustom?: boolean;
       isMuted: boolean;
       isSolo: boolean;
-      fx: any;
+      fx: VocalFX;
       clips: Array<{
         id: string;
         name?: string;
@@ -596,7 +617,8 @@ export async function exportProjectToDeviceFile(
   beat?: BeatData | null,
   loopSettings?: LoopSettings,
   currentTime?: number,
-  beatVolume?: number
+  beatVolume?: number,
+  mix?: BeatMixSettings
 ): Promise<{ success: boolean; filename?: string; error?: string }> {
   try {
     const cleanBeatTitle = (beat?.title || 'Mi_Proyecto').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -625,8 +647,7 @@ export async function exportProjectToDeviceFile(
       for (const clip of clipsToProcess) {
         if (!clip.buffer) continue;
         try {
-          const wavBlob = audioBufferToWav(clip.buffer, 16);
-          const buf = await wavBlob.arrayBuffer();
+          const buf = await encodeStoredAudio(clip.buffer);
           const base64 = arrayBufferToBase64(buf);
           storedClips.push({
             id: clip.id,
@@ -638,7 +659,7 @@ export async function exportProjectToDeviceFile(
             isLocked: clip.isLocked !== undefined ? Boolean(clip.isLocked) : true,
           });
         } catch (e) {
-          console.warn('Clip encode error in export:', e);
+          throw e;
         }
       }
 
@@ -647,6 +668,7 @@ export async function exportProjectToDeviceFile(
         name: track.name,
         volume: track.volume,
         pan: track.pan,
+        isCustom: track.isCustom,
         isMuted: track.isMuted,
         isSolo: track.isSolo,
         fx: track.fx,
@@ -659,8 +681,7 @@ export async function exportProjectToDeviceFile(
       let audioWavBase64: string | undefined = undefined;
       if (beat.buffer) {
         try {
-          const wavBlob = audioBufferToWav(beat.buffer, 16);
-          const buf = await wavBlob.arrayBuffer();
+          const buf = await encodeStoredAudio(beat.buffer);
           audioWavBase64 = arrayBufferToBase64(buf);
         } catch (e) {
           console.warn('Beat encode error in export:', e);
@@ -691,6 +712,8 @@ export async function exportProjectToDeviceFile(
         beatId: beat?.id,
         beatData: storedBeatData,
         beatVolume: beatVolume ?? 1.0,
+        beatFX: mix?.beatFX,
+        isBeatMuted: mix?.isBeatMuted,
         loopSettings,
         currentTime: currentTime ?? 0,
         tracks: exportedTracks,
@@ -721,13 +744,18 @@ export async function exportProjectToDeviceFile(
  */
 export async function importProjectFromDeviceFile(
   file: File,
-  audioCtx: AudioContext
+  audioCtx: AudioContext,
+  projectId = crypto.randomUUID(),
+  userIdentifier?: string | null
 ): Promise<{
+  projectId: string;
   tracks: VocalTrack[];
   beat: BeatData | null;
   loopSettings?: LoopSettings;
   currentTime?: number;
   beatVolume?: number;
+  beatFX?: BeatFX;
+  isBeatMuted?: boolean;
 } | null> {
   try {
     const text = await file.text();
@@ -760,7 +788,7 @@ export async function importProjectFromDeviceFile(
           isLocked: true,
         };
       } catch (decErr) {
-        console.warn('Error decoding project beat from file:', decErr);
+        throw decErr;
       }
     }
 
@@ -772,7 +800,7 @@ export async function importProjectFromDeviceFile(
       let latestWaveform: number[] | undefined;
 
       for (const sc of t.clips || []) {
-        if (!sc.audioWavBase64) continue;
+        if (!sc.audioWavBase64) throw new Error('Falta audio en el archivo de proyecto.');
         try {
           const rawBuf = base64ToArrayBuffer(sc.audioWavBase64);
           const decoded = await audioCtx.decodeAudioData(rawBuf);
@@ -789,15 +817,16 @@ export async function importProjectFromDeviceFile(
           latestBuffer = decoded;
           latestWaveform = sc.waveformSample;
         } catch (cErr) {
-          console.warn('Error decoding restored clip from file:', cErr);
+          throw cErr;
         }
       }
 
       restoredTracks.push({
-        id: t.id as any,
+        id: t.id,
         name: t.name,
         volume: t.volume ?? 1.0,
         pan: t.pan ?? 0,
+        isCustom: t.isCustom ?? t.id.startsWith('backing'),
         isMuted: Boolean(t.isMuted),
         isSolo: Boolean(t.isSolo),
         fx: t.fx,
@@ -811,14 +840,19 @@ export async function importProjectFromDeviceFile(
     }
 
     // 3. Immediately persist imported project as current active session in device memory
-    await saveStudioSession(restoredTracks, restoredBeat, s.loopSettings, s.currentTime, s.beatVolume);
+    const saved = await saveStudioSession(restoredTracks, restoredBeat, s.loopSettings, s.currentTime, s.beatVolume, undefined, userIdentifier, { beatFX: s.beatFX, isBeatMuted: s.isBeatMuted }, projectId);
+    if (!saved) throw new Error('No se pudo proteger el proyecto importado. El proyecto abierto se conserva.');
+    await retireRecordingCheckpoints(getSessionStorageKey(userIdentifier));
 
     return {
+      projectId,
       tracks: restoredTracks,
       beat: restoredBeat,
       loopSettings: s.loopSettings,
       currentTime: s.currentTime,
       beatVolume: s.beatVolume,
+      beatFX: s.beatFX,
+      isBeatMuted: s.isBeatMuted,
     };
   } catch (err) {
     console.error('importProjectFromDeviceFile failed:', err);

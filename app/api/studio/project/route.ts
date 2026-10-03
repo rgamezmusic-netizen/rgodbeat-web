@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import {
-  uploadToR2,
-  downloadFromR2,
-  deleteR2Prefix,
-  getR2SignedDownloadUrl,
-  doesR2ObjectExist,
-} from "@/lib/storage/r2";
+import { replaceCloudProject, ProjectConflict, type CloudMetadata, type StagedAudio } from "@/lib/studio/server/projectRepository";
+import { r2ProjectStorage } from "@/lib/studio/server/r2ProjectStorage";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +12,15 @@ const ADMIN_EMAILS = [
   "rgodbeat@gmail.com",
 ];
 
-async function checkUserAccess(user: any) {
+// This optional table is not present in the generated database schema.
+function projectIndex(client: ReturnType<typeof createAdminClient>) {
+  return (client as unknown as { from(table: string): {
+    upsert(values: Record<string, unknown>, options: { onConflict: string }): PromiseLike<unknown>;
+    delete(): { eq(column: string, value: string): PromiseLike<unknown> };
+  } }).from('studio_cloud_projects');
+}
+
+async function checkUserAccess(user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>) {
   if (!user || !user.email) {
     return { isLoggedIn: false, hasActivePass: false, daysRemaining: 0, isAdmin: false };
   }
@@ -27,7 +30,7 @@ async function checkUserAccess(user: any) {
     ADMIN_EMAILS.includes(user.email.toLowerCase());
 
   const supabase = createAdminClient();
-  const { data: customer } = await (supabase as any)
+  const { data: customer } = await supabase
     .from("customers")
     .select("studio_access_until")
     .eq("email", user.email)
@@ -48,220 +51,108 @@ async function checkUserAccess(user: any) {
   return { isLoggedIn: true, hasActivePass, daysRemaining, isAdmin, accessUntil };
 }
 
-/**
- * GET /api/studio/project
- * Fetches the user's saved single cloud project (or wipes it if subscription expired).
- */
+// Reading a backup never deletes it, including when a premium pass expires.
 export async function GET() {
   try {
     const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ hasProject: false, isLoggedIn: false });
+    if (!user) return NextResponse.json({ hasProject: false, isLoggedIn: false });
+    const { hasActivePass, daysRemaining, isAdmin } = await checkUserAccess(user);
+    const prefix = `studio/projects/${user.id}/`;
+    const stored = await r2ProjectStorage.read(`${prefix}project.json`);
+    const project = stored.body ? JSON.parse(stored.body.toString("utf8")) : null;
+    const access = { isLoggedIn: true, ownerEmail: user.email?.toLowerCase(), hasActivePass, daysRemaining,
+      warnExpiration: daysRemaining <= 3 && daysRemaining > 0 && !isAdmin, revision: stored.etag };
+    if (!project || project.deleted) return NextResponse.json({ ...access, hasProject: false });
+    if (project.beat?.customBeatKey?.startsWith(prefix)) {
+      project.beat.downloadUrl = `/api/studio/project/audio?key=${encodeURIComponent(project.beat.customBeatKey)}`;
     }
-
-    const { hasActivePass, daysRemaining, isAdmin, accessUntil } = await checkUserAccess(user);
-    const projectPrefix = `studio/projects/${user.id}/`;
-    const projectKey = `${projectPrefix}project.json`;
-
-    // 1. If user had a paid pass and the expiration date has strictly elapsed in the past, clean up
-    if (accessUntil && accessUntil < new Date() && !isAdmin) {
-      const exists = await doesR2ObjectExist(projectKey);
-      if (exists) {
-        await deleteR2Prefix(projectPrefix);
-
-        // Also clean DB if table exists
-        try {
-          const supabase = createAdminClient();
-          await (supabase as any).from("studio_cloud_projects").delete().eq("user_id", user.id);
-        } catch {
-          // ignore
-        }
-
-        return NextResponse.json({
-          hasProject: false,
-          expired: true,
-          message: "Tu proyecto en la nube fue eliminado porque tu suscripción premium ha expirado.",
-        });
-      }
+    for (const track of project.tracks ?? []) for (const clip of track.clips ?? []) {
+      if (clip.storageKey?.startsWith(prefix)) clip.downloadUrl = `/api/studio/project/audio?key=${encodeURIComponent(clip.storageKey)}`;
     }
-
-    // 2. Load user's latest project.json from R2
-    const projectBuffer = await downloadFromR2(projectKey);
-    if (!projectBuffer) {
-      return NextResponse.json({
-        hasProject: false,
-        hasActivePass,
-        daysRemaining,
-        warnExpiration: daysRemaining <= 3 && daysRemaining > 0 && !isAdmin,
-      });
-    }
-
-    const projectData = JSON.parse(projectBuffer.toString("utf8"));
-
-    // Generate signed download URLs for clips and custom beat so the client can stream/decode them
-    if (projectData.beat?.isCustomUpload && projectData.beat?.customBeatKey) {
-      projectData.beat.downloadUrl = await getR2SignedDownloadUrl(projectData.beat.customBeatKey, 7200);
-    }
-
-    if (Array.isArray(projectData.tracks)) {
-      for (const track of projectData.tracks) {
-        if (Array.isArray(track.clips)) {
-          for (const clip of track.clips) {
-            if (clip.storageKey) {
-              clip.downloadUrl = await getR2SignedDownloadUrl(clip.storageKey, 7200);
-            }
-          }
-        }
-      }
-    }
-
-    return NextResponse.json({
-      hasProject: true,
-      hasActivePass,
-      daysRemaining,
-      warnExpiration: daysRemaining <= 3 && daysRemaining > 0 && !isAdmin,
-      project: projectData,
-    });
-  } catch (err: any) {
-    console.error("[Studio Project GET error]:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ ...access, hasProject: true, project });
+  } catch (error) {
+    console.error("[Studio Project GET error]", error);
+    return NextResponse.json({ error: "No se pudo consultar el respaldo. Tu proyecto no se ha borrado." }, { status: 503 });
   }
 }
 
-/**
- * POST /api/studio/project
- * Saves the active project (Beat + Vocals + FX) into Cloudflare R2 and Supabase.
- * Exactly 1 project slot per account.
- */
+// One active workspace per account. The old manifest remains usable until commit.
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json(
-        { error: "Debes iniciar sesión para guardar tu proyecto en tu cuenta." },
-        { status: 401 }
-      );
+    if (!user) return NextResponse.json({ error: "Inicia sesión para respaldar tu proyecto." }, { status: 401 });
+    const form = await req.formData();
+    const raw = form.get("metadata");
+    if (typeof raw !== "string") return NextResponse.json({ error: "Faltan los metadatos." }, { status: 400 });
+    const metadata = JSON.parse(raw) as CloudMetadata;
+    if (metadata.ownerEmail && metadata.ownerEmail !== user.email?.toLowerCase()) {
+      return NextResponse.json({ error: 'La cuenta cambió antes de guardar.' }, { status: 401 });
     }
-
-    const { daysRemaining, hasActivePass } = await checkUserAccess(user);
-
-    const formData = await req.formData();
-    const metadataRaw = formData.get("metadata") as string;
-    if (!metadataRaw) {
-      return NextResponse.json({ error: "Faltan los metadatos del proyecto." }, { status: 400 });
+    if (!Array.isArray(metadata.tracks) || metadata.tracks.some(track => !Array.isArray(track.clips))) {
+      return NextResponse.json({ error: "Las pistas del proyecto son inválidas." }, { status: 400 });
     }
-
-    const metadata = JSON.parse(metadataRaw);
-    const projectPrefix = `studio/projects/${user.id}/`;
-
-    // 1. Upload custom beat if provided
-    const customBeatFile = formData.get("beat_custom") as File | null;
-    let customBeatKey: string | null = null;
-    if (customBeatFile && customBeatFile.size > 0) {
-      customBeatKey = `${projectPrefix}beat.wav`;
-      const beatBuf = Buffer.from(await customBeatFile.arrayBuffer());
-      await uploadToR2({
-        key: customBeatKey,
-        body: beatBuf,
-        contentType: customBeatFile.type || "audio/wav",
-      });
-      metadata.beat.customBeatKey = customBeatKey;
+    const base = form.get("baseRevision");
+    if (typeof base !== "string") return NextResponse.json({ error: "Actualiza Studio antes de respaldar el proyecto." }, { status: 428 });
+    const files = new Map<string, Buffer>();
+    for (const [name, value] of form.entries()) {
+      if (value instanceof File && value.size) files.set(name, Buffer.from(await value.arrayBuffer()));
     }
-
-    // 2. Upload vocal clips
-    if (Array.isArray(metadata.tracks)) {
-      for (const track of metadata.tracks) {
-        if (Array.isArray(track.clips)) {
-          for (const clip of track.clips) {
-            const formKey = `clip_${track.id}_${clip.id}`;
-            const clipFile = formData.get(formKey) as File | null;
-            if (clipFile && clipFile.size > 0) {
-              const clipKey = `${projectPrefix}clips/${track.id}_${clip.id}.wav`;
-              const clipBuf = Buffer.from(await clipFile.arrayBuffer());
-              await uploadToR2({
-                key: clipKey,
-                body: clipBuf,
-                contentType: "audio/wav",
-              });
-              clip.storageKey = clipKey;
-            }
-          }
+    const stagedRaw = form.get('stagedAudio');
+    const staged = new Map<string, StagedAudio>();
+    if (typeof stagedRaw === 'string') {
+      const assets = JSON.parse(stagedRaw) as Record<string, StagedAudio>;
+      for (const [formKey, asset] of Object.entries(assets)) {
+        if (!/^([a-f0-9-]{36})$/.test(asset?.key.split('/')[4] || '')
+          || !asset.key.startsWith(`studio/projects/${user.id}/snapshots/`)
+          || !/^[a-f0-9]{64}$/.test(asset.hash)) {
+          return NextResponse.json({ error: 'Audio preparado inválido.' }, { status: 400 });
         }
+        staged.set(formKey, asset);
       }
     }
-
-    metadata.savedAt = Date.now();
-    metadata.userEmail = user.email;
-    metadata.userId = user.id;
-
-    // 3. Save project.json
-    const projectKey = `${projectPrefix}project.json`;
-    await uploadToR2({
-      key: projectKey,
-      body: Buffer.from(JSON.stringify(metadata, null, 2)),
-      contentType: "application/json",
-    });
-
-    // 4. Try updating Supabase database table if available
+    delete metadata.deleted;
+    metadata.userId = user.id; metadata.userEmail = user.email;
+    const prefix = `studio/projects/${user.id}/`;
+    const result = await replaceCloudProject(r2ProjectStorage, prefix, base || null, metadata, files, staged);
+    // R2 manifest is authoritative; the existing optional account index is maintained.
     try {
       const supabase = createAdminClient();
-      await (supabase as any).from("studio_cloud_projects").upsert(
-        {
-          user_id: user.id,
-          email: user.email,
-          project_name: metadata.projectName || "Mi Proyecto",
-          beat_id: metadata.beat?.id || null,
-          beat_title: metadata.beat?.title || null,
-          beat_bpm: metadata.beat?.bpm || null,
-          beat_key: metadata.beat?.key || null,
-          beat_scale: metadata.beat?.scale || null,
-          is_custom_beat: Boolean(metadata.beat?.isCustomUpload),
-          beat_file_key: customBeatKey,
-          tracks_meta: metadata.tracks || [],
-          storage_r2_prefix: projectPrefix,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
-    } catch {
-      // Supabase table update optional (R2 is the primary source of truth)
-    }
-
-    return NextResponse.json({
-      success: true,
-      savedAt: metadata.savedAt,
-      daysRemaining,
-    });
-  } catch (err: any) {
-    console.error("[Studio Project POST error]:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+      await projectIndex(supabase).upsert({
+        user_id: user.id, email: user.email, project_name: metadata.projectName || "Mi Proyecto",
+        beat_id: metadata.beat?.id || null, beat_title: metadata.beat?.title || null,
+        beat_file_key: metadata.beat?.customBeatKey || null, tracks_meta: metadata.tracks,
+        storage_r2_prefix: prefix, updated_at: new Date(result.savedAt).toISOString(),
+      }, { onConflict: "user_id" });
+    } catch { /* Optional index does not determine backup success. */ }
+    return NextResponse.json({ success: true, ...result });
+  } catch (error) {
+    if (error instanceof ProjectConflict) return NextResponse.json({ error: error.message, conflict: true }, { status: 409 });
+    console.error("[Studio Project POST error]", error);
+    return NextResponse.json({ error: "No se completó el respaldo de cuenta. Se conserva la versión anterior." }, { status: 503 });
   }
 }
 
-/**
- * DELETE /api/studio/project
- * Deletes the saved cloud project.
- */
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    if (!user) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    const body = await req.json();
+    if (body.ownerEmail && body.ownerEmail !== user.email?.toLowerCase()) {
+      return NextResponse.json({ error: 'La cuenta cambió antes de limpiar el proyecto.' }, { status: 401 });
     }
-
-    const projectPrefix = `studio/projects/${user.id}/`;
-    await deleteR2Prefix(projectPrefix);
-
+    if (!(typeof body.baseRevision === "string" || body.baseRevision === null)) {
+      return NextResponse.json({ error: "Falta la revisión del proyecto." }, { status: 400 });
+    }
+    // A small tombstone prevents a delayed save from recreating the previous workspace.
+    const result = await replaceCloudProject(r2ProjectStorage, `studio/projects/${user.id}/`,
+      body.baseRevision, { deleted: true, beat: null, tracks: [], userId: user.id }, new Map());
     try {
       const supabase = createAdminClient();
-      await (supabase as any).from("studio_cloud_projects").delete().eq("user_id", user.id);
-    } catch {
-      // ignore
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (err: any) {
-    console.error("[Studio Project DELETE error]:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+      await projectIndex(supabase).delete().eq("user_id", user.id);
+    } catch { /* Optional index. */ }
+    return NextResponse.json({ success: true, ...result });
+  } catch (error) {
+    if (error instanceof ProjectConflict) return NextResponse.json({ error: error.message, conflict: true }, { status: 409 });
+    return NextResponse.json({ error: "No se pudo reemplazar el proyecto anterior. Inténtalo de nuevo." }, { status: 503 });
   }
 }

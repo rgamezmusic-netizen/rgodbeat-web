@@ -100,14 +100,14 @@ export function extractWaveformPeaks(buffer: AudioBuffer, points: number = 60): 
   const channelData = buffer.getChannelData(0);
   if (!channelData || channelData.length === 0) return Array(points).fill(0);
 
-  const step = Math.floor(channelData.length / points);
   const rawPeaks: number[] = [];
   let absoluteMax = 0;
 
   for (let i = 0; i < points; i++) {
-    const start = i * step;
+    const start = Math.floor(i * channelData.length / points);
+    const end = Math.max(start + 1, Math.floor((i + 1) * channelData.length / points));
     let max = 0;
-    for (let j = 0; j < step && start + j < channelData.length; j++) {
+    for (let j = 0; start + j < end && start + j < channelData.length; j++) {
       const absVal = Math.abs(channelData[start + j]);
       if (absVal > max) max = absVal;
     }
@@ -135,11 +135,11 @@ export function sliceAudioBuffer(
   startSec: number,
   durationSec: number
 ): AudioBuffer | null {
-  if (!source || durationSec <= 0.05) return null;
+  if (!source || durationSec <= 0) return null;
   const sampleRate = source.sampleRate;
   const numChannels = source.numberOfChannels;
-  const startSample = Math.max(0, Math.floor(startSec * sampleRate));
-  const numSamples = Math.min(source.length - startSample, Math.floor(durationSec * sampleRate));
+  const startSample = Math.max(0, Math.round(startSec * sampleRate));
+  const numSamples = Math.min(source.length - startSample, Math.round(durationSec * sampleRate));
   if (numSamples <= 0) return null;
 
   const sliced = audioCtx.createBuffer(numChannels, numSamples, sampleRate);
@@ -186,22 +186,22 @@ export function punchInClips(
     const cEnd = c.startBeatOffset + c.duration;
 
     // Case 1: No overlap with [newStart, newEnd]
-    if (cEnd <= newStart + 0.03 || cStart >= newEnd - 0.03) {
+    if (cEnd <= newStart || cStart >= newEnd) {
       survivingClips.push(c);
       continue;
     }
 
     // Case 2: New take completely covers this clip -> clip is overwritten entirely
-    if (newStart <= cStart + 0.03 && newEnd >= cEnd - 0.03) {
+    if (newStart <= cStart && newEnd >= cEnd) {
       continue;
     }
 
     // Case 3: Overlap is partial! Keep the non-overwritten portions.
     // Left non-overwritten portion:
-    if (cStart < newStart - 0.05) {
+    if (cStart < newStart) {
       const leftDuration = newStart - cStart;
       const leftBuffer = sliceAudioBuffer(audioCtx, c.buffer, 0, leftDuration);
-      if (leftBuffer && leftBuffer.duration > 0.05) {
+      if (leftBuffer) {
         survivingClips.push({
           ...c,
           id: `${c.id}-p1-${Date.now()}`,
@@ -216,11 +216,11 @@ export function punchInClips(
     }
 
     // Right non-overwritten portion:
-    if (cEnd > newEnd + 0.05) {
+    if (cEnd > newEnd) {
       const offsetInClip = newEnd - cStart;
       const rightDuration = cEnd - newEnd;
       const rightBuffer = sliceAudioBuffer(audioCtx, c.buffer, offsetInClip, rightDuration);
-      if (rightBuffer && rightBuffer.duration > 0.05) {
+      if (rightBuffer) {
         survivingClips.push({
           ...c,
           id: `${c.id}-p2-${Date.now()}`,

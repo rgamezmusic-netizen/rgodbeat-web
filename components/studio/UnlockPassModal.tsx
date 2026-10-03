@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import React, { useState } from 'react';
 import { X, Sparkles, Check, Flame, ArrowRight, Loader2, LogIn, User, Lock, Mail, UserPlus } from 'lucide-react';
 import { signInWithEmail, signUpWithEmail } from '@/lib/auth/client';
@@ -71,8 +72,8 @@ export const UnlockPassModal: React.FC<UnlockPassModalProps> = ({
       setTimeout(() => {
         onClose();
       }, 700);
-    } catch (err: any) {
-      setAuthError(err.message || 'Error al conectar con el servidor.');
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : 'Error al conectar con el servidor.');
     } finally {
       setIsLoadingAuth(false);
     }
@@ -116,8 +117,8 @@ export const UnlockPassModal: React.FC<UnlockPassModalProps> = ({
         setActiveTab('login');
         setLoginEmail(cleanEmail);
       }
-    } catch (err: any) {
-      setAuthError(err.message || 'Error al crear la cuenta.');
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : 'Error al crear la cuenta.');
     } finally {
       setIsLoadingAuth(false);
     }
@@ -148,9 +149,9 @@ export const UnlockPassModal: React.FC<UnlockPassModalProps> = ({
       if (data.url) {
         window.location.href = data.url;
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setCheckoutError(err.message || 'No se pudo conectar a la pasarela de pago.');
+      setCheckoutError(err instanceof Error ? err.message : 'No se pudo conectar a la pasarela de pago.');
     } finally {
       setIsLoadingCheckout(false);
     }
@@ -444,7 +445,7 @@ export const UnlockPassModal: React.FC<UnlockPassModalProps> = ({
                     <ul className="space-y-1.5 text-[11px] text-zinc-300 font-mono">
                       <li className="flex items-center gap-1.5">
                         <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>4 pistas vocales multipista</span>
+                        <span>Todas las pistas vocales</span>
                       </li>
                       <li className="flex items-center gap-1.5">
                         <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -510,13 +511,13 @@ export const UnlockPassModal: React.FC<UnlockPassModalProps> = ({
                     </ul>
                   </div>
 
-                  <a
+                  <Link
                     href="/beats"
                     className="w-full py-2.5 px-3 rounded-xl bg-white/[0.08] hover:bg-purple-600 hover:text-white border border-white/10 text-white font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 text-center active:scale-95"
                   >
                     <span>Ver Beats</span>
                     <ArrowRight className="w-3.5 h-3.5" />
-                  </a>
+                  </Link>
                 </div>
               </div>
             </div>

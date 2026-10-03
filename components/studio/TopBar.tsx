@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import React, { useRef, useState, useEffect } from 'react';
 import {
   Download,
@@ -142,7 +143,7 @@ export const TopBar: React.FC<TopBarProps> = ({
       >
         {/* LEFT ZONE: Studio Logo */}
         <div className="flex items-center min-w-0 shrink-0">
-          <a
+          <Link
             href="/"
             onClick={(e) => {
               if (onSaveAndExit) {
@@ -158,7 +159,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               alt="RGodbeat Studio"
               className="h-5 sm:h-7 w-auto max-w-[70px] xs:max-w-[85px] sm:max-w-[125px] object-contain filter brightness-125 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-all duration-200"
             />
-          </a>
+          </Link>
         </div>
 
         {/* CENTER ZONE: 4 Centered Buttons (View Switchers are LARGER in the center, Beat and Options symmetrical & square) */}
@@ -179,14 +180,14 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => onChangeView('studio')}
-              className={`flex-1 h-full px-2 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer min-w-0 ${
+              className={`flex-1 h-full px-1 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer min-w-0 ${
                 activeView === 'studio'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 font-black scale-[1.02]'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
               }`}
               title="Ventana Principal: Grabador & Reproductor"
             >
-              <Disc3 className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
+              <Disc3 className="hidden sm:block w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
               <span className="font-bold whitespace-nowrap text-[11px] sm:text-xs">Grabador</span>
             </button>
 
@@ -194,17 +195,17 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => onChangeView('editor')}
-              className={`flex-1 h-full px-2 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer relative min-w-0 ${
+              className={`flex-1 h-full px-1 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer relative min-w-0 ${
                 activeView === 'editor'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 font-black scale-[1.02]'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850'
               }`}
               title="Ventana de Edición: Multitrack & Tomas"
             >
-              <Layers className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
+              <Layers className="hidden sm:block w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
               <span className="font-bold whitespace-nowrap text-[11px] sm:text-xs">Edición</span>
               {hasRecordings && (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="hidden sm:block w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               )}
             </button>
           </div>

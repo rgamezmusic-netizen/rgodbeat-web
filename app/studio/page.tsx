@@ -20,7 +20,7 @@ const StudioApp = dynamic(
             RGODBEAT STUDIO // INICIALIZANDO DSP
           </h2>
           <p className="text-xs text-zinc-500 font-mono">
-            Calibrando motor de audio de baja latencia a 48.0 kHz 24-bit...
+            Preparando grabación, efectos y edición multipista...
           </p>
         </div>
       </div>

@@ -21,7 +21,8 @@ import {
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 import { createDemoBeat } from '@/lib/studio/audio/demoBeats';
 import { analyzeBeatAudio } from '@/lib/studio/audio/beatAnalyzer';
-import { extractWaveformPeaks, punchInClips } from '@/lib/studio/audio/wavEncoder';
+import { punchInClips } from '@/lib/studio/audio/wavEncoder';
+import { getTrackClips, splitClip, trimClip, withTrackClips } from '@/lib/studio/audio/clipEditing';
 import { MAIN_SCALES } from '@/lib/studio/audio/pitchCorrection';
 import {
   saveBeatToDatabase,
@@ -32,19 +33,18 @@ import {
   MAX_SAVED_BEATS,
 } from '@/lib/studio/audio/beatStorage';
 import {
-  saveStudioSession,
+  saveStudioSession as persistStudioSession,
   restoreLastStudioSession,
   clearSavedStudioSession,
   exportProjectToDeviceFile,
   importProjectFromDeviceFile,
   setSessionStorageUser,
+  getSessionStorageKey,
 } from '@/lib/studio/audio/sessionStorage';
 import { signOutClient } from '@/lib/auth/client';
 import { TopBar } from './TopBar';
 import { ArtworkPlayer } from './ArtworkPlayer';
-import { RecordControlBar } from './RecordControlBar';
 import { VocalTrackDropdown } from './VocalTrackDropdown';
-import { VocalTracksList } from './VocalTracksList';
 import { TimelineWorkspace } from './TimelineWorkspace';
 import { VocalFXModal } from './VocalFXModal';
 import { BeatFXModal } from './BeatFXModal';
@@ -61,13 +61,17 @@ import {
   applyUserFXTemplatesToTracks,
   adaptTracksTonalityToBeat,
 } from '@/lib/studio/audio/userFXTemplates';
-import { AlertCircle, CheckCircle, Info, Disc3, Layers, HardDrive, AlertTriangle, Cloud, CloudUpload, Sparkles, Download } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info, AlertTriangle, Cloud, Download } from 'lucide-react';
 import {
-  saveProjectToCloud,
+  saveProjectToCloud as persistCloudProject,
   loadProjectFromCloud,
   checkCloudProject,
   CloudProjectCheckResult,
+  deleteProjectFromCloud,
+  setCloudProjectUser,
 } from '@/lib/studio/cloudProject';
+
+import { appendRecordingCheckpoint, recoverRecordingCheckpoints, retireRecordingCheckpoints } from '@/lib/studio/audio/recordingRecovery';
 
 const defaultVocalFX = (): VocalFX => ({
   tune: {
@@ -210,13 +214,11 @@ export default function App() {
   const [isBeatLocked, setIsBeatLocked] = useState<boolean>(false);
   const [currentBeat, setCurrentBeat] = useState<BeatData | null>(null);
   const currentBeatRef = useRef<BeatData | null>(null);
-  currentBeatRef.current = currentBeat;
 
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const isRecordingRef = useRef<boolean>(false);
-  isRecordingRef.current = isRecording;
 
   const [activeRecordingTrackId, setActiveRecordingTrackId] = useState<VocalTrackId | null>(null);
   const [selectedTrackId, setSelectedTrackId] = useState<VocalTrackId>('lead1');
@@ -227,12 +229,10 @@ export default function App() {
   // View state: 'studio' (Player & Strips) | 'editor' (Timeline Multitrack with moveable takes)
   const [activeView, setActiveView] = useState<'studio' | 'editor'>('studio');
   const activeViewRef = useRef<'studio' | 'editor'>('studio');
-  activeViewRef.current = activeView;
 
   // Vocal Tracks with 2 Leads (Applying user's saved channel FX templates)
   const [tracks, setTracks] = useState<VocalTrack[]>(() => applyUserFXTemplatesToTracks(initialTracks, null));
   const tracksRef = useRef<VocalTrack[]>(tracks);
-  tracksRef.current = tracks;
 
   // Startup Project Prompt state (Continuar Último Proyecto vs Iniciar Proyecto Nuevo)
   const [showStartupModal, setShowStartupModal] = useState<boolean>(false);
@@ -242,6 +242,8 @@ export default function App() {
     beat?: BeatData | null;
     beatId?: string | null;
     loopSettings?: LoopSettings;
+    beatFX?: BeatFX;
+    isBeatMuted?: boolean;
     currentTime?: number;
     activeView?: 'studio' | 'editor';
     takesCount: number;
@@ -251,12 +253,12 @@ export default function App() {
 
   // Screen Wake Lock API: Keeps the screen awake while using Studio
   useEffect(() => {
-    let wakeLockSentinel: any = null;
+    let wakeLockSentinel: WakeLockSentinel | null = null;
 
     const requestWakeLock = async () => {
       try {
-        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && (navigator as any).wakeLock?.request) {
-          wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && navigator.wakeLock?.request) {
+          wakeLockSentinel = await navigator.wakeLock.request('screen');
         }
       } catch (err) {
         console.debug('Screen WakeLock active/prevented:', err);
@@ -283,21 +285,21 @@ export default function App() {
 
   // Bluetooth Latency Auto-Compensation & App Install Modal State
   const [bluetoothSyncEnabled, setBluetoothSyncEnabled] = useState<boolean>(false);
-  const [bluetoothOffsetMs, setBluetoothOffsetMs] = useState<number>(185);
+  const [bluetoothOffsetMs] = useState<number>(185);
   const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
 
-  // Auto-open Install App Guide immediately upon entering the app (unless already running in standalone PWA mode)
+  // Offer installation once, after project selection, without covering another modal.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true ||
-      document.referrer.includes('android-app://');
-
-    if (!isStandalone) {
+    if (!isStartupResolved || showStartupModal) return;
+    const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone || document.referrer.includes('android-app://');
+    if (standalone || localStorage.getItem('rgodbeat_install_prompt_seen')) return;
+    const timer = setTimeout(() => {
+      localStorage.setItem('rgodbeat_install_prompt_seen', 'true');
       setShowInstallModal(true);
-    }
-  }, []);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [isStartupResolved, showStartupModal]);
 
   const handleToggleBluetoothSync = () => {
     const nextState = !bluetoothSyncEnabled;
@@ -358,10 +360,11 @@ export default function App() {
     const currentOffset = clip ? clip.startBeatOffset : currentTrack?.startBeatOffset || 0;
 
     // Only commit if the clip actually moved more than 20ms
-    if (Math.abs(currentOffset - initialOffset) > 0.02) {
+    if (Math.abs(currentOffset - initialOffset) >= 0.0005) {
+      const snapshot = preDragTracksSnapshotRef.current;
       setUndoStack((prev) => [
         ...prev.slice(-25),
-        { tracks: preDragTracksSnapshotRef.current!, description: 'Mover toma' },
+        { tracks: snapshot, description: 'Mover toma' },
       ]);
       setRedoStack([]); // Reset redo stack on new action
     }
@@ -369,6 +372,7 @@ export default function App() {
   };
 
   const handleUndo = () => {
+    if (isRecordingRef.current) return;
     if (undoStack.length === 0) {
       showToast('No hay más acciones para deshacer', 'info');
       return;
@@ -381,13 +385,14 @@ export default function App() {
     setUndoStack(nextUndo);
     setTracks(lastEntry.tracks);
     tracksRef.current = lastEntry.tracks;
-    if (engine && isPlaying) {
-      engine.seek(currentTime, lastEntry.tracks);
+    if (engine?.getIsPlaying()) {
+      engine.seek(engine.getCurrentPlaybackPosition(), lastEntry.tracks);
     }
     showToast(`Deshecho: ${lastEntry.description}`, 'info');
   };
 
   const handleRedo = () => {
+    if (isRecordingRef.current) return;
     if (redoStack.length === 0) {
       showToast('No hay más acciones para rehacer', 'info');
       return;
@@ -400,8 +405,8 @@ export default function App() {
     setRedoStack(nextRedo);
     setTracks(nextEntry.tracks);
     tracksRef.current = nextEntry.tracks;
-    if (engine && isPlaying) {
-      engine.seek(currentTime, nextEntry.tracks);
+    if (engine?.getIsPlaying()) {
+      engine.seek(engine.getCurrentPlaybackPosition(), nextEntry.tracks);
     }
     showToast(`Rehecho: ${nextEntry.description}`, 'info');
   };
@@ -452,6 +457,42 @@ export default function App() {
   const [isBeatMuted, setIsBeatMuted] = useState<boolean>(false);
   const [isRecArmed, setIsRecArmed] = useState<boolean>(true);
 
+  const beatMixRef = useRef({ beatFX, isBeatMuted });
+  useEffect(() => { beatMixRef.current = { beatFX, isBeatMuted }; }, [beatFX, isBeatMuted]);
+  const sessionOwnerRef = useRef<string | null | undefined>(undefined);
+  const activeProjectIdRef = useRef(crypto.randomUUID());
+  const replacingProjectRef = useRef(false);
+  const cloudDirtyRef = useRef(false);
+  const cloudConflictRef = useRef(false);
+  const [localBackupStatus, setLocalBackupStatus] = useState('Preparando respaldo…');
+  const [cloudBackupStatus, setCloudBackupStatus] = useState('');
+  const [startupError, setStartupError] = useState<string | null>(null);
+  async function saveStudioSession(...args: Parameters<typeof persistStudioSession>) {
+    if (sessionOwnerRef.current === undefined || replacingProjectRef.current) return false;
+    const saved = await persistStudioSession(args[0], args[1], args[2], args[3], args[4], args[5],
+      args[6] === undefined ? sessionOwnerRef.current : args[6], args[7] ?? beatMixRef.current, args[8] ?? activeProjectIdRef.current);
+    setLocalBackupStatus(saved ? 'Copia local guardada' : 'No se pudo guardar la copia local. Descarga tu proyecto.');
+    return saved;
+  }
+  async function saveProjectToCloud(...args: Parameters<typeof persistCloudProject>) {
+    if (replacingProjectRef.current) return { success: false, error: 'Se está cambiando de proyecto.' };
+    cloudDirtyRef.current = true;
+    setCloudBackupStatus('Respaldando en tu cuenta…');
+    const result = await persistCloudProject(args[0], args[1], args[2], args[3] ?? beatMixRef.current);
+    cloudDirtyRef.current = !result.success;
+    cloudConflictRef.current = Boolean(result.conflict);
+    setCloudBackupStatus(result.success ? 'Respaldo de cuenta actualizado' : result.conflict
+      ? 'El proyecto cambió en otra sesión. Descarga tu copia antes de cargar la cuenta.'
+      : 'Respaldo de cuenta pendiente. Tu copia local se conserva.');
+    return result;
+  }
+  function restoreBeatMix(mix: { beatFX?: BeatFX; isBeatMuted?: boolean }) {
+    if (mix.beatFX) setBeatFX(mix.beatFX);
+    else setBeatFX(previous => ({ ...previous, lowPass: 20000, highPass: 20 }));
+    setIsBeatMuted(mix.isBeatMuted ?? false);
+    beatMixRef.current = { beatFX: mix.beatFX ?? beatMixRef.current.beatFX, isBeatMuted: mix.isBeatMuted ?? false };
+  }
+
   // Studio Access & Subscription state
   const [accessStatus, setAccessStatus] = useState<{
     isDemo: boolean;
@@ -478,34 +519,41 @@ export default function App() {
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
   const [unlockModalReason, setUnlockModalReason] = useState<'export' | 'tracks' | 'general'>('general');
 
-  const refreshStudioAccess = useCallback(async () => {
-    try {
-      const res = await fetch('/api/studio/access');
-      if (res.ok) {
-        const data = await res.json();
-        setAccessStatus({
-          isDemo: data.isDemo,
-          isLoggedIn: Boolean(data.isLoggedIn || data.email),
-          hasActivePass: data.hasActivePass,
-          daysRemaining: data.daysRemaining || 0,
-          expiresAt: data.expiresAt,
-          email: data.email,
-          name: data.name || 'Artista',
-        });
-        if (data.email) {
-          setSessionStorageUser(data.email);
-        }
-        if (data.hasActivePass) {
-          showToast(`¡Pase activo verificado! ${data.daysRemaining || 30} días restantes.`, 'success');
-        }
+  const accessRequestRef = useRef<Promise<string | null> | null>(null);
+  const refreshStudioAccess = useCallback(() => {
+    if (accessRequestRef.current) return accessRequestRef.current;
+    const request = (async () => {
+      const res = await fetch('/api/studio/access', { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudo verificar tu cuenta. Reintenta para recuperar el proyecto correcto.');
+      const data = await res.json();
+      const email = data.email?.trim().toLowerCase() || null;
+      if (sessionOwnerRef.current !== undefined && sessionOwnerRef.current !== email) {
+        throw new Error('La cuenta cambió. Descarga tu proyecto y vuelve a abrir Studio.');
       }
-    } catch (err) {
-      console.error('Error checking studio access:', err);
-    }
+      sessionOwnerRef.current = email;
+      setSessionStorageUser(email);
+      setCloudProjectUser(email);
+      const next = {
+        isDemo: data.isDemo, isLoggedIn: Boolean(data.isLoggedIn || email), hasActivePass: data.hasActivePass,
+        daysRemaining: data.daysRemaining || 0, expiresAt: data.expiresAt, email, name: data.name || 'Artista',
+      };
+      accessStatusRef.current = next;
+      setAccessStatus(next);
+      return email;
+    })();
+    accessRequestRef.current = request;
+    void request.finally(() => { if (accessRequestRef.current === request) accessRequestRef.current = null; }).catch(() => {});
+    return request;
   }, []);
 
   const handleLogout = useCallback(async () => {
     try {
+      if (engine?.getIsRecording()) await engine.stopRecording();
+      const settings = sessionSettingsRef.current;
+      if (!await saveStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings, settings.currentTime, settings.beatVolume, activeViewRef.current)) {
+        showToast('Guarda una copia del proyecto antes de cerrar sesión.', 'error'); return;
+      }
+      if (accessStatusRef.current.isLoggedIn) await saveProjectToCloud(tracksRef.current, currentBeatRef.current, settings.loopSettings);
       await signOutClient();
       setSessionStorageUser(null);
       setAccessStatus({
@@ -524,7 +572,7 @@ export default function App() {
       console.error('Error during logout:', logoutErr);
       showToast('Error al cerrar sesión', 'error');
     }
-  }, []);
+  }, [engine]);
 
   // Cloud Project State (1 saved project per active account in R2 cloud)
   const [cloudProjectInfo, setCloudProjectInfo] = useState<CloudProjectCheckResult | null>(null);
@@ -546,10 +594,6 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    refreshStudioAccess();
-    refreshCloudProjectStatus();
-  }, [refreshStudioAccess, refreshCloudProjectStatus]);
 
   // Modals state
   const [activeFXTrackId, setActiveFXTrackId] = useState<VocalTrackId | null>(null);
@@ -563,9 +607,9 @@ export default function App() {
     text: string;
     type: 'info' | 'success' | 'error';
   } | null>(null);
-  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isExporting] = useState<boolean>(false);
 
-  const showToast = (text: string, type: 'info' | 'success' | 'error' = 'info') => {
+  function showToast(text: string, type: 'info' | 'success' | 'error' = 'info') {
     setToastMessage({ text, type });
     setTimeout(() => {
       setToastMessage(null);
@@ -573,7 +617,17 @@ export default function App() {
   };
 
   // Initialize AudioEngine
+  const sessionSettingsRef = useRef({ loopSettings, currentTime, beatVolume: beatFX.volume });
   useEffect(() => {
+    sessionSettingsRef.current = { loopSettings, currentTime, beatVolume: beatFX.volume };
+    currentBeatRef.current = currentBeat;
+    activeViewRef.current = activeView;
+    isRecordingRef.current = isRecording;
+    tracksRef.current = tracks;
+  }, [loopSettings, currentTime, beatFX.volume, currentBeat, activeView, isRecording, tracks]);
+
+  useEffect(() => {
+    let cancelled = false;
     const audioEngine = new AudioEngine({
       onTimeUpdate: (time) => {
         setCurrentTime(time);
@@ -587,122 +641,51 @@ export default function App() {
       onCountInBeat: (beat) => {
         setCountInBeat(beat);
       },
-      onRecordingFinished: (trackId, buffer, waveform, explicitOffset?: number) => {
-        const isStillRecording = audioEngine.getIsRecording();
-        if (!isStillRecording) {
-          setIsRecording(false);
-          setActiveRecordingTrackId(null);
-          setIsPlaying(false);
-        } else {
-          setActiveRecordingTrackId(audioEngine.getRecordingTrackId());
-        }
-
-        // Record history snapshot before adding take so user can undo it
-        pushUndoSnapshot('Grabación de voz');
-
-        const startOffset = typeof explicitOffset === 'number'
-          ? Math.max(0, explicitOffset)
-          : Math.max(0, audioEngine.getRecordingStartBeatTime());
-        const newClipId = `clip-${trackId}-${Date.now()}`;
-        const audioCtx = audioEngine.getAudioContext() || new (window.AudioContext || (window as any).webkitAudioContext)();
-
-        setTracks((prev) => {
-          const next = prev.map((t) => {
-            if (t.id !== trackId) return t;
-
-            const newClip: VocalClip = {
-              id: newClipId,
-              buffer,
-              tunedBuffer: null,
-              startBeatOffset: startOffset,
-              duration: buffer.duration,
-              waveformSample: waveform,
-              name: 'Toma',
-              isLocked: true, // Seguro/Hold activado de fábrica por defecto
-            };
-
-            const existingClips: VocalClip[] = (t.clips && t.clips.length > 0)
-              ? t.clips
-              : (t.buffer ? [{
-                  id: `clip-${t.id}-init`,
-                  buffer: t.buffer,
-                  tunedBuffer: t.tunedBuffer,
-                  startBeatOffset: t.startBeatOffset || 0,
-                  duration: t.duration || t.buffer.duration,
-                  waveformSample: t.waveformSample,
-                  name: 'Toma 1',
-                  isLocked: true,
-                }] : []);
-
-            // True DAW non-destructive punch-in overwrite:
-            // Keeps non-overwritten clips, trims only overlapping segments, and preserves earlier/later takes!
-            const updatedClips = punchInClips(audioCtx, existingClips, newClip);
-            const totalDuration = updatedClips.length > 0
-              ? Math.max(...updatedClips.map((c) => c.startBeatOffset + c.duration))
-              : buffer.duration;
-            const firstOffset = updatedClips[0]?.startBeatOffset ?? startOffset;
-
-            return {
-              ...t,
-              clips: updatedClips,
-              buffer,
-              duration: totalDuration,
-              startBeatOffset: firstOffset,
-              waveformSample: waveform,
-              tunedBuffer: null,
-            };
-          });
-          tracksRef.current = next;
-
-          // If pitch correction is active on this track, process immediately
-          const updatedTrack = next.find((t) => t.id === trackId);
-          if (updatedTrack && updatedTrack.fx.tune?.enabled && updatedTrack.fx.tune.speed > 0.01) {
-            audioEngine.updateTuneForTrack(updatedTrack).then((tuned) => {
-              if (tuned) {
-                const clip = updatedTrack.clips?.find((c) => c.id === newClipId);
-                if (clip) clip.tunedBuffer = tuned;
-                updatedTrack.tunedBuffer = tuned;
-                setTracks([...next]);
-                tracksRef.current = [...next];
-              }
-            });
-          }
-
-          return next;
+      onRecordingCheckpoint: (checkpoint) => {
+        const key = getSessionStorageKey(sessionOwnerRef.current);
+        void appendRecordingCheckpoint(key, { ...checkpoint, projectId: activeProjectIdRef.current }).then(saved => {
+          setLocalBackupStatus(saved ? 'Voz en curso protegida en este dispositivo' : 'No hay espacio para proteger la voz. Detén y descarga tu proyecto.');
         });
-
-        const trackName = tracksRef.current.find((t) => t.id === trackId)?.name || trackId;
-        showToast(`¡Toma grabada en ${trackName}! Agregada a la línea de tiempo.`, 'success');
-
-        // Only run heavy WAV serialization to disk when recording has completely stopped,
-        // so live channel switching while recording NEVER stutters or freezes!
-        if (!isStillRecording) {
-          saveStudioSession(tracksRef.current, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
-
-          // Auto-save project to user account in the cloud (Cloudflare R2) so work is never lost!
-          if (accessStatusRef.current.isLoggedIn || accessStatusRef.current.hasActivePass) {
-            saveProjectToCloud(tracksRef.current, currentBeatRef.current, loopSettings)
-              .then((cloudRes) => {
-                if (cloudRes.success) {
-                  refreshCloudProjectStatus();
-                }
-              })
-              .catch((err) => {
-                console.warn('Background cloud auto-save failed:', err);
-              });
-          }
+      },
+      onRecordingFinished: (trackId, buffer, waveform, explicitOffset, takeId) => {
+        const stillRecording = audioEngine.getIsRecording();
+        setIsRecording(stillRecording);
+        isRecordingRef.current = stillRecording;
+        setActiveRecordingTrackId(audioEngine.getRecordingTrackId());
+        setIsPlaying(audioEngine.getIsPlaying());
+        pushUndoSnapshot('Grabación de voz');
+        const start = Math.max(0, explicitOffset ?? audioEngine.getRecordingStartBeatTime());
+        const ctx = audioEngine.getAudioContext();
+        if (!ctx) return;
+        const clip: VocalClip = {
+          id: takeId || `clip-${trackId}-${crypto.randomUUID()}`, buffer, tunedBuffer: null,
+          startBeatOffset: start, duration: buffer.duration, waveformSample: waveform,
+          name: 'Toma', isLocked: true,
+        };
+        const updated = tracksRef.current.map(track => track.id === trackId
+          ? withTrackClips(track, punchInClips(ctx, getTrackClips(track), clip)) : track);
+        tracksRef.current = updated;
+        setTracks(updated);
+        const name = updated.find(track => track.id === trackId)?.name ?? trackId;
+        showToast(`Toma grabada en ${name}.`, 'success');
+        {
+          const settings = sessionSettingsRef.current;
+          void saveStudioSession(updated, currentBeatRef.current, settings.loopSettings,
+            settings.currentTime, settings.beatVolume, activeViewRef.current);
         }
       },
       onRecordingAborted: () => {
+        isRecordingRef.current = false;
         setIsRecording(false);
         setActiveRecordingTrackId(null);
-        setIsPlaying(false);
+        setIsPlaying(audioEngine.getIsPlaying());
         setCountInBeat(0);
       },
       onError: (msg) => {
+        isRecordingRef.current = false;
         setIsRecording(false);
         setActiveRecordingTrackId(null);
-        setIsPlaying(false);
+        setIsPlaying(audioEngine.getIsPlaying());
         setCountInBeat(0);
         showToast(msg, 'error');
       },
@@ -713,27 +696,43 @@ export default function App() {
     // Generate demo beats and restore saved custom beats from IndexedDB
     (async () => {
       try {
+        const owner = await refreshStudioAccess();
+        if (cancelled) return;
         const audioCtx = await audioEngine.ensureAudioContext();
+        if (cancelled) return;
 
         // 0. Detect last active Studio session or cloud project to give user the choice:
         // "Continuar Último Proyecto" vs "Iniciar Proyecto Nuevo"
         let restoredSessionBeatId: string | null = null;
         let hasPreviousSession = false;
 
-        let lastSession = null;
-        try {
-          lastSession = await restoreLastStudioSession(audioCtx);
-        } catch (sessErr) {
-          console.warn('Could not restore previous studio session:', sessErr);
+        let lastSession = await restoreLastStudioSession(audioCtx, owner);
+        if (lastSession?.projectId) activeProjectIdRef.current = lastSession.projectId;
+        const recovery = lastSession ? await recoverRecordingCheckpoints(getSessionStorageKey(owner), audioCtx, lastSession.tracks, activeProjectIdRef.current)
+          : { tracks: initialTracks, recovered: 0 };
+        if (recovery.recovered) {
+          lastSession = { ...(lastSession || {}), timestamp: Date.now(), tracks: recovery.tracks };
+          setLocalBackupStatus('Se rescató una grabación interrumpida');
         }
 
+        if (owner) {
+          const remote = await checkCloudProject();
+          setCloudProjectInfo(remote);
+          if (remote.unavailable && !lastSession) throw new Error('No se pudo consultar tu respaldo de cuenta. Reintenta antes de iniciar otro proyecto.');
+          if (remote.hasProject && lastSession && (remote.projectMeta?.savedAt || 0) > lastSession.timestamp + 1000) {
+            // Another device may have worked more recently. Load that complete revision before editing.
+            lastSession = null;
+            activeProjectIdRef.current = crypto.randomUUID();
+          }
+        }
+        if (cancelled) return;
         const localTakesCount = (lastSession?.tracks || []).reduce(
           (acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)),
           0
         );
 
         // Priority 1: If local session has vocal takes, offer local session
-        if (localTakesCount > 0) {
+        if (lastSession) {
           hasPreviousSession = true;
           const sessionBeat = lastSession!.beat || null;
           if (sessionBeat) {
@@ -754,6 +753,8 @@ export default function App() {
             beat: sessionBeat,
             beatId: sessionBeat?.id || lastSession!.beatId,
             loopSettings: lastSession!.loopSettings,
+            beatFX: lastSession!.beatFX,
+            isBeatMuted: lastSession!.isBeatMuted,
             currentTime: lastSession!.currentTime,
             activeView: lastSession!.activeView || 'studio',
             takesCount: localTakesCount,
@@ -766,6 +767,7 @@ export default function App() {
           try {
             const cloudCheck = await checkCloudProject();
             setCloudProjectInfo(cloudCheck);
+            if (cloudCheck.unavailable && owner) throw new Error('No se pudo consultar tu cuenta. Reintenta antes de iniciar otro proyecto.');
             if (cloudCheck.hasProject) {
               const cloudData = await loadProjectFromCloud(audioCtx);
               if (cloudData) {
@@ -787,7 +789,7 @@ export default function App() {
                     duration: customBuf.duration,
                     buffer: customBuf,
                     artworkGradient: b.artworkGradient || 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
-                    isCustomUpload: true,
+                    isCustomUpload: Boolean(b.isCustomUpload),
                     waveformSample: b.waveformSample,
                     detectedBpm: b.detectedBpm,
                     detectedKey: b.detectedKey,
@@ -808,6 +810,8 @@ export default function App() {
                     beat: cloudBeat,
                     beatId: cloudBeat?.id || cloudData.beatData?.id,
                     loopSettings: cloudData.loopSettings,
+                    beatFX: cloudData.beatFX,
+                    isBeatMuted: cloudData.isBeatMuted,
                     takesCount: cloudTakes,
                     beatTitle: cloudBeat?.title || cloudData.beatData?.title || 'Proyecto en Cuenta',
                     savedTimeText: cloudCheck.projectMeta?.savedAt ? new Date(cloudCheck.projectMeta.savedAt).toLocaleDateString() : 'En tu cuenta',
@@ -817,34 +821,10 @@ export default function App() {
               }
             }
           } catch (cloudErr) {
-            console.warn('Could not auto-restore cloud project:', cloudErr);
+            throw cloudErr;
           }
 
-          // Priority 3: If neither had takes, but local storage had a beat
-          if (!hasPreviousSession && lastSession && (lastSession.beat || lastSession.beatId)) {
-            hasPreviousSession = true;
-            const sessionBeat = lastSession.beat || null;
-            if (sessionBeat) {
-              restoredSessionBeatId = sessionBeat.id;
-              setCurrentBeat(sessionBeat);
-              currentBeatRef.current = sessionBeat;
-              audioEngine.setBeat(sessionBeat);
-            } else if (lastSession.beatId) {
-              restoredSessionBeatId = lastSession.beatId;
-            }
-            setPendingStartupSession({
-              tracks: lastSession.tracks || [],
-              beat: sessionBeat,
-              beatId: sessionBeat?.id || lastSession.beatId,
-              loopSettings: lastSession.loopSettings,
-              currentTime: lastSession.currentTime,
-              activeView: lastSession.activeView || 'studio',
-              takesCount: 0,
-              beatTitle: sessionBeat?.title || 'Último Beat',
-              savedTimeText: 'Guardado en tu dispositivo',
-            });
-            setShowStartupModal(true);
-          }
+
         }
 
         // If no previous session detected at all, mark startup as resolved immediately
@@ -854,6 +834,7 @@ export default function App() {
 
         // 1. Fetch saved custom beats from persistent IndexedDB
         const storedBeats = await getAllSavedBeats(audioCtx);
+        if (cancelled) return;
         setSavedCustomBeats(storedBeats);
 
         // 2. Fetch saved active beat preference and lock status
@@ -912,13 +893,52 @@ export default function App() {
         tracksRef.current = tracksWithScale;
       } catch (err) {
         console.error('Initial beat generation/restore error:', err);
+        setStartupError(err instanceof Error ? err.message : 'No se pudo recuperar el respaldo. Se conserva sin modificar.');
       }
     })();
 
     return () => {
-      audioEngine.stop();
+      cancelled = true;
+      audioEngine.dispose();
     };
   }, []);
+
+  useEffect(() => {
+      if (engine) tracks.forEach(track => engine.updateVocalFX(track, tracks));
+  }, [tracks, engine]);
+
+  // Debounce tuning and merge only results for the same raw clip and settings.
+  // A completed older job must never restore a deleted clip or overwrite a newer edit.
+  const tuneKey = (track: VocalTrack) => JSON.stringify(track.fx.tune);
+  const tuneSignature = tracks.map(track => `${track.id}:${tuneKey(track)}:${getTrackClips(track).map(clip => `${clip.id}:${clip.buffer.length}:${clip.buffer.sampleRate}`).join(',')}`).join('|');
+  useEffect(() => {
+    if (!engine || isRecording) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        for (const track of tracksRef.current) {
+          const job = { ...track, clips: getTrackClips(track).map(clip => ({ ...clip })) };
+          if (!job.fx.tune.enabled || job.fx.tune.speed <= 0.01 || !job.clips.length) continue;
+          await engine.updateTuneForTrack(job, controller.signal);
+          if (controller.signal.aborted) return;
+          const updated = tracksRef.current.map(current => {
+            if (current.id !== job.id || tuneKey(current) !== tuneKey(job)) return current;
+            const clips = getTrackClips(current).map(clip => {
+              const result = job.clips.find(candidate => candidate.id === clip.id && candidate.buffer === clip.buffer);
+              return result ? { ...clip, tunedBuffer: result.tunedBuffer } : clip;
+            });
+            return withTrackClips(current, clips);
+          });
+          tracksRef.current = updated;
+          setTracks(updated);
+        }
+        if (engine.getIsPlaying()) engine.seek(engine.getCurrentPlaybackPosition(), tracksRef.current);
+      } catch (error) {
+        if (!controller.signal.aborted) showToast(`Error al afinar: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      }
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [tuneSignature, engine, isRecording]);
 
   // Update beat loop bounds when beat or loop settings change
   useEffect(() => {
@@ -933,6 +953,8 @@ export default function App() {
       engine.setBeatFX(beatFX);
     }
   }, [beatFX, engine]);
+
+  useEffect(() => { engine?.setBeatMuted(isBeatMuted); }, [engine, isBeatMuted]);
 
   // Hardware audio unlock on first user interaction (touch/click) for iOS Safari / Chrome
   useEffect(() => {
@@ -955,13 +977,9 @@ export default function App() {
   // Active beat watcher: whenever the active beat changes, immediately update the record of the last project!
   useEffect(() => {
     if (!isStartupResolved || !currentBeat) return;
-    currentBeatRef.current = currentBeat;
-    saveStudioSession(tracksRef.current, currentBeat, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
+      saveStudioSession(tracksRef.current, currentBeat, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
     saveActiveBeatId(currentBeat.id, true);
 
-    if (currentBeat.isCustomUpload && currentBeat.buffer) {
-      saveBeatToDatabase(currentBeat, undefined, true).catch(() => {});
-    }
 
     if (accessStatusRef.current.isLoggedIn && (tracksRef.current.some((t) => (t.clips && t.clips.length > 0) || t.buffer) || currentBeat)) {
       saveProjectToCloud(tracksRef.current, currentBeat, loopSettings).catch(() => {});
@@ -970,22 +988,58 @@ export default function App() {
 
   // Active view watcher: whenever user toggles between Estudio and Editor, persist to remember the exact screen
   useEffect(() => {
-    activeViewRef.current = activeView;
-    if (!isStartupResolved) return;
+      if (!isStartupResolved) return;
     saveStudioSession(tracksRef.current, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeView);
   }, [activeView, isStartupResolved]);
 
   // Debounced auto-save session whenever tracks, loop, or currentTime change
   useEffect(() => {
-    if (!isStartupResolved) return;
-    const timer = setTimeout(() => {
-      saveStudioSession(tracks, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
-      if (accessStatusRef.current.isLoggedIn && tracks.some((t) => (t.clips && t.clips.length > 0) || t.buffer)) {
+    if (!isStartupResolved || isRecording || replacingProjectRef.current) return;
+    setLocalBackupStatus('Guardando cambios…');
+    const timer = setTimeout(async () => {
+      const saved = await saveStudioSession(tracks, currentBeatRef.current, loopSettings, sessionSettingsRef.current.currentTime, beatFX.volume, activeViewRef.current);
+      if (saved && accessStatusRef.current.isLoggedIn) {
         saveProjectToCloud(tracks, currentBeatRef.current, loopSettings).catch(() => {});
       }
-    }, 1500);
+    }, 600);
     return () => clearTimeout(timer);
-  }, [tracks, loopSettings, currentTime, beatFX.volume, isStartupResolved]);
+  }, [tracks, loopSettings, beatFX, isBeatMuted, isStartupResolved, isRecording]);
+
+  // Local PCM is journaled continuously; publish a recoverable in-progress take periodically.
+  useEffect(() => {
+    if (!isStartupResolved || !engine) return;
+    const sync = async () => {
+      if (!accessStatusRef.current.isLoggedIn || replacingProjectRef.current || cloudConflictRef.current) return;
+      const recording = engine.getRecordingCheckpointClip();
+      if (!recording && !cloudDirtyRef.current) return;
+      const ctx = engine.getAudioContext();
+      let snapshot = tracksRef.current;
+      if (recording && ctx) snapshot = snapshot.map(track => track.id === recording.trackId
+        ? withTrackClips(track, punchInClips(ctx, getTrackClips(track), recording.clip)) : track);
+      await saveProjectToCloud(snapshot, currentBeatRef.current, sessionSettingsRef.current.loopSettings);
+    };
+    const timer = setInterval(() => void sync(), 20000);
+    window.addEventListener('online', sync);
+    return () => { clearInterval(timer); window.removeEventListener('online', sync); };
+  }, [isStartupResolved, engine]);
+
+  async function clearActiveProjectBackup() {
+    if (replacingProjectRef.current) return false;
+    replacingProjectRef.current = true;
+    try {
+      if (accessStatusRef.current.isLoggedIn && !await deleteProjectFromCloud()) {
+        showToast('No se pudo reemplazar el respaldo de cuenta. Tu proyecto sigue intacto; comprueba la conexión.', 'error'); return false;
+      }
+      if (!await clearSavedStudioSession(sessionOwnerRef.current)) {
+        showToast('No se pudo limpiar la memoria local. Tu proyecto sigue abierto.', 'error'); return false;
+      }
+      activeProjectIdRef.current = crypto.randomUUID();
+      cloudDirtyRef.current = false; cloudConflictRef.current = false;
+      setCloudProjectInfo(null); setCloudBackupStatus(''); setLocalBackupStatus('Espacio listo para el nuevo proyecto');
+      setPendingStartupSession(null);
+      return true;
+    } finally { replacingProjectRef.current = false; }
+  }
 
   // Handlers for Startup Choice: Continuar Último Proyecto vs Iniciar Proyecto Nuevo
   const handleContinueLastProject = () => {
@@ -1005,6 +1059,7 @@ export default function App() {
       (t) => !initialTracks.some((it) => it.id === t.id)
     );
     const finalTracks = [...mergedTracks, ...customTracks];
+    restoreBeatMix(pendingStartupSession);
 
     setTracks(finalTracks);
     tracksRef.current = finalTracks;
@@ -1051,10 +1106,13 @@ export default function App() {
       pendingStartupSession.activeView || activeViewRef.current
     );
 
+    setPendingStartupSession(null);
     showToast('✓ Continuando tu último proyecto con todas tus tomas.', 'success');
   };
 
   const handleStartNewProjectClean = async () => {
+    if (pendingStartupSession?.takesCount && !window.confirm('Nuevo proyecto reemplaza el respaldo activo y borra sus voces. Comprueba que guardaste el archivo .rgodbeat. ¿Deseas continuar?')) return;
+    if (!await clearActiveProjectBackup()) return;
     if (engine) {
       engine.stop();
     }
@@ -1075,7 +1133,6 @@ export default function App() {
     tracksRef.current = cleanTracks;
     setUndoStack([]);
     setRedoStack([]);
-    await clearSavedStudioSession();
     setIsStartupResolved(true);
     setShowStartupModal(false);
     showToast('✨ Proyecto nuevo iniciado: pistas limpias y efectos configurados.', 'info');
@@ -1085,8 +1142,8 @@ export default function App() {
   // Handles incoming phone calls, WhatsApp calls, screen lock, and app switching
   // without losing timeline synchronization or recorded takes!
   useEffect(() => {
-    const handleInterruption = async () => {
-      if (document.hidden) {
+    const handleInterruption = async (event: Event) => {
+      if (document.hidden || event.type === 'pagehide' || event.type === 'beforeunload') {
         // Phone call ringing, screen turned off, or app sent to background
         if (engine && engine.getIsRecording()) {
           // Finalize and save active vocal take cleanly to prevent data corruption or loss
@@ -1098,7 +1155,9 @@ export default function App() {
           setIsPlaying(false);
         }
         // Persist complete session to IndexedDB
-        saveStudioSession(tracksRef.current, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
+        const settings = sessionSettingsRef.current;
+        const saved = await saveStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings, settings.currentTime, settings.beatVolume, activeViewRef.current);
+        if (saved && accessStatusRef.current.isLoggedIn) void saveProjectToCloud(tracksRef.current, currentBeatRef.current, settings.loopSettings);
       } else {
         // User returned to browser after call or app switch
         if (engine) {
@@ -1109,15 +1168,15 @@ export default function App() {
       }
     };
 
-    window.addEventListener('visibilitychange', handleInterruption);
+    document.addEventListener('visibilitychange', handleInterruption);
     window.addEventListener('pagehide', handleInterruption);
     window.addEventListener('beforeunload', handleInterruption);
     return () => {
-      window.removeEventListener('visibilitychange', handleInterruption);
+      document.removeEventListener('visibilitychange', handleInterruption);
       window.removeEventListener('pagehide', handleInterruption);
       window.removeEventListener('beforeunload', handleInterruption);
     };
-  }, [engine, loopSettings, currentTime]);
+  }, [engine]);
 
   // Automatic Beat BPM & Key Detection on demand
   const handleDetectCurrentBeat = async () => {
@@ -1191,14 +1250,14 @@ export default function App() {
 
     setCurrentBeat(updatedBeat);
     currentBeatRef.current = updatedBeat;
-    if (engine) {
-      engine.setBeat(updatedBeat);
-    }
+    if (engine?.getBeat()) Object.assign(engine.getBeat()!, { key: rootKey, scale: scaleName });
 
     // Auto-sync vocal tune root key & scale mode to all tracks and re-tune active takes
     setTracks((prev) => {
       const next = prev.map((t) => ({
         ...t,
+        tunedBuffer: null,
+        clips: t.clips?.map(clip => ({ ...clip, tunedBuffer: null })),
         fx: {
           ...t.fx,
           tune: {
@@ -1210,22 +1269,6 @@ export default function App() {
         },
       }));
       tracksRef.current = next;
-
-      // Re-tune any track with audio takes in background
-      if (engine) {
-        next.forEach((tr) => {
-          const hasAudio = (tr.clips && tr.clips.length > 0) || Boolean(tr.buffer);
-          if (tr.fx.tune?.enabled && tr.fx.tune.speed > 0.01 && hasAudio) {
-            engine.updateTuneForTrack(tr).then((tuned) => {
-              if (tuned) {
-                setTracks((current) =>
-                  current.map((currTr) => (currTr.id === tr.id ? { ...currTr, tunedBuffer: tuned } : currTr))
-                );
-              }
-            });
-          }
-        });
-      }
 
       return next;
     });
@@ -1303,12 +1346,15 @@ export default function App() {
   const handleSelectTrack = async (newTrackId: VocalTrackId) => {
     if (selectedTrackId === newTrackId) return;
 
-    if (isRecording && activeRecordingTrackId && activeRecordingTrackId !== newTrackId && engine) {
+    if (isRecordingRef.current && engine) {
+      if (accessStatus.isDemo && newTrackId !== 'lead1') {
+        setUnlockModalReason('tracks'); setIsUnlockModalOpen(true); return;
+      }
+      const switched = await engine.switchRecordingTrack(newTrackId, tracksRef.current);
+      if (!switched) return;
       setSelectedTrackId(newTrackId);
       setActiveRecordingTrackId(newTrackId);
-      await engine.switchRecordingTrack(newTrackId, tracksRef.current);
-      const newTrackName = tracksRef.current.find((t) => t.id === newTrackId)?.name || newTrackId;
-      showToast(`🎙️ Cambiado a ${newTrackName}. Grabando en nuevo canal...`, 'info');
+      showToast(`Grabando en ${tracksRef.current.find(t => t.id === newTrackId)?.name ?? newTrackId}.`, 'info');
       return;
     }
 
@@ -1317,11 +1363,11 @@ export default function App() {
 
   // Recording workflow
   const handleStartRecord = async (trackId: VocalTrackId) => {
-    if (!engine) return;
+    if (!engine || isRecordingRef.current || !isStartupResolved || startupError || replacingProjectRef.current) return;
 
     // In Demo Mode: only lead1 can record
     if (accessStatus.isDemo && trackId !== 'lead1') {
-      showToast('En Modo Demo solo puedes grabar 1 pista (Lead 1). Activa tu pase para desbloquear 4 pistas vocales.', 'info');
+      showToast('En Modo Demo solo puedes grabar 1 pista (Lead 1). Activa tu pase para desbloquear las pistas vocales.', 'info');
       setUnlockModalReason('tracks');
       setIsUnlockModalOpen(true);
       return;
@@ -1334,7 +1380,6 @@ export default function App() {
     // Check if punching in over existing take
     const targetTrack = tracks.find((t) => t.id === trackId);
     if (targetTrack?.buffer || (targetTrack?.clips && targetTrack.clips.length > 0)) {
-      pushUndoSnapshot('Pinchado de voz (Punch-in)');
       showToast(`Pinchando toma en ${targetTrack.name}...`, 'info');
     }
 
@@ -1344,18 +1389,27 @@ export default function App() {
 
     setSelectedTrackId(trackId);
     setActiveRecordingTrackId(trackId);
+    isRecordingRef.current = true;
     setIsRecording(true);
 
+    const settings = sessionSettingsRef.current;
+    const protectedBaseline = await saveStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings,
+      settings.currentTime, settings.beatVolume, activeViewRef.current);
+    if (!protectedBaseline) {
+      isRecordingRef.current = false; setIsRecording(false); setActiveRecordingTrackId(null);
+      showToast('No se pudo preparar el respaldo. Libera espacio o descarga tu proyecto antes de grabar.', 'error'); return;
+    }
     const started = await engine.startRecording(trackId, tracksRef.current, countInEnabled);
     if (started) {
       setIsPlaying(true);
     } else {
+      isRecordingRef.current = false;
       setIsRecording(false);
       setActiveRecordingTrackId(null);
     }
   };
 
-  const handleStopRecord = () => {
+  function handleStopRecord() {
     if (!engine) return;
     engine.stopRecording();
   };
@@ -1370,6 +1424,17 @@ export default function App() {
     showToast('Conteo cancelado', 'info');
   }, [engine, showToast]);
 
+  useEffect(() => {
+    const handleTransportKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('input, textarea, select, button, a, [contenteditable="true"]') ||
+        document.querySelector('[role="dialog"]') || showLoadBeatModal || showExportModal || activeFXTrackId || showBeatFXModal || showStartupModal) return;
+      if (event.code === 'Space' && !event.repeat) { event.preventDefault(); void handlePlayPause(); }
+    };
+    window.addEventListener('keydown', handleTransportKey);
+    return () => window.removeEventListener('keydown', handleTransportKey);
+  });
+
   // Move / Edit take position along timeline
   const handleMoveTake = (
     trackId: VocalTrackId,
@@ -1377,6 +1442,9 @@ export default function App() {
     clipId?: string,
     recordHistory: boolean = false
   ) => {
+    if (isRecordingRef.current) return;
+    const selected = tracksRef.current.find(track => track.id === trackId);
+    if (selected && getTrackClips(selected).some(clip => (!clipId || clip.id === clipId) && clip.isLocked)) return;
     if (recordHistory) {
       pushUndoSnapshot('Mover toma');
     }
@@ -1422,7 +1490,7 @@ export default function App() {
     if (recordHistory) {
       saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
     }
-    if (engine && isPlaying) {
+    if (engine && isPlaying && recordHistory) {
       engine.seek(engine.getCurrentPlaybackPosition(), updated);
     }
   };
@@ -1433,7 +1501,8 @@ export default function App() {
     targetTrackId: VocalTrackId,
     clipId?: string
   ) => {
-    const source = tracks.find((t) => t.id === sourceTrackId);
+    if (isRecordingRef.current) return;
+    const source = tracksRef.current.find((t) => t.id === sourceTrackId);
     if (!source) {
       showToast('No hay toma para duplicar', 'error');
       return;
@@ -1505,6 +1574,7 @@ export default function App() {
     setTracks(updated);
     tracksRef.current = updated;
     saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
+    if (engine?.getIsPlaying()) engine.seek(engine.getCurrentPlaybackPosition(), updated);
     showToast(`Toma de ${source.name} duplicada a ${target?.name || targetTrackId}`, 'success');
   };
 
@@ -1646,6 +1716,8 @@ export default function App() {
   };
 
   const handleDeleteCustomTrack = (trackId: VocalTrackId) => {
+    if (isRecordingRef.current) return;
+    engine?.clearTrackSources(trackId);
     pushUndoSnapshot('Eliminar pista adicional');
     const nextTracks = tracks.filter((t) => t.id !== trackId);
     setTracks(nextTracks);
@@ -1659,6 +1731,7 @@ export default function App() {
   const canAddMoreTracks = tracks.filter((t) => t.id === 'backing1' || t.id === 'backing2').length < 2;
 
   const handleDeleteTake = (trackId: VocalTrackId, clipId?: string) => {
+    if (isRecordingRef.current) return;
     pushUndoSnapshot(clipId ? 'Borrar pedazo seleccionado' : 'Eliminar toma');
     const updated = tracks.map((t) => {
       if (t.id !== trackId) return t;
@@ -1694,6 +1767,7 @@ export default function App() {
 
     setTracks(updated);
     tracksRef.current = updated;
+    if (engine?.getIsPlaying()) engine.seek(engine.getCurrentPlaybackPosition(), updated);
     saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
     const targetName = tracks.find((t) => t.id === trackId)?.name || trackId;
     showToast(clipId ? `🗑️ Pedazo seleccionado eliminado en ${targetName}` : `Toma eliminada en ${targetName}`, 'info');
@@ -1750,173 +1824,59 @@ export default function App() {
     );
   };
 
-  // Split / Cut take at playhead (or specified time) with micro-fade declicking
-  const handleSplitTake = async (trackId: VocalTrackId, clipId?: string, splitTimeSec?: number) => {
-    if (!engine) return;
-    const audioCtx = await engine.ensureAudioContext();
-
-    const track = tracks.find((t) => t.id === trackId);
-    if (!track) return;
-
-    const clips = (track.clips && track.clips.length > 0)
-      ? track.clips
-      : track.buffer
-      ? [{
-          id: `clip-${track.id}-init`,
-          buffer: track.buffer,
-          tunedBuffer: track.tunedBuffer,
-          startBeatOffset: track.startBeatOffset || 0,
-          duration: track.duration || track.buffer.duration,
-          waveformSample: track.waveformSample,
-          name: 'Toma 1',
-        }]
-      : [];
-
-    const cutPoint = splitTimeSec !== undefined ? splitTimeSec : currentTime;
-
-    // Find the clip to cut: either explicitly requested or under the cutPoint
-    let targetClip = clipId ? clips.find((c) => c.id === clipId) : null;
-    if (!targetClip) {
-      targetClip = clips.find((c) => cutPoint > c.startBeatOffset + 0.05 && cutPoint < c.startBeatOffset + c.duration - 0.05) || null;
-    }
-
-    if (!targetClip || !targetClip.buffer) {
-      showToast('Selecciona una toma o coloca el cabezal sobre la toma para cortarla.', 'info');
-      return;
-    }
-
-    const clipStart = targetClip.startBeatOffset;
-    const clipEnd = clipStart + targetClip.duration;
-
-    if (cutPoint <= clipStart + 0.05 || cutPoint >= clipEnd - 0.05) {
-      showToast(`Coloca el cabezal dentro de la toma (${clipStart.toFixed(1)}s - ${clipEnd.toFixed(1)}s) para cortarla en dos partes.`, 'info');
-      return;
-    }
-
-    pushUndoSnapshot('Cortar toma en cabezal');
-
-    const offsetInClip = cutPoint - clipStart;
-    const sampleRate = targetClip.buffer.sampleRate;
-    const numChannels = targetClip.buffer.numberOfChannels;
-    const totalSamples = targetClip.buffer.length;
-    const splitSample = Math.min(totalSamples - 1, Math.max(1, Math.floor(offsetInClip * sampleRate)));
-
-    // Part 1 Buffer (from 0 to splitSample)
-    const part1Buffer = audioCtx.createBuffer(numChannels, splitSample, sampleRate);
-    for (let ch = 0; ch < numChannels; ch++) {
-      part1Buffer.getChannelData(ch).set(targetClip.buffer.getChannelData(ch).subarray(0, splitSample));
-    }
-
-    // Part 2 Buffer (from splitSample to end)
-    const part2Length = totalSamples - splitSample;
-    const part2Buffer = audioCtx.createBuffer(numChannels, part2Length, sampleRate);
-    for (let ch = 0; ch < numChannels; ch++) {
-      part2Buffer.getChannelData(ch).set(targetClip.buffer.getChannelData(ch).subarray(splitSample));
-    }
-
-    // Micro-fade (2-3ms = ~120 samples at 44.1/48kHz) to eliminate zero-crossing click or pop
-    const fadeSamples = Math.min(Math.floor(sampleRate * 0.003), Math.floor(splitSample / 2), Math.floor(part2Length / 2));
-    if (fadeSamples > 0) {
-      for (let ch = 0; ch < numChannels; ch++) {
-        const c1 = part1Buffer.getChannelData(ch);
-        const start1 = splitSample - fadeSamples;
-        for (let i = 0; i < fadeSamples; i++) {
-          c1[start1 + i] *= (1 - i / fadeSamples);
-        }
-
-        const c2 = part2Buffer.getChannelData(ch);
-        for (let i = 0; i < fadeSamples; i++) {
-          c2[i] *= (i / fadeSamples);
-        }
-      }
-    }
-
-    const baseName = targetClip.name?.replace(/ \(Parte \d+\)$/, '') || 'Toma';
-
-    const part1Clip: VocalClip = {
-      id: `clip-${trackId}-${Date.now()}-a`,
-      name: `${baseName} (Parte 1)`,
-      buffer: part1Buffer,
-      tunedBuffer: null,
-      startBeatOffset: clipStart,
-      duration: part1Buffer.duration,
-      waveformSample: extractWaveformPeaks(part1Buffer, 36),
-      isLocked: true,
-    };
-
-    const part2Clip: VocalClip = {
-      id: `clip-${trackId}-${Date.now()}-b`,
-      name: `${baseName} (Parte 2)`,
-      buffer: part2Buffer,
-      tunedBuffer: null,
-      startBeatOffset: cutPoint,
-      duration: part2Buffer.duration,
-      waveformSample: extractWaveformPeaks(part2Buffer, 36),
-      isLocked: true,
-    };
-
-    const newClips = clips.flatMap((c) => (c.id === targetClip!.id ? [part1Clip, part2Clip] : [c]));
-
-    const updated = tracks.map((t) => {
-      if (t.id !== trackId) return t;
-      const maxDur = Math.max(...newClips.map((c) => c.startBeatOffset + c.duration));
-      return {
-        ...t,
-        clips: newClips,
-        buffer: part1Buffer,
-        duration: maxDur,
-        startBeatOffset: Math.min(...newClips.map((c) => c.startBeatOffset)),
-        waveformSample: part1Clip.waveformSample,
-        tunedBuffer: null,
-      };
-    });
-
-    setTracks(updated);
+  const applyClipEdit = (trackId: VocalTrackId, clips: VocalClip[], description: string) => {
+    pushUndoSnapshot(description);
+    const updated = tracksRef.current.map(track => track.id === trackId ? withTrackClips(track, clips) : track);
     tracksRef.current = updated;
-    if (engine && isPlaying) {
-      engine.seek(currentTime, updated);
+    setTracks(updated);
+    if (engine?.getIsPlaying()) engine.seek(engine.getCurrentPlaybackPosition(), updated);
+    void saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
+  };
+
+  const handleSplitTake = async (trackId: VocalTrackId, clipId?: string, splitTimeSec = currentTime) => {
+    if (!engine || isRecordingRef.current) return;
+    const ctx = await engine.ensureAudioContext();
+    const track = tracksRef.current.find(t => t.id === trackId);
+    if (!track) return;
+    const clips = getTrackClips(track);
+    const clip = clipId ? clips.find(c => c.id === clipId)
+      : clips.find(c => splitTimeSec > c.startBeatOffset && splitTimeSec < c.startBeatOffset + c.duration);
+    const parts = clip ? splitClip(ctx, clip, splitTimeSec) : null;
+    if (!clip || !parts) { showToast('Coloca el cabezal dentro de la toma para cortarla.', 'info'); return; }
+    applyClipEdit(trackId, clips.flatMap(c => c.id === clip.id ? parts : [c]), 'Cortar toma');
+    showToast('Toma dividida. Puedes deshacer el corte.', 'success');
+  };
+
+  const handleTrimTake = async (trackId: VocalTrackId, clipId: string, edge: 'start' | 'end') => {
+    if (!engine || isRecordingRef.current) return;
+    const ctx = await engine.ensureAudioContext();
+    const track = tracksRef.current.find(t => t.id === trackId);
+    const clips = track ? getTrackClips(track) : [];
+    const clip = clips.find(c => c.id === clipId);
+    if (!clip || currentTime <= clip.startBeatOffset || currentTime >= clip.startBeatOffset + clip.duration) {
+      showToast('Coloca el cabezal dentro de la toma para recortar.', 'info'); return;
     }
-    saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
-    showToast(`✂️ Toma cortada con precisión en dos partes en ${cutPoint.toFixed(2)}s.`, 'success');
+    const trimmed = trimClip(ctx, clip, edge === 'start' ? currentTime : clip.startBeatOffset,
+      edge === 'end' ? currentTime : clip.startBeatOffset + clip.duration);
+    if (!trimmed) return;
+    applyClipEdit(trackId, clips.map(c => c.id === clip.id ? trimmed : c), 'Recortar toma');
+    showToast('Toma recortada al cabezal. Puedes deshacer.', 'success');
   };
 
   // Update Vocal FX (including Pitch Tune) and persist channel template
-  const handleChangeVocalFX = async (newFX: VocalFX) => {
+  const handleChangeVocalFX = (newFX: VocalFX) => {
     if (!activeFXTrackId) return;
-
-    // Persist this channel's custom FX template (EQ, Comp, Reverb, Delay, Saturation, AutoTune speed)
     saveUserChannelFXTemplate(activeFXTrackId, newFX, accessStatus.email);
-
-    const updated = tracks.map((t) =>
-      t.id === activeFXTrackId ? { ...t, fx: newFX, tunedBuffer: null } : t
-    );
-    setTracks(updated);
+    const updated = tracksRef.current.map(track => {
+      if (track.id !== activeFXTrackId) return track;
+      const tuneChanged = tuneKey(track) !== JSON.stringify(newFX.tune);
+      return { ...track, fx: newFX,
+        tunedBuffer: tuneChanged ? null : track.tunedBuffer,
+        clips: tuneChanged ? track.clips?.map(clip => ({ ...clip, tunedBuffer: null })) : track.clips,
+      };
+    });
     tracksRef.current = updated;
-
-    if (engine) {
-      const target = updated.find((t) => t.id === activeFXTrackId);
-      if (target) {
-        engine.updateVocalFX(target, updated);
-
-        // Process vocal pitch tune if speed > 0 and track has audio
-        const hasAudio = (target.clips && target.clips.length > 0) || Boolean(target.buffer);
-        if (target.fx.tune?.enabled && target.fx.tune.speed > 0.01 && hasAudio) {
-          const tuned = await engine.updateTuneForTrack(target);
-          if (tuned) {
-            target.tunedBuffer = tuned;
-            setTracks([...updated]);
-            tracksRef.current = [...updated];
-          }
-        } else if (!target.fx.tune?.enabled || target.fx.tune.speed <= 0.01) {
-          target.tunedBuffer = null;
-          if (target.clips) {
-            target.clips.forEach((c) => { c.tunedBuffer = null; });
-          }
-          setTracks([...updated]);
-          tracksRef.current = [...updated];
-        }
-      }
-    }
+    setTracks(updated);
   };
 
   // Toggle Lock Beat status (Prevents beat from ever changing accidentally)
@@ -2035,6 +1995,7 @@ export default function App() {
 
   // Export Modal trigger
   const handleExport = () => {
+    if (isRecordingRef.current) return;
     if (!engine || !currentBeat) {
       showToast('Carga un beat antes de exportar.', 'error');
       return;
@@ -2044,10 +2005,9 @@ export default function App() {
 
   // Save Project to User Account Cloud (R2 storage)
   const handleSaveCloudProject = async () => {
-    if (!accessStatus.hasActivePass) {
-      setUnlockModalReason('general');
-      setIsUnlockModalOpen(true);
-      showToast('Inicia sesión con tu cuenta activa o adquiere un Pase para guardar en la nube.', 'info');
+    if (isRecordingRef.current) return;
+    if (!accessStatus.isLoggedIn) {
+      showToast('Inicia sesión para respaldar el proyecto en tu cuenta.', 'info');
       return;
     }
 
@@ -2073,8 +2033,8 @@ export default function App() {
         }
         showToast(res.error || 'Error al guardar proyecto en la nube.', 'error');
       }
-    } catch (err: any) {
-      showToast(err.message || 'Error de conexión al guardar.', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Error de conexión al guardar.', 'error');
     } finally {
       setIsSavingCloud(false);
     }
@@ -2082,7 +2042,11 @@ export default function App() {
 
   // Load Saved Project from User Account Cloud
   const handleLoadCloudProject = async () => {
+    if (isRecordingRef.current) return;
+    if (tracksRef.current.some(track => getTrackClips(track).length) && !window.confirm('Cargar la cuenta reemplaza las voces abiertas en este dispositivo. Descarga tu archivo .rgodbeat si quieres conservarlas. ¿Continuar?')) return;
     if (!engine) return;
+    engine.stop();
+    setIsPlaying(false);
     setIsLoadingCloud(true);
     showToast('Descargando tu proyecto desde la nube...', 'info');
 
@@ -2098,7 +2062,7 @@ export default function App() {
       // 1. Restore beat
       if (cloudData.beatData) {
         const beat = cloudData.beatData;
-        if (beat.isCustomUpload && beat.customBeatBuffer) {
+        if (beat.customBeatBuffer) {
           const fullCustomBeat: BeatData = {
             id: beat.id || `custom-${Date.now()}`,
             title: beat.title || 'Mi Beat Guardado',
@@ -2109,7 +2073,7 @@ export default function App() {
             duration: beat.customBeatBuffer.duration,
             buffer: beat.customBeatBuffer,
             artworkGradient: beat.artworkGradient || 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
-            isCustomUpload: true,
+            isCustomUpload: Boolean(beat.isCustomUpload),
             detectedBpm: beat.detectedBpm,
             detectedKey: beat.detectedKey,
             isLocked: true,
@@ -2126,8 +2090,12 @@ export default function App() {
       }
 
       // 2. Restore vocal tracks
+      activeProjectIdRef.current = crypto.randomUUID();
+      currentBeatRef.current = engine.getBeat();
+      restoreBeatMix(cloudData);
       setTracks(cloudData.tracks);
       tracksRef.current = cloudData.tracks;
+      setUndoStack([]); setRedoStack([]); setPendingStartupSession(null);
 
       // 3. Restore loop settings
       if (cloudData.loopSettings) {
@@ -2136,7 +2104,7 @@ export default function App() {
       }
 
       // 4. Synchronize immediately to local session storage
-      await saveStudioSession(
+      const locallySaved = await saveStudioSession(
         cloudData.tracks,
         currentBeatRef.current,
         cloudData.loopSettings,
@@ -2145,9 +2113,11 @@ export default function App() {
         activeViewRef.current
       );
 
+      if (!locallySaved) throw new Error('El proyecto se abrió, pero no se pudo proteger en este dispositivo. Descarga una copia.');
+      await retireRecordingCheckpoints(getSessionStorageKey(sessionOwnerRef.current));
       setIsStartupResolved(true);
       showToast('☁️ Proyecto cargado y sincronizado exitosamente.', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error loading cloud project:', err);
       showToast('Error al procesar proyecto de la nube.', 'error');
     } finally {
@@ -2157,6 +2127,7 @@ export default function App() {
 
   // Export active project bundle directly to phone/device file (.rgodbeat)
   const handleExportDeviceProject = async () => {
+    if (isRecordingRef.current) return;
     const hasAnyContent = currentBeat || tracksRef.current.some((t) => (t.clips && t.clips.length > 0) || t.buffer);
     if (!hasAnyContent) {
       showToast('Carga un beat o graba una voz antes de guardar tu proyecto.', 'info');
@@ -2168,15 +2139,17 @@ export default function App() {
 
     try {
       await saveStudioSession(tracksRef.current, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
-      const filename = await exportProjectToDeviceFile(
+      const result = await exportProjectToDeviceFile(
         tracksRef.current,
         currentBeatRef.current,
         loopSettings,
         currentTime,
-        beatFX.volume
+        beatFX.volume,
+        beatMixRef.current
       );
-      showToast(`💾 Proyecto guardado en tu móvil (${filename})`, 'success');
-    } catch (err: any) {
+      if (!result.success) throw new Error(result.error || 'No se pudo guardar el archivo.');
+      showToast(`Descarga iniciada: ${result.filename}. Comprueba el archivo antes de abrir un proyecto nuevo.`, 'success');
+    } catch (err: unknown) {
       console.error('Error exporting project to device:', err);
       showToast('Error al guardar el archivo en tu dispositivo.', 'error');
     } finally {
@@ -2187,6 +2160,7 @@ export default function App() {
   // Safe Exit and Auto-Save (returns to main store cleanly)
   const handleSaveAndExit = async () => {
     try {
+      if (engine && isRecordingRef.current) await engine.stopRecording();
       setIsSavingAndExiting(true);
       showToast('💾 Guardando proyecto antes de salir...', 'info');
 
@@ -2196,21 +2170,19 @@ export default function App() {
       }
 
       // Always save local session in IndexedDB
-      await saveStudioSession(
-        tracksRef.current,
-        currentBeatRef.current,
-        loopSettings,
-        currentTime,
-        beatFX.volume,
-        activeViewRef.current
+      const saved = await saveStudioSession(
+        tracksRef.current, currentBeatRef.current, loopSettings, currentTime,
+        beatFX.volume, activeViewRef.current
       );
+      if (!saved) {
+        showToast('No se pudo guardar el proyecto. Descarga una copia antes de salir.', 'error');
+        return;
+      }
 
-      // Save to cloud if user has an account / pass
-      if (accessStatus.hasActivePass || accessStatus.email) {
-        try {
-          await saveProjectToCloud(tracksRef.current, currentBeatRef.current, loopSettings);
-        } catch {
-          // Non-blocking cloud save
+      if (accessStatusRef.current.isLoggedIn) {
+        const remote = await saveProjectToCloud(tracksRef.current, currentBeatRef.current, loopSettings);
+        if (!remote.success) {
+          showToast('Copia local guardada; la cuenta sigue pendiente. Reintenta o descarga el proyecto antes de salir.', 'error'); return;
         }
       }
 
@@ -2221,7 +2193,7 @@ export default function App() {
       }, 500);
     } catch (err) {
       console.error('Error in handleSaveAndExit:', err);
-      window.location.href = '/';
+      showToast('No se pudo guardar. Tu proyecto sigue abierto.', 'error');
     } finally {
       setIsSavingAndExiting(false);
     }
@@ -2229,26 +2201,35 @@ export default function App() {
 
   // Open Project File (.rgodbeat) from Device (phone or PC)
   const handleImportDeviceProject = async (file: File) => {
+    if (isRecordingRef.current) return;
+    if (sessionOwnerRef.current === undefined || startupError) return;
+    if ((pendingStartupSession?.takesCount || tracksRef.current.some(track => getTrackClips(track).length)) && !window.confirm('Abrir este archivo reemplaza el proyecto activo. Comprueba que guardaste el anterior como .rgodbeat. ¿Continuar?')) return;
     if (!engine) return;
+    engine.stop();
+    setIsPlaying(false);
 
     try {
       showToast('Abriendo archivo de proyecto desde tu dispositivo...', 'info');
       const audioCtx = await engine.ensureAudioContext();
-      const restored = await importProjectFromDeviceFile(file, audioCtx);
+      const restored = await importProjectFromDeviceFile(file, audioCtx, crypto.randomUUID(), sessionOwnerRef.current);
 
       if (!restored) {
         showToast('No se pudo leer el archivo de proyecto.', 'error');
         return;
       }
 
+      activeProjectIdRef.current = restored.projectId;
       if (restored.beat) {
         setCurrentBeat(restored.beat);
         currentBeatRef.current = restored.beat;
         engine.setBeat(restored.beat);
       }
 
+      currentBeatRef.current = engine.getBeat();
+      restoreBeatMix(restored);
       setTracks(restored.tracks);
       tracksRef.current = restored.tracks;
+      setUndoStack([]); setRedoStack([]); setPendingStartupSession(null);
 
       if (restored.loopSettings) {
         setLoopSettings(restored.loopSettings);
@@ -2269,7 +2250,7 @@ export default function App() {
       setIsStartupResolved(true);
 
       showToast('✅ Proyecto cargado con éxito desde tu dispositivo.', 'success');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error importing project from device:', err);
       showToast('Error al abrir el archivo de proyecto. Formato incompatible o dañado.', 'error');
     }
@@ -2277,14 +2258,16 @@ export default function App() {
 
   // Start a Clean New Project
   const handleNewProject = async () => {
+    if (isRecordingRef.current) return;
     const hasTakes = tracks.some((t) => t.buffer || (t.clips && t.clips.length > 0));
     if (hasTakes) {
       const confirmed = window.confirm(
-        '¿Deseas iniciar un nuevo proyecto?\n\nSe limpiarán las voces actuales del espacio de trabajo. (Si guardaste tu proyecto en tu cuenta, permanecerá intacto en la nube).'
+        'Nuevo proyecto reemplaza tu único respaldo activo y elimina las voces anteriores.\n\nComprueba que el archivo .rgodbeat está guardado en tu móvil. ¿Deseas continuar?'
       );
       if (!confirmed) return;
     }
 
+    if (!await clearActiveProjectBackup()) return;
     if (engine) {
       engine.stop();
     }
@@ -2307,7 +2290,6 @@ export default function App() {
     tracksRef.current = resetTracks;
     setUndoStack([]);
     setRedoStack([]);
-    await clearSavedStudioSession();
 
     showToast('✨ Nuevo proyecto iniciado: canales limpios con tus efectos preferidos.', 'info');
     setShowLoadBeatModal(true);
@@ -2323,7 +2305,7 @@ export default function App() {
   return (
     <div className={`w-full max-w-[100vw] ${
       activeView === 'editor'
-        ? 'bg-[#09090b] text-white h-screen max-h-screen overflow-hidden'
+        ? 'bg-[#09090b] text-white h-dvh max-h-dvh overflow-hidden'
         : 'bg-[#fbbf24] text-zinc-950 min-h-screen overflow-x-hidden justify-between'
     } flex flex-col selection:bg-amber-500/30 selection:text-amber-200 transition-colors duration-200`}>
       {/* 1-Bar Count In Metronome Visual Overlay */}
@@ -2340,8 +2322,8 @@ export default function App() {
         isRecording={isRecording}
         activeView={activeView}
         onChangeView={setActiveView}
-        canUndo={undoStack.length > 0}
-        canRedo={redoStack.length > 0}
+        canUndo={!isRecording && undoStack.length > 0}
+        canRedo={!isRecording && redoStack.length > 0}
         onUndo={handleUndo}
         onRedo={handleRedo}
         undoCount={undoStack.length}
@@ -2369,6 +2351,11 @@ export default function App() {
       />
 
       {/* 3-Day Expiration Alert Banner */}
+      <div className="shrink-0 border-b border-zinc-700 bg-zinc-950 px-3 py-2 text-[10px] text-zinc-300" role="status" aria-live="polite">
+        <p>{localBackupStatus}{cloudBackupStatus ? ` · ${cloudBackupStatus}` : ''}</p>
+        <p className="mt-1 text-zinc-400">1 respaldo activo. Guarda tu archivo .rgodbeat en el móvil; «Nuevo proyecto» reemplaza ese respaldo y libera las voces anteriores.</p>
+        {startupError && <p className="mt-1 text-amber-300">{startupError} <button className="underline cursor-pointer" onClick={() => window.location.reload()}>Reintentar</button></p>}
+      </div>
       {accessStatus.hasActivePass &&
         accessStatus.daysRemaining <= 3 &&
         !dismissExpirationBanner &&
@@ -2383,7 +2370,7 @@ export default function App() {
                 <span className="text-amber-300 font-bold underline font-mono">
                   {accessStatus.daysRemaining} {accessStatus.daysRemaining === 1 ? 'día' : 'días'}
                 </span>
-                . Si tu pase expira, tu proyecto guardado en la nube se eliminará automáticamente.
+                . Renueva para mantener las funciones premium. Tu respaldo no se borra al vencer el pase.
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0 ml-3">
@@ -2431,7 +2418,7 @@ export default function App() {
       {/* Main Studio Viewport Canvas */}
       <main className={`flex-1 min-h-0 flex flex-col items-center w-full mx-auto ${
         activeView === 'editor'
-          ? 'overflow-hidden px-1 sm:px-4 pb-1 pt-1 bg-[#09090b]'
+          ? 'overflow-y-auto px-1 sm:px-4 pb-1 pt-1 bg-[#09090b]'
           : 'pb-8 pt-1 bg-gradient-to-b from-[#fcd34d] via-[#fbbf24] to-[#f59e0b]'
       }`}>
         {activeView === 'studio' ? (
@@ -2489,20 +2476,20 @@ export default function App() {
               canAddMoreTracks={canAddMoreTracks}
               isRecording={isRecording}
               activeRecordingTrackId={activeRecordingTrackId}
-              canUndo={undoStack.length > 0}
-              canRedo={redoStack.length > 0}
+              canUndo={!isRecording && undoStack.length > 0}
+              canRedo={!isRecording && redoStack.length > 0}
               onUndo={handleUndo}
               onRedo={handleRedo}
             />
           </div>
         ) : (
           /* Dedicated Editing Workspace (Timeline with Beat + Vocal Tracks, moveable clips, micro-latency nudge, 2 leads) */
-          <div className="w-full max-w-4xl flex flex-col items-center flex-1 min-h-0 relative overflow-hidden">
+          <div className="w-full max-w-4xl flex flex-col items-center shrink-0 relative">
             {/* Signature collage watermark pattern */}
             <SignatureCollageBackdrop />
 
             {/* Multitrack Workspace: Action buttons fixed above, and tracks independently scrolling below */}
-            <div className="w-full flex-1 min-h-0 flex flex-col relative z-10">
+            <div className="w-full flex flex-col relative z-10">
               <TimelineWorkspace
                 beat={currentBeat}
               tracks={tracks}
@@ -2529,8 +2516,8 @@ export default function App() {
               onOpenFX={(trackId) => setActiveFXTrackId(trackId)}
               selectedTrackId={selectedTrackId}
               onSelectTrack={handleSelectTrack}
-              canUndo={undoStack.length > 0}
-              canRedo={redoStack.length > 0}
+              canUndo={!isRecording && undoStack.length > 0}
+              canRedo={!isRecording && redoStack.length > 0}
               onUndo={handleUndo}
               onRedo={handleRedo}
               undoCount={undoStack.length}
@@ -2545,6 +2532,7 @@ export default function App() {
               onStartRecord={handleStartRecord}
               onStopRecord={handleStopRecord}
               onSplitTake={handleSplitTake}
+              onTrimTake={handleTrimTake}
               onToggleLockTake={handleToggleLockTake}
             />
             </div>
@@ -2568,9 +2556,10 @@ export default function App() {
 
         <button
           type="button"
-          onClick={() => setShowExportModal(true)}
+          onClick={handleExport}
+          disabled={isRecording}
           className="flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-black font-mono font-bold text-xs sm:text-sm tracking-wide shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
-          title="Exportar mezcla final y pistas de voz (WAV / MP3 / Stems)"
+          title="Exportar mezcla final y pistas de voz (WAV / Stems)"
         >
           <Download className="w-4 h-4 stroke-[2.5]" />
           <span>EXPORTAR PROYECTO</span>
@@ -2686,7 +2675,7 @@ export default function App() {
         onContinueLastProject={handleContinueLastProject}
         onStartNewProject={handleStartNewProjectClean}
         onOpenDeviceProject={handleImportDeviceProject}
-        onClose={() => setShowStartupModal(false)}
+        onClose={handleContinueLastProject}
       />
     </div>
   );

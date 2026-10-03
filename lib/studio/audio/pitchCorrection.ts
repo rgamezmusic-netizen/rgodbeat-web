@@ -346,9 +346,10 @@ function interpolateHermite(data: Float32Array, pos: number): number {
  * and Catmull-Rom cubic interpolation to eliminate comb filtering and phase cancellation.
  */
 export async function processVocalTune(
-  audioCtx: AudioContext,
+  audioCtx: BaseAudioContext,
   inputBuffer: AudioBuffer,
-  tuneFX: VocalTuneFX
+  tuneFX: VocalTuneFX,
+  signal?: AbortSignal
 ): Promise<AudioBuffer> {
   // If tune is disabled or speed is 0 (OFF detent), return untouched buffer
   if (!tuneFX.enabled || tuneFX.speed <= 0.01) {
@@ -370,7 +371,7 @@ export async function processVocalTune(
   // 1024-sample window with 256-sample hop (4x 75% overlap for artifact-free reconstruction)
   const frameSize = 1024;
   const hopSize = 256;
-  const numFrames = Math.floor((length - frameSize) / hopSize);
+  const numFrames = Math.max(1, Math.ceil((length - frameSize) / hopSize) + 1);
 
   // Pre-calculate Hann window
   const window = new Float32Array(frameSize);
@@ -389,9 +390,12 @@ export async function processVocalTune(
     let smoothedRatio = 1.0;
 
     for (let f = 0; f < numFrames; f++) {
+      if (signal?.aborted) throw new DOMException('Afinación cancelada', 'AbortError');
+      // Yield regularly so editing, transport and cancellation remain responsive on phones.
+      if (f > 0 && f % 24 === 0) await new Promise<void>(resolve => setTimeout(resolve, 0));
       const offset = f * hopSize;
       for (let i = 0; i < frameSize; i++) {
-        frame[i] = input[offset + i];
+        frame[i] = input[offset + i] ?? 0;
       }
 
       // Detect vocal fundamental frequency
@@ -404,7 +408,8 @@ export async function processVocalTune(
         const clampedRatio = Math.max(0.67, Math.min(1.5, rawRatio)); // max +-7 semitones correction
 
         // Responsive smoothing
-        smoothedRatio = smoothedRatio * 0.2 + clampedRatio * 0.8;
+        const smoothing = 0.2 + Math.max(0, Math.min(1, tuneFX.humanize)) * 0.65;
+        smoothedRatio = smoothedRatio * smoothing + clampedRatio * (1 - smoothing);
 
         for (let i = 0; i < frameSize; i++) {
           const srcPos = offset + center + (i - center) * smoothedRatio;
@@ -418,7 +423,7 @@ export async function processVocalTune(
         // Unvoiced frame (consonants, breaths, silence) - pass through pristine
         smoothedRatio = 1.0;
         for (let i = 0; i < frameSize; i++) {
-          const s = input[offset + i];
+          const s = input[offset + i] ?? 0;
           const w = window[i];
           const outIdx = offset + i;
           output[outIdx] += s * w;

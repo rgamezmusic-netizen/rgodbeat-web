@@ -2,27 +2,21 @@ import React, { useRef, useState, useEffect } from 'react';
 import {
   Sliders,
   MoveHorizontal,
-  ChevronLeft,
-  ChevronRight,
   ZoomIn,
   ZoomOut,
   Trash2,
-  Copy,
   Clock,
   Volume2,
   VolumeX,
   Play,
   Pause,
-  Maximize2,
   RotateCcw,
   Plus,
   Undo2,
   Redo2,
-  HardDrive,
   ShieldCheck,
   Repeat,
   Square,
-  Mic,
   Scissors,
   Lock,
   Unlock,
@@ -34,21 +28,8 @@ const BASE_TRACK_HEADER_WIDTH = 120; // px (clean compact default with ample bre
 const EXPANDED_TRACK_HEADER_WIDTH = 192; // px (full mixer with faders and pan)
 const TIMELINE_GUTTER = 20; // px (lead-in margin so Bar 1 & waveforms never touch or bleed behind track headers)
 
-export const getTrackClips = (track: VocalTrack): VocalClip[] => {
-  if (track.clips && track.clips.length > 0) return track.clips;
-  if (track.buffer) {
-    return [{
-      id: `clip-${track.id}-init`,
-      buffer: track.buffer,
-      tunedBuffer: track.tunedBuffer,
-      startBeatOffset: track.startBeatOffset,
-      duration: track.duration,
-      waveformSample: track.waveformSample,
-      name: `Toma 1`,
-    }];
-  }
-  return [];
-};
+export { getTrackClips } from '@/lib/studio/audio/clipEditing';
+import { getProjectDuration, getTrackClips } from '@/lib/studio/audio/clipEditing';
 
 /**
  * Resamples waveform peak data across the exact width of a clip
@@ -112,6 +93,7 @@ interface TimelineWorkspaceProps {
   onStartRecord?: (trackId: VocalTrackId) => void;
   onStopRecord?: () => void;
   onSplitTake?: (trackId: VocalTrackId, clipId?: string, splitTimeSec?: number) => void;
+  onTrimTake?: (trackId: VocalTrackId, clipId: string, edge: 'start' | 'end') => void;
   onToggleLockTake?: (trackId: VocalTrackId, clipId?: string) => void;
 }
 
@@ -158,15 +140,16 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   onStopRecord,
   onSplitTake,
   onToggleLockTake,
+  onTrimTake,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
 
+  const [snapToBeat, setSnapToBeat] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1); // 1 = baseline, up to 2.5x
   const [showFaders, setShowFaders] = useState<boolean>(false); // Collapsed by default for clean view
   const trackHeaderWidth = showFaders ? EXPANDED_TRACK_HEADER_WIDTH : BASE_TRACK_HEADER_WIDTH;
 
-  const [selectedClipTrackId, setSelectedClipTrackId] = useState<VocalTrackId | null>('lead1');
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState<boolean>(false);
   const [dragTrackId, setDragTrackId] = useState<VocalTrackId | null>(null);
@@ -174,8 +157,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const [dragStartX, setDragStartX] = useState<number>(0);
   const [dragInitialOffset, setDragInitialOffset] = useState<number>(0);
 
-  const duration = beat?.duration || 60;
-  const bpm = beat?.bpm || 140;
+  const duration = getProjectDuration(beat?.duration || 60, tracks);
+  const bpm = Math.max(30, beat?.bpm || 140);
   const secPerBeat = 60 / bpm;
   const secPerBar = secPerBeat * 4;
 
@@ -212,7 +195,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   // Unified Playhead Scrubber Handler (Works seamlessly from TOP ruler, BOTTOM bar, or playhead handle)
   const startPlayheadScrub = (clientX: number) => {
     // Prevent moving or jumping playhead while playing to avoid unwanted seeks during scrolling/viewing
-    if (isPlaying) return;
+    if (isRecording) return;
     setIsScrubbingPlayhead(true);
     const timelineEl = timelineContentRef.current;
     if (!timelineEl) return;
@@ -252,26 +235,26 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   };
 
   const handlePlayheadMouseDown = (e: React.MouseEvent) => {
-    if (isPlaying) return;
+    if (isRecording) return;
     e.stopPropagation();
     e.preventDefault();
     startPlayheadScrub(e.clientX);
   };
 
   const handlePlayheadTouchStart = (e: React.TouchEvent) => {
-    if (isPlaying) return;
+    if (isRecording) return;
     e.stopPropagation();
     startPlayheadScrub(e.touches[0].clientX);
   };
 
   const handleRulerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (isPlaying) return;
+    if (isRecording) return;
     e.stopPropagation();
     startPlayheadScrub(e.clientX);
   };
 
   const handleRulerTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (isPlaying) return;
+    if (isRecording) return;
     e.stopPropagation();
     startPlayheadScrub(e.touches[0].clientX);
   };
@@ -279,7 +262,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   // Safe lane clicking: Sets playhead without triggering clip dragging or channel movement
   const handleLaneClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Only allow setting playhead position when playback is stopped
-    if (isPlaying || isDraggingClip || isScrubbingPlayhead) return;
+    if (isRecording || isDraggingClip || isScrubbingPlayhead) return;
     const target = e.target as HTMLElement;
     if (target.closest('[data-clip-item]') || target.closest('button') || target.closest('input')) {
       return;
@@ -296,12 +279,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     track: VocalTrack,
     clip: VocalClip
   ) => {
-    if (isScrubbingPlayhead) return;
+    if (isScrubbingPlayhead || isRecording) return;
     const target = e.target as HTMLElement;
     if (target.closest('button') || target.closest('input')) return;
 
     e.stopPropagation();
-    setSelectedClipTrackId(track.id);
     setSelectedClipId(clip.id);
     onSelectTrack(track.id);
 
@@ -329,8 +311,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       if (!isDraggingClip || !dragTrackId) return;
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       const deltaPx = clientX - dragStartX;
+      if ('touches' in e && e.cancelable) e.preventDefault();
       const deltaSec = deltaPx / basePixelsPerSec;
-      const newOffset = Math.max(0, Math.min(duration - 0.2, dragInitialOffset + deltaSec));
+      const rawOffset = Math.max(0, dragInitialOffset + deltaSec);
+      const newOffset = snapToBeat ? Math.round(rawOffset / secPerBeat) * secPerBeat : rawOffset;
       // Move smoothly without pushing to undo stack on intermediate drag frames
       onMoveTake(dragTrackId, Math.round(newOffset * 100) / 100, dragClipId || undefined, false);
     };
@@ -353,8 +337,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     if (isDraggingClip) {
       window.addEventListener('mousemove', handleMove);
       window.addEventListener('mouseup', handleEnd);
-      window.addEventListener('touchmove', handleMove);
+      window.addEventListener('touchmove', handleMove, { passive: false });
       window.addEventListener('touchend', handleEnd);
+      window.addEventListener('touchcancel', handleEnd);
     }
 
     return () => {
@@ -362,29 +347,24 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       window.removeEventListener('mouseup', handleEnd);
       window.removeEventListener('touchmove', handleMove);
       window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchcancel', handleEnd);
     };
-  }, [isDraggingClip, dragTrackId, dragClipId, dragStartX, dragInitialOffset, basePixelsPerSec, duration, onMoveTake, isPlaying, currentTime, onSeek, onCommitDragMove]);
+  }, [isDraggingClip, dragTrackId, dragClipId, dragStartX, dragInitialOffset, basePixelsPerSec, duration, onMoveTake, isPlaying, currentTime, onSeek, onCommitDragMove, snapToBeat, secPerBeat]);
 
-  const selectedClipTrack = tracks.find((t) => t.id === selectedClipTrackId);
+  const selectedClipTrack = tracks.find((t) => t.id === selectedTrackId);
   const selectedTrackClips = selectedClipTrack ? getTrackClips(selectedClipTrack) : [];
   const activeSelectedClip = selectedTrackClips.find((c) => c.id === selectedClipId) || selectedTrackClips[selectedTrackClips.length - 1];
 
   // Nudge adjustment
   const handleNudge = (deltaSec: number) => {
-    if (!selectedClipTrack || !activeSelectedClip) return;
-    const newOffset = Math.max(0, Math.min(duration - 0.2, activeSelectedClip.startBeatOffset + deltaSec));
+    if (!selectedClipTrack || !activeSelectedClip || activeSelectedClip.isLocked || isRecording) return;
+    const newOffset = Math.max(0, activeSelectedClip.startBeatOffset + deltaSec);
     onMoveTake(selectedClipTrack.id, Math.round(newOffset * 1000) / 1000, activeSelectedClip.id, true);
-    if (isPlaying) {
-      onSeek(currentTime);
-    }
   };
 
   const handleSnapToPlayhead = () => {
-    if (!selectedClipTrack || !activeSelectedClip) return;
+    if (!selectedClipTrack || !activeSelectedClip || activeSelectedClip.isLocked || isRecording) return;
     onMoveTake(selectedClipTrack.id, Math.max(0, currentTime), activeSelectedClip.id, true);
-    if (isPlaying) {
-      onSeek(currentTime);
-    }
   };
 
   // Generate Musical Grid ticks: Downbeats (Tiempos Fuertes) & Sub-beats (2, 3, 4)
@@ -414,9 +394,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-1 sm:px-4 py-1 text-white flex flex-col flex-1 min-h-0">
+    <div className="w-full max-w-4xl mx-auto px-1 sm:px-4 py-1 text-white flex flex-col shrink-0">
       {/* Workspace Header & Action Bar - Anchored at the top */}
-      <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-2.5 sm:p-3 bg-zinc-900/95 rounded-2xl border border-zinc-800 shadow-xl mb-2 backdrop-blur-md sticky top-0 z-20">
+      <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-2.5 sm:p-3 bg-zinc-900/95 rounded-2xl border border-zinc-800 shadow-xl mb-2 backdrop-blur-md sm:sticky sm:top-0 z-50">
         <div className="flex items-center gap-2">
           <img
             src="/images/rgodbeat-logo.png"
@@ -440,7 +420,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           <div className="flex items-center bg-zinc-800/90 rounded-xl p-1 border border-zinc-700/80 shadow-inner">
             <button
               onClick={onUndo}
-              disabled={!canUndo}
+              disabled={isRecording || !canUndo}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-all ${
                 canUndo
                   ? 'text-zinc-200 hover:text-white hover:bg-zinc-700 active:scale-95 text-amber-300'
@@ -461,7 +441,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
             <button
               onClick={onRedo}
-              disabled={!canRedo}
+              disabled={isRecording || !canRedo}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition-all ${
                 canRedo
                   ? 'text-zinc-200 hover:text-white hover:bg-zinc-700 active:scale-95 text-amber-300'
@@ -557,11 +537,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           <div className="flex items-center gap-1">
             <span className="text-[10px] font-mono text-zinc-400 hidden md:inline">Canal:</span>
             <select
+              aria-label="Canal para grabar o editar"
               value={selectedTrackId}
               onChange={(e) => {
                 const newId = e.target.value as VocalTrackId;
                 onSelectTrack(newId);
-                setSelectedClipTrackId(newId);
               }}
               className="bg-zinc-800 text-amber-300 font-mono text-xs font-bold px-2 py-1.5 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer"
               title="Seleccionar canal para grabar o editar"
@@ -578,7 +558,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           {onSplitTake && (
             <button
               onClick={() => {
-                const targetTrack = selectedClipTrackId || selectedTrackId;
+                const targetTrack = selectedTrackId;
                 onSplitTake(targetTrack, selectedClipId || undefined, currentTime);
               }}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-amber-500/20 text-zinc-200 hover:text-amber-300 border border-zinc-700 hover:border-amber-500/40 font-mono text-xs font-semibold transition-all active:scale-95 cursor-pointer shadow-sm"
@@ -611,6 +591,12 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             <span className="sm:hidden">{showFaders ? 'MIX' : 'MIX'}</span>
           </button>
 
+          <button type="button" onClick={() => setSnapToBeat(value => !value)}
+            aria-pressed={snapToBeat}
+            className="px-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-mono text-amber-300"
+            title="Ajustar los movimientos al tiempo musical del beat">
+            {snapToBeat ? 'AJUSTE: BEAT' : 'AJUSTE: LIBRE'}
+          </button>
           <button
             onClick={() => setZoomLevel((prev) => Math.max(0.6, prev - 0.25))}
             className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 transition-all"
@@ -622,7 +608,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             {Math.round(zoomLevel * 100)}%
           </span>
           <button
-            onClick={() => setZoomLevel((prev) => Math.min(2.5, prev + 0.25))}
+            onClick={() => setZoomLevel((prev) => Math.min(8, prev + 0.5))}
             className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 transition-all"
             title="Aumentar zoom"
           >
@@ -634,7 +620,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       {/* Main Multitrack Canvas Window - Only this section scrolls tracks */}
       <div
         ref={containerRef}
-        className="w-full flex-1 min-h-[300px] max-h-[58vh] sm:max-h-[66vh] bg-[#0d0d12] rounded-2xl border border-zinc-800/90 shadow-2xl overflow-y-auto overflow-x-auto relative select-none scroll-smooth"
+        className="w-full shrink-0 h-[min(52dvh,480px)] min-h-[280px] bg-[#0d0d12] rounded-2xl border border-zinc-800/90 shadow-2xl overflow-y-auto overflow-x-auto relative select-none scroll-smooth"
       >
         <div
           ref={timelineContentRef}
@@ -664,11 +650,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               onMouseDown={handleRulerMouseDown}
               onTouchStart={handleRulerTouchStart}
               className={`relative flex-1 h-full overflow-hidden group select-none bg-[#0e0e16] ${
-                isPlaying ? 'cursor-default' : 'cursor-ew-resize'
+                isRecording ? 'cursor-default' : 'cursor-ew-resize'
               }`}
               title={
-                isPlaying
-                  ? 'Pausa la reproducción para mover el cabezal'
+                isRecording
+                  ? 'Detén la grabación para mover el cabezal'
                   : 'Haz clic o arrastra para mover el cursor de reproducción'
               }
             >
@@ -991,8 +977,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           {/* VOCAL TRACKS: Lead 1, Lead 2, Double, Harmonies, Adlibs, Backings */}
           {tracks.map((track) => {
             const clips = getTrackClips(track);
-            const hasTakes = clips.length > 0;
-            const isSelected = selectedClipTrackId === track.id;
+            const isSelected = selectedTrackId === track.id;
             const isArmed = selectedTrackId === track.id;
             const isThisRecording = isRecording && activeRecordingTrackId === track.id;
 
@@ -1001,8 +986,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                 key={track.id}
                 onClick={() => {
                   if (isScrubbingPlayhead) return;
-                  setSelectedClipTrackId(track.id);
-                  if (clips.length > 0 && (!selectedClipId || !clips.some((c) => c.id === selectedClipId))) {
+                                if (clips.length > 0 && (!selectedClipId || !clips.some((c) => c.id === selectedClipId))) {
                     setSelectedClipId(clips[clips.length - 1].id);
                   }
                   onSelectTrack(track.id);
@@ -1030,7 +1014,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           <span className="text-xs font-semibold font-display text-zinc-100 truncate">
                             {track.name}
                           </span>
-                          {isArmed && (
+                        {isArmed && (
                             <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-red-500/20 text-red-300 font-bold border border-red-500/30">
                               ARM
                             </span>
@@ -1078,6 +1062,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           {track.isMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
                           <span>{track.isMuted ? 'MUTED' : 'MUTE'}</span>
                         </button>
+                        <button type="button" onClick={() => onToggleSolo(track.id)} aria-pressed={track.isSolo}
+                          title={`Escuchar ${track.name} en solo`}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${track.isSolo ? 'bg-amber-400 text-black border-amber-300' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>SOLO</button>
                         {isArmed && (
                           <span className="text-[8px] font-mono font-bold text-amber-400/90 px-1 py-0.2 rounded bg-amber-500/10 border border-amber-500/20">
                             ACTIVA
@@ -1186,6 +1173,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           {track.isMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
                           <span>{track.isMuted ? 'MUT' : 'MUTE'}</span>
                         </button>
+                        <button type="button" onClick={() => onToggleSolo(track.id)} aria-pressed={track.isSolo}
+                          title={`Escuchar ${track.name} en solo`}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${track.isSolo ? 'bg-amber-400 text-black border-amber-300' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>SOLO</button>
                         {isArmed && (
                           <span className="text-[7.5px] font-mono font-bold text-red-300 px-1 py-0.2 rounded bg-red-500/20 border border-red-500/30 truncate">
                             REC
@@ -1342,8 +1332,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedClipTrackId(track.id);
-                                setSelectedClipId(clip.id);
+                                                            setSelectedClipId(clip.id);
                                 onSelectTrack(track.id);
                                 onSplitTake(track.id, clip.id, currentTime);
                               }}
@@ -1411,7 +1400,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
             {/* Quick Actions: Duplicate & Delete */}
             {activeSelectedClip && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {/* Duplicate to another track dropdown */}
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] font-mono text-zinc-400">Duplicar a:</span>
@@ -1438,6 +1427,16 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   </select>
                 </div>
 
+                {onTrimTake && (
+                  <>
+                    <button type="button" disabled={isRecording} onClick={() => onTrimTake(selectedClipTrack.id, activeSelectedClip.id, 'start')}
+                      className="px-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-mono text-zinc-200 disabled:opacity-40"
+                      title="Eliminar el audio anterior al cabezal en esta toma">Recortar inicio</button>
+                    <button type="button" disabled={isRecording} onClick={() => onTrimTake(selectedClipTrack.id, activeSelectedClip.id, 'end')}
+                      className="px-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-mono text-zinc-200 disabled:opacity-40"
+                      title="Eliminar el audio posterior al cabezal en esta toma">Recortar final</button>
+                  </>
+                )}
                 {/* Split / Cut Button */}
                 {onSplitTake && (
                   <button
@@ -1486,12 +1485,22 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
                 <div className="h-4 w-px bg-zinc-700 mx-1" />
 
-                <span className="text-[11px] font-mono text-zinc-400 font-semibold mr-1">
-                  AJUSTAR POSICIÓN:
-                </span>
+                <label className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-400">
+                  Inicio (s)
+                  <input key={`${activeSelectedClip.id}-${activeSelectedClip.startBeatOffset}`} type="number" min={0} step={0.001}
+                    defaultValue={activeSelectedClip.startBeatOffset.toFixed(3)}
+                    disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
+                    onBlur={event => {
+                      const value = event.currentTarget.valueAsNumber;
+                      if (Number.isFinite(value) && value >= 0 && value !== activeSelectedClip.startBeatOffset)
+                        onMoveTake(selectedClipTrack.id, value, activeSelectedClip.id, true);
+                    }}
+                    onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+                    className="w-24 px-2 py-1 rounded bg-black/50 border border-zinc-700 text-zinc-100 disabled:opacity-40" />
+                </label>
 
                 <button
-                  disabled={Boolean(activeSelectedClip.isLocked)}
+                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(-1 * secPerBar)}
                   className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
                     activeSelectedClip.isLocked
@@ -1503,7 +1512,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   -1 Bar
                 </button>
                 <button
-                  disabled={Boolean(activeSelectedClip.isLocked)}
+                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(-0.1)}
                   className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
                     activeSelectedClip.isLocked
@@ -1515,7 +1524,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   -100ms
                 </button>
                 <button
-                  disabled={Boolean(activeSelectedClip.isLocked)}
+                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(-0.02)}
                   className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
                     activeSelectedClip.isLocked
@@ -1530,7 +1539,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                 <div className="h-4 w-px bg-zinc-700 mx-1" />
 
                 <button
-                  disabled={Boolean(activeSelectedClip.isLocked)}
+                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(0.02)}
                   className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
                     activeSelectedClip.isLocked
@@ -1542,7 +1551,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   +20ms
                 </button>
                 <button
-                  disabled={Boolean(activeSelectedClip.isLocked)}
+                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(0.1)}
                   className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
                     activeSelectedClip.isLocked
@@ -1554,7 +1563,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   +100ms
                 </button>
                 <button
-                  disabled={Boolean(activeSelectedClip.isLocked)}
+                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
                   onClick={() => handleNudge(1 * secPerBar)}
                   className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
                     activeSelectedClip.isLocked
@@ -1569,7 +1578,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
               {/* Snap to Playhead button */}
               <button
-                disabled={Boolean(activeSelectedClip.isLocked)}
+                disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
                 onClick={handleSnapToPlayhead}
                 className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all active:scale-95 ${
                   activeSelectedClip.isLocked

@@ -156,3 +156,8 @@ export interface BeatAnalysisResult {
   confidence: number;     // 0 to 100%
   matchingPopularTonality?: PopularTonalityId;
 }
+
+export interface BeatMixSettings {
+  beatFX?: BeatFX;
+  isBeatMuted?: boolean;
+}

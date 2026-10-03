@@ -2,14 +2,14 @@ import {
   BeatData,
   BeatFX,
   LoopSettings,
-  VocalClip,
-  VocalFX,
   VocalTrack,
   VocalTrackId,
 } from '../types/audio';
 import { createReverbImpulse } from './reverbImpulse';
 import { audioBufferToWav, extractWaveformPeaks } from './wavEncoder';
 import { processVocalTune } from './pitchCorrection';
+import { getProjectDuration, getRenderDuration, getTrackClips } from './clipEditing';
+import type { RecordingCheckpoint } from './recordingRecovery';
 
 export interface AudioEngineCallbacks {
   onTimeUpdate: (currentTime: number) => void;
@@ -19,9 +19,11 @@ export interface AudioEngineCallbacks {
     trackId: VocalTrackId,
     buffer: AudioBuffer,
     waveform: number[],
-    explicitStartOffset?: number
+    explicitStartOffset?: number,
+    takeId?: string
   ) => void;
   onRecordingAborted: () => void;
+  onRecordingCheckpoint?: (checkpoint: RecordingCheckpoint) => void;
   onError: (msg: string) => void;
 }
 
@@ -80,7 +82,6 @@ export class AudioEngine {
 
   // Recording
   private micStream: MediaStream | null = null;
-  private micStreamDest: MediaStreamAudioDestinationNode | null = null;
   private micSource: MediaStreamAudioSourceNode | null = null;
   private micHighPassFilter: BiquadFilterNode | null = null;
   private micInputGain: GainNode | null = null;
@@ -88,13 +89,24 @@ export class AudioEngine {
   private micIsClipping = false;
   private micClipTimestamp = 0;
   private micAnalyser: AnalyserNode | null = null;
+  private micLevelSamples = new Float32Array(2048);
   private scriptProcessor: ScriptProcessorNode | null = null;
-  private mediaRecorder: MediaRecorder | null = null;
-  private mediaRecorderChunks: Blob[] = [];
+  private pcmRecorder: AudioWorkletNode | null = null;
+  private recorderModule: Promise<void> | null = null;
+  private recorderSilentGain: GainNode | null = null;
+  private captureStartFrame = Infinity;
+  private capturedFirstFrame: number | null = null;
+  private recorderCommandId = 0;
+  private recorderAcks = new Map<number, (frame: number) => void>();
+  private recordingRequestId = 0;
+  private startingRecording = false;
+  private switchingRecording = false;
+  private latestVocalTracks: VocalTrack[] = [];
+  private disposed = false;
   private recordedPCMChunks: Float32Array[] = [];
+  private recordingTakeId = '';
   private recordingStartBeatTime = 0;
   private recordingLatencyCompensation = -0.025; // -25ms default pocket calibration
-  private cancelCountIn = false;
 
   // Settings
   private loopSettings: LoopSettings = {
@@ -151,7 +163,7 @@ export class AudioEngine {
         }
       };
     }
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
       await this.ctx.resume();
     }
     return this.ctx;
@@ -170,7 +182,7 @@ export class AudioEngine {
    */
   public triggerMobileSpeakerRouting() {
     if (typeof window === 'undefined') return;
-    if (this.isRecording) return; // Never interfere while actively recording
+    if (this.isRecording || this.startingRecording) return;
     try {
       if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
         try {
@@ -235,7 +247,7 @@ export class AudioEngine {
     this.masterGainNode = this.ctx.createGain();
     this.masterGainNode.gain.setValueAtTime(0.92, this.ctx.currentTime); // -0.7 dB clean output headroom
 
-    // Professional Master Brickwall Limiter prevents phone DAC clipping & kick distortion:
+    // Master compressor provides headroom for the summed tracks:
     this.masterLimiterNode = this.ctx.createDynamicsCompressor();
     this.masterLimiterNode.threshold.setValueAtTime(-1.8, this.ctx.currentTime);
     this.masterLimiterNode.knee.setValueAtTime(4.0, this.ctx.currentTime);
@@ -296,7 +308,8 @@ export class AudioEngine {
 
   public updateBeatBpm(bpm: number) {
     if (!this.beatData) return;
-    this.beatData.bpm = bpm;
+    this.beatData = { ...this.beatData, bpm };
+    for (const track of this.latestVocalTracks) this.updateVocalFX(track, this.latestVocalTracks);
     this.updateLoopBounds();
   }
 
@@ -305,13 +318,13 @@ export class AudioEngine {
   }
 
   public setLoopSettings(loop: LoopSettings) {
-    this.loopSettings = loop;
+    this.loopSettings = { ...loop };
     this.updateLoopBounds();
   }
 
   private updateLoopBounds() {
     if (!this.beatData) return;
-    const secPerBeat = 60 / this.beatData.bpm;
+    const secPerBeat = 60 / Math.max(30, this.beatData.bpm);
     const secPerBar = secPerBeat * 4;
 
     if (this.loopSettings.bars === 'all') {
@@ -319,6 +332,8 @@ export class AudioEngine {
       this.loopSettings.endSec = this.beatData.duration;
     } else {
       const barCount = this.loopSettings.bars;
+      const lastBar = Math.max(0, Math.ceil(this.beatData.duration / secPerBar) - 1);
+      this.loopSettings.startBar = Math.max(0, Math.min(lastBar, Math.floor(this.loopSettings.startBar)));
       this.loopSettings.startSec = this.loopSettings.startBar * secPerBar;
       this.loopSettings.endSec = Math.min(
         this.beatData.duration,
@@ -358,7 +373,8 @@ export class AudioEngine {
     }
   }
 
-  private makeSaturationCurve(amount: number): Float32Array<ArrayBuffer> {
+  private makeSaturationCurve(amount: number): Float32Array<ArrayBuffer> | null {
+    if (amount <= 0) return null;
     const k = amount * 18;
     const n = 4096;
     const curve = new Float32Array(n);
@@ -377,6 +393,7 @@ export class AudioEngine {
   public updateVocalFX(track: VocalTrack, allTracks: VocalTrack[]) {
     if (!this.ctx || !this.masterGainNode) return;
     try {
+      this.latestVocalTracks = allTracks;
       const t = this.ctx.currentTime;
 
       let nodes = this.vocalNodes.get(track.id);
@@ -483,13 +500,13 @@ export class AudioEngine {
       nodes.highEq.gain.setTargetAtTime(track.fx.eq.high, t, 0.05);
 
       const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
-      nodes.compressor.threshold.setTargetAtTime(-10 - compAmount * 24, t, 0.05);
-      nodes.compressor.ratio.setTargetAtTime(1.5 + compAmount * 6, t, 0.05);
+      nodes.compressor.threshold.setTargetAtTime(compAmount > 0 ? -10 - compAmount * 24 : 0, t, 0.05);
+      nodes.compressor.ratio.setTargetAtTime(compAmount > 0 ? 1.5 + compAmount * 6 : 1, t, 0.05);
 
       nodes.saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
 
       if (this.beatData && track.fx.delay.division !== 'OFF') {
-        const secPerBeat = 60 / this.beatData.bpm;
+        const secPerBeat = 60 / Math.max(30, this.beatData.bpm);
         let delayTimeSec = secPerBeat;
         switch (track.fx.delay.division) {
           case '1/8':
@@ -517,8 +534,7 @@ export class AudioEngine {
 
       const impulse = this.getReverbImpulse(track.fx.reverb.preset);
       if (impulse && nodes.reverbConvolver.buffer !== impulse) {
-        // ConvolverNode.buffer is write-once per WebAudio spec.
-        // Disconnect old node and attach fresh Convolver to avoid InvalidStateError exception
+        // Replace the convolver when changing presets; keep its wet output routing.
         try {
           nodes.saturation.disconnect(nodes.reverbConvolver);
           nodes.reverbConvolver.disconnect();
@@ -535,7 +551,7 @@ export class AudioEngine {
 
       const hasAnySolo = allTracks.some((tr) => tr.isSolo);
       let effectiveVolume = track.volume;
-      if (track.isMuted) {
+      if (track.isMuted || (this.isRecording && this.recordingTrackId === track.id)) {
         effectiveVolume = 0;
       } else if (hasAnySolo && !track.isSolo) {
         effectiveVolume = 0;
@@ -549,7 +565,8 @@ export class AudioEngine {
     }
   }
 
-  public async play(vocalTracks: VocalTrack[] = []) {
+  public async play(vocalTracks: VocalTrack[] = this.latestVocalTracks) {
+    this.latestVocalTracks = vocalTracks;
     if (!this.beatData) {
       console.warn('AudioEngine: cannot play, no beatData loaded');
       return;
@@ -586,17 +603,20 @@ export class AudioEngine {
     if (this.masterGainNode) {
       try {
         this.masterGainNode.gain.cancelScheduledValues(this.ctx.currentTime);
-        this.masterGainNode.gain.setValueAtTime(1.0, this.ctx.currentTime);
+        this.masterGainNode.gain.setValueAtTime(0.92, this.ctx.currentTime);
       } catch {
-        this.masterGainNode.gain.value = 1.0;
+        this.masterGainNode.gain.value = 0.92;
       }
     }
 
     // If playhead was at or beyond duration, restart from loop start or 0
-    if (this.currentPlaybackPosition >= this.beatData.duration - 0.05) {
+    if (this.currentPlaybackPosition >= getProjectDuration(this.beatData.duration, vocalTracks) - 0.001) {
       this.currentPlaybackPosition = this.loopSettings.enabled ? this.loopSettings.startSec : 0;
     }
 
+    if (this.loopSettings.enabled && (this.currentPlaybackPosition < this.loopSettings.startSec || this.currentPlaybackPosition >= this.loopSettings.endSec)) {
+      this.currentPlaybackPosition = this.loopSettings.startSec;
+    }
     const startPos = this.currentPlaybackPosition;
     // 45ms lookahead ensures all tracks/clips on mobile WebAudio are tightly synchronized without stutter
     const scheduleLeadTime = 0.045;
@@ -604,7 +624,7 @@ export class AudioEngine {
     this.playbackStartCtxTime = startTime - startPos;
 
     // 1. Start Beat Source (with multi-stage routing fallback)
-    if (this.beatData.buffer) {
+    if (this.beatData.buffer && startPos < this.beatData.buffer.duration) {
       this.beatSource = this.ctx.createBufferSource();
       this.beatSource.buffer = this.beatData.buffer;
       if (this.beatHighPassNode) {
@@ -635,23 +655,9 @@ export class AudioEngine {
         const trackNodes = this.vocalNodes.get(track.id);
         if (!trackNodes) continue;
 
-        // Skip scheduling if track is muted
-        if (track.isMuted) continue;
-
-        // Check Solo logic: if any track has isSolo, only play soloed tracks
-        const hasAnySolo = vocalTracks.some((t) => t.isSolo);
-        if (hasAnySolo && !track.isSolo) continue;
-
+        // Schedule every track; gains implement mute/solo so toggles work during playback.
         // Extract all clips for this track line (or fallback to track.buffer)
-        const clips: VocalClip[] = (track.clips && track.clips.length > 0)
-          ? track.clips
-          : (track.buffer ? [{
-              id: `legacy-${track.id}`,
-              buffer: track.buffer,
-              tunedBuffer: track.tunedBuffer,
-              startBeatOffset: track.startBeatOffset,
-              duration: track.duration,
-            }] : []);
+        const clips = getTrackClips(track);
 
         for (const clip of clips) {
           if (!clip.buffer) continue;
@@ -660,8 +666,6 @@ export class AudioEngine {
 
           const playBuffer = (track.fx.tune?.enabled && track.fx.tune.speed > 0.01 && clip.tunedBuffer)
             ? clip.tunedBuffer
-            : (track.fx.tune?.enabled && track.fx.tune.speed > 0.01 && track.tunedBuffer && clips.length === 1)
-            ? track.tunedBuffer
             : clip.buffer;
 
           const sourceKey = `${track.id}-${clip.id}`;
@@ -710,9 +714,11 @@ export class AudioEngine {
 
   public stop() {
     if (this.isRecording && !this.isFinalizingRecording) {
-      this.stopRecording();
+      void this.stopRecording();
+    } else {
+      ++this.recordingRequestId;
+      this.releaseMicrophone();
     }
-    this.releaseMicrophone();
     this.pause();
     this.currentPlaybackPosition = 0;
     this.callbacks.onTimeUpdate(0);
@@ -726,7 +732,7 @@ export class AudioEngine {
     if (wasPlaying) {
       this.pause();
     }
-    const maxDur = this.beatData ? this.beatData.duration : 0;
+    const maxDur = getProjectDuration(this.beatData?.duration ?? 0, vocalTracks);
     this.currentPlaybackPosition = Math.max(0, Math.min(maxDur, positionSec));
     this.callbacks.onTimeUpdate(this.currentPlaybackPosition);
     if (wasPlaying) {
@@ -754,6 +760,12 @@ export class AudioEngine {
       }
     });
     this.vocalSources.clear();
+    for (const nodes of this.vocalNodes.values()) {
+      for (const node of Object.values(nodes)) {
+        try { node.disconnect(); } catch { /* Already disconnected. */ }
+      }
+    }
+    this.vocalNodes.clear();
   }
 
   /**
@@ -775,21 +787,27 @@ export class AudioEngine {
   }
 
   private startPositionTracker(vocalTracks: VocalTrack[]) {
+    this.latestVocalTracks = vocalTracks;
     const trackLoop = () => {
       if (!this.isPlaying || !this.ctx || !this.beatData) return;
 
-      const elapsed = this.ctx.currentTime - this.playbackStartCtxTime;
+      const elapsed = Math.max(this.currentPlaybackPosition, this.ctx.currentTime - this.playbackStartCtxTime);
       this.currentPlaybackPosition = elapsed;
       this.callbacks.onTimeUpdate(elapsed);
 
       if (this.loopSettings.enabled && elapsed >= this.loopSettings.endSec) {
-        this.seek(this.loopSettings.startSec, vocalTracks);
+        if (this.isRecording) {
+          void this.stopRecording();
+          this.callbacks.onPlaybackEnded();
+        } else {
+          this.seek(this.loopSettings.startSec, this.latestVocalTracks);
+        }
         return;
       }
 
-      if (elapsed >= this.beatData.duration) {
+      if (elapsed >= (this.isRecording ? getProjectDuration(this.beatData.duration, this.latestVocalTracks) : getRenderDuration(this.beatData.duration, this.latestVocalTracks, this.beatData.bpm))) {
         if (this.loopSettings.enabled) {
-          this.seek(this.loopSettings.startSec, vocalTracks);
+          this.seek(this.loopSettings.startSec, this.latestVocalTracks);
         } else {
           this.stop();
           this.callbacks.onPlaybackEnded();
@@ -876,54 +894,16 @@ export class AudioEngine {
       throw new Error('Tu navegador no soporta grabación de micrófono (getUserMedia no disponible).');
     }
 
-    // Universal studio recording constraints attempt cascade:
-    // 1. Studio Hi-Fi Clean: Strict booleans echoCancellation: false, noiseSuppression: false, autoGainControl: false
-    // plus Chromium/Android flags so the phone NEVER activates telephone call filtering or cuts kicks/808s.
     try {
       this.micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-          ...({
-            googEchoCancellation: false,
-            googAutoGainControl: false,
-            googNoiseSuppression: false,
-            googHighpassFilter: false,
-            googAudioMirroring: false,
-            voiceIsolation: false,
-          } as any),
-        },
+        audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       });
-      return this.micStream;
-    } catch (e1) {
-      console.warn('Initial studio mic constraints rejected, trying boolean fallback:', e1);
-    }
-
-    // 2. Standard boolean fallback:
-    try {
-      this.micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          channelCount: 1,
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-      });
-      return this.micStream;
-    } catch (e2) {
-      console.warn('Boolean constraint fallback rejected, trying universal audio: true fallback:', e2);
-    }
-
-    // 3. Universal basic fallback
-    try {
+    } catch (error) {
+      // Retry only unsupported constraints; permission and hardware errors need user action.
+      if (!(error instanceof DOMException) || error.name !== 'OverconstrainedError') throw error;
       this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      return this.micStream;
-    } catch (e3: any) {
-      console.error('All getUserMedia attempts failed:', e3);
-      throw e3;
     }
+    return this.micStream;
   }
 
   /**
@@ -931,17 +911,21 @@ export class AudioEngine {
    * Voice-Communication / Call mode and instantly restore uncompressed Hi-Fi stereo playback.
    */
   public releaseMicrophone() {
-    if (this.micStreamDest) {
-      try {
-        this.micStreamDest.stream.getTracks().forEach((track) => track.stop());
-        if (this.micInputGain) {
-          this.micInputGain.disconnect(this.micStreamDest);
-        }
-      } catch (err) {
-        // ignore
-      }
-      this.micStreamDest = null;
+    if (this.scriptProcessor) this.scriptProcessor.onaudioprocess = null;
+    if (this.pcmRecorder) this.pcmRecorder.port.onmessage = null;
+    for (const node of [this.micSource, this.micHighPassFilter, this.micInputGain,
+      this.micAnalyser, this.scriptProcessor, this.pcmRecorder, this.recorderSilentGain]) {
+      try { node?.disconnect(); } catch { /* Already disconnected. */ }
     }
+    this.micSource = null;
+    this.micHighPassFilter = null;
+    this.micInputGain = null;
+    this.micAnalyser = null;
+    this.scriptProcessor = null;
+    this.pcmRecorder = null;
+    this.recorderSilentGain = null;
+    for (const resolve of this.recorderAcks.values()) resolve(this.ctx?.currentTime ? Math.round(this.ctx.currentTime * this.ctx.sampleRate) : 0);
+    this.recorderAcks.clear();
 
     if (this.micStream) {
       try {
@@ -966,325 +950,219 @@ export class AudioEngine {
     }
   }
 
-  /**
-   * Starts Recording Workflow:
-   * 1. Acquires microphone permission first on user gesture.
-   * 2. Resumes AudioContext.
-   * 3. Optional 1-bar count-in.
-   * 4. Initializes protected audio chain (rumble filter + auto-headroom gain + real-time peak meter).
-   * 5. Starts MediaRecorder (320 kbps broadcast bitrate) + Float32 PCM backup.
-   * 6. Starts synchronized playback.
-   */
-  public async startRecording(
-    trackId: VocalTrackId,
-    vocalTracks: VocalTrack[],
-    withCountIn: boolean = true
-  ): Promise<boolean> {
-    if (!this.beatData) {
-      this.callbacks.onError('Por favor carga un beat primero.');
-      return false;
+  private collectPCM(samples: Float32Array, frame: number) {
+    if (!this.ctx) return;
+    if (this.capturedFirstFrame === null) {
+      this.capturedFirstFrame = frame;
+      this.recordingStartBeatTime = Math.max(0,
+        frame / this.ctx.sampleRate - this.playbackStartCtxTime + this.recordingLatencyCompensation);
     }
+    let peak = 0;
+    for (const value of samples) peak = Math.max(peak, Math.abs(value));
+    if (peak >= 0.88) {
+      this.micIsClipping = true;
+      this.micClipTimestamp = Date.now();
+      const target = Math.max(0.32, this.micInputGainValue * (peak > 0.98 ? 0.78 : 0.85));
+      this.micInputGainValue = target;
+      this.micInputGain?.gain.setTargetAtTime(target, this.ctx.currentTime, 0.015);
+    } else if (Date.now() - this.micClipTimestamp > 1200) {
+      this.micIsClipping = false;
+    }
+    // Store the captured PCM unchanged; hardware clipping cannot be repaired by a soft clipper.
+    this.recordedPCMChunks.push(samples);
+    if (this.recordingTrackId) this.callbacks.onRecordingCheckpoint?.({
+      takeId: this.recordingTakeId, trackId: this.recordingTrackId,
+      start: this.recordingStartBeatTime, sampleRate: this.ctx.sampleRate,
+      index: this.recordedPCMChunks.length - 1, samples,
+    });
+  }
 
-    try {
-      // 1. Acquire mic permission first directly on the user's tap gesture
-      let stream: MediaStream;
+  private async setupPCMRecorder() {
+    if (!this.ctx || !this.micInputGain) throw new Error('Micrófono no inicializado.');
+    const ctx = this.ctx;
+    this.recorderSilentGain = ctx.createGain();
+    this.recorderSilentGain.gain.value = 0;
+    this.recorderSilentGain.connect(ctx.destination);
+    if (ctx.audioWorklet && typeof AudioWorkletNode !== 'undefined') {
       try {
-        stream = await this.getMicrophoneStream();
-      } catch (err: unknown) {
-        const errMsg = err instanceof Error ? err.message : String(err);
-        const isPermissionDenied =
-          errMsg.toLowerCase().includes('permission') ||
-          errMsg.toLowerCase().includes('denied') ||
-          errMsg.toLowerCase().includes('notallowederror');
-
-        const friendlyMsg = isPermissionDenied
-          ? 'Permiso de micrófono denegado. Permite el acceso al micrófono en los ajustes de tu navegador.'
-          : `No se pudo conectar al micrófono: ${errMsg}`;
-
-        this.callbacks.onError(friendlyMsg);
-        return false;
+        this.recorderModule ??= ctx.audioWorklet.addModule('/studio/pcm-recorder.js');
+        await this.recorderModule;
+        if (this.disposed || !this.isRecording) return;
+        this.pcmRecorder = new AudioWorkletNode(ctx, 'rgodbeat-pcm-recorder', {
+          channelCount: 1, numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1],
+        });
+        this.pcmRecorder.port.onmessage = ({ data }) => {
+          if (data.type === 'chunk') this.collectPCM(data.samples, data.frame);
+          else if (data.type === 'ack') {
+            this.recorderAcks.get(data.id)?.(data.frame);
+            this.recorderAcks.delete(data.id);
+          }
+        };
+        this.pcmRecorder.onprocessorerror = () => {
+          this.callbacks.onError('El capturador de audio se interrumpió. Se guardará la toma recibida.');
+          void this.stopRecording();
+        };
+        this.micInputGain.connect(this.pcmRecorder);
+        this.pcmRecorder.connect(this.recorderSilentGain);
+        return;
+      } catch (error) {
+        this.recorderModule = null;
+        console.warn('AudioWorklet unavailable; using PCM compatibility capture:', error);
       }
+    }
+    this.scriptProcessor = ctx.createScriptProcessor(4096, 1, 1);
+    this.scriptProcessor.onaudioprocess = (event) => {
+      if (!this.isRecording) return;
+      const input = event.inputBuffer.getChannelData(0);
+      const frame = Math.round((event.playbackTime - input.length / ctx.sampleRate) * ctx.sampleRate);
+      const skip = Math.max(0, this.captureStartFrame - frame);
+      if (skip < input.length) this.collectPCM(input.slice(skip), frame + skip);
+    };
+    this.micInputGain.connect(this.scriptProcessor);
+    this.scriptProcessor.connect(this.recorderSilentGain);
+  }
 
+  private async flushRecorder(type: 'boundary' | 'stop'): Promise<number> {
+    if (!this.ctx) return 0;
+    const frame = Math.round(this.ctx.currentTime * this.ctx.sampleRate);
+    if (!this.pcmRecorder) return frame;
+    const node = this.pcmRecorder;
+    const id = ++this.recorderCommandId;
+    return new Promise<number>((resolve) => {
+      const timer = setTimeout(() => {
+        this.recorderAcks.delete(id);
+        this.callbacks.onError('El capturador no respondió a tiempo. Se conservará el audio recibido.');
+        resolve(frame);
+      }, 1500);
+      this.recorderAcks.set(id, (boundaryFrame) => { clearTimeout(timer); resolve(boundaryFrame); });
+      node.port.postMessage({ type, id });
+    });
+  }
+
+  private commitRecordedPCM(trackId: VocalTrackId, start: number, chunks: Float32Array[], takeId = this.recordingTakeId) {
+    if (!this.ctx) return;
+    const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    if (length < this.ctx.sampleRate * 0.2) return;
+    const buffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
+    const output = buffer.getChannelData(0);
+    let offset = 0;
+    for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
+    this.callbacks.onRecordingFinished(trackId, buffer, extractWaveformPeaks(buffer, 60), start, takeId);
+  }
+
+  public getRecordingCheckpointClip() {
+    if (!this.ctx || !this.recordingTrackId || !this.recordedPCMChunks.length) return null;
+    const length = this.recordedPCMChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const buffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
+    let offset = 0;
+    for (const chunk of this.recordedPCMChunks) { buffer.getChannelData(0).set(chunk, offset); offset += chunk.length; }
+    return { trackId: this.recordingTrackId, clip: {
+      id: this.recordingTakeId, name: 'Toma en curso', buffer, tunedBuffer: null,
+      startBeatOffset: this.recordingStartBeatTime, duration: buffer.duration, isLocked: true,
+    } };
+  }
+
+  public async startRecording(trackId: VocalTrackId, vocalTracks: VocalTrack[], withCountIn = true): Promise<boolean> {
+    if (this.startingRecording || this.isRecording || this.isFinalizingRecording || this.disposed) return false;
+    if (!this.beatData) { this.callbacks.onError('Por favor carga un beat primero.'); return false; }
+    this.startingRecording = true;
+    this.captureStartFrame = Infinity;
+    const requestId = ++this.recordingRequestId;
+    try {
+      const stream = await this.getMicrophoneStream();
+      if (requestId !== this.recordingRequestId || this.disposed) { this.releaseMicrophone(); return false; }
       await this.ensureAudioContext();
-      if (!this.ctx) return false;
-
+      if (!this.ctx || requestId !== this.recordingRequestId) return false;
       const wasPlaying = this.isPlaying;
       this.recordingTrackId = trackId;
+      this.recordingTakeId = `take-${crypto.randomUUID()}`;
       this.isRecording = true;
-      this.cancelCountIn = false;
       this.recordedPCMChunks = [];
-      this.mediaRecorderChunks = [];
-
-      // Reset auto-gain protection state
-      this.micInputGainValue = 1.0;
+      this.capturedFirstFrame = null;
+      this.captureStartFrame = Infinity;
+      this.micInputGainValue = 1;
       this.micIsClipping = false;
       this.micClipTimestamp = 0;
-
-      // 2. Count-in ONLY when the beat was stopped/paused
-      const shouldCountIn = withCountIn && !wasPlaying;
-      if (shouldCountIn) {
-        const secPerBeat = 60 / this.beatData.bpm;
+      if (withCountIn && !wasPlaying) {
+        const interval = 60000 / this.beatData.bpm;
+        const countStart = performance.now();
         for (let beat = 1; beat <= 4; beat++) {
-          if (this.cancelCountIn || !this.isRecording) {
-            this.callbacks.onCountInBeat(0);
-            this.releaseMicrophone();
-            this.callbacks.onRecordingAborted();
-            return false;
-          }
+          if (requestId !== this.recordingRequestId || !this.isRecording) return false;
           this.callbacks.onCountInBeat(beat);
           this.playClick(beat === 1 ? 1200 : 800, 0.06);
-
-          // Subdivide the beat wait into 15ms responsive checks so touching screen cancels instantly
-          const beatDurationMs = secPerBeat * 1000;
-          const sliceMs = 15;
-          let elapsed = 0;
-          while (elapsed < beatDurationMs) {
-            if (this.cancelCountIn || !this.isRecording) {
-              this.callbacks.onCountInBeat(0);
-              this.releaseMicrophone();
-              this.callbacks.onRecordingAborted();
-              return false;
-            }
-            const sleepChunk = Math.min(sliceMs, beatDurationMs - elapsed);
-            await new Promise((resolve) => setTimeout(resolve, sleepChunk));
-            elapsed += sleepChunk;
+          while (performance.now() < countStart + beat * interval) {
+            if (requestId !== this.recordingRequestId || !this.isRecording) return false;
+            await new Promise(resolve => setTimeout(resolve, 15));
           }
         }
-        this.callbacks.onCountInBeat(0); // clear count-in overlay
-      } else {
-        this.callbacks.onCountInBeat(0);
       }
-
-      if (this.cancelCountIn || !this.isRecording) {
-        this.releaseMicrophone();
-        this.callbacks.onRecordingAborted();
-        return false;
-      }
-
-      // If playback was at the very end and not playing, restart from beginning
-      if (!wasPlaying && this.currentPlaybackPosition >= this.beatData.duration - 0.1) {
-        this.currentPlaybackPosition = this.loopSettings.enabled ? this.loopSettings.startSec : 0;
-      }
-
-      // 3. Audio graph with Anti-Saturation Auto-Gain Protection:
-      // micSource -> micHighPassFilter (35Hz gentle rumble cleaner) -> micInputGain (dynamic auto-attenuator) -> micAnalyser & recorder
+      this.callbacks.onCountInBeat(0);
+      if (requestId !== this.recordingRequestId || !this.isRecording) return false;
       this.micSource = this.ctx.createMediaStreamSource(stream);
-
-      // High-pass filter at 35Hz (Q=0.7) to eliminate mic stand thumps, desk vibrations and wind rumble
       this.micHighPassFilter = this.ctx.createBiquadFilter();
       this.micHighPassFilter.type = 'highpass';
-      this.micHighPassFilter.frequency.setValueAtTime(35, this.ctx.currentTime);
-      this.micHighPassFilter.Q.setValueAtTime(0.7071, this.ctx.currentTime);
-
-      // Dynamic gain node with auto-headroom protection
+      this.micHighPassFilter.frequency.value = 35;
+      this.micHighPassFilter.Q.value = 0.7071;
       this.micInputGain = this.ctx.createGain();
-      this.micInputGain.gain.setValueAtTime(this.micInputGainValue, this.ctx.currentTime);
-
       this.micAnalyser = this.ctx.createAnalyser();
-      this.micAnalyser.fftSize = 64;
-      this.micAnalyser.smoothingTimeConstant = 0.2;
-
+      this.micAnalyser.fftSize = 2048;
       this.micSource.connect(this.micHighPassFilter);
       this.micHighPassFilter.connect(this.micInputGain);
       this.micInputGain.connect(this.micAnalyser);
-
-      // Create stream destination from the processed/protected mic chain so MediaRecorder captures clean protected audio
-      let recordingStream: MediaStream = stream;
-      try {
-        this.micStreamDest = this.ctx.createMediaStreamDestination();
-        this.micInputGain.connect(this.micStreamDest);
-        if (this.micStreamDest.stream && this.micStreamDest.stream.getAudioTracks().length > 0) {
-          recordingStream = this.micStreamDest.stream;
-        }
-      } catch (err) {
-        console.warn('MediaStreamDestination fallback to raw stream:', err);
-      }
-
-      // 4. Start MediaRecorder with pristine broadcast studio bitrate (320 kbps)
-      if (typeof MediaRecorder !== 'undefined') {
-        try {
-          let mimeType = '';
-          if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-            mimeType = 'audio/webm;codecs=opus';
-          } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-            mimeType = 'audio/webm';
-          } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-            mimeType = 'audio/mp4';
-          }
-
-          const recorderOptions: MediaRecorderOptions = {
-            audioBitsPerSecond: 320000, // 320 kbps broadcast studio quality
-          };
-          if (mimeType) {
-            recorderOptions.mimeType = mimeType;
-          }
-
-          this.mediaRecorder = new MediaRecorder(recordingStream, recorderOptions);
-
-          this.mediaRecorder.ondataavailable = (e) => {
-            if (e.data && e.data.size > 0) {
-              this.mediaRecorderChunks.push(e.data);
-            }
-          };
-          // Start will happen in exact lock-step with playback below
-        } catch (e) {
-          console.warn('MediaRecorder init failed, relying on PCM processor:', e);
-          this.mediaRecorder = null;
-        }
-      }
-
-      // 5. ScriptProcessor as real-time peak detector + active saturation attenuator + Float32 PCM collector
-      this.scriptProcessor = this.ctx.createScriptProcessor(4096, 1, 1);
-      this.scriptProcessor.onaudioprocess = (e) => {
-        if (!this.isRecording) return;
-        const inputData = e.inputBuffer.getChannelData(0);
-        const len = inputData.length;
-
-        // True peak detector in this audio block
-        let peak = 0;
-        for (let i = 0; i < len; i++) {
-          const absVal = Math.abs(inputData[i]);
-          if (absVal > peak) peak = absVal;
-        }
-
-        // Saturation threshold: > 0.88 (-1.1 dBFS)
-        if (peak >= 0.88) {
-          this.micIsClipping = true;
-          this.micClipTimestamp = Date.now();
-
-          // Smoothly lower the input gain during recording to protect audio headroom:
-          // "automáticamente se baje un poco mientras se graba para cuidar eso solo cuando se sature"
-          const dropFactor = peak > 0.98 ? 0.78 : 0.85; // ~ -1.5 dB to -2.1 dB
-          const targetGain = Math.max(0.32, this.micInputGainValue * dropFactor);
-
-          if (this.micInputGain && this.ctx && Math.abs(targetGain - this.micInputGainValue) > 0.02) {
-            this.micInputGainValue = targetGain;
-            try {
-              this.micInputGain.gain.cancelScheduledValues(this.ctx.currentTime);
-              this.micInputGain.gain.linearRampToValueAtTime(targetGain, this.ctx.currentTime + 0.035);
-            } catch {
-              this.micInputGain.gain.setValueAtTime(targetGain, this.ctx.currentTime);
-            }
-          }
-        } else if (this.micIsClipping && Date.now() - this.micClipTimestamp > 1200) {
-          this.micIsClipping = false;
-        }
-
-        // Analog tape soft saturation curve on PCM chunks to prevent harsh digital squaring
-        const chunk = new Float32Array(len);
-        for (let i = 0; i < len; i++) {
-          let s = inputData[i];
-          if (s > 0.94) {
-            s = 0.94 + 0.06 * Math.tanh((s - 0.94) / 0.06);
-          } else if (s < -0.94) {
-            s = -0.94 + 0.06 * Math.tanh((s + 0.94) / 0.06);
-          }
-          chunk[i] = s;
-        }
-
-        this.recordedPCMChunks.push(chunk);
-      };
-
-      this.micInputGain.connect(this.scriptProcessor);
-      const silentGain = this.ctx.createGain();
-      silentGain.gain.setValueAtTime(0, this.ctx.currentTime);
-      this.scriptProcessor.connect(silentGain);
-      silentGain.connect(this.ctx.destination);
-
-      // Record start position aligned to current beat time
-      this.recordingStartBeatTime = Math.max(
-        0,
-        this.currentPlaybackPosition + this.recordingLatencyCompensation
-      );
-
-      // 5. Clear any old take audio playing on this track, then start synchronized playback
+      await this.setupPCMRecorder();
+      if (requestId !== this.recordingRequestId || !this.isRecording) return false;
       this.clearTrackSources(trackId);
-      if (!wasPlaying) {
-        await this.play(vocalTracks);
-      }
-
-      // Start MediaRecorder in exact sample-accurate lock-step with beat playback
-      if (this.mediaRecorder && this.mediaRecorder.state !== 'recording') {
-        try {
-          this.mediaRecorder.start(100);
-        } catch (recStartErr) {
-          console.warn('MediaRecorder start error:', recStartErr);
-        }
-      }
+      if (!wasPlaying) await this.play(vocalTracks);
+      if (requestId !== this.recordingRequestId || !this.isRecording) return false;
+      const start = Math.max(this.ctx.currentTime, this.playbackStartCtxTime + this.currentPlaybackPosition);
+      this.captureStartFrame = Math.ceil(start * this.ctx.sampleRate);
+      this.recordingStartBeatTime = Math.max(0, start - this.playbackStartCtxTime + this.recordingLatencyCompensation);
+      this.pcmRecorder?.port.postMessage({ type: 'start', startFrame: this.captureStartFrame });
       return true;
-    } catch (err) {
-      this.releaseMicrophone();
-      this.isRecording = false;
-      this.recordingTrackId = null;
-      const msg = err instanceof Error ? err.message : 'Error al inicializar la grabación';
-      this.callbacks.onError(msg);
-      this.callbacks.onRecordingAborted();
+    } catch (error) {
+      const denied = error instanceof DOMException && error.name === 'NotAllowedError';
+      this.callbacks.onError(denied
+        ? 'Permiso de micrófono denegado. Permite el acceso en los ajustes del navegador.'
+        : `No se pudo iniciar la grabación: ${error instanceof Error ? error.message : String(error)}`);
       return false;
+    } finally {
+      this.startingRecording = false;
+      if (requestId !== this.recordingRequestId || this.captureStartFrame === Infinity) {
+        this.isRecording = false;
+        this.recordingTrackId = null;
+        this.releaseMicrophone();
+        this.callbacks.onCountInBeat(0);
+        this.callbacks.onRecordingAborted();
+      }
     }
   }
 
-  /**
-   * Seamlessly switches recording from the current active channel to a new channel
-   * WITHOUT stopping playback or interrupting the singer.
-   * Finalizes and saves the take on the previous track, then starts capturing to newTrackId.
-   */
-  public async switchRecordingTrack(
-    newTrackId: VocalTrackId,
-    vocalTracks: VocalTrack[]
-  ): Promise<boolean> {
-    if (!this.isRecording || !this.ctx || !this.recordingTrackId) {
-      return false;
-    }
-    if (this.recordingTrackId === newTrackId) {
+  public async switchRecordingTrack(newTrackId: VocalTrackId, vocalTracks: VocalTrack[]): Promise<boolean> {
+    if (!this.isRecording || !this.ctx || !this.recordingTrackId || this.startingRecording || this.switchingRecording) return false;
+    if (this.recordingTrackId === newTrackId) return true;
+    this.switchingRecording = true;
+    try {
+      const previousTrackId = this.recordingTrackId;
+      const boundary = await this.flushRecorder('boundary');
+      if (!this.isRecording || this.isFinalizingRecording) return false;
+      const start = this.recordingStartBeatTime;
+      const chunks = this.recordedPCMChunks;
+      const takeId = this.recordingTakeId;
+      this.recordedPCMChunks = [];
+      this.capturedFirstFrame = null;
+      this.recordingTrackId = newTrackId;
+      this.recordingTakeId = `take-${crypto.randomUUID()}`;
+      this.recordingStartBeatTime = Math.max(0, boundary / this.ctx.sampleRate - this.playbackStartCtxTime + this.recordingLatencyCompensation);
+      this.clearTrackSources(newTrackId);
+      this.latestVocalTracks = vocalTracks;
+      this.commitRecordedPCM(previousTrackId, start, chunks, takeId);
       return true;
-    }
-
-    const previousTrackId = this.recordingTrackId;
-    const previousStartBeatTime = this.recordingStartBeatTime;
-    const previousChunks = [...this.recordedPCMChunks];
-    this.recordedPCMChunks = [];
-    this.mediaRecorderChunks = [];
-
-    // Switch active channel pointer
-    this.recordingTrackId = newTrackId;
-    this.recordingStartBeatTime = Math.max(
-      0,
-      this.currentPlaybackPosition + this.recordingLatencyCompensation
-    );
-    this.clearTrackSources(newTrackId);
-
-    // Finalize previous track take if it has enough audio (> 0.2s)
-    if (previousChunks.length > 0) {
-      let totalSamples = 0;
-      for (const chunk of previousChunks) {
-        totalSamples += chunk.length;
-      }
-      if (totalSamples > 0) {
-        const sampleRate = this.ctx.sampleRate;
-        const prevBuffer = this.ctx.createBuffer(1, totalSamples, sampleRate);
-        const channelData = prevBuffer.getChannelData(0);
-        let offset = 0;
-        for (const chunk of previousChunks) {
-          channelData.set(chunk, offset);
-          offset += chunk.length;
-        }
-
-        if (prevBuffer.duration >= 0.2) {
-          const waveform = extractWaveformPeaks(prevBuffer, 48);
-          // Commit previous take with its exact original start offset
-          this.callbacks.onRecordingFinished(previousTrackId, prevBuffer, waveform, previousStartBeatTime);
-        }
-      }
-    }
-
-    return true;
+    } finally { this.switchingRecording = false; }
   }
 
-  /**
-   * Immediately aborts an active count-in when the user taps anywhere on the screen.
-   */
   public abortCountIn(): void {
-    this.cancelCountIn = true;
+    if (!this.startingRecording) return;
+    ++this.recordingRequestId;
     this.isRecording = false;
     this.recordingTrackId = null;
     this.callbacks.onCountInBeat(0);
@@ -1292,139 +1170,40 @@ export class AudioEngine {
     this.callbacks.onRecordingAborted();
   }
 
-  /**
-   * Stops recording cleanly, decodes the audio, and saves the take to the vocal track.
-   */
   public async stopRecording(): Promise<void> {
+    ++this.recordingRequestId;
     if (this.isFinalizingRecording) return;
     this.isFinalizingRecording = true;
-
     try {
-      this.cancelCountIn = true;
       this.callbacks.onCountInBeat(0);
-
-      if (!this.isRecording || !this.ctx || !this.recordingTrackId) {
-        this.isRecording = false;
-        this.recordingTrackId = null;
-        this.releaseMicrophone();
-        this.callbacks.onRecordingAborted();
-        return;
-      }
-
-      const targetTrackId = this.recordingTrackId;
-      const finalTakeStartBeatTime = this.recordingStartBeatTime;
+      const trackId = this.recordingTrackId;
       this.isRecording = false;
-      this.recordingTrackId = null;
-
-      // Disconnect mic audio graph nodes
-      if (this.scriptProcessor && this.micSource) {
-        try {
-          this.scriptProcessor.disconnect();
-          this.micSource.disconnect();
-        } catch {
-          // ignore
-        }
-        this.scriptProcessor = null;
-        this.micSource = null;
-      }
-
-      // Stop playback
       this.pause();
-
-      let finalBuffer: AudioBuffer | null = null;
-
-    // 1. Collect data from MediaRecorder if active
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      try {
-        const recorderPromise = new Promise<Blob>((resolve) => {
-          if (!this.mediaRecorder) return resolve(new Blob());
-          this.mediaRecorder.onstop = () => {
-            const blob = new Blob(this.mediaRecorderChunks, {
-              type: this.mediaRecorder?.mimeType || 'audio/webm',
-            });
-            resolve(blob);
-          };
-          this.mediaRecorder.stop();
-        });
-
-        const blob = await recorderPromise;
-        if (blob.size > 0) {
-          const arrayBuffer = await blob.arrayBuffer();
-          const decoded = await this.ctx.decodeAudioData(arrayBuffer);
-
-          // Force 1-channel pure MONO centered
-          if (decoded.numberOfChannels > 1) {
-            const monoBuffer = this.ctx.createBuffer(1, decoded.length, decoded.sampleRate);
-            const monoData = monoBuffer.getChannelData(0);
-            const ch0 = decoded.getChannelData(0);
-            const ch1 = decoded.getChannelData(1);
-
-            let sum0 = 0;
-            let sum1 = 0;
-            const checkLen = Math.min(decoded.length, 44100 * 2);
-            for (let i = 0; i < checkLen; i++) {
-              sum0 += Math.abs(ch0[i]);
-              sum1 += Math.abs(ch1[i]);
-            }
-
-            if (sum1 < sum0 * 0.05) {
-              // Channel 1 is silent (common with 1-channel USB interface inputs)
-              monoData.set(ch0);
-            } else if (sum0 < sum1 * 0.05) {
-              // Channel 0 is silent
-              monoData.set(ch1);
-            } else {
-              // Stereo audio: average to dead center mono
-              for (let i = 0; i < decoded.length; i++) {
-                monoData[i] = (ch0[i] + ch1[i]) * 0.5;
-              }
-            }
-            finalBuffer = monoBuffer;
-          } else {
-            finalBuffer = decoded;
-          }
-        }
-      } catch (err) {
-        console.warn('MediaRecorder blob decode error, falling back to PCM chunks:', err);
+      await this.flushRecorder('stop');
+      this.recordingTrackId = null;
+      const chunks = this.recordedPCMChunks;
+      this.recordedPCMChunks = [];
+      if (trackId && chunks.reduce((sum, chunk) => sum + chunk.length, 0) >= (this.ctx?.sampleRate ?? 48000) * 0.2) {
+        this.commitRecordedPCM(trackId, this.recordingStartBeatTime, chunks);
+      } else {
+        this.callbacks.onRecordingAborted();
       }
-    }
-
-    // 2. Fallback to ScriptProcessor PCM chunks if MediaRecorder didn't produce a buffer
-    if (!finalBuffer && this.recordedPCMChunks.length > 0) {
-      let totalSamples = 0;
-      for (const chunk of this.recordedPCMChunks) {
-        totalSamples += chunk.length;
-      }
-      if (totalSamples > 0) {
-        const sampleRate = this.ctx.sampleRate;
-        finalBuffer = this.ctx.createBuffer(1, totalSamples, sampleRate);
-        const channelData = finalBuffer.getChannelData(0);
-        let offset = 0;
-        for (const chunk of this.recordedPCMChunks) {
-          channelData.set(chunk, offset);
-          offset += chunk.length;
-        }
-      }
-    }
-
-    this.recordedPCMChunks = [];
-    this.mediaRecorderChunks = [];
-
-    // Check if recording has valid duration (> 0.2s)
-    if (!finalBuffer || finalBuffer.duration < 0.2) {
-      this.callbacks.onRecordingAborted();
-      return;
-    }
-
-    // Extract waveform thumbnail
-    const waveform = extractWaveformPeaks(finalBuffer, 48);
-
-    // Notify callback with the exact take start offset
-    this.callbacks.onRecordingFinished(targetTrackId, finalBuffer, waveform, finalTakeStartBeatTime);
     } finally {
+      this.captureStartFrame = Infinity;
       this.releaseMicrophone();
       this.isFinalizingRecording = false;
     }
+  }
+
+  public dispose() {
+    this.disposed = true;
+    ++this.recordingRequestId;
+    this.isRecording = false;
+    this.stopSources();
+    this.isPlaying = false;
+    if (this.animationFrameId !== null) cancelAnimationFrame(this.animationFrameId);
+    this.releaseMicrophone();
+    if (this.ctx) { this.ctx.onstatechange = null; void this.ctx.close(); }
   }
 
   /**
@@ -1498,13 +1277,10 @@ export class AudioEngine {
 
   public getMicInputLevel(): number {
     if (!this.micAnalyser) return 0;
-    const data = new Uint8Array(this.micAnalyser.frequencyBinCount);
-    this.micAnalyser.getByteFrequencyData(data);
-    let sum = 0;
-    for (let i = 0; i < data.length; i++) {
-      sum += data[i];
-    }
-    return Math.min(1, (sum / data.length) / 128);
+    this.micAnalyser.getFloatTimeDomainData(this.micLevelSamples);
+    let peak = 0;
+    for (const sample of this.micLevelSamples) peak = Math.max(peak, Math.abs(sample));
+    return Math.min(1, peak);
   }
 
   /**
@@ -1552,17 +1328,24 @@ export class AudioEngine {
       throw new Error('No hay beat cargado para exportar');
     }
 
-    // 24-bit / 48.0 kHz Studio Master Quality
+    // 24-bit / 48.0 kHz PCM output
     const TARGET_SAMPLE_RATE = 48000;
-    const duration = this.beatData.duration;
+    const duration = getRenderDuration(this.beatData.duration, vocalTracks, this.beatData.bpm);
     const length = Math.max(1, Math.ceil(TARGET_SAMPLE_RATE * duration));
 
     const offlineCtx = new OfflineAudioContext(2, length, TARGET_SAMPLE_RATE);
 
     // 1. Master Gain
     const masterGain = offlineCtx.createGain();
-    masterGain.gain.setValueAtTime(1.0, 0);
-    masterGain.connect(offlineCtx.destination);
+    masterGain.gain.setValueAtTime(0.92, 0);
+    const limiter = offlineCtx.createDynamicsCompressor();
+    limiter.threshold.value = -1.8;
+    limiter.knee.value = 4;
+    limiter.ratio.value = 8;
+    limiter.attack.value = 0.002;
+    limiter.release.value = 0.045;
+    masterGain.connect(limiter);
+    limiter.connect(offlineCtx.destination);
 
     // 2. Beat Chain with Frequency Crossover:
     // Sub-bass & 808 (< 175 Hz) remain 100% UNTOUCHED (Zero bass compression).
@@ -1586,21 +1369,19 @@ export class AudioEngine {
     beatBassFilter.Q.setValueAtTime(0.7071, 0);
 
     const beatBassGain = offlineCtx.createGain();
-    beatBassGain.gain.setValueAtTime(this.beatFX.volume, 0);
+    beatBassGain.gain.setValueAtTime(this.isBeatMuted ? 0 : this.beatFX.volume, 0);
 
     beatLowPass.connect(beatBassFilter);
     beatBassFilter.connect(beatBassGain);
     beatBassGain.connect(masterGain);
 
     // Branch B: Medios & Agudos (Vocal clash pocket, ducked smoothly when vocal sings)
-    const beatMidHighFilter = offlineCtx.createBiquadFilter();
-    beatMidHighFilter.type = 'highpass';
-    beatMidHighFilter.frequency.setValueAtTime(bassCrossoverFreq, 0);
-    beatMidHighFilter.Q.setValueAtTime(0.7071, 0);
-
     const beatMidHighGain = offlineCtx.createGain();
-    beatLowPass.connect(beatMidHighFilter);
-    beatMidHighFilter.connect(beatMidHighGain);
+    const invertedBass = offlineCtx.createGain();
+    invertedBass.gain.value = -1;
+    beatLowPass.connect(beatMidHighGain);
+    beatBassFilter.connect(invertedBass);
+    invertedBass.connect(beatMidHighGain);
     beatMidHighGain.connect(masterGain);
 
     // 3. Dynamic Sidechain Ducking Calculation on the Mid/High Branch
@@ -1609,7 +1390,7 @@ export class AudioEngine {
 
     if (enableSidechain && vocalTracks.some((t) => (t.buffer || (t.clips && t.clips.length > 0)) && !t.isMuted)) {
       const stepSec = 0.01; // 10ms sampling interval
-      const numSteps = Math.ceil(duration / stepSec);
+      const numSteps = Math.max(2, Math.ceil(duration / stepSec));
       const curve = new Float32Array(numSteps);
       const targetGainDucked = Math.pow(10, -Math.abs(sidechainDb) / 20); // ~0.7079
 
@@ -1625,14 +1406,7 @@ export class AudioEngine {
       for (const track of vocalTracks) {
         if (track.isMuted || (hasSolo && !track.isSolo)) continue;
         const isLead = track.id === 'lead1' || track.id === 'lead2';
-        const clips: VocalClip[] = (track.clips && track.clips.length > 0)
-          ? track.clips
-          : (track.buffer ? [{
-              id: `tr-${track.id}`,
-              buffer: track.buffer,
-              startBeatOffset: track.startBeatOffset,
-              duration: track.duration,
-            }] : []);
+        const clips = getTrackClips(track);
 
         for (const c of clips) {
           if (!c.buffer) continue;
@@ -1689,12 +1463,12 @@ export class AudioEngine {
         } else {
           currentVal = releaseCoeff * currentVal + (1 - releaseCoeff) * target;
         }
-        curve[s] = currentVal * this.beatFX.volume;
+        curve[s] = currentVal * (this.isBeatMuted ? 0 : this.beatFX.volume);
       }
 
       beatMidHighGain.gain.setValueCurveAtTime(curve, 0, duration);
     } else {
-      beatMidHighGain.gain.setValueAtTime(this.beatFX.volume, 0);
+      beatMidHighGain.gain.setValueAtTime(this.isBeatMuted ? 0 : this.beatFX.volume, 0);
     }
 
     const beatSource = offlineCtx.createBufferSource();
@@ -1734,14 +1508,15 @@ export class AudioEngine {
       highEq.gain.setValueAtTime(track.fx.eq.high, 0);
 
       const compressor = offlineCtx.createDynamicsCompressor();
-      const compAmount = track.fx.comp.amount;
-      compressor.threshold.setValueAtTime(-10 - compAmount * 24, 0);
-      compressor.ratio.setValueAtTime(1.5 + compAmount * 6, 0);
+      const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
+      compressor.threshold.setValueAtTime(compAmount > 0 ? -10 - compAmount * 24 : 0, 0);
+      compressor.ratio.setValueAtTime(compAmount > 0 ? 1.5 + compAmount * 6 : 1, 0);
       compressor.attack.setValueAtTime(0.015, 0);
       compressor.release.setValueAtTime(0.12, 0);
 
       const saturation = offlineCtx.createWaveShaper();
       saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
+      saturation.oversample = '2x';
 
       const compMakeupGain = 1.0 + compAmount * 0.35;
       const trackGain = offlineCtx.createGain();
@@ -1755,7 +1530,7 @@ export class AudioEngine {
       saturation.connect(trackGain);
 
       if (track.fx.delay.division !== 'OFF' && track.fx.delay.mix > 0) {
-        const secPerBeat = 60 / this.beatData.bpm;
+        const secPerBeat = 60 / Math.max(30, this.beatData.bpm);
         let delayTime = secPerBeat;
         if (track.fx.delay.division === '1/8') delayTime = secPerBeat * 0.5;
         else if (track.fx.delay.division === '1/2') delayTime = secPerBeat * 2;
@@ -1808,15 +1583,7 @@ export class AudioEngine {
       }
 
       // Render all clips on this track line
-      const clips: VocalClip[] = (track.clips && track.clips.length > 0)
-        ? track.clips
-        : (track.buffer ? [{
-            id: `legacy-${track.id}`,
-            buffer: track.buffer,
-            tunedBuffer: track.tunedBuffer,
-            startBeatOffset: track.startBeatOffset,
-            duration: track.duration,
-          }] : []);
+      const clips = getTrackClips(track);
 
       for (const clip of clips) {
         if (!clip.buffer) continue;
@@ -1841,6 +1608,17 @@ export class AudioEngine {
     }
 
     const renderedBuffer = await offlineCtx.startRendering();
+    let peak = 0;
+    for (let ch = 0; ch < renderedBuffer.numberOfChannels; ch++) {
+      for (const sample of renderedBuffer.getChannelData(ch)) peak = Math.max(peak, Math.abs(sample));
+    }
+    if (peak > 0.99) {
+      const gain = 0.99 / peak;
+      for (let ch = 0; ch < renderedBuffer.numberOfChannels; ch++) {
+        const data = renderedBuffer.getChannelData(ch);
+        for (let i = 0; i < data.length; i++) data[i] *= gain;
+      }
+    }
     return audioBufferToWav(renderedBuffer, 24);
   }
 
@@ -1856,21 +1634,14 @@ export class AudioEngine {
     }
 
     const sampleRate = 48000;
-    const duration = this.beatData.duration;
+    const duration = getRenderDuration(this.beatData.duration, vocalTracks, this.beatData.bpm);
     const length = Math.max(1, Math.ceil(sampleRate * duration));
     const cleanBeatTitle = this.beatData.title.replace(/[^a-zA-Z0-9]/g, '_');
 
     const stems: { trackId: VocalTrackId; name: string; filename: string; blob: Blob }[] = [];
 
     for (const track of vocalTracks) {
-      const clips: VocalClip[] = (track.clips && track.clips.length > 0)
-        ? track.clips
-        : (track.buffer ? [{
-            id: `stem-${track.id}`,
-            buffer: track.buffer,
-            startBeatOffset: track.startBeatOffset,
-            duration: track.duration,
-          }] : []);
+      const clips = getTrackClips(track);
 
       if (clips.length === 0 || !clips.some((c) => c.buffer)) continue;
 
@@ -1915,21 +1686,13 @@ export class AudioEngine {
     }
 
     const sampleRate = 48000;
-    const duration = this.beatData.duration;
+    const duration = getRenderDuration(this.beatData.duration, vocalTracks, this.beatData.bpm);
     const cleanBeatTitle = this.beatData.title.replace(/[^a-zA-Z0-9]/g, '_');
 
     const stems: { trackId: VocalTrackId; name: string; filename: string; blob: Blob }[] = [];
 
     for (const track of vocalTracks) {
-      const clips: VocalClip[] = (track.clips && track.clips.length > 0)
-        ? track.clips
-        : (track.buffer ? [{
-            id: `stem-${track.id}`,
-            buffer: track.buffer,
-            tunedBuffer: track.tunedBuffer,
-            startBeatOffset: track.startBeatOffset,
-            duration: track.duration,
-          }] : []);
+      const clips = getTrackClips(track);
 
       if (clips.length === 0 || !clips.some((c) => c.buffer)) continue;
 
@@ -1959,14 +1722,15 @@ export class AudioEngine {
       highEq.gain.setValueAtTime(track.fx.eq.high, 0);
 
       const compressor = offlineCtx.createDynamicsCompressor();
-      const compAmount = track.fx.comp.amount;
-      compressor.threshold.setValueAtTime(-10 - compAmount * 24, 0);
-      compressor.ratio.setValueAtTime(1.5 + compAmount * 6, 0);
+      const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
+      compressor.threshold.setValueAtTime(compAmount > 0 ? -10 - compAmount * 24 : 0, 0);
+      compressor.ratio.setValueAtTime(compAmount > 0 ? 1.5 + compAmount * 6 : 1, 0);
       compressor.attack.setValueAtTime(0.015, 0);
       compressor.release.setValueAtTime(0.12, 0);
 
       const saturation = offlineCtx.createWaveShaper();
       saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
+      saturation.oversample = '2x';
 
       const compMakeupGain = 1.0 + compAmount * 0.35;
       const trackGain = offlineCtx.createGain();
@@ -1980,7 +1744,7 @@ export class AudioEngine {
       saturation.connect(trackGain);
 
       if (track.fx.delay.division !== 'OFF' && track.fx.delay.mix > 0) {
-        const secPerBeat = 60 / this.beatData.bpm;
+        const secPerBeat = 60 / Math.max(30, this.beatData.bpm);
         let delayTime = secPerBeat;
         if (track.fx.delay.division === '1/8') delayTime = secPerBeat * 0.5;
         else if (track.fx.delay.division === '1/2') delayTime = secPerBeat * 2;
@@ -2116,37 +1880,15 @@ export class AudioEngine {
     };
   }
 
-  public async updateTuneForTrack(track: VocalTrack): Promise<AudioBuffer | null> {
-    if (!this.ctx) return null;
-    if (!track.fx.tune || !track.fx.tune.enabled || track.fx.tune.speed <= 0.01) {
-      track.tunedBuffer = null;
-      if (track.clips) {
-        track.clips.forEach((c) => { c.tunedBuffer = null; });
-      }
-      return null;
+  public async updateTuneForTrack(track: VocalTrack, signal?: AbortSignal): Promise<AudioBuffer | null> {
+    if (!this.ctx || !track.fx.tune.enabled || track.fx.tune.speed <= 0.01) return null;
+    const clips = getTrackClips(track);
+    for (const clip of clips) {
+      if (signal?.aborted) return null;
+      clip.tunedBuffer = await processVocalTune(this.ctx, clip.buffer, track.fx.tune, signal);
     }
-    try {
-      if (track.clips && track.clips.length > 0) {
-        for (const clip of track.clips) {
-          if (clip.buffer) {
-            clip.tunedBuffer = await processVocalTune(this.ctx, clip.buffer, track.fx.tune);
-          }
-        }
-      }
-      if (track.buffer) {
-        const tuned = await processVocalTune(this.ctx, track.buffer, track.fx.tune);
-        track.tunedBuffer = tuned;
-        return tuned;
-      }
-      if (track.clips && track.clips.length > 0 && track.clips[0]?.tunedBuffer) {
-        track.tunedBuffer = track.clips[0].tunedBuffer;
-        return track.clips[0].tunedBuffer;
-      }
-      return null;
-    } catch (e) {
-      console.error('Pitch correction processing error:', e);
-      return null;
-    }
+    track.tunedBuffer = clips.at(-1)?.tunedBuffer ?? null;
+    return track.tunedBuffer ?? null;
   }
 
   public getMasterAnalyser(): AnalyserNode | null {

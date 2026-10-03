@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import Link from 'next/link';
 import { X, Download, Mic, Sliders, Music, Sparkles, Check, Activity, Lock } from 'lucide-react';
 import { BeatData, VocalTrack } from '@/lib/studio/types/audio';
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
@@ -28,8 +29,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [isExportingRawStems, setIsExportingRawStems] = useState(false);
   const [isExportingWetStems, setIsExportingWetStems] = useState(false);
   const [isExportingBeatStem, setIsExportingBeatStem] = useState(false);
+  const exportLock = useRef(false);
   const [sidechainEnabled, setSidechainEnabled] = useState<boolean>(true);
   const [downloadingStemId, setDownloadingStemId] = useState<string | null>(null);
+
+  const isBusy = isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null;
 
   if (!isOpen) return null;
 
@@ -62,12 +66,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             >
               Activar Pase ($10 USD)
             </button>
-            <a
+            <Link
               href="/beats"
               className="flex-1 py-3 px-4 rounded-xl bg-white/[0.08] hover:bg-purple-600 hover:text-white border border-white/10 text-white font-mono font-bold text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center active:scale-95"
             >
               Comprar Beat (+30d)
-            </a>
+            </Link>
           </div>
 
           <div>
@@ -96,7 +100,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
   // 1. Export Master Mix (24-bit / 48.0 kHz PCM WAV with bass-preserving crossover sidechain)
@@ -106,6 +110,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       return;
     }
 
+    if (exportLock.current) return;
+    exportLock.current = true;
     try {
       setIsExportingMaster(true);
       onShowToast(
@@ -127,6 +133,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       console.error(err);
       onShowToast('Error al procesar el master mezclado.', 'error');
     } finally {
+      exportLock.current = false;
       setIsExportingMaster(false);
     }
   };
@@ -139,6 +146,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       return;
     }
 
+    if (exportLock.current) return;
+    exportLock.current = true;
     try {
       setIsExportingRawStems(true);
       onShowToast('Procesando stems de voces RAW (24-bit / 48kHz sin efectos, alineadas)...', 'info');
@@ -159,6 +168,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       console.error(err);
       onShowToast('Error al exportar stems RAW.', 'error');
     } finally {
+      exportLock.current = false;
       setIsExportingRawStems(false);
     }
   };
@@ -166,6 +176,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   // 3. Export Single Raw Vocal Stem
   const handleExportSingleRawStem = async (track: VocalTrack) => {
     if (!engine || !beat) return;
+    if (exportLock.current) return;
+    exportLock.current = true;
     try {
       setDownloadingStemId(`raw-${track.id}`);
       const stems = await engine.exportVocalRawStems([track]);
@@ -177,6 +189,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       console.error(err);
       onShowToast(`Error al exportar stem de ${track.name}`, 'error');
     } finally {
+      exportLock.current = false;
       setDownloadingStemId(null);
     }
   };
@@ -189,6 +202,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       return;
     }
 
+    if (exportLock.current) return;
+    exportLock.current = true;
     try {
       setIsExportingWetStems(true);
       onShowToast('Renderizando stems procesados (24-bit / 48kHz Wet)...', 'info');
@@ -204,6 +219,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       console.error(err);
       onShowToast('Error al exportar stems procesados.', 'error');
     } finally {
+      exportLock.current = false;
       setIsExportingWetStems(false);
     }
   };
@@ -211,6 +227,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   // 5. Export Isolated Beat Stem
   const handleExportBeatStem = async () => {
     if (!engine || !beat) return;
+    if (exportLock.current) return;
+    exportLock.current = true;
     try {
       setIsExportingBeatStem(true);
       onShowToast('Exportando pista del beat (24-bit / 48kHz)...', 'info');
@@ -221,12 +239,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       console.error(err);
       onShowToast('Error al exportar beat.', 'error');
     } finally {
+      exportLock.current = false;
       setIsExportingBeatStem(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+    <div role="dialog" aria-modal="true" aria-label="Exportar audio" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
       <div className="relative w-full max-w-2xl bg-[#121216] border border-zinc-750 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-[#0d0d10]">
@@ -287,6 +306,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               {/* Dedicated Green Sidechain Toggle Button */}
               <button
                 type="button"
+                disabled={isBusy}
                 onClick={() => setSidechainEnabled(!sidechainEnabled)}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all active:scale-95 shadow-sm select-none ${
                   sidechainEnabled
@@ -302,7 +322,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
             <button
               onClick={handleExportMaster}
-              disabled={isExportingMaster}
+              disabled={!beat || isBusy}
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold font-display shadow-lg shadow-amber-500/20 transition-all active:scale-[0.99] disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
@@ -328,7 +348,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 {/* Batch Button */}
                 <button
                   onClick={handleExportAllRawStems}
-                  disabled={isExportingRawStems}
+                  disabled={!beat || isBusy}
                   className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md transition-all active:scale-[0.99] disabled:opacity-50"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -355,7 +375,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       </div>
                       <button
                         onClick={() => handleExportSingleRawStem(tr)}
-                        disabled={downloadingStemId === `raw-${tr.id}`}
+                        disabled={!beat || isBusy}
                         className="flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white transition-colors text-[11px] font-mono shrink-0"
                       >
                         <Download className="w-3 h-3 text-blue-400" />
@@ -384,7 +404,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </div>
               <button
                 onClick={handleExportAllWetStems}
-                disabled={!hasRecordings || isExportingWetStems}
+                disabled={!beat || !hasRecordings || isBusy}
                 className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-200 font-medium text-xs transition-colors disabled:opacity-40"
               >
                 <Download className="w-3 h-3 text-purple-400" />
@@ -402,7 +422,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </div>
               <button
                 onClick={handleExportBeatStem}
-                disabled={isExportingBeatStem}
+                disabled={!beat || isBusy}
                 className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-200 font-medium text-xs transition-colors disabled:opacity-40"
               >
                 <Download className="w-3 h-3 text-amber-400" />

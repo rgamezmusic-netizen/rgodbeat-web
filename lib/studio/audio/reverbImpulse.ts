@@ -42,6 +42,13 @@ export function createReverbImpulse(
   const preDelaySamples = Math.floor(preDelaySec * sampleRate);
   const attackSamples = Math.floor(0.010 * sampleRate); // 10ms smooth ramp up (no t=0 DC pop)
 
+  // A repeatable noise sequence gives playback and offline exports the same impulse.
+  let seed = { ROOM: 12345, PLATE: 67890, HALL: 13579 }[preset];
+  const noise = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 0x100000000 * 2 - 1;
+  };
+
   // One-pole lowpass filter state for frequency damping
   let filterL = 0;
   let filterR = 0;
@@ -64,8 +71,8 @@ export function createReverbImpulse(
     const envelope = attack * mainDecay;
 
     // Independent stereo white noise
-    const rawNoiseL = (Math.random() * 2 - 1);
-    const rawNoiseR = (Math.random() * 2 - 1);
+    const rawNoiseL = noise();
+    const rawNoiseR = noise();
 
     // Dynamic frequency damping: cutoff lowers as the tail decays (higher frequencies die out faster)
     const currentDamping = Math.min(0.92, dampingFactor + t * 0.15);
