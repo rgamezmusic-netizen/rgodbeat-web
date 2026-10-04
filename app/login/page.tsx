@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signInWithEmail, signUpWithEmail } from "@/lib/auth/client";
 import { isSiteAdmin } from "@/lib/auth/admin";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 
 function AuthForm() {
@@ -88,6 +89,30 @@ function AuthForm() {
         setEmail(cleanEmail);
         setMode("signin");
       }
+    });
+  };
+
+  const handlePasswordReset = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    const cleanEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setErrorMessage("Escribe primero el correo de tu cuenta para enviarte el enlace.");
+      return;
+    }
+
+    startTransition(async () => {
+      const { error } = await createClient().auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        setErrorMessage("No se pudo enviar el enlace. Revisa el correo e inténtalo de nuevo.");
+        return;
+      }
+
+      setSuccessMessage("Si ese correo tiene una cuenta, recibirás un enlace para definir una nueva contraseña.");
     });
   };
 
@@ -200,6 +225,17 @@ function AuthForm() {
               placeholder="••••••••••••"
               className="w-full px-4 py-3 rounded-lg bg-white/[0.03] border border-white/[0.08] focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500 text-sm text-white placeholder:text-zinc-600 font-mono transition-all"
             />
+          </div>
+
+          <div className="-mt-1 text-right">
+            <button
+              type="button"
+              onClick={handlePasswordReset}
+              disabled={isPending}
+              className="text-xs text-purple-300 underline-offset-4 hover:text-purple-200 hover:underline disabled:opacity-60"
+            >
+              {isPending ? "ENVIANDO…" : "¿Olvidaste tu contraseña?"}
+            </button>
           </div>
 
           <div className="pt-2">

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Button } from "@/components/ui/Button";
 import { HeroPadField } from "@/components/home/HeroPadField";
 import styles from "./Hero.module.css";
 
@@ -16,15 +16,23 @@ export function Hero() {
           </span>
         </h1>
 
-        <nav className={`${styles.actions} mt-9 sm:mt-11`} aria-label="Explorar RGODBEAT">
-          <Link className={styles.actionPad} href="/ranking" aria-label="Top 23">
-            <span className={styles.padLight} aria-hidden="true" />
-            <span className={styles.actionLabel}>TOP 23</span>
-          </Link>
-          <Link className={styles.actionPad} href="/beats" aria-label="Catálogo">
-            <span className={styles.padLight} aria-hidden="true" />
-            <span className={styles.actionLabel}>CATÁLOGO</span>
-          </Link>
+        <nav className="mt-9 sm:mt-11 flex w-full flex-col items-center justify-center gap-4 sm:w-auto sm:flex-row" aria-label="Explorar RGODBEAT">
+          <Button
+            href="/ranking"
+            variant="primary"
+            size="lg"
+            className="w-full sm:w-auto"
+          >
+            TOP 23
+          </Button>
+          <Button
+            href="/beats"
+            variant="secondary"
+            size="lg"
+            className="w-full sm:w-auto"
+          >
+            CATÁLOGO
+          </Button>
         </nav>
       </div>
     </section>

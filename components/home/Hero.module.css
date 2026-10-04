@@ -95,83 +95,9 @@
   transform: translate(-50%, -50%);
 }
 
-.actions {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  gap: clamp(26px, 5vw, 62px);
-}
-
-.actionPad {
-  position: relative;
-  display: flex;
-  min-width: 88px;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  color: #f4f1ed;
-  text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.padLight {
-  width: 62px;
-  aspect-ratio: 1;
-  border: 1px solid rgba(255, 185, 119, 0.8);
-  border-radius: 15px;
-  background: linear-gradient(145deg, #ffb260, #e85a17 72%);
-  box-shadow: inset 0 1px 1px rgba(255, 236, 208, 0.6), inset 0 -7px 13px rgba(127, 43, 6, 0.35), 0 0 24px rgba(255, 112, 36, 0.42);
-  transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
-  animation: buttonGlow 3.4s ease-in-out infinite;
-}
-
-.actionLabel {
-  min-height: 1.25rem;
-  color: #f4f1ed;
-  font-size: 0.78rem;
-  font-weight: 650;
-  letter-spacing: 0.17em;
-  opacity: 0;
-  transform: translateY(-5px);
-  transition: opacity 180ms ease, transform 180ms ease;
-}
-
-.actionPad:hover .padLight,
-.actionPad:focus-visible .padLight {
-  border-color: rgba(255, 255, 255, 0.32);
-  background: linear-gradient(145deg, #2a2929, #101012 72%);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.11), inset 0 -7px 13px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.06);
-  transform: translateY(2px) scale(0.97);
-  animation: none;
-}
-
-.actionPad:hover .actionLabel,
-.actionPad:focus-visible .actionLabel {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.actionPad:focus-visible {
-  outline: 2px solid #f9a15d;
-  outline-offset: 7px;
-  border-radius: 10px;
-}
-
 @keyframes idlePulse {
   0%, 100% { opacity: 0.09; }
   50% { opacity: 0.48; }
-}
-
-@keyframes buttonGlow {
-  0%, 100% { box-shadow: inset 0 1px 1px rgba(255, 236, 208, 0.58), inset 0 -7px 13px rgba(127, 43, 6, 0.35), 0 0 19px rgba(255, 112, 36, 0.35); }
-  50% { box-shadow: inset 0 1px 1px rgba(255, 236, 208, 0.72), inset 0 -7px 13px rgba(127, 43, 6, 0.32), 0 0 30px rgba(255, 112, 36, 0.58); }
-}
-
-@media (hover: none) {
-  .actionLabel {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 @media (max-width: 640px) {
@@ -187,14 +113,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ambientPad::after,
-  .padLight {
+  .ambientPad::after {
     animation: none;
   }
 
-  .ambientPad,
-  .padLight,
-  .actionLabel {
+  .ambientPad {
     transition: none;
   }
 }
