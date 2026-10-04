@@ -18,9 +18,9 @@ Descarga/guarda el Client ID y Client Secret en Vercel, en Preview y Production 
 - `YOUTUBE_CHANNEL_ADMIN_EMAIL` (correo exacto de la cuenta autorizada)
 - `YOUTUBE_CHANNEL_ID` (ID exacto del canal dedicado; evita conectar por error otro canal del mismo Google account)
 - `YOUTUBE_TOKEN_ENCRYPTION_KEY` (32 bytes aleatorios en hexadecimal, 64 caracteres)
-- `CLOUDFLARE_R2_ACCOUNT_ID` (ID de cuenta usado por la conexión S3 de R2)
-- `CLOUDFLARE_R2_YOUTUBE_BUCKET_NAME` (nombre de un bucket R2 privado dedicado a temporales)
-- `CLOUDFLARE_R2_YOUTUBE_ACCESS_KEY_ID` y `CLOUDFLARE_R2_YOUTUBE_SECRET_ACCESS_KEY` (credenciales S3 con acceso solo a ese bucket)
+- `CLOUDFLARE_R2_ACCOUNT_ID` o `R2_ENDPOINT` (ID de cuenta o endpoint S3 de R2)
+- `CLOUDFLARE_R2_YOUTUBE_BUCKET_NAME` o `R2_BUCKET_NAME` (debe ser el bucket privado `rgodbeat-youtube-temp`)
+- `CLOUDFLARE_R2_YOUTUBE_ACCESS_KEY_ID` / `CLOUDFLARE_R2_YOUTUBE_SECRET_ACCESS_KEY` o `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` (credenciales S3 con acceso solo a ese bucket)
 
 Genera la clave de cifrado localmente con `openssl rand -hex 32`. No la agregues a Git. Configura las mismas variables en `.env.local` para desarrollo.
 
@@ -30,7 +30,7 @@ La pantalla de estado lee las **variables del despliegue de producción que est�
 
 La migración `20261003000001_youtube_channel.sql` figura lista en el panel actual: **no vuelvas a ejecutarla**.
 
-Las credenciales de R2 que usa la tienda y que guardaste como `CLOUDFLARE_R2_ACCESS_KEY_ID` / `CLOUDFLARE_R2_SECRET_ACCESS_KEY` son distintas de la clave temporal y restringida que pide YouTube. YouTube usa el bucket privado `rgodbeat-youtube-temp` y sus propias credenciales `CLOUDFLARE_R2_YOUTUBE_ACCESS_KEY_ID` / `CLOUDFLARE_R2_YOUTUBE_SECRET_ACCESS_KEY`; el nombre va en `CLOUDFLARE_R2_YOUTUBE_BUCKET_NAME`. El R2 actual de la tienda respondió a una consulta de lectura desde el Mac, pero no reemplaza esas credenciales dedicadas en Production.
+Las variables `R2_ENDPOINT`, `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID` y `R2_SECRET_ACCESS_KEY` que ya están en Production se pueden usar aquí porque confirmaste que pertenecen solo a YouTube. El código acepta esos nombres además de los nombres `CLOUDFLARE_R2_YOUTUBE_*`. El bucket configurado debe llamarse exactamente `rgodbeat-youtube-temp`; no uses aquí credenciales del bucket de la tienda.
 
 El proyecto ya trae `ffmpeg-static` y `next.config.ts` empaqueta el binario. El estado también se comprueba desde `/admin/youtube` y desde la ruta de estado de Studio; se debe incluir en las tres funciones de Vercel para que todas comprueben el mismo archivo. Al cambiar `next.config.ts` se requiere desplegar otra vez Production.
 

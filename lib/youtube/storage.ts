@@ -3,17 +3,17 @@ import { randomUUID } from "node:crypto";
 import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 export function getYouTubeR2Bucket() {
-  return process.env.CLOUDFLARE_R2_YOUTUBE_BUCKET_NAME?.trim() || "";
+  return process.env.CLOUDFLARE_R2_YOUTUBE_BUCKET_NAME?.trim() || process.env.R2_BUCKET_NAME?.trim() || "";
 }
 
 let clientInstance: S3Client | null = null;
 export function getYouTubeR2Client() {
-  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID?.trim();
-  const accessKeyId = process.env.CLOUDFLARE_R2_YOUTUBE_ACCESS_KEY_ID?.trim();
-  const secretAccessKey = process.env.CLOUDFLARE_R2_YOUTUBE_SECRET_ACCESS_KEY?.trim();
-  if (!accountId || !accessKeyId || !secretAccessKey || !getYouTubeR2Bucket()) return null;
+  const accountIdOrEndpoint = process.env.CLOUDFLARE_R2_ACCOUNT_ID?.trim() || process.env.R2_ENDPOINT?.trim();
+  const accessKeyId = process.env.CLOUDFLARE_R2_YOUTUBE_ACCESS_KEY_ID?.trim() || process.env.R2_ACCESS_KEY_ID?.trim();
+  const secretAccessKey = process.env.CLOUDFLARE_R2_YOUTUBE_SECRET_ACCESS_KEY?.trim() || process.env.R2_SECRET_ACCESS_KEY?.trim();
+  if (!accountIdOrEndpoint || !accessKeyId || !secretAccessKey || !getYouTubeR2Bucket()) return null;
   if (!clientInstance) {
-    const endpoint = accountId.startsWith("http") ? accountId : `https://${accountId}.r2.cloudflarestorage.com`;
+    const endpoint = accountIdOrEndpoint.startsWith("http") ? accountIdOrEndpoint : `https://${accountIdOrEndpoint}.r2.cloudflarestorage.com`;
     clientInstance = new S3Client({ endpoint, region: "auto", credentials: { accessKeyId, secretAccessKey } });
   }
   return clientInstance;
