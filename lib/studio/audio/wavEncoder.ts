@@ -193,13 +193,13 @@ export function punchInClips(
   newClip: VocalClip
 ): VocalClip[] {
   const newStart = newClip.startBeatOffset;
-  const newEnd = newStart + newClip.duration;
+  const newEnd = newStart + newClip.buffer.duration;
   const survivingClips: VocalClip[] = [];
 
   for (const c of existingClips) {
     if (!c.buffer) continue;
     const cStart = c.startBeatOffset;
-    const cEnd = c.startBeatOffset + c.duration;
+    const cEnd = c.startBeatOffset + c.buffer.duration;
 
     // Case 1: No overlap with [newStart, newEnd]
     if (cEnd <= newStart || cStart >= newEnd) {

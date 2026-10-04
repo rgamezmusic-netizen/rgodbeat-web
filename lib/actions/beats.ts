@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentUser } from "@/lib/auth/server";
+import { isSiteAdmin } from "@/lib/auth/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   PUBLIC_STORAGE_BUCKET,
@@ -94,7 +95,7 @@ export async function getBeatUploadUrlsAction(params: {
   wavFileName?: string;
 }): Promise<PrepareUploadResponse> {
   const user = await getCurrentUser();
-  if (!user) {
+  if (!isSiteAdmin(user)) {
     return { success: false, error: "Unauthorized: Admin session required." };
   }
 
@@ -151,11 +152,11 @@ export async function getBeatUploadUrlsAction(params: {
       preview,
       wav,
     };
-  } catch (err: any) {
+  } catch (err) {
     console.error("[GetUploadUrls] Error:", err);
     return {
       success: false,
-      error: err.message || "Failed to prepare asset uploads.",
+      error: (err instanceof Error ? err.message : null) || "Failed to prepare asset uploads.",
     };
   }
 }
@@ -168,7 +169,7 @@ export async function createBeatDirectAction(
   input: CreateBeatDirectInput
 ): Promise<CreateBeatResponse> {
   const user = await getCurrentUser();
-  if (!user) {
+  if (!isSiteAdmin(user)) {
     return { success: false, error: "Unauthorized: Admin session required." };
   }
 
@@ -251,7 +252,7 @@ export async function createBeatDirectAction(
 
     // 2. Insert Preview into beat_files if provided
     if (input.previewPath) {
-      await supabase.from("beat_files").insert({
+      const { error: fileRecordError } = await supabase.from("beat_files").insert({
         beat_id: beatId,
         file_type: "preview",
         storage_path: input.previewPath,
@@ -259,11 +260,12 @@ export async function createBeatDirectAction(
         mime_type: "audio/mpeg",
         file_size: input.previewFileSize || 0,
       });
+      if (fileRecordError) throw new Error(`Failed to register preview: ${fileRecordError.message}`);
     }
 
     // 3. Insert Master WAV into beat_files if provided
     if (input.wavPath) {
-      await supabase.from("beat_files").insert({
+      const { error: fileRecordError } = await supabase.from("beat_files").insert({
         beat_id: beatId,
         file_type: "wav",
         storage_path: input.wavPath,
@@ -271,6 +273,7 @@ export async function createBeatDirectAction(
         mime_type: "audio/wav",
         file_size: input.wavFileSize || 0,
       });
+      if (fileRecordError) throw new Error(`Failed to register WAV: ${fileRecordError.message}`);
     }
 
     // 4. Configure Licenses
@@ -288,15 +291,11 @@ export async function createBeatDirectAction(
       }
     }
 
-    // 5. Local SSD sync (safe in cloud)
-    try {
-      const { runSync, isLocalSyncAvailable } = await import("@/scripts/sync-companion");
-      if (isLocalSyncAvailable()) {
-        await runSync({ slug });
-      }
-    } catch (syncErr) {
-      console.warn("[CreateBeatDirect] Companion sync warning:", syncErr);
-    }
+    // The local companion detects this catalogue change and copies it to the SSD.
+
+    const { error: syncQueueError } = await supabase.from("beats")
+      .update({ local_sync_status: "pending", updated_at: new Date().toISOString() }).eq("id", beatId);
+    if (syncQueueError) throw new Error(`Failed to queue local copy: ${syncQueueError.message}`);
 
     // 6. Revalidate routes
     revalidatePath("/beats");
@@ -308,11 +307,11 @@ export async function createBeatDirectAction(
       beatId,
       slug,
     };
-  } catch (err: any) {
+  } catch (err) {
     console.error("[CreateBeatDirect] Execution failure:", err);
     return {
       success: false,
-      error: err.message || "An unexpected error occurred during beat creation.",
+      error: (err instanceof Error ? err.message : null) || "An unexpected error occurred during beat creation.",
     };
   }
 }
@@ -324,7 +323,7 @@ export async function updateBeatDirectAction(
   input: UpdateBeatDirectInput
 ): Promise<CreateBeatResponse> {
   const user = await getCurrentUser();
-  if (!user) {
+  if (!isSiteAdmin(user)) {
     return { success: false, error: "Unauthorized: Admin session required." };
   }
 
@@ -385,7 +384,7 @@ export async function updateBeatDirectAction(
     const hasWav = Boolean(
       input.wavPath ||
       (Array.isArray(existingBeat.beat_files) &&
-        existingBeat.beat_files.some((f: any) => f.file_type === "wav"))
+        existingBeat.beat_files.some((f) => f.file_type === "wav"))
     );
 
     if (input.published) {
@@ -398,9 +397,10 @@ export async function updateBeatDirectAction(
     }
 
     // 2. If new preview uploaded, update beat_files
-    if (input.previewPath && input.previewPath !== existingBeat.preview_path) {
-      await supabase.from("beat_files").delete().eq("beat_id", beatId).eq("file_type", "preview");
-      await supabase.from("beat_files").insert({
+    if (input.previewPath) {
+      const { error: deleteFileError } = await supabase.from("beat_files").delete().eq("beat_id", beatId).eq("file_type", "preview");
+      if (deleteFileError) throw new Error(deleteFileError.message);
+      const { error: fileRecordError } = await supabase.from("beat_files").insert({
         beat_id: beatId,
         file_type: "preview",
         storage_path: input.previewPath,
@@ -408,12 +408,14 @@ export async function updateBeatDirectAction(
         mime_type: "audio/mpeg",
         file_size: input.previewFileSize || 0,
       });
+      if (fileRecordError) throw new Error(`Failed to register preview: ${fileRecordError.message}`);
     }
 
     // 3. If new WAV uploaded, update beat_files
     if (input.wavPath) {
-      await supabase.from("beat_files").delete().eq("beat_id", beatId).eq("file_type", "wav");
-      await supabase.from("beat_files").insert({
+      const { error: deleteFileError } = await supabase.from("beat_files").delete().eq("beat_id", beatId).eq("file_type", "wav");
+      if (deleteFileError) throw new Error(deleteFileError.message);
+      const { error: fileRecordError } = await supabase.from("beat_files").insert({
         beat_id: beatId,
         file_type: "wav",
         storage_path: input.wavPath,
@@ -421,6 +423,7 @@ export async function updateBeatDirectAction(
         mime_type: "audio/wav",
         file_size: input.wavFileSize || 0,
       });
+      if (fileRecordError) throw new Error(`Failed to register WAV: ${fileRecordError.message}`);
     }
 
     // 4. Update beat licenses
@@ -453,6 +456,7 @@ export async function updateBeatDirectAction(
         published: Boolean(input.published),
         cover_path: coverPath,
         preview_path: previewPath,
+        local_sync_status: "pending",
         updated_at: new Date().toISOString(),
       })
       .eq("id", beatId);
@@ -470,15 +474,7 @@ export async function updateBeatDirectAction(
       }
     }
 
-    // 7. Companion sync (safe in cloud)
-    try {
-      const { runSync, isLocalSyncAvailable } = await import("@/scripts/sync-companion");
-      if (isLocalSyncAvailable()) {
-        await runSync({ slug });
-      }
-    } catch (syncErr) {
-      console.warn("[UpdateBeatDirect] Local SSD auto-sync warning:", syncErr);
-    }
+    // The local companion detects this catalogue change and copies it to the SSD.
 
     // 8. Revalidate
     revalidatePath("/beats");
@@ -491,11 +487,11 @@ export async function updateBeatDirectAction(
       beatId,
       slug,
     };
-  } catch (err: any) {
+  } catch (err) {
     console.error("[UpdateBeatDirect] Execution failure:", err);
     return {
       success: false,
-      error: err.message || "An unexpected error occurred during beat update.",
+      error: (err instanceof Error ? err.message : null) || "An unexpected error occurred during beat update.",
     };
   }
 }
@@ -503,7 +499,7 @@ export async function updateBeatDirectAction(
 export async function createBeatAction(formData: FormData): Promise<CreateBeatResponse> {
   // 1. Verify administrative authentication
   const user = await getCurrentUser();
-  if (!user) {
+  if (!isSiteAdmin(user)) {
     return { success: false, error: "Unauthorized: Admin session required." };
   }
 
@@ -594,7 +590,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
     // 5. Upload Cover Image (rgodbeat-public)
     if (coverFile && coverFile.size > 0) {
       const ext = coverFile.name.split(".").pop()?.toLowerCase() || "jpg";
-      coverPath = getPublicCoverPath(beatId, ext as any);
+      coverPath = getPublicCoverPath(beatId, ext as Parameters<typeof getPublicCoverPath>[1]);
       const coverBuffer = Buffer.from(await coverFile.arrayBuffer());
 
       const { error: coverUploadError } = await supabase.storage
@@ -634,7 +630,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
       }
 
       // Record in beat_files for MP3 license purchases
-      await supabase.from("beat_files").insert({
+      const { error: fileRecordError } = await supabase.from("beat_files").insert({
         beat_id: beatId,
         file_type: "preview",
         storage_path: previewPath,
@@ -642,6 +638,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
         mime_type: "audio/mpeg",
         file_size: previewFile.size,
       });
+      if (fileRecordError) throw new Error(`Failed to register preview: ${fileRecordError.message}`);
     } else if (wavBuffer) {
       // Auto-convert Master WAV to 320kbps MP3
       try {
@@ -662,7 +659,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
           console.log(`[CreateBeat] Auto-converted MP3 uploaded successfully (${autoMp3Buffer.length} bytes)`);
 
           // Record in beat_files so it is available for MP3 license purchases
-          await supabase.from("beat_files").insert({
+          const { error: fileRecordError } = await supabase.from("beat_files").insert({
             beat_id: beatId,
             file_type: "preview",
             storage_path: previewPath,
@@ -670,9 +667,10 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
             mime_type: "audio/mpeg",
             file_size: autoMp3Buffer.length,
           });
+          if (fileRecordError) throw new Error(`Failed to register preview: ${fileRecordError.message}`);
         }
-      } catch (convErr: any) {
-        console.warn("[CreateBeat] Auto-conversion to MP3 failed:", convErr?.message || convErr);
+      } catch (convErr) {
+        console.warn("[CreateBeat] Auto-conversion to MP3 failed:", convErr instanceof Error ? convErr.message : convErr);
       }
     }
 
@@ -731,7 +729,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
         });
 
       if (beatFileError) {
-        console.warn("[CreateBeat] Error recording beat_file metadata:", beatFileError);
+        throw new Error(`Failed to register WAV: ${beatFileError.message}`);
       }
     }
 
@@ -779,13 +777,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
       throw new Error(`Failed to finalize beat publishing: ${finalizeError.message}`);
     }
 
-    // 10. Automatically sync to local external SSD master library
-    try {
-      const { runSync } = await import("@/scripts/sync-companion");
-      await runSync({ slug });
-    } catch (syncErr) {
-      console.warn("[CreateBeat] Local SSD auto-sync warning:", syncErr);
-    }
+    // The local companion detects this catalogue change and copies it to the SSD.
 
     // Revalidate affected routes
     revalidatePath("/beats");
@@ -797,7 +789,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
       beatId,
       slug,
     };
-  } catch (err: any) {
+  } catch (err) {
     console.error("[CreateBeat] Execution failure, rolling back safely:", err);
 
     // Rollback: remove any uploaded storage assets and delete created beat row
@@ -829,7 +821,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
 
     return {
       success: false,
-      error: err.message || "An unexpected error occurred during beat creation.",
+      error: (err instanceof Error ? err.message : null) || "An unexpected error occurred during beat creation.",
     };
   }
 }
@@ -839,7 +831,7 @@ export async function createBeatAction(formData: FormData): Promise<CreateBeatRe
  */
 export async function updateBeatAction(formData: FormData): Promise<CreateBeatResponse> {
   const user = await getCurrentUser();
-  if (!user) {
+  if (!isSiteAdmin(user)) {
     return { success: false, error: "Unauthorized: Admin session required." };
   }
 
@@ -927,7 +919,7 @@ export async function updateBeatAction(formData: FormData): Promise<CreateBeatRe
     // Cover replacement
     if (coverFile && coverFile.size > 0) {
       const ext = coverFile.name.split(".").pop()?.toLowerCase() || "jpg";
-      const coverPath = getPublicCoverPath(beatId, ext as any);
+      const coverPath = getPublicCoverPath(beatId, ext as Parameters<typeof getPublicCoverPath>[1]);
       const coverBuffer = Buffer.from(await coverFile.arrayBuffer());
 
       const { error: coverErr } = await supabase.storage
@@ -958,11 +950,18 @@ export async function updateBeatAction(formData: FormData): Promise<CreateBeatRe
         });
 
       if (prevErr) throw new Error(`Preview upload failed: ${prevErr.message}`);
+      const { error: removePreviewError } = await supabase.from("beat_files").delete().eq("beat_id", beatId).eq("file_type", "preview");
+      if (removePreviewError) throw new Error(removePreviewError.message);
+      const { error: previewRecordError } = await supabase.from("beat_files").insert({
+        beat_id: beatId, file_type: "preview", storage_path: previewPath,
+        file_name: previewFile.name, mime_type: previewFile.type || "audio/mpeg", file_size: previewFile.size,
+      });
+      if (previewRecordError) throw new Error(`Failed to register preview: ${previewRecordError.message}`);
       updatedPreviewPath = previewPath;
     }
 
     // Master WAV replacement
-    let hasWav = Array.isArray(existingBeat.beat_files) && existingBeat.beat_files.some((f: any) => f.file_type === "wav");
+    let hasWav = Array.isArray(existingBeat.beat_files) && existingBeat.beat_files.some((f) => f.file_type === "wav");
     if (wavFile && wavFile.size > 0) {
       const wavPath = getPrivateBeatWavPath(beatId, wavFile.name);
       const wavBuffer = Buffer.from(await wavFile.arrayBuffer());
@@ -977,7 +976,7 @@ export async function updateBeatAction(formData: FormData): Promise<CreateBeatRe
       if (wavErr) throw new Error(`Master WAV upload failed: ${wavErr.message}`);
 
       const oldWavFile = Array.isArray(existingBeat.beat_files)
-        ? existingBeat.beat_files.find((f: any) => f.file_type === "wav")
+        ? existingBeat.beat_files.find((f) => f.file_type === "wav")
         : null;
 
       if (oldWavFile?.storage_path && oldWavFile.storage_path !== wavPath) {
@@ -985,7 +984,8 @@ export async function updateBeatAction(formData: FormData): Promise<CreateBeatRe
       }
 
       // Delete existing WAV record from beat_files
-      await supabase.from("beat_files").delete().eq("beat_id", beatId).eq("file_type", "wav");
+      const { error: deleteFileError } = await supabase.from("beat_files").delete().eq("beat_id", beatId).eq("file_type", "wav");
+      if (deleteFileError) throw new Error(deleteFileError.message);
 
       // Insert new beat_file record
       const { error: fileErr } = await supabase.from("beat_files").insert({
@@ -997,7 +997,7 @@ export async function updateBeatAction(formData: FormData): Promise<CreateBeatRe
         file_size: wavFile.size,
       });
 
-      if (fileErr) console.warn("[UpdateBeat] Warning updating beat_file row:", fileErr);
+      if (fileErr) throw new Error(`Failed to register WAV: ${fileErr.message}`);
       hasWav = true;
     }
 
@@ -1052,6 +1052,7 @@ export async function updateBeatAction(formData: FormData): Promise<CreateBeatRe
         published: shouldPublish,
         cover_path: updatedCoverPath,
         preview_path: updatedPreviewPath,
+        local_sync_status: "pending",
         updated_at: new Date().toISOString(),
       })
       .eq("id", beatId);
@@ -1076,13 +1077,7 @@ export async function updateBeatAction(formData: FormData): Promise<CreateBeatRe
       }
     }
 
-    // 8. Auto sync to local SSD
-    try {
-      const { runSync } = await import("@/scripts/sync-companion");
-      await runSync({ slug });
-    } catch (syncErr) {
-      console.warn("[UpdateBeat] Local SSD auto-sync warning:", syncErr);
-    }
+    // The local companion detects this catalogue change and copies it to the SSD.
 
     // 7. Revalidate affected routes
     revalidatePath("/beats");
@@ -1095,11 +1090,11 @@ export async function updateBeatAction(formData: FormData): Promise<CreateBeatRe
       beatId,
       slug,
     };
-  } catch (err: any) {
+  } catch (err) {
     console.error("[UpdateBeat] Update failed:", err);
     return {
       success: false,
-      error: err.message || "An unexpected error occurred while updating the beat.",
+      error: (err instanceof Error ? err.message : null) || "An unexpected error occurred while updating the beat.",
     };
   }
 }
@@ -1109,7 +1104,7 @@ export async function updateBeatAction(formData: FormData): Promise<CreateBeatRe
  */
 export async function deleteBeatAction(beatId: string): Promise<{ success: boolean; error?: string }> {
   const user = await getCurrentUser();
-  if (!user) {
+  if (!isSiteAdmin(user)) {
     return { success: false, error: "Unauthorized: Admin session required." };
   }
 
@@ -1144,7 +1139,7 @@ export async function deleteBeatAction(beatId: string): Promise<{ success: boole
     // 3. Remove files from rgodbeat-private
     const privateFilesToRemove: string[] = [];
     if (Array.isArray(beat.beat_files)) {
-      beat.beat_files.forEach((f: any) => {
+      beat.beat_files.forEach((f) => {
         if (f.storage_path) privateFilesToRemove.push(f.storage_path);
       });
     }
@@ -1174,9 +1169,9 @@ export async function deleteBeatAction(beatId: string): Promise<{ success: boole
     revalidatePath("/admin");
 
     return { success: true };
-  } catch (err: any) {
+  } catch (err) {
     console.error("[DeleteBeat] Error deleting beat:", err);
-    return { success: false, error: err.message || "Failed to delete beat." };
+    return { success: false, error: (err instanceof Error ? err.message : null) || "Failed to delete beat." };
   }
 }
 
@@ -1188,7 +1183,7 @@ export async function toggleBeatPublishAction(
   publish: boolean
 ): Promise<{ success: boolean; error?: string }> {
   const user = await getCurrentUser();
-  if (!user) {
+  if (!isSiteAdmin(user)) {
     return { success: false, error: "Unauthorized: Admin session required." };
   }
 
@@ -1208,7 +1203,7 @@ export async function toggleBeatPublishAction(
       }
 
       const hasCover = !!beat.cover_path;
-      const hasWav = Array.isArray(beat.beat_files) && beat.beat_files.some((f: any) => f.file_type === "wav");
+      const hasWav = Array.isArray(beat.beat_files) && beat.beat_files.some((f) => f.file_type === "wav");
 
       if (!hasCover || !hasWav) {
         const missing = [
@@ -1228,6 +1223,7 @@ export async function toggleBeatPublishAction(
       .from("beats")
       .update({
         published: publish,
+        local_sync_status: "pending",
         updated_at: new Date().toISOString(),
       })
       .eq("id", beatId);
@@ -1241,29 +1237,27 @@ export async function toggleBeatPublishAction(
     revalidatePath("/admin");
 
     return { success: true };
-  } catch (err: any) {
+  } catch (err) {
     console.error("[TogglePublish] Error:", err);
-    return { success: false, error: err.message || "Failed to update beat status." };
+    return { success: false, error: (err instanceof Error ? err.message : null) || "Failed to update beat status." };
   }
 }
 
-/**
- * Trigger local SSD library sync from admin UI
- */
-export async function syncBeatToDiskAction(slug?: string): Promise<{ success: boolean; error?: string; count?: number }> {
+/** Queue a local copy. Only the companion on the creator's Mac can access the SSD. */
+export async function syncBeatToDiskAction(slug?: string): Promise<{ success: boolean; error?: string; count?: number; message?: string }> {
   const user = await getCurrentUser();
-  if (!user) {
-    return { success: false, error: "Unauthorized: Admin session required." };
-  }
-
+  if (!isSiteAdmin(user)) return { success: false, error: "Unauthorized: Admin session required." };
   try {
-    const { runSync } = await import("@/scripts/sync-companion");
-    const reports = await runSync(slug ? { slug } : {});
+    const supabase = createAdminClient();
+    let query = supabase.from("beats").update({ local_sync_status: "pending", updated_at: new Date().toISOString() });
+    if (slug) query = query.eq("slug", slug);
+    const { data, error } = await query.select("id");
+    if (error) throw new Error(error.message);
+    if (slug && !data?.length) return { success: false, error: "Beat not found." };
     revalidatePath("/admin/beats");
-    return { success: true, count: reports.length };
-  } catch (err: any) {
-    console.error("[SyncAction] Failed to sync beat to disk:", err);
-    return { success: false, error: err.message || "Failed to sync beat to disk" };
+    return { success: true, count: data?.length || 0,
+      message: `${data?.length || 0} beat(s) en cola. La copia se confirma como SYNCED cuando tu Mac y el SSD están conectados y los archivos se han guardado.` };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to queue local copy." };
   }
 }
-

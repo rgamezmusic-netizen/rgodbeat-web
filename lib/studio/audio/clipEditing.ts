@@ -2,7 +2,11 @@ import { VocalClip, VocalTrack } from '../types/audio';
 import { extractWaveformPeaks, sliceAudioBuffer } from './wavEncoder';
 
 export function getTrackClips(track: VocalTrack): VocalClip[] {
-  if (track.clips?.length) return track.clips;
+  if (track.clips?.length) return track.clips.map((clip) =>
+    Math.abs(clip.duration - clip.buffer.duration) > 0.0001
+      ? { ...clip, duration: clip.buffer.duration }
+      : clip
+  );
   return track.buffer ? [{
     id: `clip-${track.id}-init`,
     buffer: track.buffer,
@@ -22,8 +26,9 @@ export function getProjectDuration(beatDuration: number, tracks: VocalTrack[]): 
 
 /** Keeps the raw and tuned versions of an edit on the same sample boundaries. */
 export function trimClip(ctx: BaseAudioContext, clip: VocalClip, start: number, end: number): VocalClip | null {
+  const clipDuration = clip.buffer.duration;
   const from = Math.max(clip.startBeatOffset, start);
-  const to = Math.min(clip.startBeatOffset + clip.buffer.duration, end);
+  const to = Math.min(clip.startBeatOffset + clipDuration, end);
   const offset = from - clip.startBeatOffset;
   const buffer = sliceAudioBuffer(ctx, clip.buffer, offset, to - from);
   if (!buffer) return null;
@@ -38,10 +43,11 @@ export function trimClip(ctx: BaseAudioContext, clip: VocalClip, start: number, 
 }
 
 export function splitClip(ctx: BaseAudioContext, clip: VocalClip, at: number): VocalClip[] | null {
+  const clipDuration = clip.buffer.duration;
   const sample = Math.round((at - clip.startBeatOffset) * clip.buffer.sampleRate);
   const cut = clip.startBeatOffset + sample / clip.buffer.sampleRate;
   const left = trimClip(ctx, clip, clip.startBeatOffset, cut);
-  const right = trimClip(ctx, clip, cut, clip.startBeatOffset + clip.buffer.duration);
+  const right = trimClip(ctx, clip, cut, clip.startBeatOffset + clipDuration);
   if (!left || !right) return null;
   return [
     { ...left, id: `${clip.id}-${crypto.randomUUID()}-a`, name: `${clip.name || 'Toma'} (Parte 1)` },

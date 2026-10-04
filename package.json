@@ -7,7 +7,12 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "auth:set-admin": "tsx scripts/set-admin-password.ts"
+    "auth:set-admin": "tsx scripts/set-admin-password.ts",
+    "sync:library": "node --env-file=.env.local --import tsx scripts/sync-companion.ts",
+    "sync:watch": "node --env-file=.env.local --import tsx scripts/sync-companion.ts --watch",
+    "sync:install": "node --env-file=.env.local --import tsx scripts/install-library-sync.ts",
+    "sync:status": "node --import tsx scripts/install-library-sync.ts --status",
+    "sync:stop": "node --import tsx scripts/install-library-sync.ts --stop"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",

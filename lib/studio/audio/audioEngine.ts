@@ -665,11 +665,12 @@ export class AudioEngine {
         for (const clip of clips) {
           if (!clip.buffer) continue;
           const trackOffset = clip.startBeatOffset || 0;
-          const trackDur = clip.duration || clip.buffer.duration;
 
           const playBuffer = (track.fx.tune?.enabled && track.fx.tune.speed > 0.01 && clip.tunedBuffer)
             ? clip.tunedBuffer
             : clip.buffer;
+          // Decoded samples are authoritative; old project metadata can be stale.
+          const trackDur = playBuffer.duration;
 
           const sourceKey = `${track.id}-${clip.id}`;
 
@@ -948,7 +949,7 @@ export class AudioEngine {
       try {
         const session = (navigator as unknown as { audioSession: { type: string } }).audioSession;
         session.type = 'playback';
-      } catch (err) {
+      } catch {
         // ignore
       }
     }

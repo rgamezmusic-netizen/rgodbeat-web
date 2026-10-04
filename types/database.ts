@@ -14,6 +14,18 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      youtube_channel_settings: {
+        Row: { id: number; channel_id: string; channel_title: string; encrypted_refresh_token: string; updated_at: string };
+        Insert: { id?: number; channel_id: string; channel_title: string; encrypted_refresh_token: string; updated_at?: string };
+        Update: { id?: number; channel_id?: string; channel_title?: string; encrypted_refresh_token?: string; updated_at?: string };
+        Relationships: [];
+      };
+      youtube_export_jobs: {
+        Row: { id: string; user_id: string; artist_name: string; title: string; privacy: "private" | "unlisted" | "public"; status: "processing" | "uploaded" | "failed"; youtube_video_id: string | null; youtube_url: string | null; error_code: string | null; created_at: string; finished_at: string | null };
+        Insert: { id: string; user_id: string; artist_name: string; title: string; privacy: "private" | "unlisted" | "public"; status: "processing" | "uploaded" | "failed"; youtube_video_id?: string | null; youtube_url?: string | null; error_code?: string | null; created_at?: string; finished_at?: string | null };
+        Update: { artist_name?: string; title?: string; privacy?: "private" | "unlisted" | "public"; status?: "processing" | "uploaded" | "failed"; youtube_video_id?: string | null; youtube_url?: string | null; error_code?: string | null; finished_at?: string | null };
+        Relationships: [];
+      };
       beat_votes: {
         Row: { id: string; user_id: string; beat_id: string; week_period: string; voted_at: string };
         Insert: { id?: string; user_id: string; beat_id: string; week_period: string; voted_at?: string };
@@ -898,6 +910,7 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
+      reserve_youtube_export_job: { Args: { p_id: string; p_user_id: string; p_artist_name: string; p_title: string; p_privacy: string }; Returns: boolean };
       get_public_beat_activity: { Args: { p_week: string; p_previous_week: string }; Returns: Json };
       cast_weekly_beat_vote: { Args: { p_user_id: string; p_beat_id: string }; Returns: Json };
       post_beat_comment: { Args: { p_user_id: string; p_beat_id: string; p_author_name: string; p_body: string }; Returns: Json };

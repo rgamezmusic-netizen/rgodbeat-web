@@ -20,7 +20,7 @@ interface AdminBeatsTableProps {
 
 export function AdminBeatsTable({ initialBeats, categories }: AdminBeatsTableProps) {
   const router = useRouter();
-  const [beats, setBeats] = useState<Beat[]>(initialBeats);
+  const beats = initialBeats;
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft">("all");
   const [genreFilter, setGenreFilter] = useState<string>("all");
@@ -44,11 +44,7 @@ export function AdminBeatsTable({ initialBeats, categories }: AdminBeatsTablePro
       return;
     }
 
-    setActionSuccess(
-      slug
-        ? `Beat "${slug}" packaged and synchronized to external SSD (RGODBEAT 23 SALE)!`
-        : `Synchronized ${res.count || 0} beat(s) to external SSD (RGODBEAT 23 SALE)!`
-    );
+    setActionSuccess(res.message || "Copia en cola. Conecta el Mac y el SSD para completar la sincronización.");
     router.refresh();
 
     setTimeout(() => setActionSuccess(null), 5000);
@@ -58,10 +54,14 @@ export function AdminBeatsTable({ initialBeats, categories }: AdminBeatsTablePro
   const [beatToDelete, setBeatToDelete] = useState<{ id: string; title: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Sync state if initialBeats change from server refresh
+  // Reflect the companion's acknowledgements while this admin page is open.
   React.useEffect(() => {
-    setBeats(initialBeats);
-  }, [initialBeats]);
+    if (!initialBeats.some(beat => beat.localSyncStatus !== "synced")) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") router.refresh();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [initialBeats, router]);
 
   const filteredBeats = useMemo(() => {
     return beats.filter((beat) => {
@@ -106,11 +106,6 @@ export function AdminBeatsTable({ initialBeats, categories }: AdminBeatsTablePro
         return;
       }
 
-      // Optimistically update local state
-      setBeats((prev) =>
-        prev.map((b) => (b.id === beatId ? { ...b, published: nextPublished } : b))
-      );
-
       setActionSuccess(`Beat successfully ${nextPublished ? "published" : "set to draft"}.`);
       router.refresh();
 
@@ -133,7 +128,6 @@ export function AdminBeatsTable({ initialBeats, categories }: AdminBeatsTablePro
       return;
     }
 
-    setBeats((prev) => prev.filter((b) => b.id !== beatToDelete.id));
     setActionSuccess(`Beat "${beatToDelete.title}" and its storage files were permanently removed.`);
     setIsDeleting(false);
     setBeatToDelete(null);
@@ -167,9 +161,9 @@ export function AdminBeatsTable({ initialBeats, categories }: AdminBeatsTablePro
             disabled={isSyncing}
             onClick={() => handleSyncToSSD()}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white border border-white/[0.1] font-mono text-xs font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
-            title="Synchronize all catalog packages to external SSD (/Volumes/RGodbeat XXX/RGODBEAT 23 SALE)"
+            title="Solicitar copia del catálogo al SSD; requiere el companion activo en tu Mac"
           >
-            <span>{isSyncing ? "SYNCING..." : "💾 SYNC TO SSD"}</span>
+            <span>{isSyncing ? "ENVIANDO..." : "💾 COPIAR AL SSD"}</span>
           </button>
           <Link
             href="/admin/beats/new"
@@ -441,7 +435,7 @@ export function AdminBeatsTable({ initialBeats, categories }: AdminBeatsTablePro
                             type="button"
                             disabled={isSyncing}
                             onClick={() => handleSyncToSSD(beat.slug)}
-                            title="Synchronize this beat to external SSD"
+                            title="Solicitar copia de este beat al SSD"
                             className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-all cursor-pointer disabled:opacity-50"
                           >
                             SYNC

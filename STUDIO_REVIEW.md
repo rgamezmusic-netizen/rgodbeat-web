@@ -4,6 +4,29 @@ La propuesta que se desprende del código es un estudio vocal portátil: cargar 
 
 ## Cambios realizados
 
+### Biblioteca local — 4 de octubre de 2026
+
+Se corrigió el companion de biblioteca para copiar todos los archivos registrados (incluidas referencias R2), verificar tamaños/SHA-256, sustituir descargas completas y conservar versiones previas. Los fallos ya no confirman falsamente una copia. Las ediciones ponen la copia pendiente; el botón del admin solicita una copia al proceso del Mac. Los textos de YouTube, BeatStars y licencias usan los datos reales y se retiraron los valores y derechos inventados.
+
+Se restauraron los nueve archivos actuales de DIVINA, HAAS y DIAMONDS en el SSD, reutilizando `divina`, `HAAS` y `DAIMOND`, y se confirmaron los tres estados `synced` en el catálogo. Los proyectos Ableton locales se conservaron. No hay stems registrados para esos beats; no se afirma que se hayan descargado samples ausentes.
+
+El servicio de inicio de sesión está instalado en macOS. Su primera revisión automática sigue pendiente del permiso de acceso al volumen extraíble que macOS muestra para node. Las correcciones de la interfaz web no se han desplegado. Instrucciones y alcance: [LOCAL_LIBRARY_SYNC.md](LOCAL_LIBRARY_SYNC.md).
+
+TypeScript, revisión del diff y compilación de producción completaron correctamente. ESLint de los archivos de sincronización/admin modificados no tiene errores; conserva la advertencia previa de imágenes en la tabla. Next mantiene las advertencias previas de middleware y renderizado dinámico. No se ejecutó el antiguo script que crea beats de prueba en la base real.
+
+### Ajustes del 4 de octubre de 2026
+
+- La duración audible de cada clip se toma de las muestras decodificadas. Metadatos antiguos con una duración distinta ya no recortan la reproducción ni la región que conserva una edición punch-in. Guardar y recuperar desde el dispositivo o la nube vuelve a escribir la duración real del audio.
+- La exportación a YouTube dejó de asignar por defecto «TOP 23» o afirmar que la toma fue grabada y mezclada por RGODBEAT. El artista puede editar el título y la descripción; si deja la descripción vacía, se incluyen solo su nombre y los datos disponibles del beat.
+- El campo de descripción cuenta bytes UTF-8 como pide la API y bloquea contenido que supere los 5000 bytes.
+- `/admin/youtube` muestra el estado de OAuth, la migración de Supabase, el bucket temporal de R2, FFmpeg y la autorización del canal, sin exponer claves.
+- La autorización OAuth selecciona el ID de canal configurado aunque la cuenta propietaria administre más de un canal.
+- `YOUTUBE_SETUP.md` ahora incluye el recorrido de prueba desde Safari en iPhone.
+
+Comprobaciones de esta ronda: `node --import tsx scripts/test-studio-audio.ts`, TypeScript, ESLint de los archivos modificados, `git diff --check` y `npm run build` completaron sin errores. Next mantiene la advertencia de middleware y los mensajes de rutas dinámicas documentados arriba.
+
+El archivo `.env.local` de este workspace todavía no tiene las variables privadas de Google OAuth ni las credenciales del bucket temporal dedicado. No se conectó ni se probó una cuenta de YouTube. El estado de las variables configuradas en Vercel no se pudo consultar desde esta sesión. La prueba con el iPhone físico sigue pendiente.
+
 ### Ajustes del 3 de octubre de 2026
 
 - Detener una grabación devuelve la misma promesa a todos los controles. Desconectar el micrófono, buscar otra posición, cambiar de beat o guardar espera al cierre de la toma; el último fragmento del AudioWorklet se conserva antes de liberar el micrófono.

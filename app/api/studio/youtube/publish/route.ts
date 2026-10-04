@@ -19,10 +19,10 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type PublishInput = { uploadId?: string; artistName?: string; beatTitle?: string; beatGenre?: string; beatBpm?: number; beatKey?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null };
+type PublishInput = { uploadId?: string; artistName?: string; videoTitle?: string; videoDescription?: string; beatTitle?: string; beatGenre?: string; beatBpm?: number; beatKey?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null };
 type YouTubeInsertResponse = { id?: string; status?: { privacyStatus?: "private" | "unlisted" | "public" }; error?: { errors?: Array<{ reason?: string }> } };
 
-function jobsTable() { return (createAdminClient() as any).from("youtube_export_jobs"); }
+function jobsTable() { return createAdminClient().from("youtube_export_jobs"); }
 function stagingPrefix(userId: string, uploadId: string) { return `youtube/exports/${userId}/${uploadId}/`; }
 function failCode(value: string | undefined) {
   const accepted = new Set(["quotaExceeded", "dailyLimitExceeded", "forbidden", "uploadLimitExceeded", "invalidVideoMetadata", "processingFailed", "renderFailed", "uploadFailed", "channelAuthorization"]);
@@ -30,26 +30,20 @@ function failCode(value: string | undefined) {
 }
 
 function cleanMetadataText(value: string, maxLength: number) {
-  return value.replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+  return value.replace(/[<>]/g, "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
-function buildVideoMetadata(input: { artistName: string; beatTitle: string; beatGenre: string; beatBpm: number; beatKey: string }) {
-  const title = `TOP 23 RGODBEAT ft. ${input.artistName}`;
-  const genreLine = input.beatGenre ? `Estilo: ${input.beatGenre}` : "Categoría: Música";
-  const description = [
-    `${input.artistName} presenta una nueva grabación en RGODBEAT.`,
-    "Grabado y mezclado en RGODBEAT Studio.",
-    "",
+function buildVideoMetadata(input: { artistName: string; videoTitle: string; videoDescription: string; beatTitle: string; beatGenre: string; beatBpm: number; beatKey: string }) {
+  const title = cleanMetadataText(input.videoTitle, 100) || cleanMetadataText(`${input.artistName} - ${input.beatTitle} | RGODBEAT`, 100);
+  const description = input.videoDescription || [
+    `Artista: ${input.artistName}`,
     `Beat: ${input.beatTitle}`,
-    genreLine,
+    input.beatGenre ? `Género: ${input.beatGenre}` : "",
     input.beatBpm ? `Tempo: ${input.beatBpm} BPM` : "",
     input.beatKey ? `Tonalidad: ${input.beatKey}` : "",
-    "",
-    "#RGODBEAT #TOP23",
   ].filter(Boolean).join("\n");
   const tags = [...new Set([
-    "RGODBEAT", "TOP 23", "RGODBEAT Studio", "Música",
-    input.beatGenre, input.artistName, input.beatTitle,
+    "RGODBEAT", input.beatGenre, input.artistName, input.beatTitle,
     input.beatBpm ? `${input.beatBpm} BPM` : "", input.beatKey,
   ].map((tag) => cleanMetadataText(tag, 60)).filter(Boolean))];
   return { title, description, tags, categoryId: "10", defaultLanguage: "es" };
@@ -62,7 +56,8 @@ async function downloadR2File(key: string, destination: string) {
   if (!bucket) throw new Error("storageUnavailable");
   const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   if (!result.Body) throw new Error("stagedAudioMissing");
-  await pipeline(Readable.fromWeb(result.Body.transformToWebStream() as any), createWriteStream(destination, { flags: "wx", mode: 0o600 }));
+  const bodyStream = result.Body.transformToWebStream() as unknown as import("node:stream/web").ReadableStream<Uint8Array>;
+  await pipeline(Readable.fromWeb(bodyStream), createWriteStream(destination, { flags: "wx", mode: 0o600 }));
 }
 
 async function streamWithLimit(response: Response, maxBytes: number): Promise<Buffer> {
@@ -126,15 +121,22 @@ export async function POST(request: NextRequest) {
   const input = await request.json().catch(() => ({})) as PublishInput;
   const uploadId = input.uploadId || "";
   const artistName = cleanMetadataText(input.artistName || "", 80);
-  const title = `TOP 23 RGODBEAT ft. ${artistName}`;
   const beatTitle = cleanMetadataText(input.beatTitle || "Beat RGODBEAT", 100) || "Beat RGODBEAT";
+  const requestedTitle = cleanMetadataText(input.videoTitle || "", 200);
+  const videoDescription = (input.videoDescription || "").replace(/[<>]/g, "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
+  const videoDescriptionBytes = Buffer.byteLength(videoDescription, "utf8");
   const beatGenre = cleanMetadataText(input.beatGenre || "", 40);
   const beatBpm = Number.isInteger(input.beatBpm) && input.beatBpm! >= 30 && input.beatBpm! <= 300 ? input.beatBpm! : 0;
   const beatKey = cleanMetadataText(input.beatKey || "", 24);
   const privacy = input.privacy === "public" ? "public" : "unlisted";
-  if (!UUID.test(uploadId) || artistName.length < 1 || title.length > 100 || input.hasRights !== true || typeof input.madeForKids !== "boolean") {
-    return NextResponse.json({ error: "Escribe el nombre artístico y confirma los derechos del audio y la imagen y el público del vídeo." }, { status: 400 });
+  if (!UUID.test(uploadId) || artistName.length < 1 || requestedTitle.length > 100 || videoDescriptionBytes > 5000 || input.hasRights !== true || typeof input.madeForKids !== "boolean") {
+    return NextResponse.json({ error: "Revisa el nombre, el título y la descripción; confirma también los derechos y el público del vídeo." }, { status: 400 });
   }
+  const metadata = buildVideoMetadata({
+    artistName, videoTitle: requestedTitle, videoDescription, beatTitle,
+    beatGenre, beatBpm, beatKey,
+  });
+  if (!metadata.title) return NextResponse.json({ error: "El título del vídeo está vacío." }, { status: 400 });
   const config = youtubeConfig();
   if (!config.configured || !config.validKey || !ffmpegPath || !isYouTubeR2Configured()) return NextResponse.json({ error: "La publicación de YouTube todavía no está configurada." }, { status: 503 });
   const settings = await getYouTubeChannelSettings().catch(() => null);
@@ -144,8 +146,8 @@ export async function POST(request: NextRequest) {
   if (!stagedBytes || stagedBytes > 256_000_000) return NextResponse.json({ error: "No se encontró un master válido para subir." }, { status: 404 });
 
   const jobId = uploadId;
-  const { data: reserved, error: reserveError } = await (createAdminClient() as any).rpc("reserve_youtube_export_job", {
-    p_id: jobId, p_user_id: access.user.id, p_artist_name: artistName, p_title: title, p_privacy: privacy,
+  const { data: reserved, error: reserveError } = await createAdminClient().rpc("reserve_youtube_export_job", {
+    p_id: jobId, p_user_id: access.user.id, p_artist_name: artistName, p_title: metadata.title, p_privacy: privacy,
   });
   if (reserveError) return NextResponse.json({ error: "No se pudo iniciar la publicación. Comprueba si este export ya se envió." }, { status: 409 });
   if (!reserved) return NextResponse.json({ error: "El canal alcanzó el límite de publicaciones automatizadas de hoy. Inténtalo mañana." }, { status: 429 });
@@ -170,7 +172,6 @@ export async function POST(request: NextRequest) {
     ], directory);
     const video = await readFile(videoPath);
     const accessToken = await refreshYouTubeAccessToken();
-    const metadata = buildVideoMetadata({ artistName, beatTitle, beatGenre, beatBpm, beatKey });
     const start = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status&notifySubscribers=false", {
       method: "POST", cache: "no-store",
       headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json; charset=UTF-8", "x-upload-content-type": "video/mp4", "x-upload-content-length": String(video.length) },

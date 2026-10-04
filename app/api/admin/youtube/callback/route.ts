@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const targetChannelId = youtubeConfig().channelId;
     const channels = channelPayload.items || [];
     const channel = channels.find((item) => item.id === targetChannelId);
-    if (!channelResponse.ok || channels.length !== 1 || !channel?.id) return back(request, "error");
+    if (!channelResponse.ok || !channel?.id) return back(request, "error");
     await saveYouTubeChannelSettings({ channel_id: channel.id, channel_title: channel.snippet?.title || "Canal RGODBEAT", encrypted_refresh_token: refreshToken, updated_at: new Date().toISOString() });
     return back(request, "connected");
   } catch (error) {

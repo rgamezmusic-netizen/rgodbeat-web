@@ -252,7 +252,7 @@ async function uploadProject(
             audioHash: hash,
             name: clip.name,
             startBeatOffset: clip.startBeatOffset,
-            duration: clip.duration,
+            duration: clip.buffer.duration,
             waveformSample: clip.waveformSample,
             isLocked: clip.isLocked,
           });
@@ -418,7 +418,7 @@ export async function loadProjectFromCloud(
                 id: c.id,
                 name: c.name || 'Toma',
                 startBeatOffset: c.startBeatOffset || 0,
-                duration: c.duration || decoded.duration,
+                duration: decoded.duration,
                 waveformSample: c.waveformSample,
                 buffer: decoded,
                 tunedBuffer: null,

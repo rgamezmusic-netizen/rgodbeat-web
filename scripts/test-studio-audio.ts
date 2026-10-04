@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { getProjectDuration, getRenderDuration, splitClip, trimClip } from '../lib/studio/audio/clipEditing';
+import { getProjectDuration, getRenderDuration, getTrackClips, splitClip, trimClip } from '../lib/studio/audio/clipEditing';
 import { audioBufferToWav, extractWaveformPeaks, punchInClips } from '../lib/studio/audio/wavEncoder';
 import { processVocalTune } from '../lib/studio/audio/pitchCorrection';
 import { AudioEngine } from '../lib/studio/audio/audioEngine';
@@ -47,6 +47,14 @@ async function main() {
   assert(punch.some(part => part.id.startsWith('original-p1') && part.buffer.length === 480));
   const track = { id: 'lead1', name: 'Lead', fx, clips: [clip('tail', 5, 1)], buffer: null } as VocalTrack;
   assert.equal(getProjectDuration(2, [track]), 6);
+  const inconsistentClip = clip('duration-metadata', 5, 1);
+  inconsistentClip.duration = 0.4;
+  const inconsistentTrack = { ...track, clips: [inconsistentClip] };
+  assert.equal(getTrackClips(inconsistentTrack)[0].duration, 1, 'decoded voice samples are the source of truth for clip duration');
+  assert.equal(getProjectDuration(0, [inconsistentTrack]), 6, 'recovered duration metadata cannot cut the end of a voice');
+  const overwrite = punchInClips(ctx, [inconsistentClip], clip('overwrite', 5.7, 0.5));
+  assert.equal(overwrite.length, 2, 'punch-in uses the complete decoded take even if saved duration metadata is stale');
+  assert.equal(overwrite[0].buffer.length, 33600, 'punch-in preserves all samples before the overwritten region');
   assert.equal(getRenderDuration(2, [track], 120), 9, 'render includes the hall tail');
   assert.equal(extractWaveformPeaks(clip('tiny', 0, 1 / 48000).buffer, 60).length, 60);
   assert(extractWaveformPeaks(clip('tiny', 0, 1 / 48000).buffer, 60).some(value => value > 0));

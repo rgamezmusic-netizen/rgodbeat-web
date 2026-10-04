@@ -34,3 +34,13 @@ El botón nuevo descarga el master WAV y, con confirmación del artista, envía 
 El estado inicial es **no listado**. El artista confirma que tiene los derechos del audio y la imagen. El endpoint limita el canal a 80 intentos diarios para reservar margen dentro de la cuota de carga de YouTube. La función de Vercel de conversión/subida está configurada para un máximo de 300 segundos; los masters grandes o conexiones muy lentas pueden requerir reintentar.
 
 Publica la pantalla de consentimiento OAuth de Google como **Producción**: en estado de prueba, el refresh token de aplicaciones externas con estos permisos vence a los siete días ([regla de Google](https://developers.google.com/identity/protocols/oauth2)). Un proyecto de YouTube API sin auditar puede restringir las cargas a privadas hasta completar la auditoría ([regla de `videos.insert`](https://developers.google.com/youtube/v3/docs/videos/insert)). Vercel instala el binario FFmpeg adecuado para Linux desde el lockfile y `next.config.ts` lo incluye en la función de publicación; no hace falta instalar FFmpeg en el panel de Vercel. Configura Google OAuth, R2, las variables de Vercel y aplica la migración de Supabase para activar el botón.
+
+## Prueba inicial desde iPhone
+
+1. Configura las variables en el entorno **Production** de Vercel y vuelve a desplegar. La URI de OAuth debe usar el dominio publicado exacto: `https://TU-DOMINIO/api/admin/youtube/callback`.
+2. Entra a `/admin/youtube` con `YOUTUBE_CHANNEL_ADMIN_EMAIL`. El panel muestra si OAuth, la migración, el bucket privado, FFmpeg y la autorización del canal están listos. Ejecuta ahí **Comprobar conexión R2**.
+3. En el iPhone, abre el dominio publicado en Safari e inicia sesión con una cuenta que tenga acceso al Studio. Abre el respaldo de cuenta si está guardado ahí; si las tomas solo están en otro dispositivo, pasa el archivo `.rgodbeat` a Archivos en el iPhone e impórtalo en el Studio.
+4. En Exportar, publica primero como **No listado**. Revisa el WAV descargado y el vídeo de YouTube. El título sugerido combina el nombre artístico y el beat; el título y la descripción se pueden editar. La descripción automática solo incluye esos nombres y los datos disponibles del beat. La página indica los bytes usados y bloquea la publicación si se supera el límite de YouTube.
+5. Mantén Safari abierto hasta que el Studio confirme la subida y muestre el enlace del vídeo.
+
+Las credenciales y el canal OAuth no se pueden completar desde el código: los crea el propietario en Google Cloud y Cloudflare, luego se guardan como variables privadas de Vercel. No subas un vídeo durante el chequeo del panel; usa Exportar cuando quieras probar una publicación real.
