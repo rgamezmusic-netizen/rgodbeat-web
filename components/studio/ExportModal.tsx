@@ -15,6 +15,46 @@ interface ExportModalProps {
   onOpenUnlockModal?: () => void;
 }
 
+type YouTubeProgressState = {
+  stage: 'render' | 'cover' | 'audio' | 'prepare' | 'publish';
+  label: string;
+  transferredBytes?: number;
+  totalBytes?: number;
+};
+
+function formatUploadBytes(bytes: number): string {
+  if (bytes < 1_000_000) return `${Math.max(1, Math.round(bytes / 1_000))} KB`;
+  return `${(bytes / 1_000_000).toFixed(1)} MB`;
+}
+
+function uploadWithProgress(url: string, body: Blob, method: 'PUT' | 'POST', onProgress: (bytes: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(method, url);
+    request.timeout = 120_000;
+    request.setRequestHeader('content-type', body.type || 'application/octet-stream');
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.min(body.size, event.loaded));
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        resolve();
+        return;
+      }
+      let message = '';
+      try {
+        const result = JSON.parse(request.responseText) as { error?: string };
+        message = result.error || '';
+      } catch { /* Use the phase-specific fallback below. */ }
+      reject(new Error(message || `No se pudo completar la subida (${request.status}).`));
+    };
+    request.onerror = () => reject(new Error('Se interrumpió la conexión durante la subida.'));
+    request.ontimeout = () => reject(new Error('La subida tardó demasiado. Comprueba la conexión e inténtalo de nuevo.'));
+    request.onabort = () => reject(new Error('La subida fue cancelada.'));
+    request.send(body);
+  });
+}
+
 export const ExportModal: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
@@ -34,7 +74,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [downloadingStemId, setDownloadingStemId] = useState<string | null>(null);
   const [youtubeStatus, setYoutubeStatus] = useState<{ available: boolean; connected: boolean; channelName?: string; error?: string; maxMasterBytes?: number; maxCoverBytes?: number } | null>(null);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
-  const [youtubeProgress, setYoutubeProgress] = useState('');
+  const [youtubeProgress, setYoutubeProgress] = useState<YouTubeProgressState | null>(null);
   const [artistName, setArtistName] = useState('');
   const [youtubeTitle, setYoutubeTitle] = useState('');
   const [youtubeDescription, setYoutubeDescription] = useState('');
@@ -46,6 +86,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const isBusy = isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null || youtubeLoading;
   const youtubeDescriptionBytes = new TextEncoder().encode(youtubeDescription).byteLength;
+  const youtubeUploadPercent = youtubeProgress?.totalBytes
+    ? Math.min(100, Math.floor(((youtubeProgress.transferredBytes || 0) / youtubeProgress.totalBytes) * 100))
+    : null;
 
   useEffect(() => {
     if (!isOpen || isDemo) return;
@@ -181,7 +224,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     try {
       setYoutubeLoading(true);
       setYoutubeResult(null);
-      setYoutubeProgress('Renderizando el master WAV…');
+      setYoutubeProgress({ stage: 'render', label: 'Renderizando el master WAV…' });
       onShowToast('Preparando el master para el canal RGODBEAT…', 'info');
       const blob = await engine.exportMix(tracks, { enableSidechain: sidechainEnabled });
       triggerDownload(blob, `RGODBEAT_${cleanBeatTitle}_MASTER_24bit_${exportSampleRate}Hz${sidechainEnabled ? '_Sidechain' : ''}.wav`);
@@ -189,38 +232,38 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
       if (coverImage) {
         if (coverImage.size > (youtubeStatus.maxCoverBytes || 4_000_000)) throw new Error('La imagen debe pesar menos de 4 MB. El WAV ya se descargó.');
-        setYoutubeProgress('Guardando la imagen temporalmente en R2…');
-        const coverResponse = await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}`, {
-          method: 'PUT', headers: { 'content-type': coverImage.type || 'application/octet-stream' }, body: coverImage,
-        });
-        const coverResult = await coverResponse.json();
-        if (!coverResponse.ok) throw new Error(coverResult.error || 'No se pudo subir la imagen.');
+        setYoutubeProgress({ stage: 'cover', label: 'Subiendo la portada a R2…', transferredBytes: 0, totalBytes: coverImage.size });
+        await uploadWithProgress(
+          `/api/studio/youtube/upload?uploadId=${uploadId}`,
+          coverImage,
+          'PUT',
+          (transferredBytes) => setYoutubeProgress({ stage: 'cover', label: 'Subiendo la portada a R2…', transferredBytes, totalBytes: coverImage.size }),
+        ).catch((error: unknown) => { throw error instanceof Error ? error : new Error('No se pudo subir la imagen.'); });
       }
 
-      setYoutubeProgress('Subiendo el master en partes seguras…');
+      setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a R2…', transferredBytes: 0, totalBytes: blob.size });
       const chunkBytes = 2_000_000;
       const totalParts = Math.ceil(blob.size / chunkBytes);
       if (totalParts < 1 || totalParts > 128) throw new Error('El master supera el tamaño máximo. El WAV ya se descargó.');
       for (let index = 0; index < totalParts; index++) {
         const start = index * chunkBytes;
         const part = blob.slice(start, Math.min(start + chunkBytes, blob.size));
-        const response = await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=chunk&index=${index}`, {
-          method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: part,
-        });
-        if (!response.ok) {
-          const result = await response.json().catch(() => ({}));
-          throw new Error(result.error || `Falló la subida del fragmento ${index + 1}. El WAV ya se descargó.`);
-        }
-        const percent = Math.min(99, Math.round(((index + 1) / totalParts) * 100));
-        setYoutubeProgress(`Subiendo el master a R2… ${percent}%`);
+        await uploadWithProgress(
+          `/api/studio/youtube/upload?uploadId=${uploadId}&action=chunk&index=${index}`,
+          part,
+          'POST',
+          (partBytes) => setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a R2…', transferredBytes: start + partBytes, totalBytes: blob.size }),
+        ).catch((error: unknown) => { throw error instanceof Error ? error : new Error(`Falló la subida del fragmento ${index + 1}. El WAV ya se descargó.`); });
+        setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a R2…', transferredBytes: Math.min(start + part.size, blob.size), totalBytes: blob.size });
       }
+      setYoutubeProgress({ stage: 'prepare', label: 'Verificando y preparando el master…' });
       const finish = await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=finish`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ parts: totalParts }),
       });
       const finishResult = await finish.json();
       if (!finish.ok) throw new Error(finishResult.error || 'No se pudo completar el master en R2.');
 
-      setYoutubeProgress('Convirtiendo a vídeo y publicando en YouTube…');
+      setYoutubeProgress({ stage: 'publish', label: 'Convirtiendo el vídeo y enviándolo a YouTube…' });
       const response = await fetch('/api/studio/youtube/publish', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ uploadId, artistName: artistName.trim(), videoTitle: youtubeTitle.trim(), videoDescription: youtubeDescription.trim(), beatTitle: beat.title, beatGenre: beat.genre, beatBpm: beat.bpm, beatKey: beat.key, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null }),
@@ -228,11 +271,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'No se pudo publicar en YouTube. El WAV ya se descargó.');
       setYoutubeResult({ videoUrl: result.videoUrl, privacy: result.privacy });
-      setYoutubeProgress('');
+      setYoutubeProgress(null);
       onShowToast('Master publicado en el canal RGODBEAT.', 'success');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo publicar en YouTube. El WAV ya se descargó.';
-      setYoutubeProgress('');
+      setYoutubeProgress(null);
       onShowToast(message, 'error');
     } finally {
       await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=delete`, { method: 'POST' }).catch(() => undefined);
@@ -490,10 +533,39 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 Confirmo que tengo derechos para publicar esta grabación y la imagen, y que cumple las reglas de YouTube.
               </label>
 
+              {youtubeLoading && youtubeProgress && (
+                <div className="space-y-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] p-3" role="status" aria-live="polite">
+                  <div className="flex items-center justify-between gap-3 text-[11px]">
+                    <span className="font-medium text-zinc-100">{youtubeProgress.label}</span>
+                    {youtubeUploadPercent !== null && <span className="shrink-0 font-mono text-amber-300">{youtubeUploadPercent}%</span>}
+                  </div>
+                  <div
+                    className="h-2 overflow-hidden rounded-full bg-zinc-800"
+                    role="progressbar"
+                    aria-label={youtubeProgress.label.replace(/…$/, '')}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={youtubeUploadPercent ?? undefined}
+                    aria-valuetext={youtubeUploadPercent === null ? youtubeProgress.label : `${youtubeUploadPercent}%`}
+                  >
+                    {youtubeUploadPercent !== null ? (
+                      <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-[width] duration-150" style={{ width: `${youtubeUploadPercent}%` }} />
+                    ) : (
+                      <div className="youtube-progress-indeterminate h-full w-1/3 rounded-full bg-gradient-to-r from-amber-500 to-amber-300" />
+                    )}
+                  </div>
+                  {youtubeProgress.transferredBytes !== undefined && youtubeProgress.totalBytes !== undefined && (
+                    <p className="text-right font-mono text-[10px] text-zinc-400">
+                      {formatUploadBytes(youtubeProgress.transferredBytes)} / {formatUploadBytes(youtubeProgress.totalBytes)}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {youtubeStatus?.available ? (
                 <button type="button" onClick={handlePublishToYouTube} disabled={isBusy || !artistName.trim() || !hasRights || youtubeDescriptionBytes > 5000} className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45">
                   {youtubeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
-                  {youtubeLoading ? (youtubeProgress || 'Publicando…') : 'Descargar WAV y publicar vídeo'}
+                  {youtubeLoading ? (youtubeProgress?.label || 'Publicando…') : 'Descargar WAV y publicar vídeo'}
                 </button>
               ) : (
                 <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-100/80">{youtubeStatus?.error || (youtubeStatus ? 'El canal RGODBEAT aún no está conectado o falta terminar su configuración.' : 'Revisando la conexión del canal…')}</p>

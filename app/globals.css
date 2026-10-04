@@ -76,3 +76,19 @@ body::before {
   background: rgba(168, 85, 247, 0.35);
   color: #ffffff;
 }
+
+@keyframes youtube-progress-indeterminate {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(310%); }
+}
+
+.youtube-progress-indeterminate {
+  animation: youtube-progress-indeterminate 1.35s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .youtube-progress-indeterminate {
+    width: 100%;
+    animation: none;
+  }
+}
