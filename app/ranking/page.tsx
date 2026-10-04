@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
-import { GalaxyBackground } from '@/components/ranking/GalaxyBackground';
+import { AtmosphericBackground } from '@/components/atmosphere';
 import { RankingClient } from '@/components/ranking/RankingClient';
 import { getPublicChart } from '@/lib/ranking/server';
 import { getCurrentUser } from '@/lib/auth/server';
@@ -32,5 +32,5 @@ export default async function RankingPage() {
   }
   const content = chart ? <RankingClient initialChart={chart} initialVotedIds={votedIds} /> :
     <main className={styles.main}><section className={styles.emptyChart}><p className={styles.eyebrow}>RGODBEAT / TOP 23</p><h1>Volvemos en un momento.</h1><p>No pudimos cargar el ranking. Vuelve a intentarlo o explora el catálogo.</p><div className={styles.championActions}><Link className={styles.goldButton} href="/ranking">Volver a intentar</Link><Link className={styles.outlineButton} href="/beats">Ver catálogo</Link></div></section></main>;
-  return <div className={styles.page}><GalaxyBackground /><Navbar />{content}<Footer /></div>;
+  return <div className={styles.page}><AtmosphericBackground theme="default" intensity="high" enableStars={true} starDensity="high" animate={true} /><Navbar />{content}<Footer /></div>;
 }
