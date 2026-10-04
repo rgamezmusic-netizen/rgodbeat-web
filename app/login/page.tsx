@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signInWithEmail, signUpWithEmail } from "@/lib/auth/client";
 import { isSiteAdmin } from "@/lib/auth/admin";
-import { createClient } from "@/lib/supabase/client";
+import { requestPasswordRecovery } from "@/lib/auth/recovery";
+import { safeAuthRedirect } from "@/lib/auth/redirect";
 import { Button } from "@/components/ui/Button";
 
 function AuthForm() {
@@ -42,7 +43,7 @@ function AuthForm() {
 
       // Check if user is admin
       const admin = isSiteAdmin(user);
-      const destination = redirectParam || (admin ? "/admin" : "/account");
+      const destination = safeAuthRedirect(redirectParam, admin ? "/admin" : "/account");
 
       // Full window redirect guarantees cookies sync with Supabase SSR middleware
       window.location.href = destination;
@@ -81,7 +82,7 @@ function AuthForm() {
       if (session && user) {
         // Automatically signed in
         const admin = isSiteAdmin(user);
-        const destination = redirectParam || (admin ? "/admin" : "/account");
+        const destination = safeAuthRedirect(redirectParam, admin ? "/admin" : "/account");
         window.location.href = destination;
       } else {
         // Fallback if session creation required manual sign in
@@ -103,16 +104,14 @@ function AuthForm() {
     }
 
     startTransition(async () => {
-      const { error } = await createClient().auth.resetPasswordForEmail(cleanEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
+      const { error } = await requestPasswordRecovery(cleanEmail, redirectParam);
 
       if (error) {
-        setErrorMessage("No se pudo enviar el enlace. Revisa el correo e inténtalo de nuevo.");
+        setErrorMessage(error);
         return;
       }
 
-      setSuccessMessage("Si ese correo tiene una cuenta, recibirás un enlace para definir una nueva contraseña.");
+      setSuccessMessage("Si ese correo tiene una cuenta, recibirás un enlace para definir una nueva contraseña. Revisa también Spam.");
     });
   };
 

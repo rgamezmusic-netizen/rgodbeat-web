@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { safeAuthRedirect } from "@/lib/auth/redirect";
 import { isSiteAdmin } from "@/lib/auth/admin";
 import { Database } from "@/types/database";
 
@@ -45,7 +46,9 @@ export async function middleware(request: NextRequest) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/login";
       redirectUrl.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(redirectUrl);
+      const response = NextResponse.redirect(redirectUrl);
+      supabaseResponse.cookies.getAll().forEach(cookie => response.cookies.set(cookie));
+      return response;
     }
   }
 
@@ -55,19 +58,21 @@ export async function middleware(request: NextRequest) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/login";
       redirectUrl.searchParams.set("redirect", pathname);
-      return NextResponse.redirect(redirectUrl);
+      const response = NextResponse.redirect(redirectUrl);
+      supabaseResponse.cookies.getAll().forEach(cookie => response.cookies.set(cookie));
+      return response;
     }
   }
 
   // Redirect away from /login if already authenticated
-  if (pathname === "/login" && user) {
+  if (pathname === "/login" && user && !request.nextUrl.searchParams.has("code") && !request.nextUrl.searchParams.has("token_hash")) {
     const isAdmin = isSiteAdmin(user);
     const redirectParam = request.nextUrl.searchParams.get("redirect");
-    const target = redirectParam || (isAdmin ? "/admin" : "/account");
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = target;
-    redirectUrl.searchParams.delete("redirect");
-    return NextResponse.redirect(redirectUrl);
+    const target = safeAuthRedirect(redirectParam, isAdmin ? "/admin" : "/account");
+    const redirectUrl = new URL(target, request.url);
+    const response = NextResponse.redirect(redirectUrl);
+    supabaseResponse.cookies.getAll().forEach(cookie => response.cookies.set(cookie));
+    return response;
   }
 
   return supabaseResponse;

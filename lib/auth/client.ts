@@ -33,8 +33,14 @@ export function translateAuthError(errorMessage?: string | null): string {
   if (msg.includes("user already registered") || msg.includes("already registered") || msg.includes("already exists")) {
     return "Ya existe una cuenta con este correo electrónico. Por favor inicia sesión.";
   }
+  if (msg.includes("same password") || msg.includes("different from the old") || msg.includes("same_password")) {
+    return "Elige una contraseña nueva distinta de la anterior.";
+  }
+  if (msg.includes("weak_password") || msg.includes("password should contain")) {
+    return "Elige una contraseña más segura con letras, números y símbolos.";
+  }
   if (msg.includes("password should be at least")) {
-    return "La contraseña debe tener al menos 6 caracteres.";
+    return "La contraseña no cumple la longitud mínima requerida. Usa al menos 8 caracteres.";
   }
   if (msg.includes("network") || msg.includes("fetch failed")) {
     return "Error de conexión con el servidor. Revisa tu conexión a internet.";
@@ -99,12 +105,12 @@ export async function signUpWithEmail(
       session: signInData.session,
       error: null,
     };
-  } catch (err: any) {
+  } catch (err) {
     console.error("[signUpWithEmail] Network or server error:", err);
     return {
       user: null,
       session: null,
-      error: { message: translateAuthError(err.message || "Error al conectar con el servidor.") },
+      error: { message: translateAuthError(err instanceof Error ? err.message : "Error al conectar con el servidor.") },
     };
   }
 }

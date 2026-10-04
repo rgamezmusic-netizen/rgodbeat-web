@@ -4,6 +4,14 @@ La propuesta que se desprende del código es un estudio vocal portátil: cargar 
 
 ## Cambios realizados
 
+### Acceso y recuperación de contraseña — 4 de octubre de 2026
+
+Se consultó la cuenta `gamezinmusic@gmail.com`: existe, está confirmada y ya tiene rol de administrador en `app_metadata`. La configuración local de YouTube coincide con ese correo. No se modificaron las credenciales de la cuenta.
+
+La recuperación ahora procesa tokens de enlaces antiguos, códigos PKCE y `token_hash`, y la pantalla de enlace vencido permite solicitar otro. Las nuevas solicitudes utilizan un endpoint público de Auth sin un verificador ligado a un navegador. Se distinguen errores de enlace, contraseña, conexión y límite de envío; se conserva el destino solicitado y se restringen las redirecciones al propio sitio. La página sirve a administradores y clientes.
+
+TypeScript, ESLint de recuperación y compilación de producción completaron. La publicación de esta corrección fue autorizada; falta confirmar la versión pública y no se afirma que el correo haya llegado o que el usuario ya haya cambiado su contraseña. Detalles: [AUTH_RECOVERY.md](AUTH_RECOVERY.md).
+
 ### Biblioteca local — 4 de octubre de 2026
 
 Se corrigió el companion de biblioteca para copiar todos los archivos registrados (incluidas referencias R2), verificar tamaños/SHA-256, sustituir descargas completas y conservar versiones previas. Los fallos ya no confirman falsamente una copia. Las ediciones ponen la copia pendiente; el botón del admin solicita una copia al proceso del Mac. Los textos de YouTube, BeatStars y licencias usan los datos reales y se retiraron los valores y derechos inventados.

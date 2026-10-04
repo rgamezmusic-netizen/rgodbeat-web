@@ -2,23 +2,30 @@
 
 import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { hasAuthLinkParameters, hasPendingAuthRecovery, resolveAuthRecovery } from "@/lib/auth/recovery";
 
-/**
- * Supabase can fall back to the configured Site URL when the requested
- * redirect URL is not allowlisted. Recovery tokens then land on the home
- * page, where the auth client emits PASSWORD_RECOVERY. Send that session to
- * the password form instead of leaving the user on the storefront.
- */
+/** Handles links that land on the Site URL when Supabase rejects a redirect URL. */
 export function RecoveryLinkRedirect() {
   useEffect(() => {
-    const supabase = createClient();
-    const { data } = supabase.auth.onAuthStateChange((event) => {
-      if (event !== "PASSWORD_RECOVERY" || window.location.pathname === "/reset-password") return;
-      window.location.replace("/reset-password");
+    if (window.location.pathname === "/reset-password") return;
+    let active = true;
+    const url = new URL(window.location.href);
+    const processing = hasAuthLinkParameters(url) || hasPendingAuthRecovery();
+    if (processing) {
+      void resolveAuthRecovery().then(result => {
+        if (!active) return;
+        if (result.recovery || result.error) {
+          const target = new URL("/reset-password", window.location.origin);
+          if (url.searchParams.get("next")) target.searchParams.set("next", url.searchParams.get("next")!);
+          if (result.error) target.searchParams.set("error", "invalid_link");
+          window.location.replace(`${target.pathname}${target.search}`);
+        }
+      });
+    }
+    const { data } = createClient().auth.onAuthStateChange(event => {
+      if (event === "PASSWORD_RECOVERY" && active && !processing) window.location.replace("/reset-password");
     });
-
-    return () => data.subscription.unsubscribe();
+    return () => { active = false; data.subscription.unsubscribe(); };
   }, []);
-
   return null;
 }
