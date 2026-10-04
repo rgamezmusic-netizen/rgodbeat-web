@@ -2,7 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getPublishedBeats } from '@/lib/data/beats';
-import { buildChart, chartPeriods, type BeatActivity } from './chart';
+import { buildChart, chartPeriods, type BeatActivity, type CommentActivity } from './chart';
 
 export const getPublicChart = cache(async () => {
   const now = new Date();
@@ -13,8 +13,8 @@ export const getPublicChart = cache(async () => {
     client.rpc('get_public_beat_activity', { p_week: period, p_previous_week: previousPeriod }),
   ]);
   if (!error && data) {
-    const result = data as unknown as { votes: BeatActivity[]; comments: Record<string, number> };
-    return buildChart(beats, result.votes ?? [], result.comments ?? {}, true, now);
+    const result = data as unknown as { votes: BeatActivity[]; comments: Record<string, number>; commentsByWeek: CommentActivity[] };
+    return buildChart(beats, result.votes ?? [], result.commentsByWeek ?? [], result.comments ?? {}, true, now);
   }
   if (error && error.code !== 'PGRST202') throw new Error('No se pudo consultar la actividad del ranking.');
   // Compatibility with the currently installed schema until the additive migration is applied.
@@ -42,5 +42,5 @@ export const getPublicChart = cache(async () => {
     for (const row of result.data ?? []) comments[row.beat_id] = (comments[row.beat_id] ?? 0) + 1;
     if ((result.data?.length ?? 0) < 1000) break;
   }
-  return buildChart(beats, [...counts.values()], comments, commentsReady, now);
+  return buildChart(beats, [...counts.values()], [], comments, commentsReady, now);
 });

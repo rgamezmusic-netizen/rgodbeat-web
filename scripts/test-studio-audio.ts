@@ -54,6 +54,20 @@ async function main() {
   assert.equal(encoded.getUint32(24, true), 48000);
   assert.equal(encoded.getUint16(34, true), 24);
   assert.equal(encoded.getUint32(40, true), original.buffer.length * 3);
+  // Float vocal backups must retain low-level detail and FX headroom exactly.
+  const precise = ctx.createBuffer(1, 4, 44100);
+  precise.getChannelData(0).set([0.123456789, 1.25, -1.25, 1e-12]);
+  const floatWav = new DataView(await audioBufferToWav(precise, 32).arrayBuffer());
+  assert.equal(floatWav.getUint16(20, true), 3);
+  assert.equal(floatWav.getUint16(22, true), 1);
+  assert.equal(floatWav.getUint32(24, true), 44100, 'encoding must keep the recorded rate');
+  assert.equal(floatWav.getUint32(44, true), precise.length, 'fact chunk must contain the frame count');
+  assert.equal(floatWav.getUint32(52, true), precise.length * 4);
+  assert.equal(floatWav.byteLength, 56 + precise.length * 4);
+  assert.equal(floatWav.getUint32(4, true) + 8, floatWav.byteLength);
+  for (let i = 0; i < precise.length; i++) {
+    assert.equal(floatWav.getFloat32(56 + i * 4, true), precise.getChannelData(0)[i], 'original float samples must not be quantized or clipped');
+  }
   const short = clip('short', 0, 0.01).buffer;
   const tuned = await processVocalTune(ctx, short, fx.tune);
   assert.equal(tuned.length, short.length);
@@ -105,6 +119,9 @@ async function main() {
     onRecordingFinished(_id, buffer, _wave, start) { finished.push({ buffer, start: start! }); },
     onRecordingCheckpoint(checkpoint) { checkpoints.push(checkpoint); },
   });
+  const nativeTrack = { ...track, clips: [{ ...original, buffer: precise }] };
+  assert.equal(engine.getExportSampleRate([nativeTrack]), 44100);
+  assert.equal(engine.getExportSampleRate([nativeTrack, track]), 48000, 'mixed recordings must retain the highest actual source rate');
   const capture = engine as unknown as {
     ctx: BaseAudioContext; recordingTimelineOrigin: number; takeLatencyCompensation: number;
     playbackStartCtxTime: number; recordingLatencyCompensation: number; capturedFirstFrame: number | null;

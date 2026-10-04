@@ -1,0 +1,200 @@
+.padField {
+  --pointer-x: -400px;
+  --pointer-y: -400px;
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: auto;
+  background:
+    radial-gradient(ellipse at 50% 44%, rgba(255, 255, 255, 0.045), transparent 54%),
+    radial-gradient(ellipse at 50% 68%, rgba(246, 125, 43, 0.075), transparent 44%);
+}
+
+.padField::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+  background: radial-gradient(390px circle at var(--pointer-x) var(--pointer-y), rgba(255, 164, 82, 0.12), transparent 72%);
+  transition: background-position 140ms ease-out;
+}
+
+.padGrid {
+  position: absolute;
+  top: 48%;
+  left: 50%;
+  display: grid;
+  width: min(54vw, 390px);
+  aspect-ratio: 1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(5px, 1vw, 11px);
+  transform: translate(-50%, -50%) perspective(800px) rotateX(8deg) rotateZ(-4deg);
+  opacity: 0.74;
+  mask-image: radial-gradient(ellipse, #000 34%, transparent 76%);
+}
+
+.ambientPad {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: clamp(7px, 1.3vw, 15px);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.018));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 9px 25px rgba(0, 0, 0, 0.16);
+  transition: border-color 180ms ease, transform 220ms ease, background-color 180ms ease;
+}
+
+.ambientPad::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 50% 45%, #ff9b46 0%, #f45a17 54%, transparent 100%);
+  box-shadow: inset 0 0 14px rgba(255, 190, 120, 0.7), 0 0 25px rgba(255, 112, 35, 0.85);
+  content: "";
+  opacity: calc(0.08 + var(--energy, 0));
+  transition: opacity 100ms linear;
+}
+
+.ambientPad:nth-child(5n + 2)::after,
+.ambientPad:nth-child(7n)::after {
+  animation: idlePulse 3.8s ease-in-out infinite;
+  animation-delay: calc(var(--pad-order, 0) * -180ms);
+}
+
+.padField[data-pointer-active="true"] .ambientPad::after {
+  animation: none;
+}
+
+.ambientPad:nth-child(1) { --pad-order: 1; }
+.ambientPad:nth-child(2) { --pad-order: 2; }
+.ambientPad:nth-child(3) { --pad-order: 3; }
+.ambientPad:nth-child(4) { --pad-order: 4; }
+.ambientPad:nth-child(5) { --pad-order: 5; }
+.ambientPad:nth-child(6) { --pad-order: 6; }
+.ambientPad:nth-child(7) { --pad-order: 7; }
+.ambientPad:nth-child(8) { --pad-order: 8; }
+.ambientPad:nth-child(9) { --pad-order: 9; }
+.ambientPad:nth-child(10) { --pad-order: 10; }
+.ambientPad:nth-child(11) { --pad-order: 11; }
+.ambientPad:nth-child(12) { --pad-order: 12; }
+.ambientPad:nth-child(13) { --pad-order: 13; }
+.ambientPad:nth-child(14) { --pad-order: 14; }
+.ambientPad:nth-child(15) { --pad-order: 15; }
+.ambientPad:nth-child(16) { --pad-order: 16; }
+
+.fieldGlow {
+  position: absolute;
+  top: 48%;
+  left: 50%;
+  width: min(64vw, 520px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245, 114, 42, 0.1), transparent 68%);
+  filter: blur(32px);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(26px, 5vw, 62px);
+}
+
+.actionPad {
+  position: relative;
+  display: flex;
+  min-width: 88px;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #f4f1ed;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.padLight {
+  width: 62px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 185, 119, 0.8);
+  border-radius: 15px;
+  background: linear-gradient(145deg, #ffb260, #e85a17 72%);
+  box-shadow: inset 0 1px 1px rgba(255, 236, 208, 0.6), inset 0 -7px 13px rgba(127, 43, 6, 0.35), 0 0 24px rgba(255, 112, 36, 0.42);
+  transition: background 200ms ease, border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+  animation: buttonGlow 3.4s ease-in-out infinite;
+}
+
+.actionLabel {
+  min-height: 1.25rem;
+  color: #f4f1ed;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.17em;
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.actionPad:hover .padLight,
+.actionPad:focus-visible .padLight {
+  border-color: rgba(255, 255, 255, 0.32);
+  background: linear-gradient(145deg, #2a2929, #101012 72%);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.11), inset 0 -7px 13px rgba(0, 0, 0, 0.72), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  transform: translateY(2px) scale(0.97);
+  animation: none;
+}
+
+.actionPad:hover .actionLabel,
+.actionPad:focus-visible .actionLabel {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.actionPad:focus-visible {
+  outline: 2px solid #f9a15d;
+  outline-offset: 7px;
+  border-radius: 10px;
+}
+
+@keyframes idlePulse {
+  0%, 100% { opacity: 0.09; }
+  50% { opacity: 0.48; }
+}
+
+@keyframes buttonGlow {
+  0%, 100% { box-shadow: inset 0 1px 1px rgba(255, 236, 208, 0.58), inset 0 -7px 13px rgba(127, 43, 6, 0.35), 0 0 19px rgba(255, 112, 36, 0.35); }
+  50% { box-shadow: inset 0 1px 1px rgba(255, 236, 208, 0.72), inset 0 -7px 13px rgba(127, 43, 6, 0.32), 0 0 30px rgba(255, 112, 36, 0.58); }
+}
+
+@media (hover: none) {
+  .actionLabel {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .padGrid {
+    top: 47%;
+    width: min(82vw, 330px);
+    opacity: 0.58;
+  }
+
+  .ambientPad {
+    border-radius: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambientPad::after,
+  .padLight {
+    animation: none;
+  }
+
+  .ambientPad,
+  .padLight,
+  .actionLabel {
+    transition: none;
+  }
+}

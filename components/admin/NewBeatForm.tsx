@@ -199,7 +199,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
 
         // 4. Upload Master WAV directly from browser to Supabase Storage (rgodbeat-private)
         if (wavState.file && uploadUrlsRes.wav) {
-          setUploadProgressStatus("Step 3/3: Uploading 24-bit Master WAV...");
+          setUploadProgressStatus("Step 3/3: Uploading Master WAV...");
           await uploadFileToSignedUrl(
             uploadUrlsRes.wav.signedUrl,
             wavState.file,
@@ -583,7 +583,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                 PRIVATE BUCKET (PROTECTED)
               </span>
               <h3 className="text-xs font-bold text-white uppercase">Master Audio (WAV)</h3>
-              <p className="text-[11px] text-zinc-400">Audio WAV de estudio (.wav). Máx 50MB (Supabase Free) o 2GB (Pro).</p>
+              <p className="text-[11px] text-zinc-400">Formato del catálogo: WAV 16-bit / 44.1 kHz. Límite de Supabase Free: 50 MB por archivo.</p>
             </div>
 
             <div className="pt-2 space-y-2">
@@ -622,7 +622,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
                     <span>WAV mayor a 50MB ({(wavState.file.size / (1024 * 1024)).toFixed(1)} MB)</span>
                   </div>
                   <p className="text-zinc-300 leading-normal">
-                    Si tu plan de Supabase es gratuito, el límite por archivo es 50MB. Te recomendamos exportar el WAV en <strong>16-bit 44.1kHz</strong> (~30MB) o subir el límite en <em>Supabase Dashboard &gt; Project Settings &gt; Storage</em>.
+                    Si tu plan de Supabase es gratuito, el límite por archivo es 50MB. El tamaño depende de la duración y el formato. Conserva tu original y revisa el límite en <em>Supabase Dashboard &gt; Storage Settings</em>.
                   </p>
                 </div>
               )}

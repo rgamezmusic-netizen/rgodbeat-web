@@ -63,7 +63,7 @@ the time of the transaction ({{PURCHASE_PRICE}}).
 
 The Exclusive License includes:
 * MP3 320 kbps
-* WAV 24-bit / 48 kHz
+* WAV 16-bit / 44.1 kHz
 * Right to request grouped stems
 * Exclusive licensing rights described in this Agreement
 * Rights to modify and adapt the Beat for the creation of New Song(s), subject to this Agreement

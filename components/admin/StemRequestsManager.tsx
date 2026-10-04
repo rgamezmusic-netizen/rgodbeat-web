@@ -342,7 +342,7 @@ export function StemRequestsManager({ initialTickets }: StemRequestsManagerProps
                 rows={3}
                 value={editNotes}
                 onChange={(e) => setEditNotes(e.target.value)}
-                placeholder="Ejemplo: Stems agrupados exportados a 24-bit / 48 kHz. Cualquier duda contáctanos a rgodbeat@gmail.com"
+                placeholder="Ejemplo: Stems agrupados en su formato WAV original. Cualquier duda contáctanos a rgodbeat@gmail.com"
                 className="w-full bg-[#12121c] border border-white/10 rounded-xl p-3 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 font-sans"
               />
             </div>

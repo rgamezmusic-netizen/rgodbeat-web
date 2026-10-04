@@ -453,7 +453,7 @@ export const UnlockPassModal: React.FC<UnlockPassModalProps> = ({
                       </li>
                       <li className="flex items-center gap-1.5">
                         <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>Exportación WAV 24-bit ilimitada</span>
+                        <span>Exportación WAV y stems separados</span>
                       </li>
                     </ul>
                   </div>

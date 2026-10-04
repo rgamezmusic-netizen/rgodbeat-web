@@ -49,7 +49,7 @@ export function uploadFileToSignedUrl(
            errorDetails.toLowerCase().includes("payload too large"))
         ) {
           const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-          errorDetails = `El archivo "${file.name}" (${sizeMb} MB) supera el tamaño máximo permitido por Supabase Storage (50 MB por defecto). Soluciones: 1) Exporta el audio en WAV 16-bit 44.1kHz para mantenerlo bajo 50 MB, o 2) Si tienes Supabase Pro, sube el "Upload file size limit" en Supabase Dashboard > Project Settings > Storage.`;
+          errorDetails = `El archivo "${file.name}" (${sizeMb} MB) supera el límite de tamaño configurado en Supabase Storage. El plan Free admite hasta 50 MB por archivo. Conserva tu original y revisa Storage Settings; el formato 16-bit / 44.1 kHz también puede superar ese límite si el audio es largo.`;
         }
 
         reject(new Error(`Storage upload failed (${xhr.status}): ${errorDetails}`));

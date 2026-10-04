@@ -62,7 +62,7 @@ export default async function CustomerStemTicketPage({ params }: CustomerTicketP
 
   const statusDescriptions: Record<string, string> = {
     Pending: "Tu solicitud ha sido recibida y está en cola de empaquetado por RGODBEAT.",
-    Contacted: "RGODBEAT está preparando los 4 stems agrupados en formato WAV 24-bit / 48 kHz.",
+    Contacted: "RGODBEAT está preparando los 4 stems agrupados en su formato WAV original.",
     Delivered: "Los 4 grupos de stems han sido verificados y entregados con éxito.",
     Closed: "Este ticket de soporte ha sido cerrado.",
   };
@@ -183,7 +183,7 @@ export default async function CustomerStemTicketPage({ params }: CustomerTicketP
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-white uppercase tracking-tight font-sans">
-                  Archivos de Stems Agrupados (WAV 24-bit / 48 kHz)
+                  Archivos de Stems Agrupados (WAV)
                 </h2>
                 <p className="text-xs text-zinc-400">
                   Grupos de pistas independientes para mezcla y masterización oficial.

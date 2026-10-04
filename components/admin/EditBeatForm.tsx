@@ -619,8 +619,8 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
             <div className="p-5 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-mono font-bold text-white uppercase">Master 24-Bit WAV Audio</span>
-                  <span className="text-[10px] font-mono text-zinc-500 block">Bucket: rgodbeat-private (Max 50MB Free / 2GB Pro, WAV)</span>
+                  <span className="text-xs font-mono font-bold text-white uppercase">Master WAV Audio</span>
+                  <span className="text-[10px] font-mono text-zinc-500 block">Supabase privado · Hasta 50 MB por archivo en Free</span>
                 </div>
                 {beat.wav_file ? (
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -669,7 +669,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
                       <span>WAV mayor a 50MB ({(wavState.file.size / 1024 / 1024).toFixed(1)} MB)</span>
                     </div>
                     <p className="text-zinc-300 leading-normal">
-                      Si tu plan de Supabase es gratuito, el límite por archivo es 50MB. Exporta el audio en <strong>16-bit 44.1kHz</strong> (~30MB) o amplía el límite en <em>Supabase Dashboard &gt; Project Settings &gt; Storage</em>.
+                      Si tu plan de Supabase es gratuito, el límite por archivo es 50MB. El tamaño depende de la duración y el formato. Conserva tu original y revisa el límite en <em>Supabase Dashboard &gt; Storage Settings</em>.
                     </p>
                   </div>
                 )}

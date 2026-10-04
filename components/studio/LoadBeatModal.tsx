@@ -139,6 +139,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
         duration: decodedBuffer.duration,
         buffer: decodedBuffer,
         artworkGradient: 'linear-gradient(135deg, #1d102e 0%, #121018 50%, #09080d 100%)',
+        coverUrl: beat.coverUrl || undefined,
         waveformSample: waveform,
       };
 

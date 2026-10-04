@@ -17,11 +17,11 @@ export const LICENSE_OPTIONS: LicenseOption[] = [
     slug: "wav",
     name: "WAV",
     price: 49,
-    format: "MP3 320 kbps + WAV 24-bit / 48 kHz",
+    format: "MP3 320 kbps + WAV 16-bit / 44.1 kHz",
     features: [
       "Licencia no exclusiva",
       "MP3 320 kbps",
-      "WAV 24-bit / 48 kHz",
+      "WAV 16-bit / 44.1 kHz",
     ],
     recommended: true,
   },
@@ -137,7 +137,7 @@ export const STUDIO_SERVICES: ServiceInfo[] = [
     startingPrice: "$350",
     features: [
       "Original melody & drum composition",
-      "Full multitrack stems (WAV 24-bit)",
+      "Full multitrack stems (WAV)",
       "Arrangement consulting & revisions",
       "Commercial release rights",
     ],

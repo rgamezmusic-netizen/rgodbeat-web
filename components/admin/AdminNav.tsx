@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/admin/orders", label: "Orders", exact: false },
   { href: "/admin/stem-requests", label: "Stem Requests", exact: false },
   { href: "/admin/studio-passes", label: "Studio Passes", exact: false },
+  { href: "/admin/youtube", label: "YouTube", exact: false },
 ];
 
 export function AdminNav() {

@@ -30,6 +30,8 @@
 .championInfo { display: flex; flex-direction: column; padding: 30px 0 0 40px; min-width: 0; }
 .eyebrow { color: var(--gold); font: 9px/1.6 ui-monospace, monospace; letter-spacing: .18em; }
 .movement { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font: 8px/1.6 ui-monospace, monospace; letter-spacing: .04em; }
+.rowSignals { display: flex; align-items: center; gap: 11px; min-height: 14px; }
+.points { display: inline-flex; align-items: center; color: var(--gold); font: 8px/1.4 ui-monospace, monospace; letter-spacing: .08em; white-space: nowrap; }
 .up { color: var(--gold); }
 .genre { text-transform: uppercase; font: 10px/1.6 ui-monospace, monospace; letter-spacing: .09em; color: var(--gold); margin-top: 35px; }
 .genre > span { color: var(--muted); }

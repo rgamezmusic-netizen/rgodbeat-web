@@ -1,20 +1,20 @@
 import { VocalClip } from '../types/audio';
 
 /**
- * Encodes an AudioBuffer into standard PCM WAV format.
- * Supports 24-bit (studio standard) and 16-bit PCM.
- * Defaults to 24-bit / 48kHz for pristine professional studio export.
+ * Encodes an AudioBuffer into WAV format.
+ * Supports 16-bit and 24-bit PCM plus 32-bit IEEE float for final Studio exports.
+ * Defaults to 24-bit; original vocal clips explicitly use float to retain their samples.
  */
-export function audioBufferToWav(buffer: AudioBuffer, bitDepth: 16 | 24 = 24): Blob {
+export function audioBufferToWav(buffer: AudioBuffer, bitDepth: 16 | 24 | 32 = 24): Blob {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
-  const format = 1; // PCM
+  const format = bitDepth === 32 ? 3 : 1; // IEEE float or PCM
   const bytesPerSample = bitDepth / 8;
   const blockAlign = numChannels * bytesPerSample;
 
   const numSamples = buffer.length;
   const dataByteLength = numSamples * blockAlign;
-  const headerByteLength = 44;
+  const headerByteLength = bitDepth === 32 ? 56 : 44;
   const totalLength = headerByteLength + dataByteLength;
 
   const arrayBuffer = new ArrayBuffer(totalLength);
@@ -30,7 +30,7 @@ export function audioBufferToWav(buffer: AudioBuffer, bitDepth: 16 | 24 = 24): B
   /* RIFF identifier */
   writeString(0, 'RIFF');
   /* file length */
-  view.setUint32(4, 36 + dataByteLength, true);
+  view.setUint32(4, totalLength - 8, true);
   /* RIFF type */
   writeString(8, 'WAVE');
   /* format chunk identifier */
@@ -49,10 +49,18 @@ export function audioBufferToWav(buffer: AudioBuffer, bitDepth: 16 | 24 = 24): B
   view.setUint16(32, blockAlign, true);
   /* bits per sample */
   view.setUint16(34, bitDepth, true);
-  /* data chunk identifier */
-  writeString(36, 'data');
-  /* data chunk length */
-  view.setUint32(40, dataByteLength, true);
+  if (bitDepth === 32) {
+    /* IEEE float WAV includes a fact chunk with the sample-frame count. */
+    writeString(36, 'fact');
+    view.setUint32(40, 4, true);
+    view.setUint32(44, numSamples, true);
+    writeString(48, 'data');
+    view.setUint32(52, dataByteLength, true);
+  } else {
+    /* data chunk identifier and length */
+    writeString(36, 'data');
+    view.setUint32(40, dataByteLength, true);
+  }
 
   // Interleave channels
   const channels: Float32Array[] = [];
@@ -60,8 +68,16 @@ export function audioBufferToWav(buffer: AudioBuffer, bitDepth: 16 | 24 = 24): B
     channels.push(buffer.getChannelData(c));
   }
 
-  let offset = 44;
-  if (bitDepth === 24) {
+  let offset = headerByteLength;
+  if (bitDepth === 32) {
+    for (let i = 0; i < numSamples; i++) {
+      for (let c = 0; c < numChannels; c++) {
+        const sample = channels[c][i];
+        view.setFloat32(offset, Number.isFinite(sample) ? sample : 0, true);
+        offset += 4;
+      }
+    }
+  } else if (bitDepth === 24) {
     // 24-bit signed PCM [-8388608, 8388607]
     for (let i = 0; i < numSamples; i++) {
       for (let c = 0; c < numChannels; c++) {

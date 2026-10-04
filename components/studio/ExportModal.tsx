@@ -1,6 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { X, Download, Mic, Sliders, Music, Sparkles, Check, Activity, Lock } from 'lucide-react';
+import { X, Download, Mic, Sliders, Music, Sparkles, Check, Activity, Lock, Video, ImagePlus, Loader2, ExternalLink } from 'lucide-react';
 import { BeatData, VocalTrack } from '@/lib/studio/types/audio';
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 
@@ -32,8 +32,32 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const exportLock = useRef(false);
   const [sidechainEnabled, setSidechainEnabled] = useState<boolean>(true);
   const [downloadingStemId, setDownloadingStemId] = useState<string | null>(null);
+  const [youtubeStatus, setYoutubeStatus] = useState<{ available: boolean; connected: boolean; channelName?: string; error?: string; maxMasterBytes?: number; maxCoverBytes?: number } | null>(null);
+  const [youtubeLoading, setYoutubeLoading] = useState(false);
+  const [youtubeProgress, setYoutubeProgress] = useState('');
+  const [artistName, setArtistName] = useState('');
+  const [youtubeTitle, setYoutubeTitle] = useState(beat?.title || '');
+  const [youtubePrivacy, setYoutubePrivacy] = useState<'unlisted' | 'public'>('unlisted');
+  const [madeForKids, setMadeForKids] = useState(false);
+  const [hasRights, setHasRights] = useState(false);
+  const [coverImage, setCoverImage] = useState<File | null>(null);
+  const [youtubeResult, setYoutubeResult] = useState<{ videoUrl: string; privacy: string } | null>(null);
 
-  const isBusy = isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null;
+  const isBusy = isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null || youtubeLoading;
+
+  useEffect(() => {
+    if (!isOpen || isDemo) return;
+    let active = true;
+    fetch('/api/studio/youtube/status', { cache: 'no-store' })
+      .then(async (res) => ({ res, data: await res.json() }))
+      .then(({ data }) => { if (active) setYoutubeStatus(data); })
+      .catch(() => { if (active) setYoutubeStatus({ available: false, connected: false }); });
+    return () => { active = false; };
+  }, [isOpen, isDemo]);
+
+  useEffect(() => {
+    if (beat) setYoutubeTitle(beat.title);
+  }, [beat?.id]);
 
   if (!isOpen) return null;
 
@@ -52,7 +76,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               EXPORTACIÓN EN MASTER WAV BLOQUEADA
             </h3>
             <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed max-w-md mx-auto">
-              Has grabado tu maqueta en el estudio. Para exportar y descargar el Master WAV 24-bit / 48kHz sin compresión y los stems vocales separados, activa tu Pase de 30 Días por $10 USD o compra cualquier beat en la tienda (incluye 30 días gratis).
+              Has grabado tu maqueta en el estudio. Para descargar el Master WAV 24-bit y los stems vocales separados, activa tu Pase de 30 Días por $10 USD o compra cualquier beat en la tienda (incluye 30 días gratis).
             </p>
           </div>
 
@@ -90,6 +114,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const recordedTracks = tracks.filter((t) => t.buffer !== null || (t.clips && t.clips.length > 0));
   const hasRecordings = recordedTracks.length > 0;
+  const exportSampleRate = engine?.getExportSampleRate(tracks) ?? 44100;
+  const exportRateLabel = `${exportSampleRate / 1000} kHz`;
   const cleanBeatTitle = beat ? beat.title.replace(/[^a-zA-Z0-9]/g, '_') : 'Project';
 
   const triggerDownload = (blob: Blob, filename: string) => {
@@ -103,7 +129,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
-  // 1. Export Master Mix (24-bit / 48.0 kHz PCM WAV with bass-preserving crossover sidechain)
+  // 1. Export a 24-bit Master Mix at the recorded rate with crossover sidechain
   const handleExportMaster = async () => {
     if (!engine || !beat) {
       onShowToast('Carga un beat antes de exportar.', 'error');
@@ -116,8 +142,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       setIsExportingMaster(true);
       onShowToast(
         sidechainEnabled
-          ? 'Renderizando Master WAV 24-bit / 48kHz con Sidechain profesional...'
-          : 'Renderizando Master WAV 24-bit / 48kHz...',
+          ? 'Renderizando Master WAV 24-bit con Sidechain...'
+          : 'Renderizando Master WAV 24-bit...',
         'info'
       );
 
@@ -125,7 +151,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         enableSidechain: sidechainEnabled,
       });
 
-      const filename = `RGODBEAT_${cleanBeatTitle}_MASTER_24bit_48k${sidechainEnabled ? '_Sidechain' : ''}.wav`;
+      const filename = `RGODBEAT_${cleanBeatTitle}_MASTER_24bit_${exportSampleRate}Hz${sidechainEnabled ? '_Sidechain' : ''}.wav`;
       triggerDownload(blob, filename);
 
       onShowToast(`¡Master descargado: ${filename}!`, 'success');
@@ -138,7 +164,86 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // 2. Export All Raw Vocal Stems (Dry, Aligned from 00:00:00 at 24-bit / 48kHz)
+  const handlePublishToYouTube = async () => {
+    if (!engine || !beat) {
+      onShowToast('Carga un beat antes de publicar.', 'error');
+      return;
+    }
+    if (!youtubeStatus?.available) {
+      onShowToast(youtubeStatus?.error || 'La conexión de YouTube todavía no está lista.', 'error');
+      return;
+    }
+    if (!artistName.trim() || !youtubeTitle.trim() || !hasRights) {
+      onShowToast('Completa el artista, el título y confirma los derechos del audio y la imagen.', 'error');
+      return;
+    }
+    if (exportLock.current) return;
+    exportLock.current = true;
+    const uploadId = window.crypto.randomUUID();
+    try {
+      setYoutubeLoading(true);
+      setYoutubeResult(null);
+      setYoutubeProgress('Renderizando el master WAV…');
+      onShowToast('Preparando el master para el canal RGODBEAT…', 'info');
+      const blob = await engine.exportMix(tracks, { enableSidechain: sidechainEnabled });
+      triggerDownload(blob, `RGODBEAT_${cleanBeatTitle}_MASTER_24bit_${exportSampleRate}Hz${sidechainEnabled ? '_Sidechain' : ''}.wav`);
+      if (blob.size > (youtubeStatus.maxMasterBytes || 256_000_000)) throw new Error('El master supera el tamaño máximo para publicarlo. El WAV ya se descargó.');
+
+      if (coverImage) {
+        if (coverImage.size > (youtubeStatus.maxCoverBytes || 4_000_000)) throw new Error('La imagen debe pesar menos de 4 MB. El WAV ya se descargó.');
+        setYoutubeProgress('Guardando la imagen temporalmente en R2…');
+        const coverResponse = await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}`, {
+          method: 'PUT', headers: { 'content-type': coverImage.type || 'application/octet-stream' }, body: coverImage,
+        });
+        const coverResult = await coverResponse.json();
+        if (!coverResponse.ok) throw new Error(coverResult.error || 'No se pudo subir la imagen.');
+      }
+
+      setYoutubeProgress('Subiendo el master en partes seguras…');
+      const chunkBytes = 2_000_000;
+      const totalParts = Math.ceil(blob.size / chunkBytes);
+      if (totalParts < 1 || totalParts > 128) throw new Error('El master supera el tamaño máximo. El WAV ya se descargó.');
+      for (let index = 0; index < totalParts; index++) {
+        const start = index * chunkBytes;
+        const part = blob.slice(start, Math.min(start + chunkBytes, blob.size));
+        const response = await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=chunk&index=${index}`, {
+          method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: part,
+        });
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          throw new Error(result.error || `Falló la subida del fragmento ${index + 1}. El WAV ya se descargó.`);
+        }
+        const percent = Math.min(99, Math.round(((index + 1) / totalParts) * 100));
+        setYoutubeProgress(`Subiendo el master a R2… ${percent}%`);
+      }
+      const finish = await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=finish`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ parts: totalParts }),
+      });
+      const finishResult = await finish.json();
+      if (!finish.ok) throw new Error(finishResult.error || 'No se pudo completar el master en R2.');
+
+      setYoutubeProgress('Convirtiendo a vídeo y publicando en YouTube…');
+      const response = await fetch('/api/studio/youtube/publish', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ uploadId, artistName: artistName.trim(), title: youtubeTitle.trim(), beatTitle: beat.title, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo publicar en YouTube. El WAV ya se descargó.');
+      setYoutubeResult({ videoUrl: result.videoUrl, privacy: result.privacy });
+      setYoutubeProgress('');
+      onShowToast('Master publicado en el canal RGODBEAT.', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'No se pudo publicar en YouTube. El WAV ya se descargó.';
+      setYoutubeProgress('');
+      onShowToast(message, 'error');
+    } finally {
+      await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=delete`, { method: 'POST' }).catch(() => undefined);
+      exportLock.current = false;
+      setYoutubeLoading(false);
+    }
+  };
+
+  // 2. Export original float vocal stems, aligned from 00:00:00 at their recording rate
   const handleExportAllRawStems = async () => {
     if (!engine || !beat) return;
     if (!hasRecordings) {
@@ -150,7 +255,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     exportLock.current = true;
     try {
       setIsExportingRawStems(true);
-      onShowToast('Procesando stems de voces RAW (24-bit / 48kHz sin efectos, alineadas)...', 'info');
+      onShowToast('Procesando voces RAW sin efectos...', 'info');
 
       const stems = await engine.exportVocalRawStems(tracks);
       if (stems.length === 0) {
@@ -183,7 +288,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       const stems = await engine.exportVocalRawStems([track]);
       if (stems.length > 0) {
         triggerDownload(stems[0].blob, stems[0].filename);
-        onShowToast(`¡Stem RAW de ${track.name} exportado (24-bit/48k)!`, 'success');
+        onShowToast(`¡Stem RAW de ${track.name} exportado sin efectos!`, 'success');
       }
     } catch (err) {
       console.error(err);
@@ -206,7 +311,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     exportLock.current = true;
     try {
       setIsExportingWetStems(true);
-      onShowToast('Renderizando stems procesados (24-bit / 48kHz Wet)...', 'info');
+      onShowToast('Renderizando voces con efectos...', 'info');
 
       const stems = await engine.exportProcessedStems(tracks);
       for (const stem of stems) {
@@ -231,8 +336,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     exportLock.current = true;
     try {
       setIsExportingBeatStem(true);
-      onShowToast('Exportando pista del beat (24-bit / 48kHz)...', 'info');
-      const stem = await engine.exportBeatStem();
+      onShowToast('Exportando pista del beat...', 'info');
+      const stem = await engine.exportBeatStem(tracks);
       triggerDownload(stem.blob, stem.filename);
       onShowToast('¡Pista del Beat descargada!', 'success');
     } catch (err) {
@@ -326,8 +431,72 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold font-display shadow-lg shadow-amber-500/20 transition-all active:scale-[0.99] disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
-              <span>{isExportingMaster ? 'Renderizando Master (24-bit / 48kHz)...' : 'Descargar Master Mezclado (WAV)'}</span>
+              <span>{isExportingMaster ? 'Renderizando el master...' : 'Descargar Master Mezclado (WAV)'}</span>
             </button>
+
+            <div className="rounded-xl border border-white/10 bg-black/30 p-3.5 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Video className="w-4 h-4 text-red-400 shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">Publicar en RGODBEAT YouTube</p>
+                    <p className="text-[11px] text-zinc-400">Se crea un vídeo con la carátula y el master mezclado.</p>
+                  </div>
+                </div>
+                {youtubeStatus?.connected && <span className="text-[10px] text-emerald-300">Canal conectado</span>}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <label className="space-y-1 text-[11px] text-zinc-400">Artista
+                  <input value={artistName} maxLength={80} onChange={(event) => setArtistName(event.target.value)} disabled={isBusy} placeholder="Nombre del artista" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
+                </label>
+                <label className="space-y-1 text-[11px] text-zinc-400">Título de la canción
+                  <input value={youtubeTitle} maxLength={100} onChange={(event) => setYoutubeTitle(event.target.value)} disabled={isBusy} placeholder="Título" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
+                </label>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                <p className="text-[11px] text-zinc-400">Imagen: {coverImage?.name || (beat?.coverUrl ? 'carátula del beat' : 'carátula de RGODBEAT')}</p>
+                <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:border-amber-400">
+                  <ImagePlus className="h-3.5 w-3.5" /> Elegir otra imagen
+                  <input type="file" accept="image/jpeg,image/png,image/webp" disabled={isBusy} className="sr-only" onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 4_000_000) {
+                      onShowToast('La imagen debe pesar menos de 4 MB.', 'error');
+                      event.target.value = '';
+                      return;
+                    }
+                    setCoverImage(file);
+                  }} />
+                </label>
+                {coverImage && <button type="button" disabled={isBusy} onClick={() => setCoverImage(null)} className="w-fit text-[11px] text-zinc-500 hover:text-white">Usar carátula del beat</button>}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-zinc-300">
+                <label className="inline-flex items-center gap-2"><input type="radio" name="youtubePrivacy" checked={youtubePrivacy === 'unlisted'} onChange={() => setYoutubePrivacy('unlisted')} disabled={isBusy} /> No listado</label>
+                <label className="inline-flex items-center gap-2"><input type="radio" name="youtubePrivacy" checked={youtubePrivacy === 'public'} onChange={() => setYoutubePrivacy('public')} disabled={isBusy} /> Público</label>
+              </div>
+              <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-zinc-400">
+                <legend className="mb-1">¿Este vídeo está hecho para niños?</legend>
+                <label className="inline-flex items-center gap-2"><input type="radio" name="youtubeKids" checked={!madeForKids} onChange={() => setMadeForKids(false)} disabled={isBusy} /> No</label>
+                <label className="inline-flex items-center gap-2"><input type="radio" name="youtubeKids" checked={madeForKids} onChange={() => setMadeForKids(true)} disabled={isBusy} /> Sí</label>
+              </fieldset>
+              <label className="flex items-start gap-2 text-[10px] leading-4 text-zinc-400">
+                <input type="checkbox" checked={hasRights} onChange={(event) => setHasRights(event.target.checked)} disabled={isBusy} className="mt-0.5 accent-amber-400" />
+                Confirmo que tengo derechos para publicar esta grabación y la imagen, y que cumple las reglas de YouTube.
+              </label>
+
+              {youtubeStatus?.available ? (
+                <button type="button" onClick={handlePublishToYouTube} disabled={isBusy || !artistName.trim() || !youtubeTitle.trim() || !hasRights} className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45">
+                  {youtubeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
+                  {youtubeLoading ? (youtubeProgress || 'Publicando…') : 'Descargar WAV y publicar vídeo'}
+                </button>
+              ) : (
+                <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-100/80">{youtubeStatus?.error || (youtubeStatus ? 'El canal RGODBEAT aún no está conectado o falta terminar su configuración.' : 'Revisando la conexión del canal…')}</p>
+              )}
+              {youtubeResult && <a href={youtubeResult.videoUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-300 hover:text-emerald-200">Abrir vídeo ({youtubeResult.privacy === 'private' ? 'privado' : youtubeResult.privacy === 'unlisted' ? 'no listado' : 'público'}) <ExternalLink className="h-3 w-3" /></a>}
+            </div>
           </div>
 
           {/* OPTION 2: Voces RAW como Stems (Dry / Sin Efectos) */}
@@ -354,7 +523,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <Download className="w-3.5 h-3.5" />
                   <span>
                     {isExportingRawStems
-                      ? 'Exportando todos los stems RAW (24-bit / 48kHz)...'
+                      ? 'Exportando voces RAW...'
                       : `Descargar Todos los Stems RAW (${recordedTracks.length} pistas)`}
                   </span>
                 </button>
@@ -435,7 +604,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         {/* Footer */}
         <div className="px-5 py-3 border-t border-zinc-800 bg-[#0d0d10] flex items-center justify-between text-xs text-zinc-400">
           <span className="font-mono text-[11px] text-zinc-400">
-            Formato: <strong className="text-zinc-200">PCM WAV 24-bit / 48.0 kHz Estéreo</strong>
+            WAV · <strong className="text-zinc-200">Master 24-bit · Stems 32-bit float · {exportRateLabel}</strong>
           </span>
           <button
             onClick={onClose}

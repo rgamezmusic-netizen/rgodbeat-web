@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
             currency: "usd",
             product_data: {
               name: "Pase RGODBEAT Studio (30 Días Acceso Total)",
-              description: "Acceso ilimitado por 30 días al DAW móvil RGODBEAT Studio: grabación multipista vocal, Auto-Tune en tiempo real, efectos y exportación en WAV 24-bit.",
+              description: "Acceso ilimitado por 30 días al DAW móvil RGODBEAT Studio: grabación multipista vocal, Auto-Tune en tiempo real, efectos y exportación en WAV y stems vocales separados.",
               images: [`${origin}/images/studio-pass.png`],
             },
             unit_amount: 1000, // $10.00 USD

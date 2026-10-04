@@ -1338,6 +1338,13 @@ export class AudioEngine {
     return this.currentPlaybackPosition;
   }
 
+  /** Use the recorded audio's actual rate instead of forcing an export upgrade. */
+  public getExportSampleRate(vocalTracks: VocalTrack[] = []): number {
+    const recordedRate = vocalTracks.reduce((rate, track) =>
+      getTrackClips(track).reduce((maxRate, clip) => Math.max(maxRate, clip.buffer?.sampleRate ?? 0), rate), 0);
+    return recordedRate || this.beatData?.buffer.sampleRate || this.ctx?.sampleRate || 44100;
+  }
+
   public async exportMix(
     vocalTracks: VocalTrack[],
     options?: { sidechainDb?: number; enableSidechain?: boolean }
@@ -1346,8 +1353,8 @@ export class AudioEngine {
       throw new Error('No hay beat cargado para exportar');
     }
 
-    // 24-bit / 48.0 kHz PCM output
-    const TARGET_SAMPLE_RATE = 48000;
+    // Compact 24-bit master at the actual recorded sample rate.
+    const TARGET_SAMPLE_RATE = this.getExportSampleRate(vocalTracks);
     const duration = getRenderDuration(this.beatData.duration, vocalTracks, this.beatData.bpm);
     const length = Math.max(1, Math.ceil(TARGET_SAMPLE_RATE * duration));
 
@@ -1642,7 +1649,7 @@ export class AudioEngine {
 
   /**
    * Exports Raw Vocal Stems (Dry, without pitch correction or effects).
-   * Aligned exactly from 00:00:00 to the end of the song at 24-bit / 48.0 kHz.
+   * Aligned from 00:00:00 at the recording's sample rate, without PCM quantization.
    */
   public async exportVocalRawStems(
     vocalTracks: VocalTrack[]
@@ -1651,7 +1658,7 @@ export class AudioEngine {
       throw new Error('No hay beat cargado');
     }
 
-    const sampleRate = 48000;
+    const sampleRate = this.getExportSampleRate(vocalTracks);
     const duration = getRenderDuration(this.beatData.duration, vocalTracks, this.beatData.bpm);
     const length = Math.max(1, Math.ceil(sampleRate * duration));
     const cleanBeatTitle = this.beatData.title.replace(/[^a-zA-Z0-9]/g, '_');
@@ -1663,8 +1670,9 @@ export class AudioEngine {
 
       if (clips.length === 0 || !clips.some((c) => c.buffer)) continue;
 
-      // Render 24-bit / 48.0 kHz stereo raw dry stem
-      const offlineCtx = new OfflineAudioContext(2, length, sampleRate);
+      // Phone recordings stay mono; imported clips retain their channel count.
+      const channels = clips.reduce((max, clip) => Math.max(max, clip.buffer?.numberOfChannels ?? 1), 1);
+      const offlineCtx = new OfflineAudioContext(channels, length, sampleRate);
       const stemGain = offlineCtx.createGain();
       stemGain.gain.setValueAtTime(1.0, 0);
       stemGain.connect(offlineCtx.destination);
@@ -1678,9 +1686,9 @@ export class AudioEngine {
       }
 
       const renderedBuffer = await offlineCtx.startRendering();
-      const blob = audioBufferToWav(renderedBuffer, 24);
+      const blob = audioBufferToWav(renderedBuffer, 32);
       const cleanTrackName = track.name.replace(/[^a-zA-Z0-9]/g, '_');
-      const filename = `RGODBEAT_${cleanBeatTitle}_STEM_${cleanTrackName}_RAW_DRY_24bit_48k.wav`;
+      const filename = `RGODBEAT_${cleanBeatTitle}_STEM_${cleanTrackName}_RAW_DRY_32bit_float_${sampleRate}Hz.wav`;
 
       stems.push({
         trackId: track.id,
@@ -1694,7 +1702,7 @@ export class AudioEngine {
   }
 
   /**
-   * Exports Processed Vocal Stems (Wet, with Auto-Tune & FX chains applied in isolation) at 24-bit / 48.0 kHz.
+   * Exports processed vocal stems as float WAV to preserve FX headroom at the recorded rate.
    */
   public async exportProcessedStems(
     vocalTracks: VocalTrack[]
@@ -1703,7 +1711,7 @@ export class AudioEngine {
       throw new Error('No hay beat cargado');
     }
 
-    const sampleRate = 48000;
+    const sampleRate = this.getExportSampleRate(vocalTracks);
     const duration = getRenderDuration(this.beatData.duration, vocalTracks, this.beatData.bpm);
     const cleanBeatTitle = this.beatData.title.replace(/[^a-zA-Z0-9]/g, '_');
 
@@ -1836,9 +1844,9 @@ export class AudioEngine {
       }
 
       const renderedBuffer = await offlineCtx.startRendering();
-      const blob = audioBufferToWav(renderedBuffer, 24);
+      const blob = audioBufferToWav(renderedBuffer, 32);
       const cleanTrackName = track.name.replace(/[^a-zA-Z0-9]/g, '_');
-      const filename = `RGODBEAT_${cleanBeatTitle}_STEM_${cleanTrackName}_PROCESSED_WET_24bit_48k.wav`;
+      const filename = `RGODBEAT_${cleanBeatTitle}_STEM_${cleanTrackName}_PROCESSED_WET_32bit_float_${sampleRate}Hz.wav`;
 
       stems.push({
         trackId: track.id,
@@ -1852,14 +1860,14 @@ export class AudioEngine {
   }
 
   /**
-   * Exports the isolated Beat Stem with active Beat FX at 24-bit / 48.0 kHz.
+   * Exports the isolated beat with active FX as float WAV at the project rate.
    */
-  public async exportBeatStem(): Promise<{ name: string; filename: string; blob: Blob }> {
+  public async exportBeatStem(vocalTracks: VocalTrack[] = []): Promise<{ name: string; filename: string; blob: Blob }> {
     if (!this.beatData) {
       throw new Error('No hay beat cargado');
     }
 
-    const sampleRate = 48000;
+    const sampleRate = this.getExportSampleRate(vocalTracks);
     const duration = this.beatData.duration;
     const offlineCtx = new OfflineAudioContext(2, Math.max(1, Math.ceil(sampleRate * duration)), sampleRate);
 
@@ -1888,12 +1896,12 @@ export class AudioEngine {
     beatSource.start(0);
 
     const renderedBuffer = await offlineCtx.startRendering();
-    const blob = audioBufferToWav(renderedBuffer, 24);
+    const blob = audioBufferToWav(renderedBuffer, 32);
     const cleanBeatTitle = this.beatData.title.replace(/[^a-zA-Z0-9]/g, '_');
 
     return {
       name: 'Beat Instrumental',
-      filename: `RGODBEAT_${cleanBeatTitle}_STEM_BEAT_24bit_48k.wav`,
+      filename: `RGODBEAT_${cleanBeatTitle}_STEM_BEAT_32bit_float_${sampleRate}Hz.wav`,
       blob,
     };
   }

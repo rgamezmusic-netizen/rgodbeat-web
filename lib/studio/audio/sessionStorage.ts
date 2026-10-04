@@ -82,11 +82,13 @@ export function getSessionStorageKey(userIdentifier?: string | null): string {
 let dbInstance: IDBDatabase | null = null;
 const saveVersions = new Map<string, number>();
 const encodedBuffers = new WeakMap<AudioBuffer, Promise<ArrayBuffer>>();
-function encodeStoredAudio(buffer: AudioBuffer): Promise<ArrayBuffer> {
-  let result = encodedBuffers.get(buffer);
+const encodedVocalBuffers = new WeakMap<AudioBuffer, Promise<ArrayBuffer>>();
+function encodeStoredAudio(buffer: AudioBuffer, bitDepth: 24 | 32 = 24): Promise<ArrayBuffer> {
+  const cache = bitDepth === 32 ? encodedVocalBuffers : encodedBuffers;
+  let result = cache.get(buffer);
   if (!result) {
-    result = audioBufferToWav(buffer, 24).arrayBuffer();
-    encodedBuffers.set(buffer, result);
+    result = audioBufferToWav(buffer, bitDepth).arrayBuffer();
+    cache.set(buffer, result);
   }
   return result;
 }
@@ -222,7 +224,7 @@ export async function saveStudioSession(
         if (!clip.buffer) throw new Error('Falta el audio de una toma. No se pudo guardar el proyecto completo.');
         try {
           // Convert audio buffer to WAV binary ArrayBuffer for lossless persistent storage
-          const audioWavData = await encodeStoredAudio(clip.buffer);
+          const audioWavData = await encodeStoredAudio(clip.buffer, 32);
 
           storedClips.push({
             id: clip.id,
@@ -650,7 +652,7 @@ export async function exportProjectToDeviceFile(
       for (const clip of clipsToProcess) {
         if (!clip.buffer) throw new Error('Falta el audio de una toma. No se pudo exportar el proyecto completo.');
         try {
-          const buf = await encodeStoredAudio(clip.buffer);
+          const buf = await encodeStoredAudio(clip.buffer, 32);
           const base64 = await arrayBufferToBase64(buf);
           storedClips.push({
             id: clip.id,

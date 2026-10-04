@@ -124,6 +124,8 @@ export interface BeatData {
   duration: number;
   buffer: AudioBuffer;
   artworkGradient: string;
+  /** Public beat artwork used as the default background for Studio video exports. */
+  coverUrl?: string;
   waveformSample?: number[];
   isCustomUpload?: boolean;
   detectedBpm?: number;

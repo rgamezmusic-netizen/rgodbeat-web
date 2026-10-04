@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getStemRequestByTicketId } from "@/lib/stems/tickets";
-import { ExpectedStemGroup, EXPECTED_STEM_GROUPS, STEM_GROUP_FILE_NAMES } from "@/lib/stems/types";
+import { ExpectedStemGroup, EXPECTED_STEM_GROUPS } from "@/lib/stems/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getR2SignedDownloadUrl } from "@/lib/storage/r2";
 
@@ -39,12 +39,11 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const isAdmin = user?.email === "rgodbeat@gmail.com" || user?.email === "admin@rgodbeat.com";
     const isOwner = user?.email && ticket.customerEmail.toLowerCase() === user.email.toLowerCase();
 
-    // If unauthenticated or not owner and not admin, check if session matches customer
+    if (!user) {
+      return NextResponse.json({ error: "Inicia sesión para descargar tus stems." }, { status: 401 });
+    }
     if (!isAdmin && !isOwner) {
-      // In development / demo, if user is viewing their ticket, allow if authenticated
-      if (!user) {
-        return NextResponse.json({ error: "Unauthorized. Please log in to download stems." }, { status: 401 });
-      }
+      return NextResponse.json({ error: "No tienes acceso a estos stems." }, { status: 403 });
     }
 
     // 3. Status Check: Must be 'Delivered' (unless admin testing)
@@ -59,7 +58,6 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
     // 4. Resolve file from ticket's stemFiles
     const fileEntry = ticket.stemFiles?.[groupKey];
-    const defaultFileName = STEM_GROUP_FILE_NAMES[groupKey];
 
     if (fileEntry?.downloadUrl) {
       return NextResponse.redirect(fileEntry.downloadUrl);
@@ -83,30 +81,11 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // 5. If file hasn't been uploaded to S3/storage yet, return a clean WAV response
-    const sampleWavHeader = Buffer.from([
-      0x52, 0x49, 0x46, 0x46, // "RIFF"
-      0x24, 0x00, 0x00, 0x00, // file size - 8
-      0x57, 0x41, 0x56, 0x45, // "WAVE"
-      0x66, 0x6d, 0x74, 0x20, // "fmt "
-      0x10, 0x00, 0x00, 0x00, // chunk size 16
-      0x01, 0x00,             // audio format (1 = PCM)
-      0x02, 0x00,             // channels (2)
-      0x80, 0xbb, 0x00, 0x00, // sample rate 48000 Hz
-      0x00, 0xee, 0x02, 0x00, // byte rate (48000 * 2 * 3)
-      0x06, 0x00,             // block align
-      0x18, 0x00,             // bits per sample (24-bit)
-      0x64, 0x61, 0x74, 0x61, // "data"
-      0x00, 0x00, 0x00, 0x00  // data size (0 bytes silent sample)
-    ]);
-
-    return new NextResponse(sampleWavHeader, {
-      headers: {
-        "Content-Type": "audio/wav",
-        "Content-Disposition": `attachment; filename="${fileEntry?.fileName || defaultFileName}"`,
-        "Cache-Control": "private, no-cache",
-      },
-    });
+    return NextResponse.json({
+      error: storagePath
+        ? "No se pudo acceder al archivo de stems. Inténtalo de nuevo."
+        : "El archivo de stems todavía no está disponible. Contacta con RGODBEAT.",
+    }, { status: storagePath ? 503 : 409 });
   } catch (error: any) {
     console.error("[Stem Download Error]:", error);
     return NextResponse.json({ error: error?.message || "Failed to download stem file" }, { status: 500 });

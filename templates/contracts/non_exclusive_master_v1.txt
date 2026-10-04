@@ -59,12 +59,12 @@ Includes:
 WAV — $49
 Includes:
 * MP3 320 kbps
-* WAV 24-bit / 48 kHz
+* WAV 16-bit / 44.1 kHz
 
 UNLIMITED — $199
 Includes:
 * MP3 320 kbps
-* WAV 24-bit / 48 kHz
+* WAV 16-bit / 44.1 kHz
 * Right to request grouped stems
 * Additional remix rights described in Section 7
 

@@ -14,11 +14,11 @@ const TIER_METADATA: Record<
     ],
   },
   wav: {
-    format: "MP3 320 kbps + WAV 24-bit / 48 kHz",
+    format: "MP3 320 kbps + WAV 16-bit / 44.1 kHz",
     features: [
       "Non-Exclusive",
       "MP3 320 kbps",
-      "WAV 24-bit / 48 kHz",
+      "WAV 16-bit / 44.1 kHz",
     ],
     recommended: true,
   },

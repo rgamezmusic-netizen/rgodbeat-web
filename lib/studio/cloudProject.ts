@@ -9,6 +9,7 @@ let queue: Promise<unknown> = Promise.resolve();
 let pendingSave: { args: Parameters<typeof uploadProject>; owner: string | null; resolve: ((result: SaveResult) => void)[] } | null = null;
 let draining = false;
 const encoded = new WeakMap<AudioBuffer, Promise<{ blob: Blob; hash: string }>>();
+const encodedVocals = new WeakMap<AudioBuffer, Promise<{ blob: Blob; hash: string }>>();
 const CHUNK_BYTES = 2_000_000;
 const STAGED_UPLOAD_THRESHOLD = 2_500_000;
 
@@ -52,15 +53,16 @@ export function setCloudProjectUser(email: string | null) {
   if (cloudOwner === next) return;
   cloudOwner = next; revision = undefined; knownAudio = new Set();
 }
-function encode(buffer: AudioBuffer) {
-  let result = encoded.get(buffer);
+function encode(buffer: AudioBuffer, bitDepth: 24 | 32 = 24) {
+  const cache = bitDepth === 32 ? encodedVocals : encoded;
+  let result = cache.get(buffer);
   if (!result) {
     result = (async () => {
-      const blob = audioBufferToWav(buffer, 24);
+      const blob = audioBufferToWav(buffer, bitDepth);
       const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
       return { blob, hash: [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('') };
     })();
-    encoded.set(buffer, result);
+    cache.set(buffer, result);
   }
   return result;
 }
@@ -237,7 +239,7 @@ async function uploadProject(
       for (const clip of clipsToProcess) {
         if (!clip.buffer) continue;
         try {
-          const { blob: wavBlob, hash } = await encode(clip.buffer);
+          const { blob: wavBlob, hash } = await encode(clip.buffer, 32);
           nextHashes.add(hash);
           const formKey = `clip_${track.id}_${clip.id}`;
           if (!confirmedAudio.has(hash)) {

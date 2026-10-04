@@ -91,7 +91,7 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
   } else if (tier === "wav") {
     conceptTitle = "LICENCIA PREMIUM WAV";
     conceptExplanation =
-      "Licencia no exclusiva que incluye archivo MP3 320 kbps y WAV Master sin comprimir de 24-bit / 48 kHz. Sujeta a los términos del Contrato Oficial de Licencia RGODBEAT.";
+      "Licencia no exclusiva que incluye archivo MP3 320 kbps y WAV Master sin comprimir de 16-bit / 44.1 kHz. Sujeta a los términos del Contrato Oficial de Licencia RGODBEAT.";
   } else {
     conceptTitle = "LICENCIA OFICIAL MP3";
     conceptExplanation =
