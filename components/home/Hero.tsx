@@ -21,7 +21,7 @@ export function Hero() {
             href="/ranking"
             variant="primary"
             size="lg"
-            className="w-full sm:w-auto"
+            className={`w-full min-h-[72px] min-w-[220px] px-10 py-5 text-base sm:w-auto sm:text-lg ${styles.topActionButton}`}
           >
             TOP 23
           </Button>
@@ -29,7 +29,7 @@ export function Hero() {
             href="/beats"
             variant="secondary"
             size="lg"
-            className="w-full sm:w-auto"
+            className={`w-full min-h-[72px] min-w-[220px] px-10 py-5 text-base sm:w-auto sm:text-lg ${styles.catalogActionButton}`}
           >
             CATÁLOGO
           </Button>

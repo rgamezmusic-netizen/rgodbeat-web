@@ -1,23 +1,12 @@
 .padField {
-  --pointer-x: -400px;
-  --pointer-y: -400px;
   position: absolute;
   z-index: 0;
   inset: 0;
   overflow: hidden;
-  pointer-events: auto;
-  background:
-    radial-gradient(ellipse at 50% 44%, rgba(255, 255, 255, 0.045), transparent 54%),
-    radial-gradient(ellipse at 50% 68%, rgba(246, 125, 43, 0.075), transparent 44%);
-}
-
-.padField::before {
-  position: absolute;
-  inset: 0;
-  content: "";
   pointer-events: none;
-  background: radial-gradient(390px circle at var(--pointer-x) var(--pointer-y), rgba(255, 164, 82, 0.12), transparent 72%);
-  transition: background-position 140ms ease-out;
+  background:
+    radial-gradient(ellipse at 50% 44%, rgba(255, 255, 255, 0.04), transparent 54%),
+    radial-gradient(ellipse at 50% 68%, rgba(255, 255, 255, 0.018), transparent 44%);
 }
 
 .padGrid {
@@ -39,65 +28,39 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: clamp(7px, 1.3vw, 15px);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.018));
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 9px 25px rgba(0, 0, 0, 0.16);
-  transition: border-color 180ms ease, transform 220ms ease, background-color 180ms ease;
+  transition: none;
 }
 
-.ambientPad::after {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(circle at 50% 45%, #ff9b46 0%, #f45a17 54%, transparent 100%);
-  box-shadow: inset 0 0 14px rgba(255, 190, 120, 0.7), 0 0 25px rgba(255, 112, 35, 0.85);
-  content: "";
-  opacity: calc(0.08 + var(--energy, 0));
-  transition: opacity 100ms linear;
+.topActionButton,
+.catalogActionButton {
+  animation: ctaBlink 5.3s steps(1, end) infinite;
+  will-change: opacity, box-shadow;
 }
 
-.ambientPad:nth-child(5n + 2)::after,
-.ambientPad:nth-child(7n)::after {
-  animation: idlePulse 3.8s ease-in-out infinite;
-  animation-delay: calc(var(--pad-order, 0) * -180ms);
-}
+.topActionButton { animation-delay: -1.1s; }
+.catalogActionButton { animation-duration: 6.7s; animation-delay: -3.8s; }
 
-.padField[data-pointer-active="true"] .ambientPad::after {
+.topActionButton:hover,
+.topActionButton:focus-visible,
+.catalogActionButton:hover,
+.catalogActionButton:focus-visible {
   animation: none;
+  opacity: 1;
+  filter: brightness(1.08);
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.24);
 }
 
-.ambientPad:nth-child(1) { --pad-order: 1; }
-.ambientPad:nth-child(2) { --pad-order: 2; }
-.ambientPad:nth-child(3) { --pad-order: 3; }
-.ambientPad:nth-child(4) { --pad-order: 4; }
-.ambientPad:nth-child(5) { --pad-order: 5; }
-.ambientPad:nth-child(6) { --pad-order: 6; }
-.ambientPad:nth-child(7) { --pad-order: 7; }
-.ambientPad:nth-child(8) { --pad-order: 8; }
-.ambientPad:nth-child(9) { --pad-order: 9; }
-.ambientPad:nth-child(10) { --pad-order: 10; }
-.ambientPad:nth-child(11) { --pad-order: 11; }
-.ambientPad:nth-child(12) { --pad-order: 12; }
-.ambientPad:nth-child(13) { --pad-order: 13; }
-.ambientPad:nth-child(14) { --pad-order: 14; }
-.ambientPad:nth-child(15) { --pad-order: 15; }
-.ambientPad:nth-child(16) { --pad-order: 16; }
-
-.fieldGlow {
-  position: absolute;
-  top: 48%;
-  left: 50%;
-  width: min(64vw, 520px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(245, 114, 42, 0.1), transparent 68%);
-  filter: blur(32px);
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-}
-
-@keyframes idlePulse {
-  0%, 100% { opacity: 0.09; }
-  50% { opacity: 0.48; }
+@keyframes ctaBlink {
+  0%, 7%, 21%, 27%, 54%, 61%, 88%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 23px rgba(255, 255, 255, 0.19);
+  }
+  8%, 20%, 28%, 53%, 62%, 87% {
+    opacity: 0.68;
+    box-shadow: 0 0 0 rgba(255, 255, 255, 0);
+  }
 }
 
 @media (max-width: 640px) {
@@ -113,11 +76,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ambientPad::after {
-    animation: none;
-  }
-
-  .ambientPad {
-    transition: none;
-  }
+  .topActionButton,
+  .catalogActionButton { animation: none; }
 }
