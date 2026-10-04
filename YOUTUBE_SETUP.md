@@ -2,11 +2,11 @@
 
 La conexión OAuth queda en el servidor y el token de renovación se cifra antes de guardarlo en Supabase. No pegues claves en el chat, el código del navegador ni GitHub.
 
-## 1. Crear el cliente de Google
+## 1. Crear el cliente de Google (solo si todavía no existe)
 
 En Google Cloud Console, crea o selecciona un proyecto, habilita **YouTube Data API v3** y configura la pantalla OAuth como aplicación web. Agrega el dominio de producción como origen autorizado y esta URI de redirección exacta:
 
-`https://TU-DOMINIO/api/admin/youtube/callback`
+`https://www.rgodbeat.com/api/admin/youtube/callback`
 
 Descarga/guarda el Client ID y Client Secret en Vercel, en Preview y Production según corresponda. Autoriza la cuenta propietaria del canal con `YOUTUBE_CHANNEL_ADMIN_EMAIL`.
 
@@ -18,14 +18,25 @@ Descarga/guarda el Client ID y Client Secret en Vercel, en Preview y Production 
 - `YOUTUBE_CHANNEL_ADMIN_EMAIL` (correo exacto de la cuenta autorizada)
 - `YOUTUBE_CHANNEL_ID` (ID exacto del canal dedicado; evita conectar por error otro canal del mismo Google account)
 - `YOUTUBE_TOKEN_ENCRYPTION_KEY` (32 bytes aleatorios en hexadecimal, 64 caracteres)
+- `CLOUDFLARE_R2_ACCOUNT_ID` (ID de cuenta usado por la conexión S3 de R2)
 - `CLOUDFLARE_R2_YOUTUBE_BUCKET_NAME` (nombre de un bucket R2 privado dedicado a temporales)
 - `CLOUDFLARE_R2_YOUTUBE_ACCESS_KEY_ID` y `CLOUDFLARE_R2_YOUTUBE_SECRET_ACCESS_KEY` (credenciales S3 con acceso solo a ese bucket)
 
 Genera la clave de cifrado localmente con `openssl rand -hex 32`. No la agregues a Git. Configura las mismas variables en `.env.local` para desarrollo.
 
+### Si ya hiciste estos pasos
+
+La pantalla de estado lee las **variables del despliegue de producción que está corriendo**. Si acabas de guardarlas en Vercel, esta pantalla no refleja el cambio hasta que termine un despliegue nuevo de Production. En Vercel revisa primero el entorno de cada variable; no vuelvas a crear el cliente de Google si ya existe.
+
+La migración `20261003000001_youtube_channel.sql` figura lista en el panel actual: **no vuelvas a ejecutarla**.
+
+Las credenciales de R2 que usa la tienda y que guardaste como `CLOUDFLARE_R2_ACCESS_KEY_ID` / `CLOUDFLARE_R2_SECRET_ACCESS_KEY` son distintas de la clave temporal y restringida que pide YouTube. YouTube usa el bucket privado `rgodbeat-youtube-temp` y sus propias credenciales `CLOUDFLARE_R2_YOUTUBE_ACCESS_KEY_ID` / `CLOUDFLARE_R2_YOUTUBE_SECRET_ACCESS_KEY`; el nombre va en `CLOUDFLARE_R2_YOUTUBE_BUCKET_NAME`. El R2 actual de la tienda respondió a una consulta de lectura desde el Mac, pero no reemplaza esas credenciales dedicadas en Production.
+
+El proyecto ya trae `ffmpeg-static` y `next.config.ts` empaqueta el binario. El estado también se comprueba desde `/admin/youtube` y desde la ruta de estado de Studio; se debe incluir en las tres funciones de Vercel para que todas comprueben el mismo archivo. Al cambiar `next.config.ts` se requiere desplegar otra vez Production.
+
 ## 3. Base de datos y autorización
 
-Ejecuta `supabase/migrations/20261003000001_youtube_channel.sql` en Supabase. Luego abre `/admin/youtube` con la cuenta cuyo correo coincide con `YOUTUBE_CHANNEL_ADMIN_EMAIL` y conecta el canal.
+La migración `supabase/migrations/20261003000001_youtube_channel.sql` ya figura lista en el panel de producción revisado el 2026-10-04; no la ejecutes de nuevo. Cuando OAuth esté configurado y Production se haya vuelto a desplegar, abre `/admin/youtube` con la cuenta cuyo correo coincide con `YOUTUBE_CHANNEL_ADMIN_EMAIL` y conecta el canal.
 
 ## Exportar desde el Studio
 
@@ -37,7 +48,7 @@ Publica la pantalla de consentimiento OAuth de Google como **Producción**: en e
 
 ## Prueba inicial desde iPhone
 
-1. Configura las variables en el entorno **Production** de Vercel y vuelve a desplegar. La URI de OAuth debe usar el dominio publicado exacto: `https://TU-DOMINIO/api/admin/youtube/callback`.
+1. Añade solo las variables que realmente falten al entorno **Production** de Vercel y despliega de nuevo. La URI de OAuth debe usar el dominio publicado exacto: `https://www.rgodbeat.com/api/admin/youtube/callback`.
 2. Entra a `/admin/youtube` con `YOUTUBE_CHANNEL_ADMIN_EMAIL`. El panel muestra si OAuth, la migración, el bucket privado, FFmpeg y la autorización del canal están listos. Ejecuta ahí **Comprobar conexión R2**.
 3. En el iPhone, abre el dominio publicado en Safari e inicia sesión con una cuenta que tenga acceso al Studio. Abre el respaldo de cuenta si está guardado ahí; si las tomas solo están en otro dispositivo, pasa el archivo `.rgodbeat` a Archivos en el iPhone e impórtalo en el Studio.
 4. En Exportar, publica primero como **No listado**. Revisa el WAV descargado y el vídeo de YouTube. El título sugerido combina el nombre artístico y el beat; el título y la descripción se pueden editar. La descripción automática solo incluye esos nombres y los datos disponibles del beat. La página indica los bytes usados y bloquea la publicación si se supera el límite de YouTube.
