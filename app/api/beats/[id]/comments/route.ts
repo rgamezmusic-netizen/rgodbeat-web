@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/server';
+import { isSiteAdmin } from '@/lib/auth/admin';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { isUUID, validateComment } from '@/lib/ranking/comments';
 import type { Database } from '@/types/database';
@@ -8,8 +9,7 @@ export const dynamic = 'force-dynamic';
 type CommentRow = Database['public']['Tables']['beat_comments']['Row'];
 type Context = { params: Promise<{ id: string }> };
 type User = NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
-const adminEmails = new Set(['admin@rgodbeat.com', 'rgamezmusic@gmail.com', 'rgodbeat@gmail.com']);
-const isAdmin = (user: User | null) => !!user && (user.app_metadata?.role === 'admin' || adminEmails.has(user.email?.toLowerCase() ?? ''));
+const isAdmin = (user: User | null) => isSiteAdmin(user);
 const serialize = (row: CommentRow, user: User | null) => ({ id: row.id, authorName: row.author_name,
   body: row.body, createdAt: row.created_at, canDelete: !!user && (row.author_id === user.id || isAdmin(user)) });
 const unavailable = () => NextResponse.json({ error: 'No se pudieron cargar los comentarios. Inténtalo más tarde.', code: 'COMMENTS_UNAVAILABLE' }, { status: 503 });

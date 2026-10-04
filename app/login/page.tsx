@@ -4,13 +4,8 @@ import React, { useState, useTransition, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signInWithEmail, signUpWithEmail } from "@/lib/auth/client";
+import { isSiteAdmin } from "@/lib/auth/admin";
 import { Button } from "@/components/ui/Button";
-
-const ADMIN_EMAILS = [
-  "admin@rgodbeat.com",
-  "rgamezmusic@gmail.com",
-  "rgodbeat@gmail.com",
-];
 
 function AuthForm() {
   const searchParams = useSearchParams();
@@ -45,8 +40,8 @@ function AuthForm() {
       }
 
       // Check if user is admin
-      const isAdmin = user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
-      const destination = redirectParam || (isAdmin ? "/admin" : "/account");
+      const admin = isSiteAdmin(user);
+      const destination = redirectParam || (admin ? "/admin" : "/account");
 
       // Full window redirect guarantees cookies sync with Supabase SSR middleware
       window.location.href = destination;
@@ -84,8 +79,8 @@ function AuthForm() {
 
       if (session && user) {
         // Automatically signed in
-        const isAdmin = user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
-        const destination = redirectParam || (isAdmin ? "/admin" : "/account");
+        const admin = isSiteAdmin(user);
+        const destination = redirectParam || (admin ? "/admin" : "/account");
         window.location.href = destination;
       } else {
         // Fallback if session creation required manual sign in

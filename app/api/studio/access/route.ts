@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
+import { isSiteAdmin } from "@/lib/auth/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -26,14 +27,7 @@ export async function GET(req: NextRequest) {
       .eq("email", user.email)
       .maybeSingle();
 
-    const ADMIN_EMAILS = [
-      "admin@rgodbeat.com",
-      "rgamezmusic@gmail.com",
-      "rgodbeat@gmail.com",
-    ];
-    const isAdmin =
-      user.user_metadata?.role === "admin" ||
-      ADMIN_EMAILS.includes(user.email.toLowerCase());
+    const isAdmin = isSiteAdmin(user);
 
     const accessUntil = customer?.studio_access_until ? new Date(customer.studio_access_until) : null;
     const now = new Date();

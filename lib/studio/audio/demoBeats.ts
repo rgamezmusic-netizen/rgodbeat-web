@@ -263,6 +263,7 @@ export async function createDemoBeat(
     id: `demo-${style}`,
     title,
     producer: 'RGODBEAT',
+    genre: style === 'rnb' ? 'R&B' : style === 'drill' ? 'Drill' : 'Trap',
     bpm,
     key,
     scale: style === 'rnb' ? 'Minor Neo-Soul' : style === 'drill' ? 'Dark Drill' : 'Trap Anthem',

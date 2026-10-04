@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type PublishInput = { uploadId?: string; artistName?: string; title?: string; beatTitle?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null };
+type PublishInput = { uploadId?: string; artistName?: string; beatTitle?: string; beatGenre?: string; beatBpm?: number; beatKey?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null };
 type YouTubeInsertResponse = { id?: string; status?: { privacyStatus?: "private" | "unlisted" | "public" }; error?: { errors?: Array<{ reason?: string }> } };
 
 function jobsTable() { return (createAdminClient() as any).from("youtube_export_jobs"); }
@@ -27,6 +27,32 @@ function stagingPrefix(userId: string, uploadId: string) { return `youtube/expor
 function failCode(value: string | undefined) {
   const accepted = new Set(["quotaExceeded", "dailyLimitExceeded", "forbidden", "uploadLimitExceeded", "invalidVideoMetadata", "processingFailed", "renderFailed", "uploadFailed", "channelAuthorization"]);
   return value && accepted.has(value) ? value : "uploadFailed";
+}
+
+function cleanMetadataText(value: string, maxLength: number) {
+  return value.replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function buildVideoMetadata(input: { artistName: string; beatTitle: string; beatGenre: string; beatBpm: number; beatKey: string }) {
+  const title = `TOP 23 RGODBEAT ft. ${input.artistName}`;
+  const genreLine = input.beatGenre ? `Estilo: ${input.beatGenre}` : "Categoría: Música";
+  const description = [
+    `${input.artistName} presenta una nueva grabación en RGODBEAT.`,
+    "Grabado y mezclado en RGODBEAT Studio.",
+    "",
+    `Beat: ${input.beatTitle}`,
+    genreLine,
+    input.beatBpm ? `Tempo: ${input.beatBpm} BPM` : "",
+    input.beatKey ? `Tonalidad: ${input.beatKey}` : "",
+    "",
+    "#RGODBEAT #TOP23",
+  ].filter(Boolean).join("\n");
+  const tags = [...new Set([
+    "RGODBEAT", "TOP 23", "RGODBEAT Studio", "Música",
+    input.beatGenre, input.artistName, input.beatTitle,
+    input.beatBpm ? `${input.beatBpm} BPM` : "", input.beatKey,
+  ].map((tag) => cleanMetadataText(tag, 60)).filter(Boolean))];
+  return { title, description, tags, categoryId: "10", defaultLanguage: "es" };
 }
 
 async function downloadR2File(key: string, destination: string) {
@@ -99,12 +125,15 @@ export async function POST(request: NextRequest) {
   if (!access.user) return NextResponse.json({ error: access.error }, { status: access.status });
   const input = await request.json().catch(() => ({})) as PublishInput;
   const uploadId = input.uploadId || "";
-  const artistName = input.artistName?.trim().replace(/\s+/g, " ") || "";
-  const title = input.title?.trim().replace(/\s+/g, " ") || "";
-  const beatTitle = input.beatTitle?.trim().replace(/\s+/g, " ").slice(0, 100) || "Beat RGODBEAT";
+  const artistName = cleanMetadataText(input.artistName || "", 80);
+  const title = `TOP 23 RGODBEAT ft. ${artistName}`;
+  const beatTitle = cleanMetadataText(input.beatTitle || "Beat RGODBEAT", 100) || "Beat RGODBEAT";
+  const beatGenre = cleanMetadataText(input.beatGenre || "", 40);
+  const beatBpm = Number.isInteger(input.beatBpm) && input.beatBpm! >= 30 && input.beatBpm! <= 300 ? input.beatBpm! : 0;
+  const beatKey = cleanMetadataText(input.beatKey || "", 24);
   const privacy = input.privacy === "public" ? "public" : "unlisted";
-  if (!UUID.test(uploadId) || artistName.length < 1 || artistName.length > 80 || title.length < 1 || title.length > 100 || input.hasRights !== true || typeof input.madeForKids !== "boolean") {
-    return NextResponse.json({ error: "Completa artista, título, público infantil y confirma los derechos del audio e imagen." }, { status: 400 });
+  if (!UUID.test(uploadId) || artistName.length < 1 || title.length > 100 || input.hasRights !== true || typeof input.madeForKids !== "boolean") {
+    return NextResponse.json({ error: "Escribe el nombre artístico y confirma los derechos del audio y la imagen y el público del vídeo." }, { status: 400 });
   }
   const config = youtubeConfig();
   if (!config.configured || !config.validKey || !ffmpegPath || !isYouTubeR2Configured()) return NextResponse.json({ error: "La publicación de YouTube todavía no está configurada." }, { status: 503 });
@@ -141,12 +170,11 @@ export async function POST(request: NextRequest) {
     ], directory);
     const video = await readFile(videoPath);
     const accessToken = await refreshYouTubeAccessToken();
-    const snippetTitle = `${artistName} - ${title}`.slice(0, 100);
-    const description = `${artistName} presenta "${title}". Creado en RGODBEAT Studio con el beat "${beatTitle}".\n\n#RGODBEAT`;
+    const metadata = buildVideoMetadata({ artistName, beatTitle, beatGenre, beatBpm, beatKey });
     const start = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status&notifySubscribers=false", {
       method: "POST", cache: "no-store",
       headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json; charset=UTF-8", "x-upload-content-type": "video/mp4", "x-upload-content-length": String(video.length) },
-      body: JSON.stringify({ snippet: { title: snippetTitle, description, categoryId: "10", defaultLanguage: "es" }, status: { privacyStatus: privacy, selfDeclaredMadeForKids: input.madeForKids } }),
+      body: JSON.stringify({ snippet: metadata, status: { privacyStatus: privacy, selfDeclaredMadeForKids: input.madeForKids } }),
       signal: AbortSignal.timeout(25_000),
     });
     const uploadUrl = start.headers.get("location");

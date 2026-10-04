@@ -25,7 +25,7 @@ export function translateAuthError(errorMessage?: string | null): string {
     return "Correo o contraseña incorrectos. Verifica tus datos e inténtalo de nuevo.";
   }
   if (msg.includes("email not confirmed") || msg.includes("email_not_confirmed")) {
-    return "Tu correo electrónico aún no ha sido confirmado. Ya lo hemos activado automáticamente, por favor vuelve a ingresar.";
+    return "Tu correo electrónico aún no ha sido confirmado. Revisa tu invitación o solicita ayuda para verificar la cuenta.";
   }
   if (msg.includes("rate limit") || msg.includes("over_email_send_rate_limit")) {
     return "Demasiados intentos en poco tiempo. Por favor espera unos minutos.";
@@ -111,7 +111,6 @@ export async function signUpWithEmail(
 
 /**
  * Sign in using email and password on the client.
- * Features automatic recovery if the account was previously unconfirmed.
  */
 export async function signInWithEmail(
   email: string,
@@ -120,36 +119,10 @@ export async function signInWithEmail(
   const cleanEmail = email.trim().toLowerCase();
   const supabase = createClient();
 
-  let { data, error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: cleanEmail,
     password,
   });
-
-  // Auto-recovery: If email is unconfirmed, confirm it on the server and retry
-  if (error && (error.message?.toLowerCase().includes("not confirmed") || error.code === "email_not_confirmed")) {
-    try {
-      console.log("[signInWithEmail] Unconfirmed email detected, auto-confirming on server...");
-      const confirmRes = await fetch("/api/auth/confirm-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail }),
-      });
-
-      if (confirmRes.ok) {
-        // Retry sign in
-        const retry = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
-        if (!retry.error) {
-          data = retry.data;
-          error = null;
-        }
-      }
-    } catch (confirmErr) {
-      console.warn("[signInWithEmail] Auto-confirm attempt failed:", confirmErr);
-    }
-  }
 
   if (error) {
     return {

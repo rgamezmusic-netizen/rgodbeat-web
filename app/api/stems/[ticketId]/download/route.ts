@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
+import { isSiteAdmin } from "@/lib/auth/admin";
 import { getStemRequestByTicketId } from "@/lib/stems/tickets";
 import { ExpectedStemGroup, EXPECTED_STEM_GROUPS } from "@/lib/stems/types";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
     // 2. Authentication and Authorization
     const user = await getCurrentUser();
-    const isAdmin = user?.email === "rgodbeat@gmail.com" || user?.email === "admin@rgodbeat.com";
+    const isAdmin = isSiteAdmin(user);
     const isOwner = user?.email && ticket.customerEmail.toLowerCase() === user.email.toLowerCase();
 
     if (!user) {

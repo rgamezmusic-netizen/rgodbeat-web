@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isSiteAdmin } from "@/lib/auth/admin";
 import { User } from "@supabase/supabase-js";
 
 /**
@@ -36,6 +37,7 @@ export async function requireAdminAuth(redirectPath = "/admin"): Promise<User> {
   if (!user) {
     redirect(`/login?redirect=${encodeURIComponent(redirectPath)}`);
   }
+  if (!isSiteAdmin(user)) redirect("/account");
 
   return user;
 }

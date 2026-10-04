@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
+import { isSiteAdmin } from "@/lib/auth/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { replaceCloudProject, ProjectConflict, type CloudMetadata, type StagedAudio } from "@/lib/studio/server/projectRepository";
 import { r2ProjectStorage } from "@/lib/studio/server/r2ProjectStorage";
 
 export const dynamic = "force-dynamic";
-
-const ADMIN_EMAILS = [
-  "admin@rgodbeat.com",
-  "rgamezmusic@gmail.com",
-  "rgodbeat@gmail.com",
-];
 
 // This optional table is not present in the generated database schema.
 function projectIndex(client: ReturnType<typeof createAdminClient>) {
@@ -25,9 +20,7 @@ async function checkUserAccess(user: NonNullable<Awaited<ReturnType<typeof getCu
     return { isLoggedIn: false, hasActivePass: false, daysRemaining: 0, isAdmin: false };
   }
 
-  const isAdmin =
-    user.user_metadata?.role === "admin" ||
-    ADMIN_EMAILS.includes(user.email.toLowerCase());
+  const isAdmin = isSiteAdmin(user);
 
   const supabase = createAdminClient();
   const { data: customer } = await supabase

@@ -13,6 +13,7 @@ export interface StoredBeatItem {
   id: string;
   title: string;
   producer?: string;
+  genre?: string;
   bpm: number;
   key: string;
   scale: string;
@@ -111,6 +112,7 @@ export async function saveBeatToDatabase(
       id: beat.id,
       title: beat.title,
       producer: beat.producer || 'Custom Beat',
+      genre: beat.genre,
       bpm: beat.bpm,
       key: beat.key,
       scale: beat.scale,
@@ -169,6 +171,7 @@ export async function getAllSavedBeats(audioCtx: AudioContext): Promise<BeatData
           id: item.id,
           title: item.title,
           producer: item.producer,
+          genre: item.genre,
           bpm: item.bpm,
           key: item.key,
           scale: item.scale,

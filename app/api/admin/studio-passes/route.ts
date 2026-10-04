@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
+import { isSiteAdmin } from "@/lib/auth/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grantStudioAccess } from "@/lib/commerce/fulfillment";
-
-const ADMIN_EMAILS = [
-  "admin@rgodbeat.com",
-  "rgamezmusic@gmail.com",
-  "rgodbeat@gmail.com",
-];
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.email || !ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+    if (!isSiteAdmin(user)) {
       return NextResponse.json({ error: "No autorizado." }, { status: 403 });
     }
 
@@ -128,7 +123,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.email || !ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+    if (!isSiteAdmin(user)) {
       return NextResponse.json({ error: "No autorizado. Solo los administradores pueden otorgar pases." }, { status: 403 });
     }
 

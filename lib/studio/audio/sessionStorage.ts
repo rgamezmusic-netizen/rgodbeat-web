@@ -36,6 +36,7 @@ export interface StoredBeatData {
   id: string;
   title: string;
   producer?: string;
+  genre?: string;
   bpm: number;
   key: string;
   scale: string;
@@ -184,6 +185,7 @@ export async function saveStudioSession(
         id: beat.id,
         title: beat.title,
         producer: beat.producer,
+        genre: beat.genre,
         bpm: beat.bpm,
         key: beat.key,
         scale: beat.scale,
@@ -329,6 +331,7 @@ export async function saveLastProjectBeat(
       id: beat.id,
       title: beat.title,
       producer: beat.producer,
+      genre: beat.genre,
       bpm: beat.bpm,
       key: beat.key,
       scale: beat.scale,
@@ -427,6 +430,7 @@ export async function restoreLastStudioSession(
           id: session.beatData.id,
           title: session.beatData.title,
           producer: session.beatData.producer || 'Custom Beat',
+          genre: session.beatData.genre,
           bpm: session.beatData.bpm,
           key: session.beatData.key,
           scale: session.beatData.scale,
@@ -577,6 +581,7 @@ export interface RGODBeatExportFile {
       id: string;
       title: string;
       producer?: string;
+      genre?: string;
       bpm: number;
       key: string;
       scale: string;
@@ -692,6 +697,7 @@ export async function exportProjectToDeviceFile(
         id: beat.id,
         title: beat.title,
         producer: beat.producer,
+        genre: beat.genre,
         bpm: beat.bpm,
         key: beat.key,
         scale: beat.scale,
@@ -779,6 +785,7 @@ export async function importProjectFromDeviceFile(
           id: s.beatData.id,
           title: s.beatData.title,
           producer: s.beatData.producer || 'Custom Beat',
+          genre: s.beatData.genre,
           bpm: s.beatData.bpm,
           key: s.beatData.key,
           scale: s.beatData.scale,

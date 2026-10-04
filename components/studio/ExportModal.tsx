@@ -36,7 +36,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [youtubeLoading, setYoutubeLoading] = useState(false);
   const [youtubeProgress, setYoutubeProgress] = useState('');
   const [artistName, setArtistName] = useState('');
-  const [youtubeTitle, setYoutubeTitle] = useState(beat?.title || '');
   const [youtubePrivacy, setYoutubePrivacy] = useState<'unlisted' | 'public'>('unlisted');
   const [madeForKids, setMadeForKids] = useState(false);
   const [hasRights, setHasRights] = useState(false);
@@ -54,10 +53,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       .catch(() => { if (active) setYoutubeStatus({ available: false, connected: false }); });
     return () => { active = false; };
   }, [isOpen, isDemo]);
-
-  useEffect(() => {
-    if (beat) setYoutubeTitle(beat.title);
-  }, [beat?.id]);
 
   if (!isOpen) return null;
 
@@ -173,8 +168,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       onShowToast(youtubeStatus?.error || 'La conexión de YouTube todavía no está lista.', 'error');
       return;
     }
-    if (!artistName.trim() || !youtubeTitle.trim() || !hasRights) {
-      onShowToast('Completa el artista, el título y confirma los derechos del audio y la imagen.', 'error');
+    if (!artistName.trim() || !hasRights) {
+      onShowToast('Escribe el nombre artístico y confirma los derechos del audio y la imagen.', 'error');
       return;
     }
     if (exportLock.current) return;
@@ -225,7 +220,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       setYoutubeProgress('Convirtiendo a vídeo y publicando en YouTube…');
       const response = await fetch('/api/studio/youtube/publish', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ uploadId, artistName: artistName.trim(), title: youtubeTitle.trim(), beatTitle: beat.title, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null }),
+        body: JSON.stringify({ uploadId, artistName: artistName.trim(), beatTitle: beat.title, beatGenre: beat.genre, beatBpm: beat.bpm, beatKey: beat.key, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'No se pudo publicar en YouTube. El WAV ya se descargó.');
@@ -446,13 +441,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 {youtubeStatus?.connected && <span className="text-[10px] text-emerald-300">Canal conectado</span>}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <label className="space-y-1 text-[11px] text-zinc-400">Artista
-                  <input value={artistName} maxLength={80} onChange={(event) => setArtistName(event.target.value)} disabled={isBusy} placeholder="Nombre del artista" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
+              <div className="space-y-2">
+                <label className="block space-y-1 text-[11px] text-zinc-400">Nombre artístico
+                  <input value={artistName} maxLength={80} onChange={(event) => setArtistName(event.target.value)} disabled={isBusy} placeholder="El nombre que aparecerá en el video" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
                 </label>
-                <label className="space-y-1 text-[11px] text-zinc-400">Título de la canción
-                  <input value={youtubeTitle} maxLength={100} onChange={(event) => setYoutubeTitle(event.target.value)} disabled={isBusy} placeholder="Título" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
-                </label>
+                <p className="text-[11px] text-zinc-500">Título automático: TOP 23 RGODBEAT ft. {artistName.trim() || 'Nombre artístico'}</p>
               </div>
 
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
@@ -488,7 +481,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </label>
 
               {youtubeStatus?.available ? (
-                <button type="button" onClick={handlePublishToYouTube} disabled={isBusy || !artistName.trim() || !youtubeTitle.trim() || !hasRights} className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45">
+                <button type="button" onClick={handlePublishToYouTube} disabled={isBusy || !artistName.trim() || !hasRights} className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45">
                   {youtubeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
                   {youtubeLoading ? (youtubeProgress || 'Publicando…') : 'Descargar WAV y publicar vídeo'}
                 </button>

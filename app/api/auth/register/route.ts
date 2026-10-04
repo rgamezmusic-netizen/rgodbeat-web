@@ -49,48 +49,10 @@ export async function POST(request: Request) {
     );
 
     if (existingUser) {
-      // If user exists but email was NEVER confirmed (e.g. stuck from previous attempts)
-      if (!existingUser.email_confirmed_at) {
-        console.log(`[Register API] Unconfirmed user ${cleanEmail} found. Auto-confirming and updating password.`);
-        const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
-          existingUser.id,
-          {
-            password: cleanPassword,
-            email_confirm: true,
-            user_metadata: {
-              full_name: cleanName || existingUser.user_metadata?.full_name || cleanEmail.split("@")[0],
-              role: "customer",
-            },
-          }
-        );
-
-        if (updateError) {
-          return NextResponse.json(
-            { error: "No se pudo reactivar la cuenta. Inténtalo de nuevo." },
-            { status: 400 }
-          );
-        }
-
-        // Upsert customer profile
-        await supabaseAdmin.from("customers").upsert(
-          {
-            id: existingUser.id,
-            email: cleanEmail,
-            name: cleanName || existingUser.user_metadata?.full_name || cleanEmail.split("@")[0],
-          },
-          { onConflict: "id" }
-        );
-
-        return NextResponse.json({
-          success: true,
-          user: { id: existingUser.id, email: cleanEmail },
-          message: "Cuenta verificada exitosamente.",
-        });
-      }
-
-      // If user is already registered and confirmed
       return NextResponse.json(
-        { error: "Ya existe una cuenta con este correo. Por favor inicia sesión con tu contraseña." },
+        { error: existingUser.email_confirmed_at
+          ? "Ya existe una cuenta con este correo. Inicia sesión con tu contraseña."
+          : "Ya existe una invitación pendiente para este correo. Abre el enlace recibido por email." },
         { status: 409 }
       );
     }

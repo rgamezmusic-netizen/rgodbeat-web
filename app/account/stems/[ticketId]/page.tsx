@@ -2,6 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/server";
+import { isSiteAdmin } from "@/lib/auth/admin";
 import { getStemRequestByTicketId } from "@/lib/stems/tickets";
 import { EXPECTED_STEM_GROUPS, STEM_GROUP_FILE_NAMES } from "@/lib/stems/types";
 
@@ -25,7 +26,7 @@ export default async function CustomerStemTicketPage({ params }: CustomerTicketP
     notFound();
   }
 
-  const isAdmin = user.email === "rgodbeat@gmail.com" || user.email === "admin@rgodbeat.com";
+  const isAdmin = isSiteAdmin(user);
   const isOwner = user.email && ticket.customerEmail.toLowerCase() === user.email.toLowerCase();
 
   if (!isAdmin && !isOwner) {

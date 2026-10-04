@@ -301,6 +301,7 @@ async function uploadProject(
             audioHash: beatHash,
             title: currentBeat.title,
             producer: currentBeat.producer,
+            genre: currentBeat.genre,
             bpm: currentBeat.bpm,
             key: currentBeat.key,
             scale: currentBeat.scale,

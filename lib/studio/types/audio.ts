@@ -118,6 +118,8 @@ export interface BeatData {
   id: string;
   title: string;
   producer?: string;
+  /** Subgenre metadata when the beat already has a known classification. */
+  genre?: string;
   bpm: number;
   key: string;                      // e.g. "A minor" or "F#m"
   scale: string;
