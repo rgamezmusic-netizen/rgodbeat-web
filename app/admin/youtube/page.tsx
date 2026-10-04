@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { existsSync } from "node:fs";
-import ffmpegPath from "ffmpeg-static";
 import { getCurrentUser } from "@/lib/auth/server";
 import { isYouTubeChannelAdmin, youtubeConfig } from "@/lib/youtube/config";
 import { getYouTubeChannelSettings } from "@/lib/youtube/channel";
+import { isYouTubeFfmpegReady } from "@/lib/youtube/ffmpeg";
 import { getYouTubeR2Bucket, isYouTubeR2Configured } from "@/lib/youtube/storage";
 import R2ConnectionCheck from "./R2ConnectionCheck";
 
@@ -25,7 +24,7 @@ export default async function YouTubeSetupPage({ searchParams }: { searchParams:
     { label: "Google OAuth y clave de cifrado", ready: config.configured && config.validKey },
     { label: "Migración privada de Supabase", ready: databaseReady },
     { label: "Bucket temporal privado de R2", ready: isYouTubeR2Configured() && getYouTubeR2Bucket() === "rgodbeat-youtube-temp" },
-    { label: "Conversor WAV a vídeo disponible", ready: Boolean(ffmpegPath && existsSync(ffmpegPath)) },
+    { label: "Conversor WAV a vídeo disponible", ready: isYouTubeFfmpegReady() },
     { label: "Canal RGODBEAT autorizado", ready: channelMatchesTarget },
   ];
   return <section className="mx-auto max-w-3xl space-y-6 text-white">

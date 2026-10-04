@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { existsSync } from "node:fs";
-import ffmpegPath from "ffmpeg-static";
 import { getAuthorizedStudioExporter } from "@/lib/youtube/access";
 import { getYouTubeChannelSettings } from "@/lib/youtube/channel";
 import { youtubeConfig } from "@/lib/youtube/config";
+import { isYouTubeFfmpegReady } from "@/lib/youtube/ffmpeg";
 import { isYouTubeR2Configured } from "@/lib/youtube/storage";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +13,7 @@ export async function GET() {
   const config = youtubeConfig();
   let channel = null;
   try { if (config.configured && config.validKey) channel = await getYouTubeChannelSettings(); } catch { /* Migration or connection is not ready yet. */ }
-  const rendererReady = Boolean(ffmpegPath && existsSync(ffmpegPath));
+  const rendererReady = isYouTubeFfmpegReady();
   const channelMatchesTarget = Boolean(channel && channel.channel_id === config.channelId);
   const storageReady = isYouTubeR2Configured();
   const error = !config.configured || !config.validKey

@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -6,12 +6,12 @@ import { spawn } from "node:child_process";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { NextRequest, NextResponse } from "next/server";
-import ffmpegPath from "ffmpeg-static";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedStudioExporter } from "@/lib/youtube/access";
 import { getYouTubeChannelSettings, refreshYouTubeAccessToken } from "@/lib/youtube/channel";
 import { youtubeConfig } from "@/lib/youtube/config";
+import { getYouTubeFfmpegPath, isYouTubeFfmpegReady } from "@/lib/youtube/ffmpeg";
 import { clearYouTubeR2, getYouTubeR2Bucket, getYouTubeR2Client, headYouTubeR2, isYouTubeR2Configured, readYouTubeR2 } from "@/lib/youtube/storage";
 
 export const dynamic = "force-dynamic";
@@ -79,8 +79,8 @@ async function streamWithLimit(response: Response, maxBytes: number): Promise<Bu
 }
 
 function runFfmpeg(args: string[], cwd: string): Promise<void> {
-  const binary = ffmpegPath;
-  if (!binary || !existsSync(binary)) return Promise.reject(new Error("rendererUnavailable"));
+  const binary = getYouTubeFfmpegPath();
+  if (!binary) return Promise.reject(new Error("rendererUnavailable"));
   return new Promise((resolvePromise, reject) => {
     const child = spawn(binary, args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
     let errorTail = "";
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
   });
   if (!metadata.title) return NextResponse.json({ error: "El título del vídeo está vacío." }, { status: 400 });
   const config = youtubeConfig();
-  if (!config.configured || !config.validKey || !ffmpegPath || !isYouTubeR2Configured()) return NextResponse.json({ error: "La publicación de YouTube todavía no está configurada." }, { status: 503 });
+  if (!config.configured || !config.validKey || !isYouTubeFfmpegReady() || !isYouTubeR2Configured()) return NextResponse.json({ error: "La publicación de YouTube todavía no está configurada." }, { status: 503 });
   const settings = await getYouTubeChannelSettings().catch(() => null);
   if (!settings) return NextResponse.json({ error: "El canal RGODBEAT todavía no está conectado." }, { status: 503 });
   const prefix = stagingPrefix(access.user.id, uploadId);
