@@ -80,4 +80,8 @@ Se guardaron los nueve archivos actualmente registrados: WAV, MP3 y artwork de D
 
 Destinos utilizados: `divina`, `HAAS` y `DAIMOND`. Los proyectos `DIVINA Copiar Project`, `HAAS  Project` y `DiaMONdS  Project` permanecen en sus carpetas. `SI TU SUPIERAS up soom` se conserva; ese beat no aparece actualmente en el catálogo consultado. No hay stems registrados en estos tres beats.
 
-El servicio se cargó en macOS. Su primera revisión automática queda pendiente del permiso de acceso al volumen extraíble mostrado por el sistema. Los cambios de la interfaz web están en el código local; esta ronda no publica una nueva versión de Vercel.
+El servicio está ejecutándose y ya tiene acceso al SSD. Se comprobó una solicitud real de copia de DIVINA: el catálogo pasó de `pending` a `synced` mediante el proceso automático y recibió una nueva fecha de confirmación. La sesión activa revisa el catálogo cada 30 segundos sin errores registrados.
+
+Se verificaron los tamaños y SHA-256 de los nueve archivos locales de DIVINA, HAAS y DIAMONDS, junto con los textos de publicación. También se descargaron de nuevo los tres archivos registrados de DIVINA en una carpeta temporal: WAV, MP3 y artwork; sus hashes y los ocho archivos de información se comprobaron y la carpeta temporal se retiró. No se creó ningún beat de prueba en la tienda.
+
+La sincronización local está operativa y no necesita un despliegue de Vercel para seguir copiando las subidas del catálogo. El Mac debe permanecer encendido con la sesión iniciada, Internet y el SSD conectado.
