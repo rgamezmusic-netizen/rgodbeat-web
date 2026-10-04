@@ -1,12 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { isSiteAdmin } from "@/lib/auth/admin";
 import { Database } from "@/types/database";
-
-const ADMIN_EMAILS = [
-  "admin@rgodbeat.com",
-  "rgamezmusic@gmail.com",
-  "rgodbeat@gmail.com",
-];
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -66,7 +61,7 @@ export async function middleware(request: NextRequest) {
 
   // Redirect away from /login if already authenticated
   if (pathname === "/login" && user) {
-    const isAdmin = user.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+    const isAdmin = isSiteAdmin(user);
     const redirectParam = request.nextUrl.searchParams.get("redirect");
     const target = redirectParam || (isAdmin ? "/admin" : "/account");
     const redirectUrl = request.nextUrl.clone();
