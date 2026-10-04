@@ -10,7 +10,7 @@ Se consultó la cuenta `gamezinmusic@gmail.com`: existe, está confirmada y ya t
 
 La recuperación ahora procesa tokens de enlaces antiguos, códigos PKCE y `token_hash`, y la pantalla de enlace vencido permite solicitar otro. Las nuevas solicitudes utilizan un endpoint público de Auth sin un verificador ligado a un navegador. Se distinguen errores de enlace, contraseña, conexión y límite de envío; se conserva el destino solicitado y se restringen las redirecciones al propio sitio. La página sirve a administradores y clientes.
 
-TypeScript, ESLint de recuperación y compilación de producción completaron. La publicación de esta corrección fue autorizada; falta confirmar la versión pública y no se afirma que el correo haya llegado o que el usuario ya haya cambiado su contraseña. Detalles: [AUTH_RECOVERY.md](AUTH_RECOVERY.md).
+TypeScript, ESLint de recuperación y compilación de producción completaron. La corrección `6082cc3` ya se publicó y se confirmó la página nueva en el dominio público. Se generó un enlace nuevo para que el propietario elija su contraseña y continúe hacia `/admin/youtube`. El enlace no se consumió ni se incluyó en los documentos. El cambio de contraseña en Safari y la entrega de futuros correos deben confirmarse con el usuario. Detalles: [AUTH_RECOVERY.md](AUTH_RECOVERY.md).
 
 ### Biblioteca local — 4 de octubre de 2026
 
