@@ -82,7 +82,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [madeForKids, setMadeForKids] = useState(false);
   const [hasRights, setHasRights] = useState(false);
   const [coverImage, setCoverImage] = useState<File | null>(null);
-  const [youtubeResult, setYoutubeResult] = useState<{ videoUrl: string; privacy: string } | null>(null);
+  const [youtubeResult, setYoutubeResult] = useState<{ videoId: string; videoUrl: string; privacy: string } | null>(null);
 
   const isBusy = isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null || youtubeLoading;
   const youtubeDescriptionBytes = new TextEncoder().encode(youtubeDescription).byteLength;
@@ -227,11 +227,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       setYoutubeProgress({ stage: 'render', label: 'Renderizando el master WAV…' });
       onShowToast('Preparando el master para el canal RGODBEAT…', 'info');
       const blob = await engine.exportMix(tracks, { enableSidechain: sidechainEnabled });
-      triggerDownload(blob, `RGODBEAT_${cleanBeatTitle}_MASTER_24bit_${exportSampleRate}Hz${sidechainEnabled ? '_Sidechain' : ''}.wav`);
-      if (blob.size > (youtubeStatus.maxMasterBytes || 256_000_000)) throw new Error('El master supera el tamaño máximo para publicarlo. El WAV ya se descargó.');
+      if (blob.size > (youtubeStatus.maxMasterBytes || 256_000_000)) throw new Error('El master supera el tamaño máximo permitido para publicarlo.');
 
       if (coverImage) {
-        if (coverImage.size > (youtubeStatus.maxCoverBytes || 4_000_000)) throw new Error('La imagen debe pesar menos de 4 MB. El WAV ya se descargó.');
+        if (coverImage.size > (youtubeStatus.maxCoverBytes || 4_000_000)) throw new Error('La imagen debe pesar menos de 4 MB.');
         setYoutubeProgress({ stage: 'cover', label: 'Subiendo la portada a R2…', transferredBytes: 0, totalBytes: coverImage.size });
         await uploadWithProgress(
           `/api/studio/youtube/upload?uploadId=${uploadId}`,
@@ -241,10 +240,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         ).catch((error: unknown) => { throw error instanceof Error ? error : new Error('No se pudo subir la imagen.'); });
       }
 
-      setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a R2…', transferredBytes: 0, totalBytes: blob.size });
+      setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a almacenamiento seguro…', transferredBytes: 0, totalBytes: blob.size });
       const chunkBytes = 2_000_000;
       const totalParts = Math.ceil(blob.size / chunkBytes);
-      if (totalParts < 1 || totalParts > 128) throw new Error('El master supera el tamaño máximo. El WAV ya se descargó.');
+      if (totalParts < 1 || totalParts > 128) throw new Error('El master supera el tamaño máximo permitido.');
       for (let index = 0; index < totalParts; index++) {
         const start = index * chunkBytes;
         const part = blob.slice(start, Math.min(start + chunkBytes, blob.size));
@@ -252,9 +251,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           `/api/studio/youtube/upload?uploadId=${uploadId}&action=chunk&index=${index}`,
           part,
           'POST',
-          (partBytes) => setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a R2…', transferredBytes: start + partBytes, totalBytes: blob.size }),
-        ).catch((error: unknown) => { throw error instanceof Error ? error : new Error(`Falló la subida del fragmento ${index + 1}. El WAV ya se descargó.`); });
-        setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a R2…', transferredBytes: Math.min(start + part.size, blob.size), totalBytes: blob.size });
+          (partBytes) => setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a almacenamiento seguro…', transferredBytes: start + partBytes, totalBytes: blob.size }),
+        ).catch((error: unknown) => { throw error instanceof Error ? error : new Error(`Falló la subida del fragmento ${index + 1}.`); });
+        setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a almacenamiento seguro…', transferredBytes: Math.min(start + part.size, blob.size), totalBytes: blob.size });
       }
       setYoutubeProgress({ stage: 'prepare', label: 'Verificando y preparando el master…' });
       const finish = await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=finish`, {
@@ -269,12 +268,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         body: JSON.stringify({ uploadId, artistName: artistName.trim(), videoTitle: youtubeTitle.trim(), videoDescription: youtubeDescription.trim(), beatTitle: beat.title, beatGenre: beat.genre, beatBpm: beat.bpm, beatKey: beat.key, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'No se pudo publicar en YouTube. El WAV ya se descargó.');
-      setYoutubeResult({ videoUrl: result.videoUrl, privacy: result.privacy });
-      setYoutubeProgress(null);
-      onShowToast('Master publicado en el canal RGODBEAT.', 'success');
+      if (!response.ok || result.success !== true || !result.videoId || !result.videoUrl) {
+        throw new Error(result.error || 'YouTube no confirmó la publicación.');
+      }
+      setYoutubeResult({ videoId: result.videoId, videoUrl: result.videoUrl, privacy: result.privacy });
+      setYoutubeProgress({ stage: 'publish', label: 'Publicado y confirmado por YouTube', transferredBytes: 1, totalBytes: 1 });
+      onShowToast('YouTube confirmó la publicación del vídeo.', 'success');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'No se pudo publicar en YouTube. El WAV ya se descargó.';
+      const message = err instanceof Error ? err.message : 'No se pudo publicar en YouTube.';
       setYoutubeProgress(null);
       onShowToast(message, 'error');
     } finally {
@@ -410,7 +411,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            disabled={youtubeLoading}
+            aria-label={youtubeLoading ? 'Espera a que termine la publicación' : 'Cerrar exportación'}
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           >
             <X className="w-5 h-5" />
           </button>
@@ -565,12 +568,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               {youtubeStatus?.available ? (
                 <button type="button" onClick={handlePublishToYouTube} disabled={isBusy || !artistName.trim() || !hasRights || youtubeDescriptionBytes > 5000} className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45">
                   {youtubeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
-                  {youtubeLoading ? (youtubeProgress?.label || 'Publicando…') : 'Descargar WAV y publicar vídeo'}
+                  {youtubeLoading ? (youtubeProgress?.label || 'Publicando…') : 'Publicar vídeo en YouTube'}
                 </button>
               ) : (
                 <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-100/80">{youtubeStatus?.error || (youtubeStatus ? 'El canal RGODBEAT aún no está conectado o falta terminar su configuración.' : 'Revisando la conexión del canal…')}</p>
               )}
-              {youtubeResult && <a href={youtubeResult.videoUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1.5 text-xs font-medium text-emerald-300 hover:text-emerald-200">Abrir vídeo ({youtubeResult.privacy === 'private' ? 'privado' : youtubeResult.privacy === 'unlisted' ? 'no listado' : 'público'}) <ExternalLink className="h-3 w-3" /></a>}
+              {youtubeResult && (
+                <div className="space-y-2 rounded-lg border border-emerald-500/35 bg-emerald-500/[0.08] p-3" role="status" aria-live="polite">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-200"><Check className="h-4 w-4" /> Publicación confirmada por YouTube</p>
+                  <p className="text-[11px] text-zinc-300">ID del vídeo: <span className="font-mono text-white">{youtubeResult.videoId}</span> · {youtubeResult.privacy === 'private' ? 'Privado' : youtubeResult.privacy === 'unlisted' ? 'No listado' : 'Público'}</p>
+                  <a href={youtubeResult.videoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-medium text-emerald-300 hover:text-emerald-200">Abrir vídeo en YouTube <ExternalLink className="h-3 w-3" /></a>
+                </div>
+              )}
             </div>
           </div>
 
@@ -683,7 +692,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium transition-colors"
+            disabled={youtubeLoading}
+            className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cerrar
           </button>
