@@ -1,12 +1,9 @@
 import { Button } from "@/components/ui/Button";
-import { HeroPadField } from "@/components/home/HeroPadField";
 import styles from "./Hero.module.css";
 
 export function Hero() {
   return (
     <section className="relative min-h-[92vh] flex flex-col justify-center pt-32 sm:pt-36 pb-12 sm:pb-16 px-4 sm:px-6 lg:px-8 overflow-hidden">
-      <HeroPadField />
-
       <div className="relative z-10 max-w-4xl mx-auto text-center flex flex-col items-center">
         <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-[5.5rem] font-extrabold tracking-[-0.035em] leading-[0.94] text-white uppercase max-w-4xl select-none">
           YOUR SOUND.
