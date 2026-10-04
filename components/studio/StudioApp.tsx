@@ -40,6 +40,7 @@ import {
   importProjectFromDeviceFile,
   setSessionStorageUser,
   getSessionStorageKey,
+  moveStudioSession,
 } from '@/lib/studio/audio/sessionStorage';
 import { signOutClient } from '@/lib/auth/client';
 import { TopBar } from './TopBar';
@@ -523,19 +524,61 @@ export default function App() {
   const [unlockModalReason, setUnlockModalReason] = useState<'export' | 'tracks' | 'general'>('general');
 
   const accessRequestRef = useRef<Promise<string | null> | null>(null);
-  const refreshStudioAccess = useCallback(() => {
+  const allowAccountChangeRef = useRef(false);
+  const refreshStudioAccess = useCallback((allowAccountChange = false) => {
+    if (allowAccountChange) allowAccountChangeRef.current = true;
     if (accessRequestRef.current) return accessRequestRef.current;
     const request = (async () => {
       const res = await fetch('/api/studio/access', { cache: 'no-store' });
       if (!res.ok) throw new Error('No se pudo verificar tu cuenta. Reintenta para recuperar el proyecto correcto.');
       const data = await res.json();
       const email = data.email?.trim().toLowerCase() || null;
+      let localSessionOwner = email;
       if (sessionOwnerRef.current !== undefined && sessionOwnerRef.current !== email) {
-        throw new Error('La cuenta cambió. Descarga tu proyecto y vuelve a abrir Studio.');
+        if (!allowAccountChangeRef.current) {
+          throw new Error('La cuenta cambió. Descarga tu proyecto y vuelve a abrir Studio.');
+        }
+        const previousOwner = sessionOwnerRef.current;
+        const settings = sessionSettingsRef.current;
+        const saved = await persistStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings,
+          settings.currentTime, settings.beatVolume, activeViewRef.current, previousOwner,
+          beatMixRef.current, activeProjectIdRef.current);
+        if (!saved) throw new Error('No se pudo proteger tu proyecto actual en este dispositivo. Descárgalo antes de cambiar de cuenta.');
+        // When a guest signs in, re-key the existing local session in one
+        // IndexedDB transaction instead of storing a second copy of all audio.
+        // If the account already has a local project, leave this active project
+        // in its guest scope so recording can continue without overwriting it.
+        if (previousOwner === null && email) {
+          const moved = await moveStudioSession(previousOwner, email);
+          if (moved) localSessionOwner = email;
+          else {
+            localSessionOwner = previousOwner;
+            cloudConflictRef.current = true;
+            setCloudBackupStatus('Tu proyecto local se conserva. Hay datos guardados para esta cuenta; cárgalos o descarga una copia antes de reemplazarlos.');
+          }
+        } else {
+          localSessionOwner = previousOwner;
+          cloudConflictRef.current = true;
+          setCloudBackupStatus('Tu proyecto local se conserva bajo la cuenta anterior. Descárgalo antes de cambiarlo.');
+        }
       }
-      sessionOwnerRef.current = email;
-      setSessionStorageUser(email);
+      sessionOwnerRef.current = localSessionOwner;
+      setSessionStorageUser(localSessionOwner);
       setCloudProjectUser(email);
+      if (allowAccountChange) {
+        try {
+          const remote = await checkCloudProject();
+          if (remote.unavailable || remote.hasProject) {
+            cloudConflictRef.current = true;
+            setCloudBackupStatus(remote.hasProject
+              ? 'Hay un respaldo en esta cuenta. Cárgalo o conserva tu proyecto local antes de sincronizar.'
+              : 'No se pudo comprobar el respaldo de esta cuenta. La sincronización está pausada.');
+          }
+        } catch {
+          cloudConflictRef.current = true;
+          setCloudBackupStatus('No se pudo comprobar el respaldo de esta cuenta. La sincronización está pausada.');
+        }
+      }
       const next = {
         isDemo: data.isDemo, isLoggedIn: Boolean(data.isLoggedIn || email), hasActivePass: data.hasActivePass,
         daysRemaining: data.daysRemaining || 0, expiresAt: data.expiresAt, email, name: data.name || 'Artista',
@@ -545,7 +588,12 @@ export default function App() {
       return email;
     })();
     accessRequestRef.current = request;
-    void request.finally(() => { if (accessRequestRef.current === request) accessRequestRef.current = null; }).catch(() => {});
+    void request.finally(() => {
+      if (accessRequestRef.current === request) {
+        accessRequestRef.current = null;
+        allowAccountChangeRef.current = false;
+      }
+    }).catch(() => {});
     return request;
   }, []);
 
@@ -2706,7 +2754,7 @@ export default function App() {
         onClose={() => setIsUnlockModalOpen(false)}
         reason={unlockModalReason}
         userEmail={accessStatus.email}
-        onAuthSuccess={refreshStudioAccess}
+        onAuthSuccess={() => refreshStudioAccess(true)}
       />
 
       {/* Guide modal on how to install PWA on Android & iOS */}

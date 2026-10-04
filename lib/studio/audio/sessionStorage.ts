@@ -80,6 +80,39 @@ export function getSessionStorageKey(userIdentifier?: string | null): string {
   return 'latest_active_session';
 }
 
+/** Move the active local project between owner scopes without duplicating its audio payload. */
+export async function moveStudioSession(fromUser: string | null, toUser: string): Promise<boolean> {
+  const fromKey = getSessionStorageKey(fromUser);
+  const toKey = getSessionStorageKey(toUser);
+  if (fromKey === toKey) return true;
+  try {
+    const db = await getDB();
+    return await new Promise<boolean>((resolve) => {
+      const tx = db.transaction([SESSIONS_STORE], 'readwrite');
+      const store = tx.objectStore(SESSIONS_STORE);
+      let moved = false;
+      const sourceRequest = store.get(fromKey);
+      sourceRequest.onsuccess = () => {
+        const source = sourceRequest.result as StoredStudioSession | undefined;
+        if (!source) return;
+        const targetRequest = store.get(toKey);
+        targetRequest.onsuccess = () => {
+          if (targetRequest.result) return;
+          store.put({ ...source, id: toKey, userEmail: toUser.trim().toLowerCase(), timestamp: Date.now() });
+          store.delete(fromKey);
+          moved = true;
+        };
+      };
+      tx.oncomplete = () => resolve(moved);
+      tx.onabort = () => resolve(false);
+      tx.onerror = () => resolve(false);
+    });
+  } catch (error) {
+    console.warn('Could not move the active Studio session:', error);
+    return false;
+  }
+}
+
 let dbInstance: IDBDatabase | null = null;
 const saveVersions = new Map<string, number>();
 const encodedBuffers = new WeakMap<AudioBuffer, Promise<ArrayBuffer>>();
