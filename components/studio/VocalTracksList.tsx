@@ -162,11 +162,13 @@ export const VocalTracksList: React.FC<VocalTracksListProps> = ({
                 {/* Waveform Thumbnail if recorded */}
                 {hasTake && track.waveformSample && (
                   <div className="hidden sm:flex items-center gap-0.5 h-5 w-20 px-1 bg-zinc-950/60 rounded border border-zinc-800 pointer-events-none">
-                    {track.waveformSample.slice(0, 16).map((val, idx) => (
+                    {Array.from({ length: 16 }, (_, idx) =>
+                      track.waveformSample![Math.round(idx * (track.waveformSample!.length - 1) / 15)] ?? 0
+                    ).map((val, idx) => (
                       <div
                         key={idx}
                         className="w-1 bg-emerald-500/70 rounded-full"
-                        style={{ height: `${Math.max(20, val * 100)}%` }}
+                        style={{ height: `${Math.max(2, val * 20)}px` }}
                       />
                     ))}
                   </div>

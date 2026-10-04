@@ -6,7 +6,7 @@ import {
   VocalTrackId,
 } from '../types/audio';
 import { createReverbImpulse } from './reverbImpulse';
-import { audioBufferToWav, extractWaveformPeaks } from './wavEncoder';
+import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from './wavEncoder';
 import { processVocalTune } from './pitchCorrection';
 import { getProjectDuration, getRenderDuration, getTrackClips } from './clipEditing';
 import type { RecordingCheckpoint } from './recordingRecovery';
@@ -1070,7 +1070,7 @@ export class AudioEngine {
     const output = buffer.getChannelData(0);
     let offset = 0;
     for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
-    this.callbacks.onRecordingFinished(trackId, buffer, extractWaveformPeaks(buffer, 60), start, takeId);
+    this.callbacks.onRecordingFinished(trackId, buffer, extractWaveformPeaks(buffer, WAVEFORM_SAMPLE_COUNT), start, takeId);
   }
 
   public getRecordingCheckpointClip() {
@@ -1304,7 +1304,7 @@ export class AudioEngine {
       }
     }
 
-    const waveform = extractWaveformPeaks(buffer, 48);
+    const waveform = extractWaveformPeaks(buffer, WAVEFORM_SAMPLE_COUNT);
     return { buffer, waveform };
   }
 

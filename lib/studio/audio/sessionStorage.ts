@@ -1,5 +1,5 @@
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalFX, BeatFX, BeatMixSettings } from '../types/audio';
-import { audioBufferToWav } from './wavEncoder';
+import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from './wavEncoder';
 import { retireRecordingCheckpoints } from './recordingRecovery';
 
 const DB_NAME = 'RGODBEAT_STUDIO_DB';
@@ -470,7 +470,7 @@ export async function restoreLastStudioSession(
           duration: beatBuffer.duration,
           buffer: beatBuffer,
           artworkGradient: session.beatData.artworkGradient || 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
-          waveformSample: session.beatData.waveformSample,
+          waveformSample: extractWaveformPeaks(beatBuffer, WAVEFORM_SAMPLE_COUNT),
           isCustomUpload: Boolean(session.beatData.isCustomUpload),
           detectedBpm: session.beatData.detectedBpm,
           detectedKey: session.beatData.detectedKey,
@@ -504,7 +504,7 @@ export async function restoreLastStudioSession(
               name: sc.name || 'Toma',
               startBeatOffset: sc.startBeatOffset,
               duration: decoded.duration,
-              waveformSample: sc.waveformSample,
+              waveformSample: extractWaveformPeaks(decoded, WAVEFORM_SAMPLE_COUNT),
               buffer: decoded,
               tunedBuffer: null,
               isLocked: Boolean(sc.isLocked),
@@ -825,7 +825,7 @@ export async function importProjectFromDeviceFile(
           duration: decoded.duration,
           buffer: decoded,
           artworkGradient: s.beatData.artworkGradient || 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%)',
-          waveformSample: s.beatData.waveformSample,
+          waveformSample: extractWaveformPeaks(decoded, WAVEFORM_SAMPLE_COUNT),
           isCustomUpload: Boolean(s.beatData.isCustomUpload),
           isLocked: true,
         };
@@ -857,7 +857,7 @@ export async function importProjectFromDeviceFile(
             name: sc.name || 'Toma',
             startBeatOffset: sc.startBeatOffset,
             duration: decoded.duration,
-            waveformSample: sc.waveformSample,
+            waveformSample: extractWaveformPeaks(decoded, WAVEFORM_SAMPLE_COUNT),
             buffer: decoded,
             tunedBuffer: null,
             isLocked: sc.isLocked !== undefined ? Boolean(sc.isLocked) : true,

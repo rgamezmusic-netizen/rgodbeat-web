@@ -963,11 +963,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                   style={{ left: `${TIMELINE_GUTTER}px`, width: `${beat.duration * basePixelsPerSec}px` }}
                 >
                   <div className="w-full h-8 flex items-center gap-0.5 opacity-75">
-                    {(beat.waveformSample || Array(60).fill(0.5)).map((val, idx) => (
+                    {(beat.waveformSample || []).map((val, idx) => (
                       <div
                         key={idx}
                         className="flex-1 bg-amber-400 rounded-full"
-                        style={{ height: `${Math.max(15, val * 100)}%` }}
+                        style={{ height: `${Math.max(2, val * 32)}px` }}
                       />
                     ))}
                   </div>
@@ -1267,7 +1267,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                         {/* Continuous Waveform: Clean 2px flatline during silence, dynamic peaks when singing */}
                         <div className="flex-1 h-8 flex items-center gap-[2px] overflow-hidden w-full px-1">
                           {interpolatedPeaks.map((val, idx) => {
-                            const isSilent = val <= 0.02;
+                            const isSilent = val <= 0.005;
                             return (
                               <div
                                 key={idx}
@@ -1279,7 +1279,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                                     : 'bg-emerald-400'
                                 }`}
                                 style={{
-                                  height: isSilent ? '2px' : `${Math.max(10, Math.min(100, val * 100))}%`,
+                                  height: isSilent ? '2px' : `${Math.max(4, Math.min(100, val * 100))}%`,
                                 }}
                               />
                             );

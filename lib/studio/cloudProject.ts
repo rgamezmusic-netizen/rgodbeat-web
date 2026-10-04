@@ -1,5 +1,5 @@
 import { BeatData, LoopSettings, VocalClip, VocalTrack, BeatFX, BeatMixSettings } from './types/audio';
-import { audioBufferToWav } from './audio/wavEncoder';
+import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from './audio/wavEncoder';
 
 type SaveResult = { success: boolean; error?: string; requiresPass?: boolean; conflict?: boolean };
 let cloudOwner: string | null = null;
@@ -413,19 +413,20 @@ export async function loadProjectFromCloud(
               if (!clipFetch.ok) throw new Error('No se descargó una toma completa.');
               const clipArrayBuffer = await clipFetch.arrayBuffer();
               const decoded = await audioCtx.decodeAudioData(clipArrayBuffer);
+              const waveformSample = extractWaveformPeaks(decoded, WAVEFORM_SAMPLE_COUNT);
 
               restoredClips.push({
                 id: c.id,
                 name: c.name || 'Toma',
                 startBeatOffset: c.startBeatOffset || 0,
                 duration: decoded.duration,
-                waveformSample: c.waveformSample,
+                waveformSample,
                 buffer: decoded,
                 tunedBuffer: null,
                 isLocked: c.isLocked ?? true,
               });
               latestBuffer = decoded;
-              latestWaveform = c.waveformSample;
+              latestWaveform = waveformSample;
             } catch (clipErr) {
               throw clipErr;
             }
@@ -456,6 +457,9 @@ export async function loadProjectFromCloud(
         ? {
             ...project.beat,
             customBeatBuffer,
+            waveformSample: customBeatBuffer
+              ? extractWaveformPeaks(customBeatBuffer, WAVEFORM_SAMPLE_COUNT)
+              : project.beat.waveformSample,
           }
         : null,
       tracks: restoredTracks,

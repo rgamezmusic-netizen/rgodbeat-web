@@ -18,7 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { BeatAnalysisResult, BeatData } from '@/lib/studio/types/audio';
-import { extractWaveformPeaks } from '@/lib/studio/audio/wavEncoder';
+import { extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from '@/lib/studio/audio/wavEncoder';
 import { analyzeBeatAudio, parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
 import { MAX_SAVED_BEATS } from '@/lib/studio/audio/beatStorage';
 
@@ -127,7 +127,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       const res = await fetch(beat.previewUrl);
       const arrayBuffer = await res.arrayBuffer();
       const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      const waveform = extractWaveformPeaks(decodedBuffer, 64);
+      const waveform = extractWaveformPeaks(decodedBuffer, WAVEFORM_SAMPLE_COUNT);
 
       const newBeat: BeatData = {
         id: `catalog-${beat.id}`,
@@ -285,7 +285,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
         console.warn('Auto analysis warning:', analErr);
       }
 
-      const waveform = extractWaveformPeaks(decodedBuffer, 64);
+      const waveform = extractWaveformPeaks(decodedBuffer, WAVEFORM_SAMPLE_COUNT);
       const cleanTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
 
       const detectedKeyStr = analysisResult

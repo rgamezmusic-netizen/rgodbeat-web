@@ -1,5 +1,5 @@
 import { BeatData } from '../types/audio';
-import { extractWaveformPeaks } from './wavEncoder';
+import { extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from './wavEncoder';
 
 /**
  * Procedurally generates authentic studio beat AudioBuffers using Web Audio synthesis.
@@ -257,7 +257,7 @@ export async function createDemoBeat(
     right[i] *= gain;
   }
 
-  const waveform = extractWaveformPeaks(buffer, 64);
+  const waveform = extractWaveformPeaks(buffer, WAVEFORM_SAMPLE_COUNT);
 
   return {
     id: `demo-${style}`,

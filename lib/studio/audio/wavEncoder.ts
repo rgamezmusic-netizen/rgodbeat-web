@@ -107,12 +107,15 @@ export function audioBufferToWav(buffer: AudioBuffer, bitDepth: 16 | 24 | 32 = 2
   return new Blob([arrayBuffer], { type: 'audio/wav' });
 }
 
+export const WAVEFORM_SAMPLE_COUNT = 512;
+
 /**
- * Extracts a normalized waveform array (e.g. 60 points) from an AudioBuffer.
+ * Extracts per-window peak amplitudes from an AudioBuffer, normalized only to
+ * the loudest peak in that buffer so quiet sections retain their true shape.
  * Accurately differentiates true silence (flatline 0) from vocal singing peaks
  * so silent pauses don't show phantom waveforms.
  */
-export function extractWaveformPeaks(buffer: AudioBuffer, points: number = 60): number[] {
+export function extractWaveformPeaks(buffer: AudioBuffer, points: number = WAVEFORM_SAMPLE_COUNT): number[] {
   const channelData = buffer.getChannelData(0);
   if (!channelData || channelData.length === 0) return Array(points).fill(0);
 
@@ -131,15 +134,9 @@ export function extractWaveformPeaks(buffer: AudioBuffer, points: number = 60): 
     if (max > absoluteMax) absoluteMax = max;
   }
 
-  // Realistic silence gate threshold: background ambient room noise is < 4% of singing peak
-  const silenceThreshold = Math.max(0.005, absoluteMax * 0.04);
-
-  return rawPeaks.map((p) => {
-    if (p < silenceThreshold) return 0; // True silence -> flatline
-    const normalized = absoluteMax > 0.001 ? p / absoluteMax : 0;
-    // Map singing peaks dynamically between 0.10 and 1.0
-    return Number((0.10 + normalized * 0.90).toFixed(3));
-  });
+  if (absoluteMax === 0) return Array(points).fill(0);
+  // Keep the measured envelope: don't lift quiet bins or invent a minimum bar.
+  return rawPeaks.map((peak) => Number((peak / absoluteMax).toFixed(4)));
 }
 
 /**
@@ -225,7 +222,7 @@ export function punchInClips(
           tunedBuffer: null,
           startBeatOffset: cStart,
           duration: leftBuffer.duration,
-          waveformSample: extractWaveformPeaks(leftBuffer, 36),
+          waveformSample: extractWaveformPeaks(leftBuffer, WAVEFORM_SAMPLE_COUNT),
           isLocked: true,
         });
       }
@@ -244,7 +241,7 @@ export function punchInClips(
           tunedBuffer: null,
           startBeatOffset: newEnd,
           duration: rightBuffer.duration,
-          waveformSample: extractWaveformPeaks(rightBuffer, 36),
+          waveformSample: extractWaveformPeaks(rightBuffer, WAVEFORM_SAMPLE_COUNT),
           isLocked: true,
         });
       }

@@ -1,6 +1,6 @@
 import { VocalClip, VocalTrack } from '../types/audio';
 import { getTrackClips, withTrackClips } from './clipEditing';
-import { extractWaveformPeaks, punchInClips } from './wavEncoder';
+import { extractWaveformPeaks, punchInClips, WAVEFORM_SAMPLE_COUNT } from './wavEncoder';
 
 export interface RecordingCheckpoint {
   projectId?: string;
@@ -103,7 +103,7 @@ export async function recoverRecordingCheckpoints(
     let offset = 0;
     for (const chunk of contiguous) { buffer.getChannelData(0).set(chunk.samples, offset); offset += chunk.samples.length; }
     const clip: VocalClip = { id: first.takeId, name: 'Toma recuperada', buffer, tunedBuffer: null,
-      startBeatOffset: first.start, duration: buffer.duration, waveformSample: extractWaveformPeaks(buffer, 60), isLocked: true };
+      startBeatOffset: first.start, duration: buffer.duration, waveformSample: extractWaveformPeaks(buffer, WAVEFORM_SAMPLE_COUNT), isLocked: true };
     updated = updated.map(track => track.id === first.trackId
       ? withTrackClips(track, punchInClips(ctx, getTrackClips(track), clip)) : track);
     recovered++;

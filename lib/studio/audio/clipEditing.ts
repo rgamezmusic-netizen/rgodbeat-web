@@ -1,5 +1,5 @@
 import { VocalClip, VocalTrack } from '../types/audio';
-import { extractWaveformPeaks, sliceAudioBuffer } from './wavEncoder';
+import { extractWaveformPeaks, sliceAudioBuffer, WAVEFORM_SAMPLE_COUNT } from './wavEncoder';
 
 export function getTrackClips(track: VocalTrack): VocalClip[] {
   if (track.clips?.length) return track.clips.map((clip) =>
@@ -38,7 +38,7 @@ export function trimClip(ctx: BaseAudioContext, clip: VocalClip, start: number, 
     tunedBuffer: clip.tunedBuffer ? sliceAudioBuffer(ctx, clip.tunedBuffer, offset, buffer.duration) : null,
     startBeatOffset: clip.startBeatOffset + Math.round(offset * clip.buffer.sampleRate) / clip.buffer.sampleRate,
     duration: buffer.duration,
-    waveformSample: extractWaveformPeaks(buffer, 60),
+    waveformSample: extractWaveformPeaks(buffer, WAVEFORM_SAMPLE_COUNT),
   };
 }
 
