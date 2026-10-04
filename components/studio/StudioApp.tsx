@@ -722,8 +722,16 @@ export default function App() {
         showToast(`Toma grabada en ${name}.`, 'success');
         {
           const settings = sessionSettingsRef.current;
-          void saveStudioSession(updated, currentBeatRef.current, settings.loopSettings,
-            settings.currentTime, settings.beatVolume, activeViewRef.current);
+          void (async () => {
+            const saved = await saveStudioSession(updated, currentBeatRef.current, settings.loopSettings,
+              settings.currentTime, settings.beatVolume, activeViewRef.current);
+            if (saved) return;
+            if (accessStatusRef.current.isLoggedIn && !cloudConflictRef.current) {
+              const result = await saveProjectToCloud(updated, currentBeatRef.current, settings.loopSettings);
+              if (result.success) return;
+            }
+            showToast('La toma quedó en Studio, pero no se pudo respaldar. Descarga el archivo del proyecto antes de cerrar o recargar.', 'error');
+          })();
         }
       },
       onRecordingAborted: () => {
@@ -1458,18 +1466,10 @@ export default function App() {
       return;
     }
 
-    const settings = sessionSettingsRef.current;
-    const protectedBaseline = await saveStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings,
-      settings.currentTime, settings.beatVolume, activeViewRef.current);
-    if (preparation !== recordingPreparationRef.current || !isRecordingRef.current) {
-      engine.releaseMicrophone();
-      return;
-    }
-    if (!protectedBaseline) {
-      isRecordingRef.current = false; setIsRecording(false); setActiveRecordingTrackId(null);
-      engine.releaseMicrophone();
-      showToast('No se pudo preparar el respaldo. Libera espacio o descarga tu proyecto antes de grabar.', 'error'); return;
-    }
+    // Do not make a full-project IndexedDB rewrite a prerequisite for REC.
+    // The current project is already autosaved, and the new take is checkpointed
+    // while recording then persisted when it finishes. Re-encoding every old
+    // audio buffer here can stall or reject REC on large/account-linked sessions.
     const started = await engine.startRecording(trackId, tracksRef.current, countInEnabled);
     if (started) {
       setIsPlaying(true);
