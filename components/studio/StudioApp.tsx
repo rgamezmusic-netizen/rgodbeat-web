@@ -1396,12 +1396,30 @@ export default function App() {
     setIsRecording(true);
     const preparation = ++recordingPreparationRef.current;
 
+    // Ask for microphone access immediately from the REC click. Waiting for the
+    // IndexedDB safety snapshot first can delay or suppress the browser prompt.
+    const microphoneReady = await engine.prepareMicrophone();
+    if (preparation !== recordingPreparationRef.current || !isRecordingRef.current) {
+      engine.releaseMicrophone();
+      return;
+    }
+    if (!microphoneReady) {
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      setActiveRecordingTrackId(null);
+      return;
+    }
+
     const settings = sessionSettingsRef.current;
     const protectedBaseline = await saveStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings,
       settings.currentTime, settings.beatVolume, activeViewRef.current);
-    if (preparation !== recordingPreparationRef.current || !isRecordingRef.current) return;
+    if (preparation !== recordingPreparationRef.current || !isRecordingRef.current) {
+      engine.releaseMicrophone();
+      return;
+    }
     if (!protectedBaseline) {
       isRecordingRef.current = false; setIsRecording(false); setActiveRecordingTrackId(null);
+      engine.releaseMicrophone();
       showToast('No se pudo preparar el respaldo. Libera espacio o descarga tu proyecto antes de grabar.', 'error'); return;
     }
     const started = await engine.startRecording(trackId, tracksRef.current, countInEnabled);

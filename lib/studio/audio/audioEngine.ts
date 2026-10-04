@@ -910,6 +910,20 @@ export class AudioEngine {
     return this.micStream;
   }
 
+  /** Request microphone access directly from the REC gesture, before any async backup work. */
+  public async prepareMicrophone(): Promise<boolean> {
+    try {
+      await this.getMicrophoneStream();
+      return true;
+    } catch (error) {
+      const denied = error instanceof DOMException && error.name === 'NotAllowedError';
+      this.callbacks.onError(denied
+        ? 'Permiso de micrófono denegado. Permite el acceso en los ajustes del navegador.'
+        : `No se pudo iniciar la grabación: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }
+
   /**
    * Releases hardware microphone tracks immediately so iOS and Android exit
    * Voice-Communication / Call mode and instantly restore uncompressed Hi-Fi stereo playback.
