@@ -1,6 +1,7 @@
 import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { RG_UUID, RgIdentityError, validateOwnedTrackForPublication } from '@/lib/rg/identity';
+import { createPhase2AdminClient } from '@/lib/rg/phase2/database';
 
 export type LinkedPublicationInput = {
   userId: string;
@@ -34,6 +35,23 @@ export async function recordConfirmedPublication(input: LinkedPublicationInput):
     if (error || !data) {
       console.error('[RG publication link]', error?.code || 'NO_PUBLICATION_ID');
       return { linked: false, error: 'La publicación se confirmó, pero no se pudo vincular al RG Track. Puede reintentarse.', code: error?.code || 'NO_PUBLICATION_ID' };
+    }
+    // The Score event is a failure-isolated sidecar. A verified YouTube upload and
+    // its Phase 1 publication link remain successful if Phase 2 is temporarily unavailable.
+    try {
+      const { error: scoreError } = await createPhase2AdminClient().rpc('rg_record_score_event', {
+        p_event_type: 'TRACK_PUBLISHED',
+        p_artist_id: input.artistId,
+        p_track_id: input.trackId,
+        p_beat_id: input.beatId,
+        p_publication_id: data,
+        p_source_type: 'rg_publication_link',
+        p_source_id: data,
+        p_milestone_key: null,
+      });
+      if (scoreError) console.error('[RG score event]', scoreError.code || 'TRACK_PUBLISHED_NOT_RECORDED');
+    } catch (error) {
+      console.error('[RG score event]', error instanceof Error ? error.name : 'TRACK_PUBLISHED_NOT_RECORDED');
     }
     return { linked: true, publicationId: data };
   } catch (error) {
