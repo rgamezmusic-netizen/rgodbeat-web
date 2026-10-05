@@ -85,6 +85,9 @@ export async function moveStudioSession(fromUser: string | null, toUser: string)
   const fromKey = getSessionStorageKey(fromUser);
   const toKey = getSessionStorageKey(toUser);
   if (fromKey === toKey) return true;
+  // Pending encodes must not recreate the guest session after it is moved.
+  saveVersions.set(fromKey, (saveVersions.get(fromKey) ?? 0) + 1);
+  latestSaves.delete(fromKey);
   try {
     const db = await getDB();
     return await new Promise<boolean>((resolve) => {
@@ -115,6 +118,7 @@ export async function moveStudioSession(fromUser: string | null, toUser: string)
 
 let dbInstance: IDBDatabase | null = null;
 const saveVersions = new Map<string, number>();
+const latestSaves = new Map<string, { version: number; promise: Promise<boolean> }>();
 const encodedBuffers = new WeakMap<AudioBuffer, Promise<ArrayBuffer>>();
 const encodedVocalBuffers = new WeakMap<AudioBuffer, Promise<ArrayBuffer>>();
 function encodeStoredAudio(buffer: AudioBuffer, bitDepth: 24 | 32 = 24): Promise<ArrayBuffer> {
@@ -163,7 +167,19 @@ async function getDB(): Promise<IDBDatabase> {
  * to IndexedDB. Success means the transaction committed; browser storage can still
  * be cleared by the user or OS, so the downloadable project remains necessary.
  */
-export async function saveStudioSession(
+export function saveStudioSession(...args: Parameters<typeof persistStudioSession>): Promise<boolean> {
+  // Pin the owner now: signing in while encoding must not redirect the write.
+  const owner = args[6] === undefined ? currentSessionUser : args[6];
+  const key = getSessionStorageKey(owner);
+  const version = (saveVersions.get(key) ?? 0) + 1;
+  saveVersions.set(key, version);
+  args[6] = owner;
+  const promise = persistStudioSession(...args);
+  latestSaves.set(key, { version, promise });
+  return promise;
+}
+
+async function persistStudioSession(
   tracks: VocalTrack[],
   beat?: BeatData | string | null,
   loopSettings?: LoopSettings,
@@ -175,10 +191,15 @@ export async function saveStudioSession(
   projectId?: string
 ): Promise<boolean> {
   const sessionKey = getSessionStorageKey(userIdentifier);
-  const version = (saveVersions.get(sessionKey) ?? 0) + 1;
-  saveVersions.set(sessionKey, version);
+  const version = saveVersions.get(sessionKey);
+  const newerSave = () => {
+    const latest = latestSaves.get(sessionKey);
+    return latest && latest.version === saveVersions.get(sessionKey) && latest.version !== version
+      ? latest.promise : Promise.resolve(false);
+  };
   try {
     const db = await getDB();
+    if (saveVersions.get(sessionKey) !== version) return newerSave();
 
     // Check existing session to preserve beatData if not explicitly provided
     let existingSession: StoredStudioSession | null = null;
@@ -291,7 +312,9 @@ export async function saveStudioSession(
     }
 
     // Callers save only after startup restoration. Empty tracks can be an intentional deletion.
-    if (saveVersions.get(sessionKey) !== version) return false;
+    // An overlapping save is not a storage failure. Await the newer snapshot's
+    // commit so callers cannot fall back to uploading their obsolete snapshot.
+    if (saveVersions.get(sessionKey) !== version) return newerSave();
     const sessionPayload: StoredStudioSession = {
       projectId: projectId ?? existingSession?.projectId ?? crypto.randomUUID(),
       id: sessionKey,
@@ -322,6 +345,7 @@ export async function saveStudioSession(
     if (committed) await retireRecordingCheckpoints(sessionKey, tracks, sessionPayload.projectId);
     return committed;
   } catch (err) {
+    if (saveVersions.get(sessionKey) !== version) return newerSave();
     console.warn('saveStudioSession failure:', err);
     return false;
   }
@@ -560,9 +584,10 @@ export async function restoreLastStudioSession(
 export async function clearSavedStudioSession(userIdentifier?: string | null): Promise<boolean> {
   const key = getSessionStorageKey(userIdentifier);
   saveVersions.set(key, (saveVersions.get(key) ?? 0) + 1);
+  latestSaves.delete(key);
   try {
     const db = await getDB();
-    const sessionKey = getSessionStorageKey(userIdentifier);
+    const sessionKey = key;
     const committed = await new Promise<boolean>((resolve) => {
       const tx = db.transaction([SESSIONS_STORE], 'readwrite');
       const store = tx.objectStore(SESSIONS_STORE);

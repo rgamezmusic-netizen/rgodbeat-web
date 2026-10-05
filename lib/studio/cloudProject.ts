@@ -13,6 +13,21 @@ const encodedVocals = new WeakMap<AudioBuffer, Promise<{ blob: Blob; hash: strin
 const CHUNK_BYTES = 2_000_000;
 const STAGED_UPLOAD_THRESHOLD = 2_500_000;
 
+// Bound each request, including its response body, so a stalled connection
+// cannot hold the save queue and the exit controls forever.
+async function requestCloudJson(url: string, init: RequestInit = {}, timeoutMs = 30_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const data = await response.json();
+    return { response, data };
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('El respaldo tardó demasiado. Tu proyecto sigue abierto; comprueba la conexión y reintenta.');
+    throw error;
+  } finally { clearTimeout(timer); }
+}
+
 async function stageAudio(blob: Blob, hash: string, uploadId: string, owner: string | null) {
   const parts = Math.ceil(blob.size / CHUNK_BYTES);
   if (parts > 128) throw new Error('El audio excede el tamaño de respaldo de cuenta. Descarga el archivo .rgodbeat.');
@@ -20,14 +35,19 @@ async function stageAudio(blob: Blob, hash: string, uploadId: string, owner: str
   const ownerHeaders: Record<string, string> = owner ? { 'x-studio-owner': owner } : {};
   async function send(url: string, init: RequestInit) {
     for (let attempt = 0; attempt < 3; attempt++) {
+      let reply: Awaited<ReturnType<typeof requestCloudJson>>;
       try {
-        const response = await fetch(url, init);
-        const data = await response.json();
-        if (response.ok && data.success) return data;
-        if (response.status < 500) throw new Error(data.error || 'No se pudo subir el audio.');
+        reply = await requestCloudJson(url, init, 120_000);
       } catch (error) {
         if (attempt === 2) throw error;
+        await new Promise(resolve => setTimeout(resolve, 350 * (attempt + 1)));
+        continue;
       }
+      const { response, data } = reply;
+      if (response.ok && data.success === true) return data;
+      // Authentication, conflicts and validation errors cannot be fixed by
+      // uploading the same bytes again. Only retry transient server failures.
+      if (response.status < 500 && response.status !== 429) throw new Error(data.error || 'No se pudo subir el audio.');
       if (attempt === 2) throw new Error('Se interrumpió la conexión durante el respaldo.');
       await new Promise(resolve => setTimeout(resolve, 350 * (attempt + 1)));
     }
@@ -68,18 +88,21 @@ function encode(buffer: AudioBuffer, bitDepth: 24 | 32 = 24) {
 }
 async function readCloudState() {
   const owner = cloudOwner;
-  const response = await fetch('/api/studio/project', { cache: 'no-store' });
+  const previousRevision = revision;
+  const { response, data } = await requestCloudJson('/api/studio/project', { cache: 'no-store' });
   if (!response.ok) throw new Error('No se pudo consultar el respaldo de cuenta.');
-  const data = await response.json();
   if (owner !== cloudOwner) throw new Error('La cuenta cambió durante la consulta.');
   if (owner && (data.isLoggedIn === false || (data.ownerEmail && data.ownerEmail !== owner))) {
     throw new Error('La sesión cambió. Tu respaldo local sigue asociado a la cuenta anterior.');
   }
-  revision = data.revision ?? null;
-  knownAudio = new Set<string>([
-    data.project?.beat?.audioHash,
-    ...(data.project?.tracks ?? []).flatMap((track: { clips?: { audioHash?: string }[] }) => (track.clips ?? []).map(clip => clip.audioHash)),
-  ].filter(Boolean));
+  // A status query started before a save must not restore its older revision.
+  if (revision === previousRevision) {
+    revision = data.revision ?? null;
+    knownAudio = new Set<string>([
+      data.project?.beat?.audioHash,
+      ...(data.project?.tracks ?? []).flatMap((track: { clips?: { audioHash?: string }[] }) => (track.clips ?? []).map(clip => clip.audioHash)),
+    ].filter(Boolean));
+  }
   return data;
 }
 
@@ -190,9 +213,8 @@ async function uploadProject(
   const nextHashes = new Set<string>();
   const confirmCommit = async () => {
     try {
-      const response = await fetch('/api/studio/project', { cache: 'no-store' });
+      const { response, data } = await requestCloudJson('/api/studio/project', { cache: 'no-store' });
       if (!response.ok) return false;
-      const data = await response.json();
       if (owner !== cloudOwner || (owner && data.ownerEmail && data.ownerEmail !== owner)
         || data.project?.clientSaveId !== clientSaveId || !data.revision) return false;
       revision = data.revision; knownAudio = nextHashes;
@@ -237,7 +259,7 @@ async function uploadProject(
           : [];
 
       for (const clip of clipsToProcess) {
-        if (!clip.buffer) continue;
+        if (!clip.buffer) throw new Error('Falta el audio de una toma. No se pudo guardar el proyecto completo.');
         try {
           const { blob: wavBlob, hash } = await encode(clip.buffer, 32);
           nextHashes.add(hash);
@@ -338,12 +360,10 @@ async function uploadProject(
     formData.append('baseRevision', baseRevision ?? '');
     if (owner !== cloudOwner) return { success: false, error: 'La cuenta cambió antes de guardar.' };
 
-    const res = await fetch('/api/studio/project', {
+    const { response: res, data } = await requestCloudJson('/api/studio/project', {
       method: 'POST',
       body: formData,
-    });
-
-    const data = await res.json();
+    }, 120_000);
     if (!res.ok || data.success !== true) {
       if (res.status >= 500 && await confirmCommit()) return { success: true };
       return {
@@ -377,6 +397,9 @@ export async function loadProjectFromCloud(
   isBeatMuted?: boolean;
 } | null> {
   try {
+    // Loading must see the last committed edit, not a snapshot fetched while
+    // an earlier save is still being uploaded.
+    await queue;
     const data = await readCloudState();
     if (!data.hasProject || !data.project) return null;
 
@@ -493,10 +516,9 @@ export async function deleteProjectFromCloud(): Promise<boolean> {
     try {
       if (owner !== cloudOwner) return false;
       if (revision === undefined) await readCloudState();
-      const res = await fetch('/api/studio/project', { method: 'DELETE',
+      const { response: res, data } = await requestCloudJson('/api/studio/project', { method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baseRevision: revision, ownerEmail: owner }) });
       if (!res.ok) return res.status >= 500 ? confirmDeletion() : false;
-      const data = await res.json();
       if (data.success !== true) return false;
       if (owner === cloudOwner) { revision = data.revision ?? null; knownAudio.clear(); }
       return true;

@@ -279,7 +279,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       setYoutubeProgress(null);
       onShowToast(message, 'error');
     } finally {
-      await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=delete`, { method: 'POST' }).catch(() => undefined);
+      // Cleanup is independent of publication. A slow cleanup response must
+      // not keep a confirmed video behind disabled controls.
+      void fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=delete`, { method: 'POST', keepalive: true }).catch(() => undefined);
       exportLock.current = false;
       setYoutubeLoading(false);
     }
