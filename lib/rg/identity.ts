@@ -24,14 +24,13 @@ export type RgTrack = {
   id: string;
   title: string;
   beat_id: string | null;
-  studio_project_id: string | null;
   status: 'draft' | 'published' | 'archived';
   created_at: string;
   updated_at: string;
 };
 
 const artistFields = 'id,stage_name,slug,bio,status,created_at,updated_at';
-const trackFields = 'id,title,beat_id,studio_project_id,status,created_at,updated_at';
+const trackFields = 'id,title,beat_id,status,created_at,updated_at';
 
 function cleanStageName(value: unknown): string {
   if (typeof value !== 'string') throw new RgIdentityError('Escribe un nombre artístico válido.');
@@ -124,27 +123,6 @@ export async function updateOwnedArtist(userId: string, artistId: string, input:
   return data as unknown as RgArtist;
 }
 
-async function verifyProject(userId: string, projectId: string | null): Promise<void> {
-  if (projectId === null) return;
-  if (!RG_UUID.test(projectId)) throw new RgIdentityError('El proyecto del Studio no es válido.');
-  // This existing optional table is not present in the repository's generated DB type.
-  const projectClient = createAdminClient() as unknown as {
-    from(table: 'studio_cloud_projects'): {
-      select(columns: 'id'): {
-        eq(column: 'id', value: string): {
-          eq(column: 'user_id', value: string): {
-            maybeSingle(): PromiseLike<{ data: { id: string } | null; error: { code?: string; message?: string } | null }>;
-          };
-        };
-      };
-    };
-  };
-  const { data, error } = await projectClient.from('studio_cloud_projects').select('id')
-    .eq('id', projectId).eq('user_id', userId).maybeSingle();
-  if (error) dbFailure(error, 'No se pudo verificar el proyecto del Studio.');
-  if (!data) throw new RgIdentityError('El proyecto del Studio no pertenece a esta cuenta.', 403, 'PROJECT_NOT_OWNED');
-}
-
 export async function listOwnedTracks(userId: string, artistId: string): Promise<RgTrack[]> {
   await getOwnedArtistById(userId, artistId);
   const client = createAdminClient();
@@ -173,21 +151,18 @@ export async function getOwnedTrack(userId: string, trackId: string): Promise<{ 
 }
 
 export async function createOwnedTrack(userId: string, input: {
-  artistId: unknown; title: unknown; beatId?: unknown; studioProjectId?: unknown;
+  artistId: unknown; title: unknown; beatId?: unknown;
 }): Promise<RgTrack> {
   if (typeof input.artistId !== 'string' || !RG_UUID.test(input.artistId)) throw new RgIdentityError('Selecciona un RG Artist válido.');
   const artist = await getOwnedArtistById(userId, input.artistId);
   if (artist.status !== 'active') throw new RgIdentityError('Este RG Artist no puede crear tracks.', 403, 'ARTIST_INACTIVE');
   const title = cleanTrackTitle(input.title);
   const beatId = input.beatId === undefined || input.beatId === null || input.beatId === '' ? null : input.beatId;
-  const projectId = input.studioProjectId === undefined || input.studioProjectId === null || input.studioProjectId === '' ? null : input.studioProjectId;
   if (beatId !== null && (typeof beatId !== 'string' || !RG_UUID.test(beatId))) throw new RgIdentityError('El beat de catálogo no es válido.');
-  if (projectId !== null && (typeof projectId !== 'string' || !RG_UUID.test(projectId))) throw new RgIdentityError('El proyecto del Studio no es válido.');
-  await verifyProject(userId, projectId as string | null);
 
   const { data: id, error } = await createAdminClient().rpc('create_rg_track', {
     p_user_id: userId, p_artist_id: artist.id, p_title: title,
-    p_beat_id: beatId as string | null, p_studio_project_id: projectId as string | null,
+    p_beat_id: beatId as string | null,
   });
   if (error || !id) dbFailure(error, 'No se pudo crear el RG Track.');
   const { data, error: readError } = await createAdminClient().from('rg_tracks').select(trackFields).eq('id', id).single();
@@ -196,10 +171,10 @@ export async function createOwnedTrack(userId: string, input: {
 }
 
 export async function updateOwnedTrack(userId: string, trackId: string, input: {
-  title?: unknown; beatId?: unknown; studioProjectId?: unknown;
+  title?: unknown; beatId?: unknown;
 }): Promise<RgTrack> {
   const { track } = await getOwnedTrack(userId, trackId);
-  const values: { title?: string; beat_id?: string | null; studio_project_id?: string | null; updated_at: string } = {
+  const values: { title?: string; beat_id?: string | null; updated_at: string } = {
     updated_at: new Date().toISOString(),
   };
   if (Object.hasOwn(input, 'title')) values.title = cleanTrackTitle(input.title);
@@ -213,21 +188,15 @@ export async function updateOwnedTrack(userId: string, trackId: string, input: {
     }
     values.beat_id = beatId as string | null;
   }
-  if (Object.hasOwn(input, 'studioProjectId')) {
-    const projectId = input.studioProjectId === null || input.studioProjectId === '' ? null : input.studioProjectId;
-    if (projectId !== null && (typeof projectId !== 'string' || !RG_UUID.test(projectId))) throw new RgIdentityError('El proyecto del Studio no es válido.');
-    await verifyProject(userId, projectId as string | null);
-    values.studio_project_id = projectId as string | null;
-  }
   if (Object.keys(values).length === 1) throw new RgIdentityError('No hay cambios válidos para guardar.');
-  if (track.status !== 'draft' && (Object.hasOwn(input, 'beatId') || Object.hasOwn(input, 'studioProjectId'))) {
-    throw new RgIdentityError('No se puede cambiar el beat o proyecto después de publicar el track.', 409, 'TRACK_LOCKED');
+  if (track.status !== 'draft' && Object.hasOwn(input, 'beatId')) {
+    throw new RgIdentityError('No se puede cambiar el beat después de publicar el track.', 409, 'TRACK_LOCKED');
   }
   const { data, error } = await createAdminClient().from('rg_tracks').update(values)
     .eq('id', track.id).eq('status', 'draft').select(trackFields).maybeSingle();
   if (error) dbFailure(error, 'No se pudo actualizar el RG Track.');
   if (!data) {
-    if (Object.hasOwn(input, 'beatId') || Object.hasOwn(input, 'studioProjectId')) {
+    if (Object.hasOwn(input, 'beatId')) {
       throw new RgIdentityError('El track ya se publicó o cambió. Actualiza la página e inténtalo de nuevo.', 409, 'TRACK_LOCKED');
     }
     const { data: current, error: currentError } = await createAdminClient().from('rg_tracks').update(values)

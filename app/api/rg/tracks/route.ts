@@ -27,11 +27,11 @@ export async function POST(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Inicia sesión para crear un RG Track.' }, { status: 401 });
   const body = await request.json().catch(() => null);
-  if (!allowedKeys(body, ['artistId', 'title', 'beatId', 'studioProjectId'])) {
+  if (!allowedKeys(body, ['artistId', 'title', 'beatId'])) {
     return NextResponse.json({ error: 'Los datos del RG Track no son válidos.' }, { status: 400 });
   }
   try {
-    const track = await createOwnedTrack(user.id, body as { artistId: unknown; title: unknown; beatId?: unknown; studioProjectId?: unknown });
+    const track = await createOwnedTrack(user.id, body as { artistId: unknown; title: unknown; beatId?: unknown });
     return NextResponse.json({ track }, { status: 201, headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     const result = serializeIdentityError(error);

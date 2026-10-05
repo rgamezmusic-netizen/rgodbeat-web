@@ -33,9 +33,9 @@ export interface Database {
         Relationships: [];
       };
       rg_tracks: {
-        Row: { id: string; title: string; beat_id: string | null; studio_project_id: string | null; status: "draft" | "published" | "archived"; created_at: string; updated_at: string };
-        Insert: { id?: string; title: string; beat_id?: string | null; studio_project_id?: string | null; status?: "draft" | "published" | "archived"; created_at?: string; updated_at?: string };
-        Update: { title?: string; beat_id?: string | null; studio_project_id?: string | null; status?: "draft" | "published" | "archived"; updated_at?: string };
+        Row: { id: string; title: string; beat_id: string | null; status: "draft" | "published" | "archived"; created_at: string; updated_at: string };
+        Insert: { id?: string; title: string; beat_id?: string | null; status?: "draft" | "published" | "archived"; created_at?: string; updated_at?: string };
+        Update: { title?: string; beat_id?: string | null; status?: "draft" | "published" | "archived"; updated_at?: string };
         Relationships: [];
       };
       rg_track_artists: {
@@ -935,7 +935,7 @@ export interface Database {
     };
     Functions: {
       reserve_youtube_export_job: { Args: { p_id: string; p_user_id: string; p_artist_name: string; p_title: string; p_privacy: string }; Returns: boolean };
-      create_rg_track: { Args: { p_user_id: string; p_artist_id: string; p_title: string; p_beat_id?: string | null; p_studio_project_id?: string | null }; Returns: string };
+      create_rg_track: { Args: { p_user_id: string; p_artist_id: string; p_title: string; p_beat_id?: string | null }; Returns: string };
       record_rg_publication_link: { Args: { p_user_id: string; p_artist_id: string; p_track_id: string; p_beat_id: string | null; p_youtube_export_job_id: string; p_youtube_video_id: string }; Returns: string };
       get_public_beat_activity: { Args: { p_week: string; p_previous_week: string }; Returns: Json };
       cast_weekly_beat_vote: { Args: { p_user_id: string; p_beat_id: string }; Returns: Json };

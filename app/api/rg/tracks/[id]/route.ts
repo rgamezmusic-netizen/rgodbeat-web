@@ -26,12 +26,12 @@ export async function PATCH(request: NextRequest, { params }: Context) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Inicia sesión para editar tu RG Track.' }, { status: 401 });
   const body = await request.json().catch(() => null);
-  if (!allowedKeys(body, ['title', 'beatId', 'studioProjectId'])) {
+  if (!allowedKeys(body, ['title', 'beatId'])) {
     return NextResponse.json({ error: 'Los datos del RG Track no son válidos.' }, { status: 400 });
   }
   try {
     const { id } = await params;
-    const track = await updateOwnedTrack(user.id, id, body as { title?: unknown; beatId?: unknown; studioProjectId?: unknown });
+    const track = await updateOwnedTrack(user.id, id, body as { title?: unknown; beatId?: unknown });
     return NextResponse.json({ track }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     const result = serializeIdentityError(error);

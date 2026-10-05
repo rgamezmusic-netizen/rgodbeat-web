@@ -23,7 +23,7 @@ type YouTubeProgressState = {
 };
 
 type RgArtist = { id: string; stage_name: string; slug: string; bio: string | null; status: 'active' | 'suspended' | 'retired' };
-type RgTrack = { id: string; title: string; beat_id: string | null; studio_project_id: string | null; status: 'draft' | 'published' | 'archived' };
+type RgTrack = { id: string; title: string; beat_id: string | null; status: 'draft' | 'published' | 'archived' };
 const RG_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function formatUploadBytes(bytes: number): string {

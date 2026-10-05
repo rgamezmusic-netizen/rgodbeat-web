@@ -17,7 +17,6 @@ CREATE TABLE public.rg_tracks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL CHECK (char_length(btrim(title)) BETWEEN 1 AND 120),
   beat_id uuid REFERENCES public.beats(id) ON DELETE RESTRICT,
-  studio_project_id uuid REFERENCES public.studio_cloud_projects(id) ON DELETE SET NULL,
   status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'archived')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -73,8 +72,7 @@ CREATE OR REPLACE FUNCTION public.create_rg_track(
   p_user_id uuid,
   p_artist_id uuid,
   p_title text,
-  p_beat_id uuid DEFAULT NULL,
-  p_studio_project_id uuid DEFAULT NULL
+  p_beat_id uuid DEFAULT NULL
 ) RETURNS uuid
 LANGUAGE plpgsql SET search_path = '' AS $$
 DECLARE v_track_id uuid;
@@ -88,21 +86,15 @@ BEGIN
   IF p_beat_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.beats b WHERE b.id = p_beat_id) THEN
     RAISE EXCEPTION 'beat_unavailable' USING ERRCODE = 'P0001';
   END IF;
-  IF p_studio_project_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM public.studio_cloud_projects p
-    WHERE p.id = p_studio_project_id AND p.user_id = p_user_id
-  ) THEN
-    RAISE EXCEPTION 'studio_project_unavailable' USING ERRCODE = 'P0001';
-  END IF;
-  INSERT INTO public.rg_tracks(title, beat_id, studio_project_id)
-    VALUES (btrim(p_title), p_beat_id, p_studio_project_id) RETURNING id INTO v_track_id;
+  INSERT INTO public.rg_tracks(title, beat_id)
+    VALUES (btrim(p_title), p_beat_id) RETURNING id INTO v_track_id;
   INSERT INTO public.rg_track_artists(track_id, artist_id, role)
     VALUES (v_track_id, p_artist_id, 'primary');
   RETURN v_track_id;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.create_rg_track(uuid, uuid, text, uuid, uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.create_rg_track(uuid, uuid, text, uuid, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.create_rg_track(uuid, uuid, text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.create_rg_track(uuid, uuid, text, uuid) TO service_role;
 
 -- Verify the existing confirmed YouTube job and record its link atomically.
 -- Replays of the same association return the existing publication ID.
