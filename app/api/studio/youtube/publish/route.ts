@@ -8,6 +8,8 @@ import { pipeline } from "node:stream/promises";
 import { NextRequest, NextResponse } from "next/server";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { RG_UUID, serializeIdentityError, validateOwnedTrackForPublication } from "@/lib/rg/identity";
+import { recordConfirmedPublication } from "@/lib/rg/publications";
 import { getAuthorizedStudioExporter } from "@/lib/youtube/access";
 import { getYouTubeChannelSettings, refreshYouTubeAccessToken } from "@/lib/youtube/channel";
 import { youtubeConfig } from "@/lib/youtube/config";
@@ -19,7 +21,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type PublishInput = { uploadId?: string; artistName?: string; videoTitle?: string; videoDescription?: string; beatTitle?: string; beatGenre?: string; beatBpm?: number; beatKey?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null };
+type PublishInput = { uploadId?: string; artistName?: string; videoTitle?: string; videoDescription?: string; beatTitle?: string; beatGenre?: string; beatBpm?: number; beatKey?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null; rgLink?: { artistId?: unknown; trackId?: unknown; beatId?: unknown } };
 type YouTubeInsertResponse = { id?: string; status?: { privacyStatus?: "private" | "unlisted" | "public" }; error?: { errors?: Array<{ reason?: string }> } };
 
 function jobsTable() { return createAdminClient().from("youtube_export_jobs"); }
@@ -119,6 +121,19 @@ export async function POST(request: NextRequest) {
   const access = await getAuthorizedStudioExporter();
   if (!access.user) return NextResponse.json({ error: access.error }, { status: access.status });
   const input = await request.json().catch(() => ({})) as PublishInput;
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return NextResponse.json({ error: "La solicitud de publicación no es válida." }, { status: 400 });
+  }
+  const hasRgFields = Object.hasOwn(input, "rgLink");
+  const rgLink = input.rgLink;
+  if (hasRgFields && (!rgLink || typeof rgLink !== "object" || Array.isArray(rgLink)
+    || !Object.hasOwn(rgLink, "artistId") || !Object.hasOwn(rgLink, "trackId") || !Object.hasOwn(rgLink, "beatId")
+    || Object.keys(rgLink).some(key => !["artistId", "trackId", "beatId"].includes(key))
+    || typeof rgLink.artistId !== "string" || !RG_UUID.test(rgLink.artistId)
+    || typeof rgLink.trackId !== "string" || !RG_UUID.test(rgLink.trackId)
+    || !(rgLink.beatId === null || (typeof rgLink.beatId === "string" && RG_UUID.test(rgLink.beatId))))) {
+    return NextResponse.json({ error: "La asociación RG del track no es válida." }, { status: 400 });
+  }
   const uploadId = input.uploadId || "";
   const artistName = cleanMetadataText(input.artistName || "", 80);
   const beatTitle = cleanMetadataText(input.beatTitle || "Beat RGODBEAT", 100) || "Beat RGODBEAT";
@@ -131,6 +146,14 @@ export async function POST(request: NextRequest) {
   const privacy = input.privacy === "public" ? "public" : "unlisted";
   if (!UUID.test(uploadId) || artistName.length < 1 || requestedTitle.length > 100 || videoDescriptionBytes > 5000 || input.hasRights !== true || typeof input.madeForKids !== "boolean") {
     return NextResponse.json({ error: "Revisa el nombre, el título y la descripción; confirma también los derechos y el público del vídeo." }, { status: 400 });
+  }
+  if (rgLink) {
+    try {
+      await validateOwnedTrackForPublication(access.user.id, rgLink.artistId, rgLink.trackId, rgLink.beatId);
+    } catch (error) {
+      const result = serializeIdentityError(error);
+      return NextResponse.json({ error: result.error, code: result.code }, { status: result.status });
+    }
   }
   const metadata = buildVideoMetadata({
     artistName, videoTitle: requestedTitle, videoDescription, beatTitle,
@@ -191,8 +214,35 @@ export async function POST(request: NextRequest) {
     if (!uploaded.ok || !result.id) throw new Error(failCode(result.error?.errors?.[0]?.reason));
     const videoUrl = `https://www.youtube.com/watch?v=${result.id}`;
     const actualPrivacy = result.status?.privacyStatus || privacy;
-    await jobsTable().update({ status: "uploaded", privacy: actualPrivacy, youtube_video_id: result.id, youtube_url: videoUrl, finished_at: new Date().toISOString() }).eq("id", jobId).eq("user_id", access.user.id);
-    return NextResponse.json({ success: true, videoId: result.id, videoUrl, privacy: actualPrivacy });
+    const uploadedValues = { status: "uploaded" as const, privacy: actualPrivacy, youtube_video_id: result.id, youtube_url: videoUrl, finished_at: new Date().toISOString() };
+    if (!rgLink) {
+      // Preserve the existing unlinked publication behavior and response shape.
+      await jobsTable().update(uploadedValues).eq("id", jobId).eq("user_id", access.user.id);
+      return NextResponse.json({ success: true, videoId: result.id, videoUrl, privacy: actualPrivacy });
+    }
+    let jobConfirmed = false;
+    try {
+      const savedJob = await jobsTable().update(uploadedValues).eq("id", jobId).eq("user_id", access.user.id).select("id").maybeSingle();
+      jobConfirmed = !savedJob.error && savedJob.data?.id === jobId;
+      if (!jobConfirmed) console.error("[YouTube publish job persistence]", savedJob.error?.code || "JOB_NOT_CONFIRMED");
+    } catch (error) {
+      console.error("[YouTube publish job persistence]", error instanceof Error ? error.name : "UNKNOWN");
+    }
+    let rgPublication: { linked: boolean; publicationId?: string; error?: string; code?: string } | undefined;
+    if (rgLink) {
+      rgPublication = jobConfirmed
+        ? await recordConfirmedPublication({
+          userId: access.user.id,
+          artistId: rgLink.artistId as string,
+          trackId: rgLink.trackId as string,
+          beatId: rgLink.beatId as string | null,
+          youtubeExportJobId: jobId,
+          youtubeVideoId: result.id,
+        })
+        : { linked: false, error: "YouTube confirmó la publicación, pero el registro del trabajo no se pudo verificar para vincularlo.", code: "YOUTUBE_JOB_PERSISTENCE_FAILED" };
+    }
+    return NextResponse.json({ success: true, videoId: result.id, videoUrl, privacy: actualPrivacy,
+      ...(rgPublication ? { rgPublicationLinked: rgPublication.linked, rgPublicationId: rgPublication.publicationId, rgPublicationError: rgPublication.error, rgPublicationCode: rgPublication.code } : {}) });
   } catch (error) {
     const code = failCode(error instanceof Error ? error.message : undefined);
     await jobsTable().update({ status: "failed", error_code: code, finished_at: new Date().toISOString() }).eq("id", jobId).eq("user_id", access.user.id);

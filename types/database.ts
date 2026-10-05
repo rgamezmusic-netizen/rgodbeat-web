@@ -26,6 +26,30 @@ export interface Database {
         Update: { artist_name?: string; title?: string; privacy?: "private" | "unlisted" | "public"; status?: "processing" | "uploaded" | "failed"; youtube_video_id?: string | null; youtube_url?: string | null; error_code?: string | null; finished_at?: string | null };
         Relationships: [];
       };
+      rg_artists: {
+        Row: { id: string; user_id: string | null; stage_name: string; slug: string; bio: string | null; status: "active" | "suspended" | "retired"; created_at: string; updated_at: string };
+        Insert: { id?: string; user_id?: string | null; stage_name: string; slug: string; bio?: string | null; status?: "active" | "suspended" | "retired"; created_at?: string; updated_at?: string };
+        Update: { user_id?: string | null; stage_name?: string; slug?: string; bio?: string | null; status?: "active" | "suspended" | "retired"; updated_at?: string };
+        Relationships: [];
+      };
+      rg_tracks: {
+        Row: { id: string; title: string; beat_id: string | null; studio_project_id: string | null; status: "draft" | "published" | "archived"; created_at: string; updated_at: string };
+        Insert: { id?: string; title: string; beat_id?: string | null; studio_project_id?: string | null; status?: "draft" | "published" | "archived"; created_at?: string; updated_at?: string };
+        Update: { title?: string; beat_id?: string | null; studio_project_id?: string | null; status?: "draft" | "published" | "archived"; updated_at?: string };
+        Relationships: [];
+      };
+      rg_track_artists: {
+        Row: { track_id: string; artist_id: string; role: "primary" | "collaborator"; created_at: string };
+        Insert: { track_id: string; artist_id: string; role: "primary" | "collaborator"; created_at?: string };
+        Update: { role?: "primary" | "collaborator" };
+        Relationships: [];
+      };
+      rg_publication_links: {
+        Row: { id: string; track_id: string; artist_id: string; youtube_export_job_id: string; youtube_video_id: string; published_by_user_id: string; youtube_export_job_ref: string | null; published_by_user_ref: string | null; published_at: string; created_at: string };
+        Insert: { id?: string; track_id: string; artist_id: string; youtube_export_job_id: string; youtube_video_id: string; published_by_user_id: string; youtube_export_job_ref?: string | null; published_by_user_ref?: string | null; published_at: string; created_at?: string };
+        Update: never;
+        Relationships: [];
+      };
       beat_votes: {
         Row: { id: string; user_id: string; beat_id: string; week_period: string; voted_at: string };
         Insert: { id?: string; user_id: string; beat_id: string; week_period: string; voted_at?: string };
@@ -911,6 +935,8 @@ export interface Database {
     };
     Functions: {
       reserve_youtube_export_job: { Args: { p_id: string; p_user_id: string; p_artist_name: string; p_title: string; p_privacy: string }; Returns: boolean };
+      create_rg_track: { Args: { p_user_id: string; p_artist_id: string; p_title: string; p_beat_id?: string | null; p_studio_project_id?: string | null }; Returns: string };
+      record_rg_publication_link: { Args: { p_user_id: string; p_artist_id: string; p_track_id: string; p_beat_id: string | null; p_youtube_export_job_id: string; p_youtube_video_id: string }; Returns: string };
       get_public_beat_activity: { Args: { p_week: string; p_previous_week: string }; Returns: Json };
       cast_weekly_beat_vote: { Args: { p_user_id: string; p_beat_id: string }; Returns: Json };
       post_beat_comment: { Args: { p_user_id: string; p_beat_id: string; p_author_name: string; p_body: string }; Returns: Json };
