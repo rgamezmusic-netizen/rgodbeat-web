@@ -87,13 +87,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [hasRights, setHasRights] = useState(false);
   const [coverImage, setCoverImage] = useState<File | null>(null);
   const [youtubeResult, setYoutubeResult] = useState<{ videoId: string; videoUrl: string; privacy: string; uploadId: string; rgLink?: { artistId: string; trackId: string; beatId: string | null }; rgPublicationLinked?: boolean; rgPublicationError?: string } | null>(null);
-  const [rgLinkEnabled, setRgLinkEnabled] = useState(false);
   const [rgArtist, setRgArtist] = useState<RgArtist | null>(null);
   const [rgArtistName, setRgArtistName] = useState('');
   const [rgTracks, setRgTracks] = useState<RgTrack[]>([]);
   const [rgTrackId, setRgTrackId] = useState('');
   const [rgNewTrackTitle, setRgNewTrackTitle] = useState('');
-  const [rgCatalogBeatChoice, setRgCatalogBeatChoice] = useState<{ beatId: string | null; checked: boolean } | null>(null);
   const [rgLoading, setRgLoading] = useState(false);
   const [rgError, setRgError] = useState('');
 
@@ -198,11 +196,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const cleanBeatTitle = beat ? beat.title.replace(/[^a-zA-Z0-9]/g, '_') : 'Project';
   const selectedRgTrack = rgTracks.find(track => track.id === rgTrackId) || null;
   const currentCatalogBeatId = beat?.catalogBeatId && RG_UUID.test(beat.catalogBeatId) ? beat.catalogBeatId : null;
-  const rgCatalogBeat = rgCatalogBeatChoice?.beatId === (beat?.id ?? null)
-    ? rgCatalogBeatChoice.checked
-    : Boolean(currentCatalogBeatId);
-  const linkedBeatId = rgCatalogBeat ? currentCatalogBeatId : null;
+  const linkedBeatId = currentCatalogBeatId;
   const rgTrackMatchesCurrentBeat = Boolean(selectedRgTrack && selectedRgTrack.beat_id === linkedBeatId);
+  const rgParticipationReady = Boolean(rgArtist?.status === 'active' && selectedRgTrack && rgTrackMatchesCurrentBeat);
 
   const refreshRgTracks = async (artistId: string) => {
     const response = await fetch(`/api/rg/tracks?artistId=${encodeURIComponent(artistId)}`, { cache: 'no-store' });
@@ -230,7 +226,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     if (!rgArtist) return;
     setRgLoading(true); setRgError('');
     try {
-      const beatId = rgCatalogBeat && currentCatalogBeatId ? currentCatalogBeatId : null;
+      const beatId = currentCatalogBeatId;
       const response = await fetch('/api/rg/tracks', { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ artistId: rgArtist.id, title: rgNewTrackTitle, beatId }) });
       const data = await response.json();
@@ -304,10 +300,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       onShowToast('Escribe el nombre artístico y confirma los derechos del audio y la imagen.', 'error');
       return;
     }
-    if (rgLinkEnabled && (!rgArtist || !selectedRgTrack || !rgTrackMatchesCurrentBeat)) {
-      onShowToast('Selecciona un RG Track cuyo beat coincida con el beat cargado. La publicación seguirá sin vincularse si desactivas la asociación RG.', 'error');
-      return;
-    }
     if (exportLock.current) return;
     exportLock.current = true;
     const uploadId = window.crypto.randomUUID();
@@ -356,20 +348,25 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       const response = await fetch('/api/studio/youtube/publish', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ uploadId, artistName: artistName.trim(), videoTitle: youtubeTitle.trim(), videoDescription: youtubeDescription.trim(), beatTitle: beat.title, beatGenre: beat.genre, beatBpm: beat.bpm, beatKey: beat.key, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null,
-          ...(rgLinkEnabled && rgArtist && selectedRgTrack ? { rgLink: { artistId: rgArtist.id, trackId: selectedRgTrack.id, beatId: linkedBeatId } } : {}) }),
+          ...(rgParticipationReady && rgArtist && selectedRgTrack ? { rgLink: { artistId: rgArtist.id, trackId: selectedRgTrack.id, beatId: linkedBeatId } } : {}) }),
       });
       const result = await response.json();
       if (!response.ok || result.success !== true || !result.videoId || !result.videoUrl) {
         throw new Error(result.error || 'YouTube no confirmó la publicación.');
       }
-      const publishedRgLink = rgLinkEnabled && rgArtist && selectedRgTrack
+      const publishedRgLink = rgParticipationReady && rgArtist && selectedRgTrack
         ? { artistId: rgArtist.id, trackId: selectedRgTrack.id, beatId: linkedBeatId }
         : undefined;
       setYoutubeResult({ videoId: result.videoId, videoUrl: result.videoUrl, privacy: result.privacy, uploadId,
         rgLink: publishedRgLink,
         rgPublicationLinked: result.rgPublicationLinked, rgPublicationError: result.rgPublicationError });
       setYoutubeProgress({ stage: 'publish', label: 'Publicado y confirmado por YouTube', transferredBytes: 1, totalBytes: 1 });
-      onShowToast(result.rgPublicationLinked === false ? 'YouTube confirmó el vídeo. La asociación RG quedó pendiente y puede reintentarse.' : 'YouTube confirmó la publicación del vídeo.', result.rgPublicationLinked === false ? 'info' : 'success');
+      onShowToast(result.rgPublicationLinked === false
+        ? 'YouTube confirmó el vídeo. El vínculo RG quedó pendiente y puede reintentarse.'
+        : publishedRgLink
+          ? 'YouTube confirmó el vídeo y su vínculo automático con RG.'
+          : 'YouTube confirmó el vídeo. Se publicó sin vínculo RG; el flujo estándar sigue disponible.',
+      result.rgPublicationLinked === false || !publishedRgLink ? 'info' : 'success');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo publicar en YouTube.';
       setYoutubeProgress(null);
@@ -607,12 +604,24 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
               <div className="space-y-2">
                 <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-3 space-y-2">
-                  <label className="flex items-start gap-2 text-[11px] text-zinc-200">
-                    <input type="checkbox" checked={rgLinkEnabled} onChange={(event) => { setRgLinkEnabled(event.target.checked); setRgError(''); }} disabled={isBusy} className="mt-0.5 accent-amber-400" />
-                    <span><strong>Vincular con un RG Track</strong><span className="block text-zinc-500">Opcional. Si no lo activas, la publicación sigue el flujo actual sin asociación RG.</span></span>
-                  </label>
-                  {rgLinkEnabled && (
-                    <div className="space-y-2 border-t border-white/[0.06] pt-2">
+                  <div className="space-y-1 text-[11px]">
+                    <p className={rgParticipationReady ? 'font-semibold text-emerald-200' : 'font-semibold text-amber-200'}>
+                      {rgParticipationReady ? 'RG Rewards activo — vínculo automático' : 'RG Rewards pendiente'}
+                    </p>
+                    <p className="text-zinc-400">
+                      {rgParticipationReady
+                        ? 'Esta publicación se vinculará con el RG Track cuando YouTube confirme la subida.'
+                        : !rgArtist
+                          ? 'Crea tu RG Artist para preparar la participación automática.'
+                          : rgArtist.status !== 'active'
+                            ? 'Tu RG Artist no está activo. La publicación estándar de YouTube seguirá disponible sin vínculo RG.'
+                          : selectedRgTrack && !rgTrackMatchesCurrentBeat
+                            ? 'El RG Track seleccionado no coincide con el beat cargado. Elige uno compatible o crea un borrador.'
+                            : 'Selecciona o crea un RG Track para preparar la participación automática.'}
+                    </p>
+                    <p className="text-[10px] text-zinc-500">La contabilidad de RG Score y RG Coin aún no está activa.</p>
+                  </div>
+                  <div className="space-y-2 border-t border-white/[0.06] pt-2">
                       {!rgArtist ? <>
                         <label className="block space-y-1 text-[11px] text-zinc-400">Nombre del RG Artist
                           <input value={rgArtistName} maxLength={80} onChange={(event) => setRgArtistName(event.target.value)} disabled={isBusy || rgLoading} placeholder="Nombre artístico canónico" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
@@ -633,15 +642,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           <input value={rgNewTrackTitle} maxLength={120} onChange={(event) => setRgNewTrackTitle(event.target.value)} disabled={isBusy || rgLoading} placeholder="Título para un nuevo borrador" className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
                           <button type="button" onClick={() => void handleCreateRgTrack()} disabled={isBusy || rgLoading || !rgNewTrackTitle.trim()} className="rounded-lg border border-amber-500/30 px-3 py-2 text-[11px] font-semibold text-amber-200 hover:border-amber-400 disabled:opacity-50">Crear borrador</button>
                         </div>
-                        {beat?.id && <label className="flex items-start gap-2 text-[10px] text-zinc-400">
-                          <input type="checkbox" checked={rgCatalogBeat} onChange={(event) => setRgCatalogBeatChoice({ beatId: beat.id, checked: event.target.checked })} disabled={isBusy || !currentCatalogBeatId} className="mt-0.5 accent-amber-400" />
-                          <span>Asocia el ID canónico del beat actual solo si se cargó desde el catálogo. El servidor verificará la relación.{!currentCatalogBeatId && <span className="block text-zinc-500">Este beat es custom, externo o no tiene un ID de catálogo válido; se creará sin `beat_id`.</span>}{currentCatalogBeatId && <span className="block text-zinc-500">Desmarca solo si no quieres asociar este beat del catálogo.</span>}</span>
-                        </label>}
-                        {selectedRgTrack && !rgTrackMatchesCurrentBeat && <p className="text-[10px] text-amber-200">El beat del RG Track no coincide con el beat cargado. Selecciona otro track o crea un borrador con la asociación correcta.</p>}
+                        <p className="text-[10px] text-zinc-500">{currentCatalogBeatId
+                          ? 'El ID canónico del beat cargado desde el catálogo se asociará automáticamente al nuevo RG Track.'
+                          : 'Este beat es custom o externo; el nuevo RG Track se creará sin beat de catálogo.'}</p>
                       </>}
                       {rgError && <p className="text-[10px] text-red-300" role="alert">{rgError}</p>}
-                    </div>
-                  )}
+                  </div>
                 </div>
                 <label className="block space-y-1 text-[11px] text-zinc-400">Nombre artístico
                   <input value={artistName} maxLength={80} onChange={(event) => setArtistName(event.target.value)} disabled={isBusy} placeholder="El nombre que aparecerá en el video" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
