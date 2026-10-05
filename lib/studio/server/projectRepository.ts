@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 type ClipMeta = { id: string; storageKey?: string; audioHash?: string };
 type TrackMeta = { id: string; clips?: ClipMeta[] };
 export type CloudMetadata = {
-  beat?: { id?: string; title?: string; customBeatKey?: string; audioHash?: string } | null;
+  beat?: { id?: string; catalogBeatId?: string | null; title?: string; customBeatKey?: string; audioHash?: string } | null;
   tracks?: TrackMeta[];
   deleted?: boolean;
   savedAt?: number;

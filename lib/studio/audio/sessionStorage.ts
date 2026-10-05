@@ -1,6 +1,7 @@
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalFX, BeatFX, BeatMixSettings } from '../types/audio';
 import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from './wavEncoder';
 import { retireRecordingCheckpoints } from './recordingRecovery';
+import { getCatalogBeatId } from './catalogBeat';
 
 const DB_NAME = 'RGODBEAT_STUDIO_DB';
 const DB_VERSION = 2; // Upgraded to support session persistence
@@ -34,6 +35,7 @@ export interface StoredTrackData {
 
 export interface StoredBeatData {
   id: string;
+  catalogBeatId?: string | null;
   title: string;
   producer?: string;
   genre?: string;
@@ -237,6 +239,7 @@ async function persistStudioSession(
 
       storedBeatData = {
         id: beat.id,
+        catalogBeatId: getCatalogBeatId(beat.id, beat.catalogBeatId),
         title: beat.title,
         producer: beat.producer,
         genre: beat.genre,
@@ -386,6 +389,7 @@ export async function saveLastProjectBeat(
 
     const storedBeatData: StoredBeatData = {
       id: beat.id,
+      catalogBeatId: getCatalogBeatId(beat.id, beat.catalogBeatId),
       title: beat.title,
       producer: beat.producer,
       genre: beat.genre,
@@ -485,6 +489,7 @@ export async function restoreLastStudioSession(
       if (beatBuffer) {
         restoredBeat = {
           id: session.beatData.id,
+          catalogBeatId: getCatalogBeatId(session.beatData.id, session.beatData.catalogBeatId),
           title: session.beatData.title,
           producer: session.beatData.producer || 'Custom Beat',
           genre: session.beatData.genre,
@@ -637,6 +642,7 @@ export interface RGODBeatExportFile {
     beatId?: string | null;
     beatData?: {
       id: string;
+      catalogBeatId?: string | null;
       title: string;
       producer?: string;
       genre?: string;
@@ -753,6 +759,7 @@ export async function exportProjectToDeviceFile(
       }
       storedBeatData = {
         id: beat.id,
+        catalogBeatId: getCatalogBeatId(beat.id, beat.catalogBeatId),
         title: beat.title,
         producer: beat.producer,
         genre: beat.genre,
@@ -841,6 +848,7 @@ export async function importProjectFromDeviceFile(
         const decoded = await audioCtx.decodeAudioData(rawBuf);
         restoredBeat = {
           id: s.beatData.id,
+          catalogBeatId: getCatalogBeatId(s.beatData.id, s.beatData.catalogBeatId),
           title: s.beatData.title,
           producer: s.beatData.producer || 'Custom Beat',
           genre: s.beatData.genre,

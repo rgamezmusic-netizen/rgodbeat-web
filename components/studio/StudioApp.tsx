@@ -52,6 +52,7 @@ import { BeatFXModal } from './BeatFXModal';
 import { LoopModal } from './LoopModal';
 import { LoadBeatModal } from './LoadBeatModal';
 import { ExportModal } from './ExportModal';
+import { getCatalogBeatId } from '@/lib/studio/audio/catalogBeat';
 import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
 import { InstallAppModal } from './InstallAppModal';
@@ -974,6 +975,7 @@ export default function App() {
                   const b = cloudData.beatData;
                   cloudBeat = {
                     id: b.id || `custom-${Date.now()}`,
+                    catalogBeatId: getCatalogBeatId(b.id, b.catalogBeatId),
                     title: b.title || 'Mi Beat Guardado',
                     producer: b.producer || 'Custom Beat',
                     genre: b.genre,

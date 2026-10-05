@@ -117,7 +117,7 @@ export interface VocalTrack {
 export interface BeatData {
   id: string;
   /** Canonical public.beats.id when this Studio beat was loaded from the RGodBeat catalog. */
-  catalogBeatId?: string;
+  catalogBeatId?: string | null;
   title: string;
   producer?: string;
   /** Subgenre metadata when the beat already has a known classification. */

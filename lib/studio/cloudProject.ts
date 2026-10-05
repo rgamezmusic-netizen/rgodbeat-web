@@ -1,5 +1,6 @@
 import { BeatData, LoopSettings, VocalClip, VocalTrack, BeatFX, BeatMixSettings } from './types/audio';
 import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from './audio/wavEncoder';
+import { getCatalogBeatId } from './audio/catalogBeat';
 
 type SaveResult = { success: boolean; error?: string; requiresPass?: boolean; conflict?: boolean };
 let cloudOwner: string | null = null;
@@ -320,6 +321,7 @@ async function uploadProject(
       beat: currentBeat
         ? {
             id: currentBeat.id,
+            catalogBeatId: getCatalogBeatId(currentBeat.id, currentBeat.catalogBeatId),
             audioHash: beatHash,
             title: currentBeat.title,
             producer: currentBeat.producer,
