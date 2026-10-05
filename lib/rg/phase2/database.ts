@@ -8,11 +8,13 @@ export interface Phase2Query<T = unknown> extends PromiseLike<Phase2Result<T>> {
   insert(values: unknown): Phase2Query<unknown>;
   update(values: unknown): Phase2Query<unknown>;
   eq(column: string, value: unknown): Phase2Query<T>;
+  gte(column: string, value: unknown): Phase2Query<T>;
   lt(column: string, value: unknown): Phase2Query<T>;
   lte(column: string, value: unknown): Phase2Query<T>;
   in(column: string, values: unknown[]): Phase2Query<T>;
   order(column: string, options?: { ascending?: boolean }): Phase2Query<T>;
   limit(value: number): Phase2Query<T>;
+  range(from: number, to: number): Phase2Query<T>;
   single(): Phase2Query<unknown>;
   maybeSingle(): Phase2Query<unknown>;
 }

@@ -42,14 +42,16 @@ export async function getRgSeasonRankings(now = new Date()) {
   if (totalsError) throw new Error('RG score ledger could not be aggregated.');
   const totals = (totalsData ?? []) as RankTotal[];
 
-  const { data: latestRunData } = await db.from('rg_rank_snapshot_runs').select('id')
+  const { data: latestRunData, error: runError } = await db.from('rg_rank_snapshot_runs').select('id')
     .eq('season_id', currentSeason.id).order('captured_at', { ascending: false }).limit(1).maybeSingle();
+  if (runError) throw new Error('RG ranking snapshot could not be loaded.');
   const latestRun = latestRunData as { id: string } | null;
   const movementByKind = new Map<RankingKind, Map<string, number>>();
   if (latestRun?.id) {
-    const { data: savedData } = await db.from('rg_rank_snapshots').select('ranking_type,entity_id,rank')
+    const { data: savedData, error: savedError } = await db.from('rg_rank_snapshots').select('ranking_type,entity_id,rank')
       .eq('run_id', latestRun.id);
     const savedRows = (savedData ?? []) as SnapshotEntry[];
+    if (savedError) throw new Error('RG rank movement could not be loaded.');
     for (const kind of ['tracks', 'artists', 'beats'] as const) {
       movementByKind.set(kind, new Map(savedRows.filter((row) => row.ranking_type === kind)
         .map((row) => [row.entity_id, row.rank])));
@@ -74,6 +76,13 @@ export async function getRgSeasonRankings(now = new Date()) {
   if (tracksResult.error || artistsResult.error || beatsResult.error || membershipsResult.error) throw new Error('RG ranking identities could not be loaded.');
   const trackRows = (tracksResult.data ?? []) as TrackIdentity[];
   const artistRows = (artistsResult.data ?? []) as ArtistIdentity[];
+  const missingArtistIds = [...new Set(((membershipsResult.data ?? []) as Membership[]).map((row) => row.artist_id))]
+    .filter((id) => !artistRows.some((artist) => artist.id === id));
+  if (missingArtistIds.length) {
+    const { data, error } = await db.from('rg_artists').select('id,stage_name,slug').in('id', missingArtistIds);
+    if (error) throw new Error('RG track artist identities could not be loaded.');
+    artistRows.push(...((data ?? []) as ArtistIdentity[]));
+  }
   const beatRows = (beatsResult.data ?? []) as BeatIdentity[];
   const membershipRows = (membershipsResult.data ?? []) as Membership[];
   const tracks = new Map(trackRows.map((row) => [row.id, row]));

@@ -139,6 +139,15 @@ export async function resolveAuthoritativeCart(
  */
 export async function grantStudioAccess(supabase: any, customerId: string, days = 30) {
   try {
+    // Use the shared row-locked entitlement once Phase 2 is installed. Older
+    // databases retain the existing fulfillment path while rollout is pending.
+    const extended = await supabase.rpc("rg_extend_studio_access", { p_customer_id: customerId, p_days: days });
+    if (!extended.error) {
+      if (typeof extended.data !== "string") throw new Error("Studio extension returned no expiration.");
+      return extended.data;
+    }
+    if (!["PGRST202", "42883"].includes(extended.error.code)) throw extended.error;
+
     const { data: customer } = await (supabase as any)
       .from("customers")
       .select("studio_access_until")

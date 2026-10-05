@@ -44,7 +44,7 @@ test('90-day support tier and split are configurable and conserve every RG unit'
 });
 
 test('pool issuance is capped and podium distributions preserve the unallocated share', () => {
-  assert.equal(calculateSeasonPool({ base: 100, activity: 100, commerce: 50, direct: 500, sponsors: 250, minimum: 0, maximum: 800, issuanceCap: 700 }), 700);
+  assert.equal(calculateSeasonPool({ base: 100, activity: 100, commerce: 50, direct: 500, sponsors: 250, minimum: 0, maximum: 800, issuanceCap: 700 }), 800);
   assert.deepEqual(distributeSeasonPool(48_500, { first: 40, second: 25, third: 15 }), { first: 19_400, second: 12_125, third: 7_275, unallocated: 9_700 });
 });
 
@@ -82,6 +82,54 @@ test('economy simulation totals issuance, obligations, redemption exposure, and 
   assert.equal(result.walletOutstandingRg, 5400);
   assert.equal(result.outstandingRg, 6900);
   assert.equal(result.maximumDiscountExposureCents, 5000);
-  assert.equal(result.withinSeasonIssuanceCap, false);
+  assert.equal(result.withinSeasonIssuanceCap, true);
   assert.equal(result.withinOutstandingCap, true);
+});
+
+test('Premium fixtures cover expired, active 30/15 days, null, and far-future expiration', () => {
+  const now = new Date('2026-10-05T00:00:00.000Z');
+  for (const [expiry, days, expected] of [
+    ['2026-10-01T00:00:00Z', 30, '2026-11-04T00:00:00.000Z'],
+    ['2026-11-20T00:00:00Z', 30, '2026-12-20T00:00:00.000Z'],
+    ['2026-11-20T00:00:00Z', 15, '2026-12-05T00:00:00.000Z'],
+    [null, 30, '2026-11-04T00:00:00.000Z'],
+    ['2099-11-20T00:00:00Z', 30, '2099-12-20T00:00:00.000Z'],
+  ] as const) assert.equal(extendEntitlement(expiry ? new Date(expiry) : null, now, days).toISOString(), expected);
+});
+
+test('economy scenarios distinguish minted issuance from transferred/purchased sponsor funds', () => {
+  const scenarios = [
+    { earned: 10, sponsors: 0, contributed: 0, issued: 0 },
+    { earned: 1000, sponsors: 0, contributed: 500, issued: 100 },
+    { earned: 100000, sponsors: 0, contributed: 10000, issued: 10000 },
+    { earned: 100, sponsors: 1000000, contributed: 0, issued: 0 },
+    { earned: 100, sponsors: 500000 + 250000 + 250000, contributed: 0, issued: 0 },
+  ];
+  for (const s of scenarios) {
+    const funding = s.sponsors + s.contributed + s.issued;
+    const split = splitContribution(funding, 9000);
+    const outcome = simulateEconomy({ earnedRg: s.earned, purchasedRg: 0, userContributionsRg: s.contributed,
+      sponsorContributionsRg: s.sponsors, rewardPoolRg: split.pool, reserveRg: split.reserve, poolIssuanceRg: s.issued,
+      redeemedRg: 0, eligibleSalesCents: 1000000, rgPerUsdCent: 1, maxDiscountPercent: 50,
+      seasonIssuanceCap: 100000, maximumOutstandingRg: 1000000, assumedRedemptionBps: 2500, rewardObligationsRg: Math.floor(split.pool * .8) });
+    assert.equal(outcome.outstandingRg, s.earned + s.sponsors + s.issued);
+    assert.equal(outcome.withinSeasonIssuanceCap, s.earned + s.issued <= 100000);
+    assert.equal(outcome.withinOutstandingCap, outcome.outstandingRg <= 1000000);
+    assert.ok(outcome.obligationsFunded);
+    assert.ok(outcome.assumedDiscountExposureCents <= outcome.maximumDiscountExposureCents);
+  }
+  assert.equal(calculateSeasonPool({ base: 10000, activity: 1000000, commerce: 0, direct: 0, sponsors: 1000000,
+    minimum: 0, maximum: 50000, issuanceCap: 10000 }), 50000);
+  assert.throws(() => simulateEconomy({ earnedRg: 0, purchasedRg: 0, userContributionsRg: 0, sponsorContributionsRg: 0,
+    rewardPoolRg: 1000, reserveRg: 0, redeemedRg: 0, eligibleSalesCents: 0, rgPerUsdCent: 1,
+    maxDiscountPercent: 50, seasonIssuanceCap: 10000, maximumOutstandingRg: 10000 }), /Unfunded/);
+});
+
+test('integer accounting is exact near the largest supported amount', () => {
+  const amount = Number.MAX_SAFE_INTEGER;
+  const split = splitContribution(amount, 9300);
+  assert.equal(split.pool, Number(BigInt(amount) * BigInt(9300) / BigInt(10000)));
+  assert.equal(split.pool + split.reserve, amount);
+  assert.equal(calculateSeasonPool({ base: amount, activity: amount, commerce: amount, direct: amount,
+    sponsors: amount, minimum: 0, maximum: amount, issuanceCap: amount }), amount);
 });

@@ -71,7 +71,7 @@ export function getSupportTier(cycleContribution: number, tiers: SupportTier[]) 
 
 export function splitContribution(amount: number, poolBps: number) {
   if (!Number.isSafeInteger(amount) || amount < 0 || !Number.isInteger(poolBps) || poolBps < 0 || poolBps > 10_000) throw new Error('Invalid contribution.');
-  const pool = Math.floor((amount * poolBps) / 10_000);
+  const pool = Number(BigInt(amount) * BigInt(poolBps) / BigInt(10_000));
   return { gross: amount, pool, reserve: amount - pool };
 }
 
@@ -79,14 +79,17 @@ export type PoolFormula = { base: number; activity: number; commerce: number; di
 export function calculateSeasonPool(input: PoolFormula) {
   const values = Object.values(input);
   if (values.some((value) => !Number.isSafeInteger(value) || value < 0) || input.maximum < input.minimum) throw new Error('Invalid season pool configuration.');
-  const requested = input.base + input.activity + input.commerce + input.direct + input.sponsors;
-  const bounded = Math.min(input.maximum, Math.max(input.minimum, requested));
-  return Math.min(bounded, input.issuanceCap);
+  const generated = BigInt(input.base) + BigInt(input.activity) + BigInt(input.commerce);
+  const minimum = BigInt(input.minimum);
+  const requested = generated > minimum ? generated : minimum;
+  const issued = requested < BigInt(input.issuanceCap) ? requested : BigInt(input.issuanceCap);
+  const funded = issued + BigInt(input.direct) + BigInt(input.sponsors);
+  return Number(funded < BigInt(input.maximum) ? funded : BigInt(input.maximum));
 }
 
 export function calculateMaximumDiscount(purchaseCents: number, rgBalance: number, rgPerUsdCent: number, maximumPercent = 50) {
   if (![purchaseCents, rgBalance, rgPerUsdCent, maximumPercent].every(Number.isSafeInteger) || purchaseCents < 0 || rgBalance < 0 || rgPerUsdCent <= 0 || maximumPercent < 0 || maximumPercent > 50) throw new Error('Invalid redemption inputs.');
-  const discountCapCents = Math.floor((purchaseCents * maximumPercent) / 100);
+  const discountCapCents = Number(BigInt(purchaseCents) * BigInt(maximumPercent) / BigInt(100));
   const balanceValueCents = Math.floor(rgBalance / rgPerUsdCent);
   const appliedCents = Math.min(discountCapCents, balanceValueCents);
   return { appliedCents, rgToRedeem: appliedCents * rgPerUsdCent, cashCents: purchaseCents - appliedCents };
@@ -102,9 +105,9 @@ export function distributeSeasonPool(pool: number, percentages: { first: number;
   if (!Number.isSafeInteger(pool) || pool < 0) throw new Error('Invalid reward pool.');
   const shares = [percentages.first, percentages.second, percentages.third];
   if (shares.some((share) => !Number.isInteger(share) || share < 0) || shares.reduce((a, b) => a + b, 0) > 80) throw new Error('Podium distribution must preserve at least 20% for programs and reserve.');
-  const first = Math.floor(pool * percentages.first / 100);
-  const second = Math.floor(pool * percentages.second / 100);
-  const third = Math.floor(pool * percentages.third / 100);
+  const first = Number(BigInt(pool) * BigInt(percentages.first) / BigInt(100));
+  const second = Number(BigInt(pool) * BigInt(percentages.second) / BigInt(100));
+  const third = Number(BigInt(pool) * BigInt(percentages.third) / BigInt(100));
   return { first, second, third, unallocated: pool - first - second - third };
 }
 
@@ -118,14 +121,19 @@ export type EconomyScenario = {
   earnedRg: number; purchasedRg: number; userContributionsRg: number; sponsorContributionsRg: number;
   rewardPoolRg: number; reserveRg: number; redeemedRg: number; eligibleSalesCents: number;
   rgPerUsdCent: number; maxDiscountPercent: number; seasonIssuanceCap: number; maximumOutstandingRg: number;
+  poolIssuanceRg?: number; assumedRedemptionBps?: number; rewardObligationsRg?: number;
 };
 export function simulateEconomy(input: EconomyScenario) {
   const quantities = [input.earnedRg, input.purchasedRg, input.userContributionsRg, input.sponsorContributionsRg,
-    input.rewardPoolRg, input.reserveRg, input.redeemedRg, input.eligibleSalesCents, input.seasonIssuanceCap, input.maximumOutstandingRg];
+    input.rewardPoolRg, input.reserveRg, input.redeemedRg, input.eligibleSalesCents, input.seasonIssuanceCap, input.maximumOutstandingRg,
+    input.poolIssuanceRg ?? 0, input.rewardObligationsRg ?? 0, input.assumedRedemptionBps ?? 10_000];
   if (quantities.some((value) => !Number.isSafeInteger(value) || value < 0)) throw new Error('Invalid economy simulation values.');
+  if (input.userContributionsRg + input.redeemedRg > input.earnedRg + input.purchasedRg || (input.assumedRedemptionBps ?? 10_000) > 10_000) throw new Error('Invalid economy funding or redemption assumption.');
+  if (input.rewardPoolRg + input.reserveRg > input.userContributionsRg + input.sponsorContributionsRg + (input.poolIssuanceRg ?? 0)) throw new Error('Unfunded reward pool.');
   const grossWalletIssuanceRg = input.earnedRg + input.purchasedRg + input.sponsorContributionsRg;
   const walletOutstandingRg = Math.max(0, input.earnedRg + input.purchasedRg - input.userContributionsRg - input.redeemedRg);
   const outstandingRg = walletOutstandingRg + input.rewardPoolRg + input.reserveRg;
+  if (![grossWalletIssuanceRg, walletOutstandingRg, outstandingRg, input.earnedRg + (input.poolIssuanceRg ?? 0)].every(Number.isSafeInteger)) throw new Error('Economy totals exceed safe integer limits.');
   const discountExposure = calculateMaximumDiscount(input.eligibleSalesCents, walletOutstandingRg, input.rgPerUsdCent, input.maxDiscountPercent);
   return {
     grossWalletIssuanceRg,
@@ -134,7 +142,11 @@ export function simulateEconomy(input: EconomyScenario) {
     reserveRg: input.reserveRg,
     outstandingRg,
     maximumDiscountExposureCents: discountExposure.appliedCents,
-    withinSeasonIssuanceCap: input.earnedRg + input.rewardPoolRg + input.reserveRg <= input.seasonIssuanceCap,
+    seasonIssuanceRg: input.earnedRg + (input.poolIssuanceRg ?? 0),
+    rewardObligationsRg: input.rewardObligationsRg ?? 0,
+    obligationsFunded: (input.rewardObligationsRg ?? 0) <= input.rewardPoolRg,
+    assumedDiscountExposureCents: Math.floor(discountExposure.appliedCents * (input.assumedRedemptionBps ?? 10_000) / 10_000),
+    withinSeasonIssuanceCap: input.earnedRg + (input.poolIssuanceRg ?? 0) <= input.seasonIssuanceCap,
     withinOutstandingCap: outstandingRg <= input.maximumOutstandingRg,
   };
 }
