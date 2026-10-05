@@ -240,9 +240,22 @@ CREATE TABLE public.rg_season_rewards (
 );
 
 -- All Phase 2 records are server controlled. Existing table RLS/policies are untouched.
+ALTER TABLE public.rg_seasons ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_economy_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_rule_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_score_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_youtube_metric_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_rank_snapshot_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_rank_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_coin_ledger ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_sponsors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_support_cycles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_reward_pool_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_season_sponsorships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_season_finalizations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.rg_season_rewards ENABLE ROW LEVEL SECURITY;
 DO $$ DECLARE t text; BEGIN
   FOREACH t IN ARRAY ARRAY['rg_seasons','rg_economy_config','rg_rule_versions','rg_score_events','rg_youtube_metric_snapshots','rg_rank_snapshot_runs','rg_rank_snapshots','rg_coin_ledger','rg_sponsors','rg_support_cycles','rg_reward_pool_transactions','rg_season_sponsorships','rg_season_finalizations','rg_season_rewards'] LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC, anon, authenticated', t);
     EXECUTE format('GRANT SELECT ON public.%I TO service_role', t);
   END LOOP;

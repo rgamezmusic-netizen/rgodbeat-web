@@ -10,6 +10,7 @@ const modulePath = process.env.RG_TEST_PGLITE_MODULE;
 if (!modulePath) throw new Error('Set RG_TEST_PGLITE_MODULE to the isolated PGlite installation. No production database is used.');
 const { PGlite } = await import(pathToFileURL(modulePath).href);
 let db;
+const preflightSql = await readFile('supabase/preflight/20261006000000_rg_score_economy_preflight.sql','utf8');
 const query = async (sql, params = []) => {
   await db.exec('SAVEPOINT assertion_query');
   try {
@@ -52,12 +53,61 @@ before(async () => {
   const youtubeMigration = await readFile('supabase/migrations/20261003000001_youtube_channel.sql','utf8');
   const reservation = youtubeMigration.slice(youtubeMigration.indexOf('CREATE OR REPLACE FUNCTION public.reserve_youtube_export_job'),youtubeMigration.indexOf('COMMIT;'));
   await db.exec(reservation);
-  const preflight = (await db.query(await readFile('supabase/preflight/20261006000000_rg_score_economy_preflight.sql','utf8'))).rows;
+  const preflight = (await db.query(preflightSql)).rows;
   assert.ok(preflight.length > 100);
   assert.deepEqual(preflight.filter(row=>!row.ready), [], 'Preflight must be executable and all TRUE against compatible dependency fixtures before migration.');
+  assert.equal(preflight.find(row=>row.check_name==='column:auth.users.email').actual_type,'character varying(255)');
   await db.exec(await readFile('supabase/migrations/20261006000000_rg_score_economy.sql', 'utf8'));
 });
 after(async () => { await db?.close(); });
+
+transaction('every Phase 2 table explicitly enables RLS and denies direct client access', async () => {
+  const migration = await readFile('supabase/migrations/20261006000000_rg_score_economy.sql','utf8');
+  const tables = [...migration.matchAll(/CREATE TABLE public\.(rg_\w+)\s*\(/g)].map(match=>match[1]);
+  assert.equal(tables.length,14);
+  for (const table of tables) {
+    assert.ok(migration.includes(`ALTER TABLE public.${table} ENABLE ROW LEVEL SECURITY;`),`${table} must have an explicit RLS statement.`);
+  }
+  const rows = await query(`SELECT c.relname,c.relrowsecurity,
+    has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS anon_access,
+    has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS authenticated_access,
+    has_table_privilege('service_role',c.oid,'SELECT') AS server_read
+    FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relname=ANY($1::text[])`,[tables]);
+  assert.equal(rows.length,tables.length);
+  for (const row of rows) {
+    assert.equal(row.relrowsecurity,true,row.relname);
+    assert.equal(row.anon_access,false,row.relname);
+    assert.equal(row.authenticated_access,false,row.relname);
+    assert.equal(row.server_read,true,row.relname);
+  }
+});
+
+transaction('preflight accepts text/varchar email and rejects missing, incompatible or unreadable email', async () => {
+  const check = async () => {
+    const rows = await query(preflightSql);
+    return {
+      column: rows.find(row=>row.check_name==='column:auth.users.email'),
+      readable: rows.find(row=>row.check_name==='editor_can_read_auth_email'),
+    };
+  };
+  assert.deepEqual((await check()).column,{check_name:'column:auth.users.email',ready:true,actual_type:'character varying(255)'});
+  await query('ALTER TABLE auth.users ALTER COLUMN email TYPE text');
+  assert.deepEqual((await check()).column,{check_name:'column:auth.users.email',ready:true,actual_type:'text'});
+  await query('ALTER TABLE auth.users ALTER COLUMN email TYPE boolean USING NULL::boolean');
+  assert.deepEqual((await check()).column,{check_name:'column:auth.users.email',ready:false,actual_type:'boolean'});
+  await query('ALTER TABLE auth.users DROP COLUMN email');
+  assert.deepEqual((await check()).column,{check_name:'column:auth.users.email',ready:false,actual_type:null});
+  assert.equal((await check()).readable.ready,false);
+  await query('ALTER TABLE auth.users ADD COLUMN email varchar(255)');
+  await query('GRANT USAGE ON SCHEMA auth TO authenticated');
+  await query('GRANT SELECT(id) ON auth.users TO authenticated');
+  await query('SET LOCAL ROLE authenticated');
+  const denied = await check();
+  assert.equal(denied.column.ready,true,'Catalog presence and type are independent of SELECT access.');
+  assert.equal(denied.readable.ready,false,'Unreadable email must block the preflight.');
+  await query('RESET ROLE');
+});
 
 transaction('real Phase 1 RPCs verify owner, beat, draft, primary artist and uploaded job before Score', async () => {
   const owner = await artist(), foreign = await artist(), beat = randomUUID();

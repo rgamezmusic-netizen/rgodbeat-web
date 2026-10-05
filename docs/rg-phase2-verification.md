@@ -4,7 +4,7 @@
 
 Production was inspected through read-only Supabase OpenAPI/REST and Auth Admin APIs using the existing configured service credentials. Project: `wrcdapajrsuqgpbfadff.supabase.co`. No secrets or personal records are stored here.
 
-- Existing production tables and field types match all required legacy dependencies in the preflight. `customers.studio_access_until` is a nullable timestamp with time zone.
+- Existing public production tables and field types were checked through OpenAPI. `customers.studio_access_until` is a nullable timestamp with time zone. The auth schema is not exposed there: its exact column types require SQL catalog verification. The original preflight incorrectly required `auth.users.email` to be exactly `text`; the corrected query accepts compatible `text`/`varchar`, reports actual catalog types, and separately checks email SELECT access. A missing or incompatible email still blocks rollout because Premium finalization uses it to bridge the existing customer entitlement; RG ownership remains UUID-based.
 - Phase 1: one artist, two draft tracks, two primary associations, one catalog-linked track with an existing canonical beat, no RG publication links. All current track/artist/beat relationships were checked against the actual stored IDs.
 - One historical uploaded YouTube job exists and remains unlinked. No publication was created or claimed.
 - The Stripe API returned an enabled live webhook for `https://www.rgodbeat.com/api/webhooks/stripe`, subscribed to checkout completion. Production also contains orders, order items, and purchases. This verifies existing commerce infrastructure; it does not prove an RG payment integration.
@@ -65,11 +65,11 @@ npm run build
 git diff --check
 ```
 
-SQL fixtures use the production-verified dependency field shapes, Phase 1 migration, actual existing job-reservation function, and the full Phase 2 migration. They are disposable records in memory. The legacy commerce file has seven existing explicit-any lint errors and four existing unused-variable warnings; comparison against HEAD proves the helper change adds no diagnostics. Its targeted lint uses a command-only explicit-any override. Project lint configuration was not changed.
+SQL fixtures use the public production-verified dependency field shapes, a compatible `varchar(255)` auth email fixture (not a claim about its production type), Phase 1 migration, actual existing job-reservation function, and the full Phase 2 migration. They are disposable records in memory. The legacy commerce file has seven existing explicit-any lint errors and four existing unused-variable warnings; comparison against HEAD proves the helper change adds no diagnostics. Its targeted lint uses a command-only explicit-any override. Project lint configuration was not changed.
 
 Source-level route tests replace external services explicitly; those mocks are not classified as live integrations.
 
-Final automated suites: 13 deterministic engine tests, 12 source/route tests, and 15 actual PostgreSQL/RPC tests passed (40 total). TypeScript, RG targeted ESLint, production build and diff checks passed; only the documented existing commerce lint diagnostics and existing middleware/cookies build messages remain.
+Final automated suites: 13 deterministic engine tests, 12 source/route tests, and 17 actual PostgreSQL/RPC tests passed (42 total), including email catalog type/access regression checks and RLS/client-permission checks on all 14 Phase 2 tables. RLS activation uses explicit ALTER TABLE statements rather than dynamic SQL. TypeScript, RG targeted ESLint, production build and diff checks passed; only the documented existing commerce lint diagnostics and existing middleware/cookies build messages remain.
 
 Compiled localhost HTTP checks additionally confirmed: cron 401, wallet 401, Artist 401, Track 401, admin metrics 403, and legacy Studio publish 401 when anonymous. The temporary server was stopped. No authorized cron was invoked against production.
 

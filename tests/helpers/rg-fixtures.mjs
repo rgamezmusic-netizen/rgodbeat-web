@@ -30,12 +30,14 @@ export function loadSource(file, replacements = {}) {
   return load(resolve(file));
 }
 
-// Small, explicit fixture surfaces matching fields verified in production OpenAPI.
+// Public fixture surfaces match fields verified in production OpenAPI.
+// Auth is not exposed there: varchar exercises compatible email catalog metadata,
+// not a claim about the production auth column's exact type.
 // This is an isolated test database, never the configured Supabase connection.
 export const dependencyFixture = `
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
 CREATE SCHEMA auth;
-CREATE TABLE auth.users(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),email text);
+CREATE TABLE auth.users(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),email varchar(255));
 CREATE TABLE public.beats(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),title text,slug text,cover_path text,published boolean DEFAULT true);
 CREATE TABLE public.customers(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),email text NOT NULL UNIQUE,name text,studio_access_until timestamptz,updated_at timestamptz DEFAULT now());
 CREATE TABLE public.youtube_export_jobs(id uuid PRIMARY KEY,user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,status text,youtube_video_id text,finished_at timestamptz,created_at timestamptz DEFAULT now(),artist_name text,title text,privacy text);

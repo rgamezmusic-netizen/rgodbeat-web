@@ -1,5 +1,7 @@
 -- READ ONLY. Run this query once in the configured Supabase SQL Editor.
 -- Every ready value must be TRUE. No migration, data writes or helper RPC execution.
+-- actual_type reports catalog metadata; auth email may be text or varchar.
+-- Email bridges the existing customer Premium entitlement, never RG ownership.
 WITH required_columns(schema_name,table_name,column_name,type_name) AS (
   VALUES
   ('auth','users','id','uuid'),
@@ -59,17 +61,25 @@ WITH required_columns(schema_name,table_name,column_name,type_name) AS (
   ('public','beat_votes','beat_id','uuid'),
   ('public','beat_comments','beat_id','uuid'),
   ('public','beat_ranking_history','id','uuid')
+), column_metadata AS (
+  SELECT r.*, pg_catalog.format_type(a.atttypid,a.atttypmod) AS actual_type,
+    CASE WHEN r.schema_name='auth' AND r.table_name='users' AND r.column_name='email'
+      THEN a.atttypid IN ('pg_catalog.text'::regtype,'pg_catalog.varchar'::regtype)
+      ELSE pg_catalog.format_type(a.atttypid,a.atttypmod)=r.type_name END AS type_ready,
+    CASE WHEN a.attnum IS NOT NULL
+      THEN has_column_privilege(current_user,c.oid,a.attnum,'SELECT') ELSE false END AS readable
+  FROM required_columns r
+  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname=r.schema_name
+  LEFT JOIN pg_catalog.pg_class c ON c.relnamespace=n.oid AND c.relname=r.table_name
+  LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attname=r.column_name
+    AND a.attnum>0 AND NOT a.attisdropped
 ), new_relations(name) AS (
   VALUES ('rg_seasons'), ('rg_economy_config'), ('rg_rule_versions'), ('rg_score_events'), ('rg_youtube_metric_snapshots'), ('rg_rank_snapshot_runs'), ('rg_rank_snapshots'), ('rg_coin_ledger'), ('rg_sponsors'), ('rg_support_cycles'), ('rg_reward_pool_transactions'), ('rg_season_sponsorships'), ('rg_season_finalizations'), ('rg_season_rewards'), ('rg_coin_balances'), ('rg_reward_pool_totals'), ('rg_seasons_one_active'), ('rg_seasons_window'), ('rg_score_track_published_once'), ('rg_score_youtube_milestone_once'), ('rg_score_season_artist'), ('rg_score_season_track'), ('rg_score_season_beat'), ('rg_youtube_metrics_recent'), ('rg_rank_one_final_run'), ('rg_rank_one_daily_run'), ('rg_rank_snapshots_entity'), ('rg_coin_ledger_user_created'), ('rg_coin_ledger_season'), ('rg_support_cycle_user_unique'), ('rg_support_cycle_sponsor_unique'), ('rg_pool_season_created'), ('rg_sponsorship_season_active')
 ), new_functions(name) AS (
   VALUES ('rg_ensure_seasons'), ('rg_record_score_event'), ('rg_credit_coins'), ('rg_current_rank_totals'), ('rg_capture_rank_snapshot'), ('rg_contribute_to_pool'), ('rg_finalize_season'), ('rg_extend_studio_access'), ('rg_reject_ledger_mutation'), ('rg_preserve_finalized_season')
 ), checks(check_name,ready) AS (
   SELECT 'column:'||r.schema_name||'.'||r.table_name||'.'||r.column_name,
-    EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
-      JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-      WHERE n.nspname=r.schema_name AND c.relname=r.table_name AND a.attname=r.column_name
-        AND a.attnum>0 AND NOT a.attisdropped AND pg_catalog.format_type(a.atttypid,a.atttypmod)=r.type_name)
-    FROM required_columns r
+    coalesce(r.type_ready,false) FROM column_metadata r
   UNION ALL SELECT 'absent:public.'||name, to_regclass('public.'||name) IS NULL FROM new_relations
   UNION ALL SELECT 'function_absent:public.'||f.name, NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p
     JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname=f.name) FROM new_functions f
@@ -80,6 +90,8 @@ WITH required_columns(schema_name,table_name,column_name,type_name) AS (
   UNION ALL SELECT 'service_role_bypasses_rls',EXISTS(SELECT 1 FROM pg_catalog.pg_roles WHERE rolname='service_role' AND rolbypassrls)
   UNION ALL SELECT 'editor_can_create_public_objects',has_schema_privilege(current_user,'public','CREATE')
   UNION ALL SELECT 'editor_can_read_auth',has_schema_privilege(current_user,'auth','USAGE') AND has_table_privilege(current_user,to_regclass('auth.users'),'SELECT')
+  UNION ALL SELECT 'editor_can_read_auth_email',readable FROM column_metadata
+    WHERE schema_name='auth' AND table_name='users' AND column_name='email'
   UNION ALL SELECT 'editor_can_extend_customer_entitlement',
     has_table_privilege(current_user,to_regclass('public.customers'),'SELECT') AND
     has_table_privilege(current_user,to_regclass('public.customers'),'INSERT') AND
@@ -117,4 +129,7 @@ WITH required_columns(schema_name,table_name,column_name,type_name) AS (
     WHERE NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint k WHERE k.conrelid=to_regclass(r.name) AND k.contype='p' AND cardinality(k.conkey)=1
       AND (SELECT attname FROM pg_catalog.pg_attribute WHERE attrelid=k.conrelid AND attnum=k.conkey[1])='id'))
 )
-SELECT check_name,coalesce(ready,false) AS ready FROM checks ORDER BY check_name;
+SELECT checks.check_name,coalesce(checks.ready,false) AS ready,m.actual_type
+FROM checks LEFT JOIN column_metadata m
+  ON checks.check_name='column:'||m.schema_name||'.'||m.table_name||'.'||m.column_name
+ORDER BY checks.check_name;
