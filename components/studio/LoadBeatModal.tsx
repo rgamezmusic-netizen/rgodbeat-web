@@ -131,6 +131,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
 
       const newBeat: BeatData = {
         id: `catalog-${beat.id}`,
+        catalogBeatId: beat.id,
         title: beat.title,
         producer: 'RGODBEAT',
         bpm: beat.bpm || 140,

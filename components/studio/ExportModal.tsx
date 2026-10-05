@@ -197,7 +197,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const exportRateLabel = `${exportSampleRate / 1000} kHz`;
   const cleanBeatTitle = beat ? beat.title.replace(/[^a-zA-Z0-9]/g, '_') : 'Project';
   const selectedRgTrack = rgTracks.find(track => track.id === rgTrackId) || null;
-  const currentCatalogBeatId = beat?.id && RG_UUID.test(beat.id) ? beat.id : null;
+  const currentCatalogBeatId = beat?.catalogBeatId && RG_UUID.test(beat.catalogBeatId) ? beat.catalogBeatId : null;
   const rgCatalogBeat = rgCatalogBeatChoice?.beatId === (beat?.id ?? null)
     ? rgCatalogBeatChoice.checked
     : Boolean(currentCatalogBeatId);
@@ -634,8 +634,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           <button type="button" onClick={() => void handleCreateRgTrack()} disabled={isBusy || rgLoading || !rgNewTrackTitle.trim()} className="rounded-lg border border-amber-500/30 px-3 py-2 text-[11px] font-semibold text-amber-200 hover:border-amber-400 disabled:opacity-50">Crear borrador</button>
                         </div>
                         {beat?.id && <label className="flex items-start gap-2 text-[10px] text-zinc-400">
-                          <input type="checkbox" checked={rgCatalogBeat} onChange={(event) => setRgCatalogBeatChoice({ beatId: beat.id, checked: event.target.checked })} disabled={isBusy || !RG_UUID.test(beat.id)} className="mt-0.5 accent-amber-400" />
-                          <span>Asocia el ID del beat actual solo si pertenece al catálogo. El servidor verificará la relación.{!RG_UUID.test(beat.id) && <span className="block text-zinc-500">Este beat no tiene un ID de catálogo válido; se creará sin `beat_id`.</span>}{currentCatalogBeatId && <span className="block text-zinc-500">Desmarca solo si el beat actual es custom o externo.</span>}</span>
+                          <input type="checkbox" checked={rgCatalogBeat} onChange={(event) => setRgCatalogBeatChoice({ beatId: beat.id, checked: event.target.checked })} disabled={isBusy || !currentCatalogBeatId} className="mt-0.5 accent-amber-400" />
+                          <span>Asocia el ID canónico del beat actual solo si se cargó desde el catálogo. El servidor verificará la relación.{!currentCatalogBeatId && <span className="block text-zinc-500">Este beat es custom, externo o no tiene un ID de catálogo válido; se creará sin `beat_id`.</span>}{currentCatalogBeatId && <span className="block text-zinc-500">Desmarca solo si no quieres asociar este beat del catálogo.</span>}</span>
                         </label>}
                         {selectedRgTrack && !rgTrackMatchesCurrentBeat && <p className="text-[10px] text-amber-200">El beat del RG Track no coincide con el beat cargado. Selecciona otro track o crea un borrador con la asociación correcta.</p>}
                       </>}
