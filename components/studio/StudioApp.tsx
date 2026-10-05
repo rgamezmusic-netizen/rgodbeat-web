@@ -469,12 +469,23 @@ export default function App() {
   const replacingProjectRef = useRef(false);
   const cloudDirtyRef = useRef(false);
   const cloudConflictRef = useRef(false);
+  const cloudVerificationPendingRef = useRef(false);
+  const cloudCheckRequestRef = useRef<Promise<boolean> | null>(null);
+  const [cloudNeedsCheck, setCloudNeedsCheck] = useState(false);
+  const [isCheckingCloud, setIsCheckingCloud] = useState(false);
+  const [cloudBackupNotice, setCloudBackupNotice] = useState('');
   const workspaceChangeRef = useRef(0);
   const localSaveRequestRef = useRef(0);
   const cloudSaveRequestRef = useRef(0);
   const [localBackupStatus, setLocalBackupStatus] = useState('Preparando respaldo…');
   const [cloudBackupStatus, setCloudBackupStatus] = useState('');
   const [startupError, setStartupError] = useState<string | null>(null);
+  const pauseCloudVerification = useCallback((message?: string) => {
+    cloudVerificationPendingRef.current = true;
+    setCloudNeedsCheck(true);
+    setCloudBackupStatus('Cuenta: conexión pendiente');
+    setCloudBackupNotice(message || 'No se pudo conectar con tu respaldo de cuenta. Puedes seguir trabajando y guardar una copia en este dispositivo.');
+  }, []);
   async function saveStudioSession(...args: Parameters<typeof persistStudioSession>) {
     if (sessionOwnerRef.current === undefined || replacingProjectRef.current) return false;
     const request = ++localSaveRequestRef.current;
@@ -491,7 +502,59 @@ export default function App() {
     }
     return saved;
   }
-  async function saveProjectToCloud(...args: Parameters<typeof persistCloudProject>) {
+  // Reconnect without reloading the tab or replacing the open audio workspace.
+  const retryCloudBackup = useCallback((): Promise<boolean> => {
+    if (cloudCheckRequestRef.current) return cloudCheckRequestRef.current;
+    const owner = accessStatusRef.current.email;
+    if (!owner || replacingProjectRef.current) return Promise.resolve(false);
+    if (!navigator.onLine) {
+      pauseCloudVerification('Sin conexión. Puedes seguir trabajando en este dispositivo; la cuenta se comprobará cuando vuelva la conexión.');
+      return Promise.resolve(false);
+    }
+    const projectId = activeProjectIdRef.current;
+    setIsCheckingCloud(true);
+    const request = (async () => {
+      try {
+        const remote = await checkCloudProject();
+        if (owner !== accessStatusRef.current.email || projectId !== activeProjectIdRef.current
+          || replacingProjectRef.current) return false;
+        setCloudProjectInfo(remote);
+        if (remote.unavailable) { pauseCloudVerification(); return false; }
+        cloudVerificationPendingRef.current = false;
+        setCloudNeedsCheck(false);
+        if (remote.hasProject) {
+          // Its relationship to the local workspace was not verified at startup.
+          // Offer it for loading; never overwrite it merely because Wi-Fi returned.
+          cloudConflictRef.current = true;
+          setCloudBackupStatus('Hay un respaldo de cuenta disponible');
+          setCloudBackupNotice('Puedes cargar el respaldo desde Proyectos. Tu trabajo abierto se conserva hasta que elijas cargarlo.');
+          return false;
+        }
+        if (!cloudConflictRef.current) {
+          cloudDirtyRef.current = true;
+          setCloudBackupNotice('');
+          setCloudBackupStatus('Cuenta conectada. Respaldo pendiente');
+        }
+        return !cloudConflictRef.current;
+      } finally { setIsCheckingCloud(false); }
+    })();
+    cloudCheckRequestRef.current = request;
+    void request.finally(() => {
+      if (cloudCheckRequestRef.current === request) cloudCheckRequestRef.current = null;
+    }).catch(() => {});
+    return request;
+  }, [pauseCloudVerification]);
+
+  const saveProjectToCloud = useCallback(async (...args: Parameters<typeof persistCloudProject>) => {
+    if (replacingProjectRef.current) return { success: false, error: 'Se está cambiando de proyecto.' };
+    if (cloudVerificationPendingRef.current) {
+      const projectId = activeProjectIdRef.current;
+      if (!await retryCloudBackup() || projectId !== activeProjectIdRef.current) {
+        return { success: false, error: 'La cuenta aún no está disponible para sincronizar. Tu proyecto local se conserva.' };
+      }
+      // Edits may have continued while the connection was being checked.
+      args = [tracksRef.current, currentBeatRef.current, sessionSettingsRef.current.loopSettings, beatMixRef.current];
+    }
     if (replacingProjectRef.current) return { success: false, error: 'Se está cambiando de proyecto.' };
     if (cloudConflictRef.current) return { success: false, conflict: true, error: 'Descarga tu copia local y carga la cuenta para resolver el cambio de otra sesión.' };
     const request = ++cloudSaveRequestRef.current;
@@ -511,7 +574,7 @@ export default function App() {
         : 'Respaldo de cuenta actualizado');
     }
     return result;
-  }
+  }, [retryCloudBackup]);
   function restoreBeatMix(mix: { beatFX?: BeatFX; isBeatMuted?: boolean }) {
     if (mix.beatFX) setBeatFX(mix.beatFX);
     else setBeatFX(previous => ({ ...previous, lowPass: 20000, highPass: 20 }));
@@ -537,7 +600,7 @@ export default function App() {
     toastTimerRef.current = setTimeout(() => {
       toastTimerRef.current = null;
       setToastMessage(null);
-    }, 4500);
+    }, Math.min(10000, Math.max(4500, text.length * 45)));
   }, []);
 
   // Studio Access & Subscription state
@@ -608,18 +671,26 @@ export default function App() {
       sessionOwnerRef.current = localSessionOwner;
       setSessionStorageUser(localSessionOwner);
       setCloudProjectUser(email);
+      // A failed query is not proof that the account has no project.
+      cloudVerificationPendingRef.current = Boolean(email);
+      setCloudNeedsCheck(Boolean(email));
+      if (!email) { setCloudBackupNotice(''); setCloudBackupStatus(''); }
       if (allowAccountChangeRef.current) {
         try {
           const remote = await checkCloudProject();
-          if (remote.unavailable || remote.hasProject) {
+          if (remote.unavailable) {
+            pauseCloudVerification();
+          } else {
+            cloudVerificationPendingRef.current = false;
+            setCloudNeedsCheck(false);
+            setCloudBackupNotice('');
+          }
+          if (remote.hasProject) {
             cloudConflictRef.current = true;
-            setCloudBackupStatus(remote.hasProject
-              ? 'Hay un respaldo en esta cuenta. Cárgalo o conserva tu proyecto local antes de sincronizar.'
-              : 'No se pudo comprobar el respaldo de esta cuenta. La sincronización está pausada.');
+            setCloudBackupStatus('Hay un respaldo en esta cuenta. Cárgalo o conserva tu proyecto local antes de sincronizar.');
           }
         } catch {
-          cloudConflictRef.current = true;
-          setCloudBackupStatus('No se pudo comprobar el respaldo de esta cuenta. La sincronización está pausada.');
+          pauseCloudVerification();
         }
       }
       const next = {
@@ -638,7 +709,7 @@ export default function App() {
       }
     }).catch(() => {});
     return request;
-  }, []);
+  }, [pauseCloudVerification]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -670,7 +741,7 @@ export default function App() {
       console.error('Error during logout:', logoutErr);
       showToast('Error al cerrar sesión', 'error');
     }
-  }, [engine, showToast]);
+  }, [engine, showToast, saveProjectToCloud]);
 
   // Cloud Project State (1 saved project per active account in R2 cloud)
   const [cloudProjectInfo, setCloudProjectInfo] = useState<CloudProjectCheckResult | null>(null);
@@ -693,6 +764,21 @@ export default function App() {
     }
   }, [showToast]);
 
+
+  useEffect(() => {
+    if (!cloudNeedsCheck || !isStartupResolved) return;
+    const retry = () => {
+      if (navigator.onLine && !document.hidden) void retryCloudBackup().catch(() => {});
+    };
+    const timer = setInterval(retry, 15000);
+    window.addEventListener('online', retry);
+    document.addEventListener('visibilitychange', retry);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('online', retry);
+      document.removeEventListener('visibilitychange', retry);
+    };
+  }, [cloudNeedsCheck, isStartupResolved, retryCloudBackup]);
 
   // Modals state
   const [activeFXTrackId, setActiveFXTrackId] = useState<VocalTrackId | null>(null);
@@ -805,6 +891,7 @@ export default function App() {
         // "Continuar Último Proyecto" vs "Iniciar Proyecto Nuevo"
         let restoredSessionBeatId: string | null = null;
         let hasPreviousSession = false;
+        let cloudCheck: CloudProjectCheckResult | null = null;
 
         let lastSession = await restoreLastStudioSession(audioCtx, owner);
         if (lastSession?.projectId) activeProjectIdRef.current = lastSession.projectId;
@@ -817,8 +904,15 @@ export default function App() {
 
         if (owner) {
           const remote = await checkCloudProject();
+          cloudCheck = remote;
+          if (cancelled) return;
           setCloudProjectInfo(remote);
-          if (remote.unavailable && !lastSession) throw new Error('No se pudo consultar tu respaldo de cuenta. Reintenta antes de iniciar otro proyecto.');
+          if (remote.unavailable) pauseCloudVerification();
+          else {
+            cloudVerificationPendingRef.current = false;
+            setCloudNeedsCheck(false);
+            setCloudBackupNotice('');
+          }
           if (remote.hasProject && lastSession && (remote.projectMeta?.savedAt || 0) > lastSession.timestamp + 1000) {
             // Keep local voices until the user explicitly chooses to replace the project.
             cloudConflictRef.current = true;
@@ -863,13 +957,12 @@ export default function App() {
           });
           setShowStartupModal(true);
         } else {
-          // Priority 2: If local storage has 0 takes, check if user has a cloud project with takes!
+          // Use the query already made above. An unavailable account pauses
+          // cloud writes while the device workspace and beat library still open.
           try {
-            const cloudCheck = await checkCloudProject();
-            setCloudProjectInfo(cloudCheck);
-            if (cloudCheck.unavailable && owner) throw new Error('No se pudo consultar tu cuenta. Reintenta antes de iniciar otro proyecto.');
-            if (cloudCheck.hasProject) {
+            if (cloudCheck?.hasProject) {
               const cloudData = await loadProjectFromCloud(audioCtx);
+              if (cancelled) return;
               if (cloudData) {
                 const cloudTakes = (cloudData.tracks || []).reduce(
                   (acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)),
@@ -922,7 +1015,9 @@ export default function App() {
               }
             }
           } catch (cloudErr) {
-            throw cloudErr;
+            if (cancelled) return;
+            console.warn('Account backup could not be restored at startup:', cloudErr);
+            pauseCloudVerification('No se pudo descargar el respaldo de cuenta. Puedes trabajar en este dispositivo y reintentar desde Proyectos.');
           }
 
 
@@ -1002,7 +1097,7 @@ export default function App() {
       cancelled = true;
       audioEngine.dispose();
     };
-  }, [showToast]);
+  }, [showToast, refreshStudioAccess, pauseCloudVerification, saveProjectToCloud]);
 
   useEffect(() => {
       if (engine) tracks.forEach(track => engine.updateVocalFX(track, tracks));
@@ -1096,7 +1191,7 @@ export default function App() {
       }
     }, 600);
     return () => { clearTimeout(statusTimer); clearTimeout(timer); };
-  }, [tracks, currentBeat, activeView, loopSettings, beatFX, isBeatMuted, isStartupResolved, isRecording]);
+  }, [tracks, currentBeat, activeView, loopSettings, beatFX, isBeatMuted, isStartupResolved, isRecording, cloudNeedsCheck, saveProjectToCloud]);
 
   // Local PCM is journaled continuously; publish a recoverable in-progress take periodically.
   useEffect(() => {
@@ -1105,7 +1200,7 @@ export default function App() {
     let disposed = false;
     const sync = async () => {
       if (syncing || disposed || !navigator.onLine || !accessStatusRef.current.isLoggedIn
-        || replacingProjectRef.current || cloudConflictRef.current) return;
+        || replacingProjectRef.current || cloudConflictRef.current || cloudVerificationPendingRef.current) return;
       syncing = true;
       try {
         const recording = engine.getRecordingCheckpointClip();
@@ -1122,10 +1217,14 @@ export default function App() {
     const timer = setInterval(() => void sync(), 20000);
     window.addEventListener('online', sync);
     return () => { disposed = true; clearInterval(timer); window.removeEventListener('online', sync); };
-  }, [isStartupResolved, engine]);
+  }, [isStartupResolved, engine, saveProjectToCloud]);
 
   async function clearActiveProjectBackup() {
     if (replacingProjectRef.current) return false;
+    if (accessStatusRef.current.isLoggedIn && cloudVerificationPendingRef.current) {
+      showToast('Revisa la conexión de tu cuenta antes de reemplazar su respaldo. Tu proyecto abierto se conserva.', 'info');
+      return false;
+    }
     replacingProjectRef.current = true;
     try {
       if (accessStatusRef.current.isLoggedIn && !await deleteProjectFromCloud()) {
@@ -1280,7 +1379,7 @@ export default function App() {
       window.removeEventListener('pagehide', handleInterruption);
       window.removeEventListener('beforeunload', handleInterruption);
     };
-  }, [engine]);
+  }, [engine, saveProjectToCloud]);
 
   // Automatic Beat BPM & Key Detection on demand
   const handleDetectCurrentBeat = async () => {
@@ -2238,6 +2337,9 @@ export default function App() {
 
       if (!locallySaved) throw new Error('El proyecto se abrió, pero no se pudo proteger en este dispositivo. Descarga una copia.');
       cloudConflictRef.current = false;
+      cloudVerificationPendingRef.current = false;
+      setCloudNeedsCheck(false);
+      setCloudBackupNotice('');
       cloudDirtyRef.current = false;
       setCloudBackupStatus('Respaldo de cuenta cargado');
       setLocalBackupStatus('Copia local guardada');
@@ -2314,7 +2416,7 @@ export default function App() {
       if (accessStatusRef.current.isLoggedIn) {
         const remote = await saveProjectToCloud(tracksRef.current, currentBeatRef.current, loopSettings);
         if (!remote.success) {
-          showToast('Copia local guardada; la cuenta sigue pendiente. Reintenta o descarga el proyecto antes de salir.', 'error'); return;
+          showToast('Proyecto guardado en este dispositivo. La cuenta sigue pendiente; reintenta la conexión o descarga el archivo antes de salir.', 'info'); return;
         }
       }
 
@@ -2494,10 +2596,22 @@ export default function App() {
         isSavingAndExiting={isSavingAndExiting}
       />
 
-      {/* 3-Day Expiration Alert Banner */}
-      <div className="shrink-0 border-b border-zinc-700 bg-zinc-950 px-3 py-2 text-[10px] text-zinc-300" role="status" aria-live="polite">
-        <p>{localBackupStatus}{cloudBackupStatus ? ` · ${cloudBackupStatus}` : ''}</p>
-        <p className="mt-1 text-zinc-400">1 respaldo activo. Guarda tu archivo .rgodbeat en el móvil; «Nuevo proyecto» reemplaza ese respaldo y libera las voces anteriores.</p>
+      {/* Backup status stays separate from a recoverable account connection issue. */}
+      <div className="shrink-0 border-b border-zinc-800 bg-zinc-950 px-3 py-2 text-[11px] leading-relaxed text-zinc-300" role="status" aria-live="polite">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+          <p>{localBackupStatus}</p>
+          {cloudBackupStatus && <p className="text-zinc-400">{cloudBackupStatus}</p>}
+        </div>
+        {cloudBackupNotice && (
+          <div className="mt-1.5 text-amber-200">
+            <p>{cloudBackupNotice}</p>
+            {cloudNeedsCheck && <button type="button" disabled={isCheckingCloud} className="mt-1 underline underline-offset-2 cursor-pointer disabled:cursor-wait disabled:opacity-60" onClick={() => void retryCloudBackup().catch(() => {})}>{isCheckingCloud ? 'Comprobando conexión…' : 'Reintentar conexión'}</button>}
+          </div>
+        )}
+        <details className="mt-1 text-zinc-500">
+          <summary className="cursor-pointer">Cómo se guardan tus proyectos</summary>
+          <p className="mt-1 text-zinc-400">Studio conserva un proyecto activo por cuenta. Descarga el archivo .rgodbeat para conservar versiones; «Nuevo proyecto» reemplaza el respaldo activo y sus voces.</p>
+        </details>
         {startupError && <p className="mt-1 text-amber-300">{startupError} <button className="underline cursor-pointer" onClick={() => window.location.reload()}>Reintentar</button></p>}
       </div>
       {accessStatus.hasActivePass &&
@@ -2712,7 +2826,7 @@ export default function App() {
 
       {/* Toast Notification Container */}
       {toastMessage && (
-        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-full bg-zinc-900/95 text-white border border-zinc-700 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-200 text-xs font-mono max-w-[90vw]">
+        <div role="status" aria-live="polite" aria-atomic="true" className="pointer-events-none fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-start gap-2 px-4 py-2.5 rounded-2xl bg-zinc-900/95 text-white border border-zinc-700 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-200 text-xs leading-relaxed font-mono w-max max-w-[90vw]">
           {toastMessage.type === 'error' && (
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
           )}
@@ -2722,7 +2836,7 @@ export default function App() {
           {toastMessage.type === 'info' && (
             <Info className="w-4 h-4 text-amber-400 shrink-0" />
           )}
-          <span className="truncate">{toastMessage.text}</span>
+          <span className="min-w-0 whitespace-normal break-words">{toastMessage.text}</span>
         </div>
       )}
 

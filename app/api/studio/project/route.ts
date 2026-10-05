@@ -6,6 +6,7 @@ import { replaceCloudProject, ProjectConflict, type CloudMetadata, type StagedAu
 import { r2ProjectStorage } from "@/lib/studio/server/r2ProjectStorage";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // This optional table is not present in the generated database schema.
 function projectIndex(client: ReturnType<typeof createAdminClient>) {
@@ -21,6 +22,9 @@ async function checkUserAccess(user: NonNullable<Awaited<ReturnType<typeof getCu
   }
 
   const isAdmin = isSiteAdmin(user);
+  // Admin access is already verified from the authenticated user. A second
+  // customer lookup should not delay or prevent reading that user's backup.
+  if (isAdmin) return { isLoggedIn: true, hasActivePass: true, daysRemaining: 365, isAdmin: true };
 
   const supabase = createAdminClient();
   const { data: customer } = await supabase
