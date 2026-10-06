@@ -1,5 +1,10 @@
 # RG public product — Phase 3
 
+Estado real actualizado el 6 de octubre: la temporada 1 responde activa en la
+base y API pública. Los cambios de presentación y el alcance pendiente de pagos
+se detallan en [rg-season1-activation.md](rg-season1-activation.md). Las notas de
+activación inicial que siguen no sustituyen esa comprobación más reciente.
+
 ## Release boundary
 
 Local navigation activation only. No migration, payment activation, checkout, production fixture,
@@ -45,7 +50,7 @@ browser. Zero is an intentional starting state; read failures are not shown as z
 Top 3 Premium / pool shares are explicitly **Artist** rewards and are read from
 that season's real immutable `reward_distribution`. Track/Beat podium styling is
 competitive emphasis, not a promise of separate payouts. No future reward amount
-is fabricated. Pool zero reads “En construcción”. Sponsors appear only through
+is fabricated. Pool zero displays “0 RG”. Sponsors appear only through
 Phase 2's active sponsor + active in-date sponsorship filters. HTTPS links only;
 logos render only for paths accepted by the existing public storage helper. No new
 sponsor upload/storage infrastructure is implied. Unknown logo paths show names.

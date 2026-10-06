@@ -34,11 +34,11 @@ export function Sponsors({ sponsors }: { sponsors: ChartData['sponsors'] }) {
   })}</div></section>;
 }
 export function HowToCompete() {
-  return <section className={styles.section}><p className={styles.eyebrow}>TU MÚSICA. TU TEMPORADA.</p><h2>Haz que tu música suba.</h2><div className={styles.learnGrid}>
+  return <section className={styles.section}><p className={styles.eyebrow}>TU MÚSICA. TU TEMPORADA.</p><h2>MANTANTE EN EL TOP</h2><div className={styles.learnGrid}>
     <div><span className={styles.eyebrow}>01 / PUBLICA</span><h3>Empieza en Studio.</h3><p>Crea tu perfil de artista y publica tu track con RGodBeat. Una publicación verificada te abre el camino al chart.</p></div>
     <div><span className={styles.eyebrow}>02 / CRECE</span><h3>Llega más lejos.</h3><p>El rendimiento verificado de tus publicaciones y sus hitos ayudan a mover el ranking. Cada temporada dura 14 días.</p></div>
     <div><span className={styles.eyebrow}>03 / GANA</span><h3>Compite por el Top 3.</h3><p>Los tres primeros artistas ganan Premium y una parte del premio RG disponible. Una nueva temporada trae una nueva oportunidad.</p></div>
-  </div><div className={styles.links}><Link className={styles.button} href="/studio">PUBLICAR EN RGODBEAT STUDIO</Link></div><p className={styles.footnote}>El apoyo de la comunidad y los sponsors puede hacer crecer el premio. Nunca compra puntos ni posiciones. Las compras, aportaciones y el uso de RG todavía no están habilitados.</p></section>;
+  </div><div className={styles.links}><Link className={styles.button} href="/studio">PUBLICAR EN RGODBEAT STUDIO</Link></div></section>;
 }
 export function Performance({ data, seasonNumber }: { data: SeasonPerformance; seasonNumber: number }) {
   return <section aria-label="Rendimiento de temporada" className={styles.performance}><div><small>SEASON {String(seasonNumber).padStart(2, '0')}</small><strong>{data.rank ? `#${String(data.rank).padStart(2, '0')}` : 'Sin posición'}</strong><Movement movement={data.movement} isNew={data.isNew} /></div><div><small>SEASON SCORE</small><strong>{formatRg(data.score)} <small>pts</small></strong></div></section>;

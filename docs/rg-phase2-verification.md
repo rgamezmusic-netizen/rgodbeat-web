@@ -1,5 +1,10 @@
 # Phase 2 closure verification — 2026-10-05
 
+Actualización del 6 de octubre: las tablas de temporada y economía ya responden
+en la base configurada; la API pública devuelve la temporada 1 activa. Véase
+[rg-season1-activation.md](rg-season1-activation.md). El informe siguiente conserva
+el estado y las limitaciones comprobadas durante el cierre del 5 de octubre.
+
 ## Evidence and limitations
 
 Production was inspected through read-only Supabase OpenAPI/REST and Auth Admin APIs using the existing configured service credentials. Project: `wrcdapajrsuqgpbfadff.supabase.co`. No secrets or personal records are stored here.

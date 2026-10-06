@@ -98,7 +98,8 @@ test('beat detail shows reliably derived ranked tracks and catalog discovery, ex
 });
 test('empty chart intentional: no invented entries, sponsors, ON FIRE or payment buttons',()=>{
   const {RgSeasonRankingClient}=loadSource('components/ranking/RgSeasonRankingClient.tsx',replacements);
-  const markup=html(RgSeasonRankingClient,{data:chart});assert.match(markup,/En construcción/);assert.match(markup,/La próxima canción/);assert.match(markup,/14 DÍAS RESTANTES/);
+  const markup=html(RgSeasonRankingClient,{data:chart});assert.match(markup,/0 <span[^>]*>RG/);assert.match(markup,/EN CURSO/);assert.match(markup,/MANTANTE EN EL TOP/);assert.match(markup,/La próxima canción/);assert.match(markup,/14 DÍAS RESTANTES/);
+  assert.doesNotMatch(markup,/En construcción|Haz que tu música suba|Actividad verificada, posiciones automáticas|todavía no están habilitados/);
   assert.match(markup,/TOP 3 ARTISTS/);assert.match(markup,/30 DÍAS PREMIUM/);assert.match(markup,/40% DEL REWARD POOL/);
   assert.doesNotMatch(markup,/ON FIRE|PRESENTADO POR|BUY RG|BOOST THE POOL|auth_uuid|source_id/);
   assert.equal((markup.match(/role="tab"/g)??[]).length,3);

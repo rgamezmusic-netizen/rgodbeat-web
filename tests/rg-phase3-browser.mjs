@@ -43,7 +43,10 @@ try {
     page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().includes('/api/rg/rankings'))rankingRequests++;});
     const response=await page.goto(`${base}/ranking/season`,{waitUntil:'networkidle'});assert.equal(response.status(),200);
     await page.getByRole('heading',{name:'RG TOP 23.',exact:true}).waitFor();
-    assert.ok(await page.getByText('En construcción',{exact:true}).isVisible());
+    assert.ok(await page.locator('[aria-label="Premio de temporada"]').getByText('0 RG',{exact:true}).isVisible());
+    assert.ok(await page.getByText('EN CURSO',{exact:true}).isVisible());
+    assert.ok(await page.getByRole('heading',{name:'MANTANTE EN EL TOP',exact:true}).isVisible());
+    assert.equal(await page.getByText('Actividad verificada, posiciones automáticas. El dinero nunca compra rango.',{exact:true}).count(),0);
     assert.ok(await page.getByText('30 DÍAS PREMIUM',{exact:true}).isVisible());
     for(const kind of ['ARTISTS','BEATS','TRACKS']){
       await page.getByRole('tab',{name:kind,exact:true}).click();
