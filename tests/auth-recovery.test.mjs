@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { loadSource } from './helpers/rg-fixtures.mjs';
 const require = createRequire(import.meta.url);
 const { NextRequest } = require('next/server');
@@ -15,6 +16,77 @@ test('Studio preparation does not wait for autoplay permission; playback still r
   assert.equal(resumed, 0);
   await engine.ensureAudioContext();
   assert.equal(resumed, 1);
+});
+
+test('startup finishes even when resume would wait forever for a browser gesture', async () => {
+  const { AudioEngine } = loadSource('lib/studio/audio/audioEngine.ts');
+  const engine = new AudioEngine({});
+  let resumed = 0;
+  engine.ctx = { state: 'suspended', resume() { resumed++; return new Promise(() => {}); } };
+  assert.equal(await engine.ensureAudioContext({ resume: false }), engine.ctx);
+  assert.equal(resumed, 0);
+  const app = readFileSync('components/studio/StudioApp.tsx', 'utf8');
+  assert.match(app, /audioEngine\.ensureAudioContext\(\{ resume: false \}\)/);
+  assert.match(app, /cancelled = true;\s*audioEngine\.dispose\(\)/);
+});
+
+test('SDK timeout applies only to Auth; database and storage retain their response streams', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  const response = new Response('local response');
+  globalThis.fetch = async (_input, init) => { requests.push(init); return response.clone(); };
+  try {
+    const { fetchSupabaseAuth } = loadSource('lib/auth/request.ts');
+    const controller = new AbortController();
+    for (const path of ['/rest/v1/beats', '/storage/v1/object/audio.wav']) {
+      const result = await fetchSupabaseAuth('https://local.invalid' + path, { signal: controller.signal });
+      assert.equal(requests.at(-1).signal, controller.signal);
+      assert.equal(result.bodyUsed, false);
+    }
+    await fetchSupabaseAuth('https://local.invalid/auth/v1/user', { signal: controller.signal });
+    assert.notEqual(requests.at(-1).signal, controller.signal);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('sign-in and session restore preserve the verified SDK user/session; logout reports failure', async () => {
+  const user = { id: 'local-user' }, session = { user, access_token: 'local-only' };
+  let signedOut = false;
+  const failure = { message: 'network unavailable' };
+  const auth = { signInWithPassword: async input => {
+    assert.equal(input.email, 'local@example.invalid'); return { data: { user, session }, error: null };
+  }, getUser: async () => ({ data: { user }, error: null }), signOut: async () => {
+    signedOut = true; return { error: failure };
+  } };
+  const client = loadSource('lib/auth/client.ts', { '@/lib/supabase/client': { createClient: () => ({ auth }) } });
+  assert.deepEqual(await client.signInWithEmail(' LOCAL@EXAMPLE.INVALID ', 'local-only'), { user, session, error: null });
+  assert.equal(await client.getBrowserUser(), user);
+  assert.deepEqual(await client.signOutClient(), { error: failure }); assert.equal(signedOut, true);
+  auth.signOut = async () => ({ error: null });
+  assert.deepEqual(await client.signOutClient(), { error: null });
+  const app = readFileSync('components/studio/StudioApp.tsx', 'utf8');
+  assert.match(app, /const \{ error \} = await signOutClient\(\);\s*if \(error\) throw error;\s*setSessionStorageUser\(null\)/);
+});
+
+test('middleware session refresh keeps cookies, avoids login loops and rejects unsafe destinations', async () => {
+  const originalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL, originalKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://local.supabase.invalid'; process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'local-public-key';
+  try {
+    const { middleware } = loadSource('middleware.ts', {
+      '@supabase/ssr': { createServerClient: (_url, _key, options) => ({ auth: { getUser: async () => {
+        options.cookies.setAll([{ name: 'local-session', value: 'local-refreshed', options: { path: '/' } }]);
+        return { data: { user: { id: 'local-user' } } };
+      } } }) }, '@/lib/auth/admin': { isSiteAdmin: () => false },
+    });
+    const login = await middleware(new NextRequest('https://local.invalid/login?redirect=%2Fstudio'));
+    assert.equal(login.headers.get('location'), 'https://local.invalid/studio');
+    assert.equal(login.cookies.get('local-session').value, 'local-refreshed');
+    assert.equal((await middleware(new NextRequest('https://local.invalid/studio'))).status, 200);
+    const unsafe = await middleware(new NextRequest('https://local.invalid/login?redirect=https://attacker.invalid'));
+    assert.equal(unsafe.headers.get('location'), 'https://local.invalid/account');
+  } finally {
+    if (originalUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = originalKey;
+  }
 });
 
 test('interrupted sign-in returns a useful error instead of rejecting the form', async () => {

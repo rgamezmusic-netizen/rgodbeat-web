@@ -21,3 +21,9 @@ export async function fetchAuth(input: RequestInfo | URL, init: RequestInit = {}
     previous?.removeEventListener('abort', abort);
   }
 }
+
+/** Keep database/storage requests on their existing transport and timeout policy. */
+export function fetchSupabaseAuth(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const url = input instanceof Request ? input.url : String(input);
+  return new URL(url).pathname.startsWith('/auth/v1/') ? fetchAuth(input, init) : fetch(input, init);
+}

@@ -725,7 +725,8 @@ export default function App() {
         }
         if (accessStatusRef.current.isLoggedIn) await saveProjectToCloud(tracksRef.current, currentBeatRef.current, settings.loopSettings);
       }
-      await signOutClient();
+      const { error } = await signOutClient();
+      if (error) throw error;
       setSessionStorageUser(null);
       setAccessStatus({
         isDemo: true,

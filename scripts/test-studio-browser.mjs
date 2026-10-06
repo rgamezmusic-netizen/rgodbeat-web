@@ -170,11 +170,22 @@ async function main() {
       engine.pause();
       vocal.clips[0].startBeatOffset = 5;
       const master = await engine.exportMix([vocal], { enableSidechain: false });
+      // Original vocal stems are IEEE float WAVs with a fact chunk. Locate data
+      // instead of assuming the 44-byte PCM header used by master exports.
+      const wavDuration = view => {
+        for (let offset = 12; offset + 8 <= view.byteLength;) {
+          const name = String.fromCharCode(...new Uint8Array(view.buffer, offset, 4));
+          const size = view.getUint32(offset + 4, true);
+          if (name === 'data') return size / view.getUint32(28, true);
+          offset += 8 + size + (size % 2);
+        }
+        throw new Error('WAV data chunk missing');
+      };
       const wav = new DataView(await master.arrayBuffer());
-      const exportDuration = wav.getUint32(40, true) / wav.getUint32(28, true);
+      const exportDuration = wavDuration(wav);
       const stem = (await engine.exportVocalRawStems([vocal]))[0];
       const raw = new DataView(await stem.blob.arrayBuffer());
-      const rawDuration = raw.getUint32(40, true) / raw.getUint32(28, true);
+      const rawDuration = wavDuration(raw);
       const mix = { beatFX: { highPass: 80, lowPass: 2500, volume: 0.8 }, isBeatMuted: true };
       const saved = await StudioTest.saveStudioSession([vocal], engine.getBeat(), undefined, 0, 0.8, 'editor', 'test-local', mix);
       const restored = await StudioTest.restoreLastStudioSession(ctx, 'test-local');

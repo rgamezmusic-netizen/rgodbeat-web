@@ -4,7 +4,7 @@ import { safeAuthRedirect } from "@/lib/auth/redirect";
 import { isSiteAdmin } from "@/lib/auth/admin";
 import { Database } from "@/types/database";
 import type { User } from "@supabase/supabase-js";
-import { fetchAuth } from "@/lib/auth/request";
+import { fetchSupabaseAuth } from "@/lib/auth/request";
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -19,7 +19,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const supabase = createServerClient<Database>(supabaseUrl, supabaseKey, {
-    global: { fetch: fetchAuth },
+    global: { fetch: fetchSupabaseAuth },
     cookies: {
       getAll() {
         return request.cookies.getAll();

@@ -1,13 +1,13 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { Database } from "@/types/database";
-import { fetchAuth } from "@/lib/auth/request";
+import { fetchSupabaseAuth } from "@/lib/auth/request";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
 
 export const createClient = () => {
   return createBrowserClient<Database>(supabaseUrl, supabaseKey, {
-    global: { fetch: fetchAuth },
+    global: { fetch: fetchSupabaseAuth },
     auth: {
       // RecoveryLinkRedirect/ResetPasswordForm exchange these links explicitly.
       // This also accepts older implicit recovery links with our SSR/PKCE storage.
