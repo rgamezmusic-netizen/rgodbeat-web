@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth/server";
 import { isSiteAdmin } from "@/lib/auth/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getCurrentUser();
+    const supabaseAuth = await createClient();
+    const { data: authData, error: authError } = await supabaseAuth.auth.getUser();
+    if (authError && authError.name !== "AuthSessionMissingError") {
+      console.warn("[Studio Access] Session verification is temporarily unavailable:", authError.name);
+      return NextResponse.json(
+        { error: "No se pudo verificar tu sesión. Reintenta la conexión; tu proyecto local sigue disponible." },
+        { status: 503 }
+      );
+    }
+    const user = authError ? null : authData.user;
 
     if (!user || !user.email) {
       return NextResponse.json({
@@ -53,8 +62,8 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error("[Studio Access API Error]:", err);
     return NextResponse.json(
-      { isDemo: true, isLoggedIn: false, hasActivePass: false, daysRemaining: 0, expiresAt: null, error: err.message },
-      { status: 500 }
+      { error: "No se pudo consultar el acceso a Studio. Reintenta la conexión." },
+      { status: 503 }
     );
   }
 }

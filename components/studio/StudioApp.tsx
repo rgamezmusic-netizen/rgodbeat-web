@@ -639,9 +639,24 @@ export default function App() {
     if (allowAccountChange) allowAccountChangeRef.current = true;
     if (accessRequestRef.current) return accessRequestRef.current;
     const request = (async () => {
-      const res = await fetchAuth('/api/studio/access', { cache: 'no-store' });
-      if (!res.ok) throw new Error('No se pudo verificar tu cuenta. Reintenta para recuperar el proyecto correcto.');
-      const data = await res.json();
+      let res: Response | undefined;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          res = await fetchAuth('/api/studio/access', { cache: 'no-store' });
+        } catch (error) {
+          if (attempt === 1) throw error;
+          await new Promise(resolve => setTimeout(resolve, 500));
+          continue;
+        }
+        if (attempt === 0 && (res.status === 429 || res.status >= 500)) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          continue;
+        }
+        break;
+      }
+      if (!res) throw new Error('No se pudo verificar tu cuenta. Reintenta para recuperar el proyecto correcto.');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'No se pudo verificar tu cuenta. Reintenta para recuperar el proyecto correcto.');
       const email = data.email?.trim().toLowerCase() || null;
       let localSessionOwner = email;
       if (sessionOwnerRef.current !== undefined && sessionOwnerRef.current !== email) {
@@ -683,7 +698,7 @@ export default function App() {
         try {
           const remote = await checkCloudProject();
           if (remote.unavailable) {
-            pauseCloudVerification();
+            pauseCloudVerification(remote.message);
           } else {
             cloudVerificationPendingRef.current = false;
             setCloudNeedsCheck(false);
@@ -693,8 +708,8 @@ export default function App() {
             cloudConflictRef.current = true;
             setCloudBackupStatus('Hay un respaldo en esta cuenta. Cárgalo o conserva tu proyecto local antes de sincronizar.');
           }
-        } catch {
-          pauseCloudVerification();
+        } catch (error) {
+          pauseCloudVerification(error instanceof Error ? error.message : undefined);
         }
       }
       const next = {

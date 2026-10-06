@@ -4,6 +4,8 @@ import { isSiteAdmin } from "@/lib/auth/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { replaceCloudProject, ProjectConflict, type CloudMetadata, type StagedAudio } from "@/lib/studio/server/projectRepository";
 import { r2ProjectStorage } from "@/lib/studio/server/r2ProjectStorage";
+import { getR2Client } from "@/lib/storage/r2";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -51,8 +53,17 @@ async function checkUserAccess(user: NonNullable<Awaited<ReturnType<typeof getCu
 // Reading a backup never deletes it, including when a premium pass expires.
 export async function GET() {
   try {
-    const user = await getCurrentUser();
+    const supabaseAuth = await createClient();
+    const { data: authData, error: authError } = await supabaseAuth.auth.getUser();
+    if (authError && authError.name !== "AuthSessionMissingError") {
+      console.warn("[Studio Project GET] Session verification is temporarily unavailable:", authError.name);
+      return NextResponse.json({ error: "No se pudo verificar tu sesión. Reintenta la conexión." }, { status: 503 });
+    }
+    const user = authError ? null : authData.user;
     if (!user) return NextResponse.json({ hasProject: false, isLoggedIn: false });
+    if (!getR2Client()) {
+      return NextResponse.json({ error: "El respaldo de cuenta no está configurado para este entorno." }, { status: 503 });
+    }
     const { hasActivePass, daysRemaining, isAdmin } = await checkUserAccess(user);
     const prefix = `studio/projects/${user.id}/`;
     const stored = await r2ProjectStorage.read(`${prefix}project.json`);
@@ -69,7 +80,7 @@ export async function GET() {
     return NextResponse.json({ ...access, hasProject: true, project });
   } catch (error) {
     console.error("[Studio Project GET error]", error);
-    return NextResponse.json({ error: "No se pudo consultar el respaldo. Tu proyecto no se ha borrado." }, { status: 503 });
+    return NextResponse.json({ error: "No se pudo consultar el respaldo. Tu proyecto no se ha borrado; reintenta la conexión." }, { status: 503 });
   }
 }
 

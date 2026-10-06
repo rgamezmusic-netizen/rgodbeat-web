@@ -37,27 +37,10 @@ export async function POST(request: Request) {
 
     const supabaseAdmin = createAdminClient();
 
-    // 2. Check if user already exists
-    const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
-    
-    if (listError) {
-      console.error("[Register API] Error checking existing users:", listError);
-    }
-
-    const existingUser = usersData?.users?.find(
-      (u) => u.email?.toLowerCase() === cleanEmail
-    );
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: existingUser.email_confirmed_at
-          ? "Ya existe una cuenta con este correo. Inicia sesión con tu contraseña."
-          : "Ya existe una invitación pendiente para este correo. Abre el enlace recibido por email." },
-        { status: 409 }
-      );
-    }
-
-    // 3. Create user with email_confirm: true (bypasses Supabase SMTP rate limits & instantly activates account)
+    // Creating the account is the authoritative duplicate check. Listing auth
+    // users first added latency, only inspected the first page, and raced with
+    // simultaneous signups for the same address.
+    // Create user with email_confirm: true (bypasses Supabase SMTP rate limits & instantly activates account)
     const { data: createData, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email: cleanEmail,
       password: cleanPassword,
@@ -83,7 +66,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4. Upsert into public.customers table
+    // Upsert into public.customers table
     try {
       await supabaseAdmin.from("customers").upsert(
         {
