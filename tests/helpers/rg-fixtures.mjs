@@ -12,7 +12,8 @@ export function loadSource(file, replacements = {}) {
     if (cache.has(path)) return cache.get(path).exports;
     const loadedModule = { exports: {} }; cache.set(path, loadedModule);
     const source = ts.transpileModule(readFileSync(path, 'utf8'), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+      fileName: path,
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
     const localRequire = (name) => {
       if (Object.hasOwn(replacements, name)) return replacements[name];
