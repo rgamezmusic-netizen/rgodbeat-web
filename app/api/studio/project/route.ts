@@ -7,6 +7,7 @@ import { r2ProjectStorage } from "@/lib/studio/server/r2ProjectStorage";
 import { getR2Client } from "@/lib/storage/r2";
 import { createClient } from "@/lib/supabase/server";
 import { decodeProjectManifest, projectServiceError } from '@/lib/studio/server/projectManifest';
+import { randomUUID } from 'node:crypto';
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -53,6 +54,7 @@ async function checkUserAccess(user: NonNullable<Awaited<ReturnType<typeof getCu
 
 // Reading a backup never deletes it, including when a premium pass expires.
 export async function GET(request: NextRequest) {
+  const requestId = randomUUID();
   try {
     const supabaseAuth = await createClient();
     const { data: authData, error: authError } = await supabaseAuth.auth.getUser();
@@ -78,7 +80,18 @@ export async function GET(request: NextRequest) {
     const previous = decodeProjectManifest(previousStored.body);
     const project = decoded.project;
     const previousProject = previous.project;
+    const slots = [
+      { slot: 'active', stored: activeStored }, { slot: 'previous', stored: previousStored },
+    ].map(({slot: slotId, stored: slotStored}) => {
+      const saved = decodeProjectManifest(slotStored.body).project;
+      return { slot: slotId, hasProject: Boolean(saved), revision: slotStored.etag,
+        projectId: typeof saved?.projectId === 'string' ? saved.projectId : undefined,
+        name: saved ? (typeof saved.projectName === 'string' ? saved.projectName : saved.beat?.title || 'Proyecto sin nombre') : undefined,
+        savedAt: saved?.savedAt,
+        takesCount: saved?.tracks?.reduce((count, track) => count + (track.clips?.length || 0), 0) || 0 };
+    });
     const access = { isLoggedIn: true, ownerEmail: user.email?.toLowerCase(), hasActivePass, daysRemaining,
+      slots,
       warnExpiration: daysRemaining <= 3 && daysRemaining > 0 && !isAdmin, revision: stored.etag,
       projectLost: decoded.damaged, recoveryNotice: decoded.notice || previous.notice,
       hasActiveProject: Boolean(decodeProjectManifest(activeStored.body).project),
@@ -97,13 +110,14 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json({ ...access, revision: stored.etag, hasProject: true, project });
   } catch (error) {
-    console.error("[Studio Project GET error]", error);
-    return NextResponse.json(projectServiceError(error), { status: 503 });
+    console.error("[Studio Project GET error]", { requestId, error });
+    return NextResponse.json({ ...projectServiceError(error), requestId }, { status: 503 });
   }
 }
 
-// One active workspace per account. The old manifest remains usable until commit.
+// Two independent slots per account. The selected manifest stays usable until commit.
 export async function POST(req: NextRequest) {
+  const requestId = randomUUID();
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Inicia sesión para respaldar tu proyecto." }, { status: 401 });
@@ -111,6 +125,12 @@ export async function POST(req: NextRequest) {
     const raw = form.get("metadata");
     if (typeof raw !== "string") return NextResponse.json({ error: "Faltan los metadatos." }, { status: 400 });
     const metadata = JSON.parse(raw) as CloudMetadata;
+    if (metadata.projectName !== undefined) {
+      if (typeof metadata.projectName !== 'string' || !metadata.projectName.trim() || metadata.projectName.trim().length > 80) {
+        return NextResponse.json({error:'Escribe un nombre de hasta 80 caracteres.',code:'INVALID_PROJECT_NAME',retryable:false},{status:400});
+      }
+      metadata.projectName = metadata.projectName.trim();
+    }
     if (metadata.ownerEmail && metadata.ownerEmail !== user.email?.toLowerCase()) {
       return NextResponse.json({ error: 'La cuenta cambió antes de guardar.' }, { status: 401 });
     }
@@ -154,8 +174,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
     if (error instanceof ProjectConflict) return NextResponse.json({ error: error.message, conflict: true }, { status: 409 });
-    console.error("[Studio Project POST error]", error);
-    return NextResponse.json(projectServiceError(error), { status: 503 });
+    console.error("[Studio Project POST error]", { requestId, error });
+    return NextResponse.json({ ...projectServiceError(error), requestId }, { status: 503 });
   }
 }
 

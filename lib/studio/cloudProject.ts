@@ -3,9 +3,18 @@ import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from '.
 import { getCatalogBeatId } from './audio/catalogBeat';
 import { restoredVocalFX } from './audio/restoredFX';
 
-type SaveResult = { success: boolean; error?: string; requiresPass?: boolean; conflict?: boolean; code?: string; retryable?: boolean };
+type SaveResult = { success: boolean; error?: string; requiresPass?: boolean; conflict?: boolean; code?: string; retryable?: boolean; requestId?: string };
 let cloudOwner: string | null = null;
-type CloudProjectSlot = 'active' | 'previous';
+export type CloudProjectSlot = 'active' | 'previous';
+export interface CloudProjectSlotInfo {
+  slot: CloudProjectSlot;
+  hasProject: boolean;
+  revision: string | null;
+  projectId?: string;
+  name?: string;
+  savedAt?: number;
+  takesCount?: number;
+}
 let cloudSlot: CloudProjectSlot = 'active';
 let revision: string | null | undefined;
 let knownAudio = new Set<string>();
@@ -18,10 +27,28 @@ const CHUNK_BYTES = 2_000_000;
 const STAGED_UPLOAD_THRESHOLD = 2_500_000;
 
 export class CloudConnectionError extends Error {
-  constructor(message: string, public code = 'SERVICE_UNAVAILABLE', public retryable = true) { super(message); }
+  constructor(message: string, public code = 'SERVICE_UNAVAILABLE', public retryable = true, public reference?: string) { super(message); }
 }
 
 function confirmedKey() { return `rgodbeat_cloud_confirmed_${cloudOwner}`; }
+function namesKey() { return `rgodbeat_cloud_project_names_${cloudOwner}`; }
+export function getCloudProjectName(projectId: string): string | undefined {
+  try {
+    const name = JSON.parse(localStorage.getItem(namesKey()) || '{}')?.[projectId];
+    return typeof name === 'string' && name.trim() ? name : undefined;
+  } catch { return; }
+}
+export function rememberCloudProjectName(projectId: string, name: string) {
+  try {
+    const names = JSON.parse(localStorage.getItem(namesKey()) || '{}');
+    names[projectId] = name;
+    localStorage.setItem(namesKey(), JSON.stringify(names));
+  } catch { /* Naming still works when device storage is unavailable. */ }
+}
+export function hasConfirmedCloudProject(projectId: string) {
+  try { return JSON.parse(localStorage.getItem(confirmedKey()) || 'null')?.projectId === projectId; } catch { return false; }
+}
+export function getCloudProjectSelection() { return { slot: cloudSlot, revision }; }
 export function confirmCloudProject(projectId: string, confirmedRevision: string | null = revision ?? null) {
   if (!cloudOwner || !confirmedRevision) return;
   try { localStorage.setItem(confirmedKey(), JSON.stringify({ projectId, revision: confirmedRevision, slot: cloudSlot })); } catch { /* Device storage may be unavailable. */ }
@@ -50,7 +77,14 @@ async function requestCloudJson(url: string, init: RequestInit = {}, timeoutMs =
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
-    const data = await response.json();
+    let data;
+    try { data = await response.json(); }
+    catch (error) {
+      if (controller.signal.aborted) throw error;
+      throw new CloudConnectionError('El servidor de nube no respondió correctamente. Tu proyecto local se conserva.',
+        `HTTP_${response.status}`, response.status >= 500 || response.status === 429 || response.ok,
+        response.headers.get('x-vercel-id') || undefined);
+    }
     return { response, data };
   } catch (error) {
     if (controller.signal.aborted) throw new CloudConnectionError('La nube tardó demasiado. Tu proyecto local se conserva.');
@@ -142,19 +176,19 @@ function encode(buffer: AudioBuffer, bitDepth: 24 | 32 = 24) {
   }
   return result;
 }
-async function readCloudState(slot: CloudProjectSlot = cloudSlot) {
+async function readCloudState(slot: CloudProjectSlot = cloudSlot, updateSelection = true) {
   const owner = cloudOwner;
   const previousRevision = slot === cloudSlot ? revision : undefined;
   const { response, data } = await requestCloudJson(projectUrl(slot), { cache: 'no-store' });
   if (!response.ok) throw new CloudConnectionError(data.error || 'No se pudo consultar el respaldo de cuenta.',
     data.code || (response.status === 401 ? 'SESSION_REQUIRED' : 'SERVICE_UNAVAILABLE'),
-    data.retryable ?? (response.status === 429 || response.status >= 500));
+    data.retryable ?? (response.status === 429 || response.status >= 500), data.requestId);
   if (owner !== cloudOwner) throw new Error('La cuenta cambió durante la consulta.');
   if (owner && (data.isLoggedIn === false || (data.ownerEmail && data.ownerEmail !== owner))) {
     throw new CloudConnectionError('Vuelve a iniciar sesión. Tu proyecto local se conserva.', 'SESSION_REQUIRED', false);
   }
   // A status query started before a save must not restore its older revision.
-  if (slot === cloudSlot && revision === previousRevision) {
+  if (updateSelection && slot === cloudSlot && revision === previousRevision) {
     revision = data.revision ?? null;
     knownAudio = new Set<string>([
       data.project?.beat?.audioHash,
@@ -162,6 +196,16 @@ async function readCloudState(slot: CloudProjectSlot = cloudSlot) {
     ].filter(Boolean));
   }
   return data;
+}
+
+/** Inspect both slots without changing the open project's destination. */
+export async function listCloudProjectSlots(): Promise<CloudProjectSlotInfo[]> {
+  const owner = cloudOwner;
+  await queue;
+  if (owner !== cloudOwner) throw new CloudConnectionError('La cuenta cambió.', 'SESSION_REQUIRED', false);
+  const data = await readCloudState(cloudSlot, false);
+  if (Array.isArray(data.slots) && data.slots.length === 2) return data.slots;
+  throw new CloudConnectionError('Actualiza Studio para consultar los dos espacios.', 'UPDATE_REQUIRED', false);
 }
 
 // Coalesce pending edits and serialize writes. A slow upload cannot overwrite a newer one.
@@ -189,12 +233,14 @@ export function saveProjectToCloud(...args: Parameters<typeof uploadProject>): P
 
 export interface CloudProjectCheckResult {
   hasProject: boolean;
+  slots?: CloudProjectSlotInfo[];
   hasActiveProject?: boolean;
   hasPreviousProject?: boolean;
   previousProjectMeta?: { projectName?: string; savedAt?: number; takesCount?: number } | null;
   unavailable?: boolean;
   retryable?: boolean;
   code?: string;
+  requestId?: string;
   revision?: string | null;
   projectId?: string;
   recoveryNotice?: string;
@@ -237,6 +283,7 @@ export async function checkCloudProject(): Promise<CloudProjectCheckResult> {
 
       return {
         hasProject: true,
+        slots: data.slots,
         revision: data.revision, projectId: data.project.projectId, recoveryNotice: data.recoveryNotice, hasActiveProject: data.hasActiveProject,
         hasPreviousProject: Boolean(data.hasPreviousProject),
         previousProjectMeta: data.previousProjectMeta ?? null,
@@ -256,6 +303,7 @@ export async function checkCloudProject(): Promise<CloudProjectCheckResult> {
 
     return {
       hasProject: false,
+      slots: data.slots,
       revision: data.revision, recoveryNotice: data.recoveryNotice, hasActiveProject: data.hasActiveProject,
       hasPreviousProject: Boolean(data.hasPreviousProject),
       previousProjectMeta: data.previousProjectMeta ?? null,
@@ -269,6 +317,7 @@ export async function checkCloudProject(): Promise<CloudProjectCheckResult> {
     return { hasProject: false, unavailable: true,
       code: err instanceof CloudConnectionError ? err.code : 'SERVICE_UNAVAILABLE',
       retryable: err instanceof CloudConnectionError ? err.retryable : true,
+      requestId: err instanceof CloudConnectionError ? err.reference : undefined,
       message: err instanceof CloudConnectionError || (err instanceof Error && /^(El respaldo|No se pudo|La cuenta|La sesión)/.test(err.message))
         ? err.message : 'No se pudo conectar con tu respaldo. Tu copia local se conserva; reintenta la conexión.' };
   }
@@ -283,7 +332,8 @@ async function uploadProject(
   currentBeat: BeatData | null,
   loopSettings?: LoopSettings,
   mix?: BeatMixSettings,
-  projectId?: string
+  projectId?: string,
+  projectName?: string
 ): Promise<SaveResult> {
   const owner = cloudOwner;
   const savingSlot = cloudSlot;
@@ -296,7 +346,10 @@ async function uploadProject(
       if (owner !== cloudOwner || savingSlot !== cloudSlot || (owner && data.ownerEmail && data.ownerEmail !== owner)
         || data.project?.clientSaveId !== clientSaveId || !data.revision) return false;
       revision = data.revision; knownAudio = nextHashes;
-      if (projectId) confirmCloudProject(projectId);
+      if (projectId) {
+        confirmCloudProject(projectId);
+        if (projectName) rememberCloudProjectName(projectId, projectName);
+      }
       return true;
     } catch { return false; }
   };
@@ -397,7 +450,7 @@ async function uploadProject(
       clientSaveId,
       projectId,
       ownerEmail: owner,
-      projectName: currentBeat ? `Proyecto: ${currentBeat.title}` : 'Mi Proyecto',
+      projectName: projectName?.trim() || (projectId && getCloudProjectName(projectId)) || currentBeat?.title || 'Mi Proyecto',
       beat: currentBeat
         ? {
             id: currentBeat.id,
@@ -454,13 +507,16 @@ async function uploadProject(
         error: data.error || 'Error al guardar el proyecto en la nube.',
         requiresPass: Boolean(data.requiresPass),
         conflict: res.status === 409,
-        code: data.code, retryable: data.retryable ?? (res.status === 429 || res.status >= 500),
+        code: data.code, retryable: data.retryable ?? (res.status === 429 || res.status >= 500), requestId: data.requestId,
       };
     }
 
     if (owner === cloudOwner && savingSlot === cloudSlot) {
       revision = data.revision ?? null; knownAudio = nextHashes;
-      if (projectId) confirmCloudProject(projectId);
+      if (projectId) {
+        confirmCloudProject(projectId);
+        rememberCloudProjectName(projectId, metadata.projectName);
+      }
     }
     return { success: true };
   } catch (err: unknown) {
@@ -468,7 +524,8 @@ async function uploadProject(
     console.error('saveProjectToCloud error:', err);
     return { success: false, error: err instanceof Error ? err.message : 'Error de conexión al guardar.',
       code: err instanceof CloudConnectionError ? err.code : 'SERVICE_UNAVAILABLE',
-      retryable: err instanceof CloudConnectionError ? err.retryable : true };
+      retryable: err instanceof CloudConnectionError ? err.retryable : true,
+      requestId: err instanceof CloudConnectionError ? err.reference : undefined };
   }
 }
 
@@ -486,6 +543,7 @@ export async function loadProjectFromCloud(
   beatFX?: BeatFX;
   isBeatMuted?: boolean;
   projectId: string;
+  projectName: string;
   revision: string | null;
   slot: CloudProjectSlot;
   losses: string[];
@@ -584,6 +642,7 @@ export async function loadProjectFromCloud(
     if (owner !== cloudOwner) throw new CloudConnectionError('La cuenta cambió durante la descarga.', 'SESSION_REQUIRED', false);
     return {
       projectId: project.projectId || crypto.randomUUID(), revision: data.revision ?? null, slot, losses, missingBeat,
+      projectName: typeof project.projectName === 'string' ? project.projectName : project.beat?.title || 'Mi Proyecto',
       beatData: project.beat && !missingBeat
         ? {
             ...project.beat,

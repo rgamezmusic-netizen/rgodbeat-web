@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import React, { useRef, useState, useEffect } from 'react';
+import type { CloudProjectSlotInfo } from '@/lib/studio/cloudProject';
 import {
   Download,
   Upload,
@@ -65,6 +66,7 @@ interface TopBarProps {
   isLoadingCloud?: boolean;
   hasCloudProject?: boolean;
   hasPreviousCloudProject?: boolean;
+  cloudSlots?: CloudProjectSlotInfo[];
   onSaveAndExit?: () => void;
   isSavingAndExiting?: boolean;
 }
@@ -100,6 +102,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   isLoadingCloud = false,
   hasCloudProject = false,
   hasPreviousCloudProject = false,
+  cloudSlots,
   onSaveAndExit,
   isSavingAndExiting = false,
 }) => {
@@ -262,7 +265,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     ) : (
                       <CloudUpload className="w-4 h-4 text-emerald-400" />
                     )}
-                    <span>{isLoadingCloud ? 'Cargando...' : 'Cargar de la Nube'}</span>
+                    <span>{isLoadingCloud ? 'Cargando...' : 'Abrir espacio 1'}<span className="block max-w-52 truncate text-zinc-400">{cloudSlots?.find(slot => slot.slot === 'active')?.name}</span></span>
                   </button>
                 )}
 
@@ -276,7 +279,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-sky-300 hover:bg-sky-500/15 transition-all text-left cursor-pointer"
                   >
                     {isLoadingCloud ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4 text-sky-400" />}
-                    <span>{isLoadingCloud ? 'Cargando...' : 'Cargar proyecto guardado'}</span>
+                    <span>{isLoadingCloud ? 'Cargando...' : 'Abrir espacio 2'}<span className="block max-w-52 truncate text-zinc-400">{cloudSlots?.find(slot => slot.slot === 'previous')?.name}</span></span>
                   </button>
                 )}
 

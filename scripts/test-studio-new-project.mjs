@@ -120,21 +120,21 @@ try {
     await dialog.accept();
   });
   await account.page.getByRole('button', { name: /Nuevo Proyecto/ }).click();
-  await account.page.getByRole('dialog', { name: 'Creando proyecto' }).waitFor();
-  assert.equal(account.calls.deletes, 0, 'must wait for the pending account check');
-  releaseCheck();
   await account.page.getByText('ESPACIO FÍSICO DE BEATS', { exact: true }).waitFor();
-  assert.equal(account.calls.archives, 1);
-  assert.equal(account.calls.deletes, 1);
+  assert.equal(account.calls.archives, 0, 'new workspace cannot rotate cloud slots');
+  assert.equal(account.calls.deletes, 0, 'new workspace cannot delete a cloud slot');
+  assert.equal((await snapshot(account, 'previous')).takes, 1);
+  releaseCheck();
+  await account.page.waitForTimeout(100);
   assert.deepEqual(account.errors, []);
   await account.context.close();
 
   const failed = await fixture('failed-project@example.test', { archiveFailure: true });
   failed.page.once('dialog', dialog => dialog.accept());
   await failed.page.getByRole('button', { name: /Nuevo Proyecto/ }).click();
-  await failed.page.getByText('No se pudo conservar el proyecto anterior.', { exact: true }).waitFor();
   await failed.page.getByText('ESPACIO FÍSICO DE BEATS', { exact: true }).waitFor();
-  assert.equal((await snapshot(failed, 'previous')).takes, 1, 'archive failure must keep local audio in the previous slot');
+  assert.equal((await snapshot(failed, 'previous')).takes, 1, 'cloud availability cannot prevent protecting local audio');
+  assert.equal(failed.calls.archives, 0);
   assert.equal(failed.calls.deletes, 0);
   assert.deepEqual(failed.errors, []);
   await failed.context.close();
@@ -150,12 +150,14 @@ try {
   });
   await previous.page.getByRole('button', { name: /Nuevo Proyecto/ }).click();
   await previous.page.getByRole('dialog', { name: 'Creando proyecto' }).waitFor({ state: 'hidden' });
-  assert.equal(dialogs, 2);
+  await previous.page.getByText('ESPACIO FÍSICO DE BEATS', { exact: true }).waitFor();
+  assert.equal(dialogs, 1, 'starting locally cannot request replacement of cloud projects');
+  assert.equal(previous.calls.archives, 0);
   assert.equal(previous.calls.deletes, 0);
-  assert.equal((await snapshot(previous)).takes, 1, 'cancelling archive replacement must keep the voice');
+  assert.equal((await snapshot(previous, 'previous')).takes, 1, 'voice remains archived locally');
   assert.deepEqual(previous.errors, []);
   await previous.context.close();
-  console.log('New project tests passed: startup, menu, minimal confirmation, cancel, clean persistence, pending account check, archive failure and archive replacement cancel.');
+  console.log('New project tests passed: startup, menu, minimal confirmation, cancel, clean persistence, pending account check without blocking, local archive and cloud-slot preservation.');
 } catch (error) {
   for (const context of browser.contexts()) {
     for (const page of context.pages()) console.error('Page at failure:', (await page.locator('body').innerText()).slice(0, 4000));

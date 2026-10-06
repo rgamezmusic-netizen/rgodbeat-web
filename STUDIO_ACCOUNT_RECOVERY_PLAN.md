@@ -18,8 +18,12 @@ demuestra que el entorno publicado tenga las mismas variables o permisos.
    limitar los temporales a tres; mantener un botón manual.
 2. Identificar el proyecto y su revisión confirmada. Reanudar el mismo respaldo
    y conservar el local cuando otro dispositivo cambió la copia remota.
-3. Separar los dos espacios de nube: actual y anterior. Guardar el anterior
-   mantiene el actual y sus audios. Confirmar antes de reemplazar un anterior.
+3. Mostrar dos espacios independientes de nube. Al guardar, pedir nombre y
+   destino; identificar el proyecto que se eliminará y exigir confirmación si
+   es otro proyecto. Actualizar el espacio elegido con su revisión consultada:
+   un conflicto obliga a consultar y elegir de nuevo. El otro espacio se conserva.
+   Crear un proyecto nuevo solo archiva la copia local; no rota ni borra la nube.
+   El autoguardado de un proyecto nuevo espera la primera elección explícita.
 4. Recuperar los audios disponibles y avisar de los que faltan. Una descarga
    interrumpida, una cuenta distinta o un fallo de permisos no significan pérdida.
    Las consultas y descargas tienen un tiempo máximo.
@@ -29,8 +33,17 @@ demuestra que el entorno publicado tenga las mismas variables o permisos.
    siga pendiente.
 6. Mostrar «Guardar en dispositivo» para descargar archivos `.rgodbeat` con beat,
    voces y ajustes. Explicar brevemente el límite de dos proyectos en la nube.
+7. El autoguardado local ya no inicia reintentos adicionales de conexión. Descargar
+   cuando la nube falla activa el trabajo en dispositivo y pausa las consultas;
+   la elección se recuerda para esa cuenta y proyecto al reabrir Studio. «Conectar
+   nube» permite reanudar explícitamente. Los fallos del servidor incluyen una
+   referencia para correlacionar el aviso del móvil con los registros de producción.
 
 ## Verificación
+
+Última revisión: compilación de producción correcta, 19 pruebas de servidor/cliente
+y 20 casos de navegador en Chrome/WebKit correctos. Regresión de Nuevo Proyecto
+correcta. ESLint sin errores; conserva advertencias previas del proyecto.
 
 - Pruebas de servidor y cliente: sesión, límites de reintento, permisos, manifiestos
   dañados, revisiones, audio faltante, descarga detenida y conservación de ambos espacios.
@@ -40,7 +53,9 @@ demuestra que el entorno publicado tenga las mismas variables o permisos.
 - R2 real con un prefijo temporal aislado: guardar, leer, reutilizar audio, rechazar
   revisiones antiguas y conservar los dos espacios. Los objetos de prueba se retiraron.
 - Regresión de «Nuevo Proyecto»: modal inicial, menú, cancelación, conservación local
-  ante fallo de nube y confirmación para reemplazar el proyecto anterior.
+  ante fallo de nube y conservación de ambos espacios al crear un proyecto nuevo.
+- Guardado en móvil: nombre persistente, espacio vacío, cancelación y reemplazo
+  confirmado de espacio ocupado, conflicto de otra sesión y reintento tras fallo.
 
 Las pruebas de navegador usan cuentas ficticias y respuestas controladas. No
 constituyen una comprobación autenticada del despliegue de producción.
