@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { useCart } from "@/contexts/CartContext";
 import { getBrowserUser } from "@/lib/auth/client";
+import { RG_CHART_PATH } from "@/lib/rg/product/presentation";
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -49,7 +50,7 @@ export function Navbar() {
 
         {/* Center Primary Navigation */}
         <div className="hidden xl:flex items-center gap-6 text-[13px] font-medium tracking-[0.14em] text-zinc-300">
-          <Link href="/ranking" className="text-[#d8bc7c] hover:text-[#f0dbab] transition-colors py-1 whitespace-nowrap font-bold">TOP 23</Link>
+          <Link href={RG_CHART_PATH} className="text-[#d8bc7c] hover:text-[#f0dbab] transition-colors py-1 whitespace-nowrap font-bold">TOP 23</Link>
           <Link
             href="/beats"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
@@ -213,7 +214,7 @@ export function Navbar() {
       {mobileMenuOpen && (
         <div className="xl:hidden border-b border-white/10 bg-[#08080a]/98 backdrop-blur-2xl px-6 py-6 space-y-6 max-h-[calc(100vh-100px)] overflow-y-auto shadow-2xl">
           <div className="flex flex-col gap-4 text-sm tracking-[0.18em] font-medium text-zinc-300">
-            <Link href="/ranking" onClick={() => setMobileMenuOpen(false)} className="py-3 flex items-center justify-between border-b border-white/[0.06] text-[#d8bc7c]">
+            <Link href={RG_CHART_PATH} onClick={() => setMobileMenuOpen(false)} className="py-3 flex items-center justify-between border-b border-white/[0.06] text-[#d8bc7c]">
               <span className="font-bold text-base">TOP 23</span><span className="text-xs font-mono">EL RANKING →</span>
             </Link>
             <Link

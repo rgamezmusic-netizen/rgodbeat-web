@@ -2,11 +2,14 @@
 
 ## Release boundary
 
-Local experience only. No migration, payment activation, checkout, production fixture,
+Local navigation activation only. No migration, payment activation, checkout, production fixture,
 manual season finalization, YouTube upload, push or deployment is part of this change.
-The existing homepage/navbar TOP 23 destination and `/ranking` engine remain intact.
-The new chart stays at `/ranking/season`; `RG_CHART_PATH` is the canonical destination
-for RG profile navigation when a later release approves switching the homepage.
+The activation checkpoint routes the homepage and desktop/mobile TOP 23 menu links
+to `/ranking/season` through `RG_CHART_PATH`. The existing `/ranking` engine remains
+intact as the legacy fallback, including beat-voting/comment deep links. Moving the
+new chart to `/ranking` and removing the legacy engine require real scoring activity
+and a separately approved release. The Studio entry CTA remains visible even when
+the chart has few entries. This checkpoint is local; no push or deployment is made.
 
 ## Real surfaces
 
@@ -93,11 +96,17 @@ Chrome; no project dependency changes. Run a local production build on port 3103
 
 ```
 RG_TEST_PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+RG_TEST_TOP23_ACTIVATED=1 \
 RG_TEST_ARTIST_SLUG=existing-artist-slug \
 RG_TEST_BEAT_SLUG=existing-beat-slug \
 RG_TEST_DRAFT_TRACK_ID=existing-draft-uuid \
 node tests/rg-phase3-browser.mjs
 ```
+
+With `RG_TEST_TOP23_ACTIVATED=1`, the suite also clicks the homepage and desktop/mobile
+TOP 23 links, checks the Studio entry CTA, and confirms the legacy ranking, catalog
+and Studio routes remain available. Omit this test flag when checking a deployment
+that precedes navigation activation; it is not a production environment variable.
 
 The browser suite checks 360px / 390px / 1280px chart rendering, immediate tabs,
 no ranking requests/polling, no horizontal overflow or hydration/runtime errors,

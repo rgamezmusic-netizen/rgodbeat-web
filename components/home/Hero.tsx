@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/Button";
+import { RG_CHART_PATH } from "@/lib/rg/product/presentation";
 import styles from "./Hero.module.css";
 
 export function Hero() {
@@ -15,7 +16,7 @@ export function Hero() {
 
         <nav className="mt-9 sm:mt-11 flex w-full flex-col items-center justify-center gap-4 sm:w-auto sm:flex-row" aria-label="Explorar RGODBEAT">
           <Button
-            href="/ranking"
+            href={RG_CHART_PATH}
             variant="primary"
             size="lg"
             className={`w-full min-h-[72px] min-w-[220px] px-10 py-5 text-base sm:w-auto sm:text-lg ${styles.topActionButton}`}

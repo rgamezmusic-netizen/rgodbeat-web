@@ -14,6 +14,30 @@ const output=process.env.RG_TEST_SCREENSHOTS??'/private/tmp/rg-phase3-screenshot
 await mkdir(output,{recursive:true});
 const browser=await chromium.launch({executablePath:process.env.RG_TEST_CHROME??'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
 try {
+  if(process.env.RG_TEST_TOP23_ACTIVATED==='1'){
+    for(const width of [390,1280]){
+      const page=await browser.newPage({viewport:{width,height:900}});const errors=[];
+      page.on('pageerror',error=>errors.push(error.message));
+      const home=await page.goto(base,{waitUntil:'networkidle'});assert.equal(home.status(),200);
+      const hero=page.getByRole('navigation',{name:'Explorar RGODBEAT'}).getByRole('link',{name:'TOP 23',exact:true});
+      assert.equal(await hero.getAttribute('href'),'/ranking/season');
+      await hero.click();await page.waitForURL(`${base}/ranking/season`);
+      await page.getByRole('heading',{name:'RG TOP 23.',exact:true}).waitFor();
+      await page.goto(base,{waitUntil:'networkidle'});
+      if(width===390)await page.getByRole('button',{name:'Toggle mobile menu'}).click();
+      const menuLink=page.locator('nav').filter({has:page.getByAltText('RGodbeat', {exact:true})}).getByRole('link',{name:/^TOP 23/}).filter({visible:true});
+      assert.equal(await menuLink.getAttribute('href'),'/ranking/season');
+      await menuLink.click();await page.waitForURL(`${base}/ranking/season`);
+      assert.ok(await page.getByRole('link',{name:'PUBLICAR EN RGODBEAT STUDIO',exact:true}).isVisible());
+      for(const path of ['/ranking','/beats','/studio']){
+        const response=await page.goto(base+path,{waitUntil:'networkidle'});assert.equal(response.status(),200,path);
+        if(path==='/ranking')assert.equal(await page.getByRole('heading',{name:'RG TOP 23.',exact:true}).count(),0,'legacy ranking must remain separate');
+      }
+      assert.deepEqual(errors,[],'activation navigation must not introduce runtime errors');
+      console.log(`PASS activation ${width}px: homepage/menu TOP 23, Studio CTA and legacy/catalog/Studio routes`);
+      await page.close();
+    }
+  }
   for(const width of [360,390,1280]){
     const page=await browser.newPage({viewport:{width,height:900},deviceScaleFactor:1});const errors=[];let rankingRequests=0;
     page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().includes('/api/rg/rankings'))rankingRequests++;});

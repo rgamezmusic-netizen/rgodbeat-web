@@ -127,7 +127,30 @@ test('wallet queries validated owner only, prevents bad balances, and authentica
 test('public API still uses Phase 2 automatic projection and no repeated client polling is introduced',async()=>{
   const route=loadSource('app/api/rg/rankings/route.ts',{'@/lib/rg/phase2/rankings':{getRgSeasonRankings:async()=>chart}});
   assert.equal((await route.GET()).status,200);assert.doesNotMatch(readFileSync('components/ranking/RgSeasonRankingClient.tsx','utf8'),/fetch\(|60_000/);
-  assert.match(readFileSync('components/layout/Navbar.tsx','utf8'),/href="\/ranking"/);
+});
+test('homepage and both TOP 23 menu links use the existing RG chart; legacy ranking stays intact',()=>{
+  assert.equal(presentation.RG_CHART_PATH,'/ranking/season');
+  const mocks={...replacements,
+    './Hero.module.css':{__esModule:true,default:{}},
+    '@/components/ui/Button':{Button:({children,href})=>React.createElement('a',{href},children)},
+    '@/contexts/CartContext':{useCart:()=>({openCart(){},itemCount:0})},
+    '@/lib/auth/client':{getBrowserUser:async()=>null},
+  };
+  const {Hero}=loadSource('components/home/Hero.tsx',mocks);
+  const {Navbar}=loadSource('components/layout/Navbar.tsx',mocks);
+  for(const component of [Hero,Navbar])assert.match(html(component),/href="\/ranking\/season"[^>]*>TOP 23/);
+  const menu=readFileSync('components/layout/Navbar.tsx','utf8');
+  assert.equal((menu.match(/href=\{RG_CHART_PATH\}/g)??[]).length,2);
+  assert.match(readFileSync('app/ranking/page.tsx','utf8'),/getPublicChart/);
+  assert.doesNotMatch(readFileSync('app/ranking/page.tsx','utf8'),/getRgChart|redirect\(/);
+});
+test('Studio entry CTA stays visible with empty or low chart activity, without transactional actions',()=>{
+  const {RgSeasonRankingClient}=loadSource('components/ranking/RgSeasonRankingClient.tsx',replacements);
+  for(const data of [chart,{...chart,rankings:{...chart.rankings,tracks:[entry]}}]){
+    const markup=html(RgSeasonRankingClient,{data});
+    assert.match(markup,/href="\/studio"[^>]*>PUBLICAR EN RGODBEAT STUDIO/);
+    assert.doesNotMatch(markup,/BUY RG|REDEEM RG|BOOST THE POOL/);
+  }
 });
 test('wallet page and member card require server session; public profile modules cannot query balance or auth email',async()=>{
   const page=loadSource('app/rg/wallet/page.tsx',{...replacements,'@/lib/auth/server':{getCurrentUser:async()=>null},'@/lib/rg/product/wallet':{getRgWalletSummary:async()=>{throw Error('Must not query');}}});
