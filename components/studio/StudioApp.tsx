@@ -472,6 +472,8 @@ export default function App() {
   const sessionOwnerRef = useRef<string | null | undefined>(undefined);
   const activeProjectIdRef = useRef(crypto.randomUUID());
   const replacingProjectRef = useRef(false);
+  const startingNewProjectRef = useRef(false);
+  const [isStartingNewProject, setIsStartingNewProject] = useState(false);
   const cloudDirtyRef = useRef(false);
   const cloudConflictRef = useRef(false);
   const cloudVerificationPendingRef = useRef(false);
@@ -1265,8 +1267,13 @@ export default function App() {
   async function clearActiveProjectBackup() {
     if (replacingProjectRef.current) return false;
     if (accessStatusRef.current.isLoggedIn && cloudVerificationPendingRef.current) {
-      showToast('Revisa la conexión de tu cuenta antes de reemplazar su respaldo. Tu proyecto abierto se conserva.', 'info');
-      return false;
+      // Startup can offer the local project before the account check finishes.
+      // Complete that check instead of ignoring the user's New Project action.
+      await (cloudCheckRequestRef.current ?? retryCloudBackup());
+      if (cloudVerificationPendingRef.current) {
+        showToast('No se pudo conectar con tu cuenta. Reintenta; tu proyecto sigue abierto.', 'info');
+        return false;
+      }
     }
     replacingProjectRef.current = true;
     try {
@@ -1275,7 +1282,7 @@ export default function App() {
         let archived = await archiveCloudProject();
         if (archived.requiresConfirmation) {
           const confirmed = window.confirm(
-            'Tu cuenta ya conserva un proyecto anterior. Al continuar, ese respaldo se reemplazará por el proyecto abierto. El proyecto nuevo ocupará el espacio actual. ¿Deseas continuar?'
+            'Se reemplazará el proyecto anterior. ¿Continuar?'
           );
           if (!confirmed) return false;
           archived = await archiveCloudProject(true);
@@ -1379,32 +1386,56 @@ export default function App() {
     showToast('✓ Continuando tu último proyecto con todas tus tomas.', 'success');
   };
 
-  const handleStartNewProjectClean = async () => {
-    if (pendingStartupSession?.takesCount && !window.confirm('Tu proyecto abierto se conservará en tu cuenta como el proyecto anterior. Las tomas se quitarán de este espacio para iniciar limpio. ¿Deseas continuar?')) return;
-    if (!await clearActiveProjectBackup()) return;
-    if (engine) {
+  // Both entry points create the same clean workspace and open beat selection.
+  const handleNewProject = async () => {
+    if (!engine || isRecordingRef.current || replacingProjectRef.current
+      || startingNewProjectRef.current || sessionOwnerRef.current === undefined || startupError) return;
+    const hasTakes = Boolean(pendingStartupSession?.takesCount)
+      || tracksRef.current.some(track => getTrackClips(track).length);
+    if (hasTakes && !window.confirm(accessStatusRef.current.isLoggedIn
+      ? '¿Nuevo proyecto? El respaldo actual pasará a «Anterior».'
+      : '¿Nuevo proyecto? Se quitarán las tomas actuales.')) return;
+
+    startingNewProjectRef.current = true;
+    setIsStartingNewProject(true);
+    try {
+      if (!await clearActiveProjectBackup()) return;
       engine.stop();
+      const cleanTracks = applyUserFXTemplatesToTracks(
+        initialTracks.map((track) => ({
+          ...track,
+          buffer: null,
+          clips: [],
+          duration: 0,
+          startBeatOffset: 0,
+          waveformSample: undefined,
+          tunedBuffer: null,
+        })),
+        currentBeatRef.current,
+        accessStatusRef.current.email
+      );
+      const cleanLoop: LoopSettings = { enabled: false, bars: 8, startBar: 0, startSec: 0, endSec: 0 };
+      engine.setLoopSettings(cleanLoop);
+      setLoopSettings(cleanLoop);
+      setCurrentTime(0);
+      setIsPlaying(false);
+      sessionSettingsRef.current = { ...sessionSettingsRef.current, currentTime: 0, loopSettings: cleanLoop };
+      setTracks(cleanTracks);
+      tracksRef.current = cleanTracks;
+      setSelectedTrackId('lead1');
+      setUndoStack([]);
+      setRedoStack([]);
+      setIsStartupResolved(true);
+      setShowStartupModal(false);
+      setShowLoadBeatModal(true);
+      showToast('Nuevo proyecto iniciado', 'success');
+    } catch (error) {
+      console.error('Error starting new project:', error);
+      showToast('No se pudo iniciar el proyecto. Reintenta.', 'error');
+    } finally {
+      startingNewProjectRef.current = false;
+      setIsStartingNewProject(false);
     }
-    const cleanTracks = applyUserFXTemplatesToTracks(
-      initialTracks.map((t) => ({
-        ...t,
-        buffer: null,
-        clips: [],
-        duration: 0,
-        startBeatOffset: 0,
-        waveformSample: undefined,
-        tunedBuffer: null,
-      })),
-      currentBeatRef.current,
-      accessStatus.email
-    );
-    setTracks(cleanTracks);
-    tracksRef.current = cleanTracks;
-    setUndoStack([]);
-    setRedoStack([]);
-    setIsStartupResolved(true);
-    setShowStartupModal(false);
-    showToast('✨ Proyecto nuevo iniciado: pistas limpias y efectos configurados.', 'info');
   };
 
   // Phone call interruption & backgrounding protector
@@ -2569,45 +2600,6 @@ export default function App() {
     }
   };
 
-  // Start a Clean New Project
-  const handleNewProject = async () => {
-    if (isRecordingRef.current) return;
-    const hasTakes = tracks.some((t) => t.buffer || (t.clips && t.clips.length > 0));
-    if (hasTakes) {
-      const confirmed = window.confirm(
-        'Tu proyecto abierto se conservará en tu cuenta como el proyecto anterior. Las voces se quitarán de este espacio para iniciar limpio. ¿Deseas continuar?'
-      );
-      if (!confirmed) return;
-    }
-
-    if (!await clearActiveProjectBackup()) return;
-    if (engine) {
-      engine.stop();
-    }
-
-    const resetTracks = applyUserFXTemplatesToTracks(
-      initialTracks.map((t) => ({
-        ...t,
-        buffer: null,
-        clips: [],
-        duration: 0,
-        startBeatOffset: 0,
-        waveformSample: undefined,
-        tunedBuffer: null,
-      })),
-      currentBeatRef.current,
-      accessStatus.email
-    );
-
-    setTracks(resetTracks);
-    tracksRef.current = resetTracks;
-    setUndoStack([]);
-    setRedoStack([]);
-
-    showToast('✨ Nuevo proyecto iniciado: canales limpios con tus efectos preferidos.', 'info');
-    setShowLoadBeatModal(true);
-  };
-
   const selectedTrack = tracks.find((t) => t.id === selectedTrackId) || tracks[0];
   const activeFXTrack = tracks.find((t) => t.id === activeFXTrackId) || null;
   const hasRecordings = tracks.some((t) => t.buffer !== null);
@@ -2623,6 +2615,14 @@ export default function App() {
     } flex flex-col selection:bg-amber-500/30 selection:text-amber-200 transition-colors duration-200`}>
       {/* 1-Bar Count In Metronome Visual Overlay */}
       <CountInOverlay beatNumber={countInBeat} onCancel={handleCancelCountIn} />
+      {isStartingNewProject && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          role="dialog" aria-modal="true" aria-label="Creando proyecto" aria-busy="true">
+          <p className="rounded-2xl border border-amber-500/40 bg-zinc-950 p-6 text-white" role="status">
+            Creando proyecto…
+          </p>
+        </div>
+      )}
       {(isLoadingCloud || isOpeningDeviceProject) && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
           role="dialog" aria-modal="true" aria-label="Abriendo proyecto" aria-busy="true">
@@ -2903,7 +2903,7 @@ export default function App() {
 
       {/* Toast Notification Container */}
       {toastMessage && (
-        <div role="status" aria-live="polite" aria-atomic="true" className="pointer-events-none fixed bottom-20 left-1/2 -translate-x-1/2 z-50 flex items-start gap-2 px-4 py-2.5 rounded-2xl bg-zinc-900/95 text-white border border-zinc-700 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-200 text-xs leading-relaxed font-mono w-max max-w-[90vw]">
+        <div role="status" aria-live="polite" aria-atomic="true" className="pointer-events-none fixed bottom-20 left-1/2 -translate-x-1/2 z-[210] flex items-start gap-2 px-4 py-2.5 rounded-2xl bg-zinc-900/95 text-white border border-zinc-700 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-200 text-xs leading-relaxed font-mono w-max max-w-[90vw]">
           {toastMessage.type === 'error' && (
             <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
           )}
@@ -3008,7 +3008,7 @@ export default function App() {
         takesCount={pendingStartupSession?.takesCount || 0}
         savedTimeText={pendingStartupSession?.savedTimeText}
         onContinueLastProject={handleContinueLastProject}
-        onStartNewProject={handleStartNewProjectClean}
+        onStartNewProject={handleNewProject}
         onOpenDeviceProject={handleImportDeviceProject}
         onClose={handleContinueLastProject}
       />
