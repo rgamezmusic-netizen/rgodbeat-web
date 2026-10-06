@@ -3,6 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { safeAuthRedirect } from "@/lib/auth/redirect";
 import { isSiteAdmin } from "@/lib/auth/admin";
 import { Database } from "@/types/database";
+import type { User } from "@supabase/supabase-js";
+import { fetchAuth } from "@/lib/auth/request";
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -17,6 +19,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const supabase = createServerClient<Database>(supabaseUrl, supabaseKey, {
+    global: { fetch: fetchAuth },
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -34,9 +37,14 @@ export async function middleware(request: NextRequest) {
   });
 
   // Refresh auth tokens if needed
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let user: User | null = null;
+  try {
+    const result = await supabase.auth.getUser();
+    user = result.data.user;
+  } catch {
+    // Keep public pages available during Auth outages; protected routes and
+    // their server/API guards still require a verified user.
+  }
 
   const pathname = request.nextUrl.pathname;
 

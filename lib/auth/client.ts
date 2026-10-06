@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { AuthError, User, Session } from "@supabase/supabase-js";
+import { fetchAuth } from "./request";
 
 export interface SignInResult {
   user: User | null;
@@ -42,7 +43,7 @@ export function translateAuthError(errorMessage?: string | null): string {
   if (msg.includes("password should be at least")) {
     return "La contraseña no cumple la longitud mínima requerida. Usa al menos 8 caracteres.";
   }
-  if (msg.includes("network") || msg.includes("fetch failed")) {
+  if (/network|fetch failed|failed to fetch|load failed|timeout|abort|tardó demasiado/.test(msg)) {
     return "Error de conexión con el servidor. Revisa tu conexión a internet.";
   }
 
@@ -61,11 +62,10 @@ export async function signUpWithEmail(
   fullName?: string
 ): Promise<SignUpResult> {
   const cleanEmail = email.trim().toLowerCase();
-  const supabase = createClient();
-
   try {
+    const supabase = createClient();
     // 1. Register through the server endpoint
-    const res = await fetch("/api/auth/register", {
+    const res = await fetchAuth("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -123,26 +123,18 @@ export async function signInWithEmail(
   password: string
 ): Promise<SignInResult> {
   const cleanEmail = email.trim().toLowerCase();
-  const supabase = createClient();
-
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: cleanEmail,
-    password,
-  });
-
-  if (error) {
+  try {
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+    if (error) return { user: null, session: null, error: { message: translateAuthError(error.message) } };
+    return { user: data.user, session: data.session, error: null };
+  } catch (error) {
     return {
       user: null,
       session: null,
-      error: { message: translateAuthError(error.message) },
+      error: { message: translateAuthError(error instanceof Error ? error.message : "Error de conexión.") },
     };
   }
-
-  return {
-    user: data.user,
-    session: data.session,
-    error: null,
-  };
 }
 
 /**

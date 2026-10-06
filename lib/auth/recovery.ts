@@ -3,6 +3,7 @@
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { safeAuthRedirect } from "@/lib/auth/redirect";
+import { fetchAuth } from "./request";
 
 export const RECOVERY_INVALID = "El enlace venció o ya se usó. Solicita uno nuevo aquí.";
 export function recoveryErrorMessage(error: { message: string; code?: string } | null): string {
@@ -77,7 +78,7 @@ export async function requestPasswordRecovery(email: string, next?: string | nul
   const cleanEmail = email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 254) return { error: "Escribe el correo de tu cuenta." };
   try {
-    const response = await fetch("/api/auth/recover", {
+    const response = await fetchAuth("/api/auth/recover", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: cleanEmail, ...(next ? { next: safeAuthRedirect(next, "/account") } : {}) }),
     });

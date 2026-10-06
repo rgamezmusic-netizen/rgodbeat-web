@@ -7,7 +7,9 @@ export const r2ProjectStorage: ProjectStorage = {
     const client = getR2Client();
     if (!client) throw new Error('El respaldo de cuenta no está configurado.');
     try {
-      const result = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
+      const result = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }), {
+        abortSignal: AbortSignal.timeout(15_000),
+      });
       if (!result.Body || !result.ETag) throw new Error('Respuesta de almacenamiento incompleta.');
       return { body: Buffer.from(await result.Body.transformToByteArray()), etag: result.ETag };
     } catch (error) {

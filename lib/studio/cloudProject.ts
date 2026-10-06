@@ -91,7 +91,7 @@ async function readCloudState() {
   const owner = cloudOwner;
   const previousRevision = revision;
   const { response, data } = await requestCloudJson('/api/studio/project', { cache: 'no-store' });
-  if (!response.ok) throw new Error('No se pudo consultar el respaldo de cuenta.');
+  if (!response.ok) throw new Error(data.error || 'No se pudo consultar el respaldo de cuenta.');
   if (owner !== cloudOwner) throw new Error('La cuenta cambió durante la consulta.');
   if (owner && (data.isLoggedIn === false || (data.ownerEmail && data.ownerEmail !== owner))) {
     throw new Error('La sesión cambió. Tu respaldo local sigue asociado a la cuenta anterior.');
@@ -195,7 +195,9 @@ export async function checkCloudProject(): Promise<CloudProjectCheckResult> {
     };
   } catch (err) {
     console.warn('[checkCloudProject error]:', err);
-    return { hasProject: false, unavailable: true };
+    return { hasProject: false, unavailable: true,
+      message: err instanceof Error && /^(El respaldo|No se pudo|La cuenta|La sesión)/.test(err.message)
+        ? err.message : 'No se pudo conectar con tu respaldo. Tu copia local se conserva; reintenta la conexión.' };
   }
 }
 

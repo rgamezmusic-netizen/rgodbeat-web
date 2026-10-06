@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { Database } from "@/types/database";
+import { fetchAuth } from "@/lib/auth/request";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
@@ -9,6 +10,7 @@ export const createClient = async () => {
   const cookieStore = await cookies();
 
   return createServerClient<Database>(supabaseUrl, supabaseKey, {
+    global: { fetch: fetchAuth },
     cookies: {
       getAll() {
         return cookieStore.getAll();

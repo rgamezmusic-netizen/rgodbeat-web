@@ -134,9 +134,9 @@ export class AudioEngine {
   }
 
   /**
-   * Initializes or resumes the AudioContext on first user interaction.
+   * Prepare buffers while suspended; resume playback only on user interaction.
    */
-  public async ensureAudioContext(): Promise<AudioContext> {
+  public async ensureAudioContext({ resume = true }: { resume?: boolean } = {}): Promise<AudioContext> {
     if (!this.ctx) {
       const AudioCtxClass =
         window.AudioContext ||
@@ -166,7 +166,7 @@ export class AudioEngine {
         }
       };
     }
-    if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
+    if (resume && (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted')) {
       await this.ctx.resume();
     }
     return this.ctx;

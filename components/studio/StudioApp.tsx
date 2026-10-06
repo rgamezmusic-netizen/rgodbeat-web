@@ -43,6 +43,7 @@ import {
   moveStudioSession,
 } from '@/lib/studio/audio/sessionStorage';
 import { signOutClient } from '@/lib/auth/client';
+import { fetchAuth } from '@/lib/auth/request';
 import { TopBar } from './TopBar';
 import { ArtworkPlayer } from './ArtworkPlayer';
 import { VocalTrackDropdown } from './VocalTrackDropdown';
@@ -520,7 +521,7 @@ export default function App() {
         if (owner !== accessStatusRef.current.email || projectId !== activeProjectIdRef.current
           || replacingProjectRef.current) return false;
         setCloudProjectInfo(remote);
-        if (remote.unavailable) { pauseCloudVerification(); return false; }
+        if (remote.unavailable) { pauseCloudVerification(remote.message); return false; }
         cloudVerificationPendingRef.current = false;
         setCloudNeedsCheck(false);
         if (remote.hasProject) {
@@ -636,7 +637,7 @@ export default function App() {
     if (allowAccountChange) allowAccountChangeRef.current = true;
     if (accessRequestRef.current) return accessRequestRef.current;
     const request = (async () => {
-      const res = await fetch('/api/studio/access', { cache: 'no-store' });
+      const res = await fetchAuth('/api/studio/access', { cache: 'no-store' });
       if (!res.ok) throw new Error('No se pudo verificar tu cuenta. Reintenta para recuperar el proyecto correcto.');
       const data = await res.json();
       const email = data.email?.trim().toLowerCase() || null;
@@ -885,7 +886,7 @@ export default function App() {
       try {
         const owner = await refreshStudioAccess();
         if (cancelled) return;
-        const audioCtx = await audioEngine.ensureAudioContext();
+        const audioCtx = await audioEngine.ensureAudioContext({ resume: false });
         if (cancelled) return;
 
         // 0. Detect last active Studio session or cloud project to give user the choice:
@@ -904,20 +905,41 @@ export default function App() {
         }
 
         if (owner) {
-          const remote = await checkCloudProject();
-          cloudCheck = remote;
-          if (cancelled) return;
-          setCloudProjectInfo(remote);
-          if (remote.unavailable) pauseCloudVerification();
-          else {
+          const projectId = activeProjectIdRef.current;
+          const localTimestamp = lastSession?.timestamp;
+          const verifyAccount = async (): Promise<CloudProjectCheckResult | null> => {
+            const remote = await checkCloudProject();
+            if (cancelled || owner !== accessStatusRef.current.email
+              || projectId !== activeProjectIdRef.current || replacingProjectRef.current) return null;
+            setCloudProjectInfo(remote);
+            if (remote.unavailable) { pauseCloudVerification(remote.message); return remote; }
             cloudVerificationPendingRef.current = false;
             setCloudNeedsCheck(false);
             setCloudBackupNotice('');
-          }
-          if (remote.hasProject && lastSession && (remote.projectMeta?.savedAt || 0) > lastSession.timestamp + 1000) {
-            // Keep local voices until the user explicitly chooses to replace the project.
-            cloudConflictRef.current = true;
-            setCloudBackupStatus('Hay una copia más reciente en tu cuenta. Tu proyecto local se conserva.');
+            if (remote.hasProject && localTimestamp !== undefined && (remote.projectMeta?.savedAt || 0) > localTimestamp + 1000) {
+              // A late account response must never replace the open local audio.
+              cloudConflictRef.current = true;
+              setCloudBackupStatus('Hay una copia más reciente en tu cuenta. Tu proyecto local se conserva.');
+            } else if (!cloudConflictRef.current) {
+              setCloudBackupStatus('Cuenta conectada');
+            }
+            return remote;
+          };
+          if (lastSession) {
+            // The verified owner's local project can open while the account reconnects.
+            // Pending verification still prevents cloud writes or backup deletion.
+            setIsCheckingCloud(true);
+            setCloudBackupStatus('Conectando con tu cuenta…');
+            const request = verifyAccount().then(remote => Boolean(remote && !remote.unavailable && !cloudConflictRef.current));
+            cloudCheckRequestRef.current = request;
+            void request.finally(() => {
+              if (cloudCheckRequestRef.current === request) {
+                cloudCheckRequestRef.current = null;
+                if (!cancelled) setIsCheckingCloud(false);
+              }
+            }).catch(() => {});
+          } else {
+            cloudCheck = await verifyAccount();
           }
         }
         if (cancelled) return;

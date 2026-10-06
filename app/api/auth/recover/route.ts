@@ -1,11 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { safeAuthRedirect } from "@/lib/auth/redirect";
+import { fetchAuth } from "@/lib/auth/request";
 
 export async function POST(request: NextRequest) {
   const headers = { "Cache-Control": "no-store" };
   const origin = new URL(request.url).origin;
-  if (request.headers.get("origin") && request.headers.get("origin") !== origin) return NextResponse.json({ error: "Solicitud no permitida." }, { status: 403, headers });
+  const suppliedOrigin = request.headers.get("origin");
+  const productionOrigins = ["https://rgodbeat.com", "https://www.rgodbeat.com"];
+  if (suppliedOrigin && suppliedOrigin !== origin
+    && !(productionOrigins.includes(origin) && productionOrigins.includes(suppliedOrigin))) {
+    return NextResponse.json({ error: "Solicitud no permitida." }, { status: 403, headers });
+  }
   let body: { email?: unknown; next?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Solicitud inválida." }, { status: 400, headers }); }
   if (!body || typeof body.email !== "string") return NextResponse.json({ error: "Escribe el correo de tu cuenta." }, { status: 400, headers });
@@ -18,7 +24,10 @@ export async function POST(request: NextRequest) {
   if (typeof body.next === "string") redirect.searchParams.set("next", safeAuthRedirect(body.next, "/account"));
   // Public Auth API, without the service key or a browser-specific PKCE verifier.
   // Supabase still controls email verification, token expiry, CAPTCHA and rate limits.
-  const supabase = createClient(url, key, { auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const supabase = createClient(url, key, {
+    global: { fetch: fetchAuth },
+    auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirect.toString() });
     if (error) {
