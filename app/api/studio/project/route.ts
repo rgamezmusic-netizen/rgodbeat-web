@@ -51,7 +51,7 @@ async function checkUserAccess(user: NonNullable<Awaited<ReturnType<typeof getCu
 }
 
 // Reading a backup never deletes it, including when a premium pass expires.
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabaseAuth = await createClient();
     const { data: authData, error: authError } = await supabaseAuth.auth.getUser();
@@ -66,18 +66,27 @@ export async function GET() {
     }
     const { hasActivePass, daysRemaining, isAdmin } = await checkUserAccess(user);
     const prefix = `studio/projects/${user.id}/`;
-    const stored = await r2ProjectStorage.read(`${prefix}project.json`);
+    const previousStored = await r2ProjectStorage.read(`${prefix}previous-project.json`);
+    const slot = request.nextUrl.searchParams.get('slot') === 'previous' ? 'previous-project.json' : 'project.json';
+    const stored = await r2ProjectStorage.read(`${prefix}${slot}`);
     const project = stored.body ? JSON.parse(stored.body.toString("utf8")) : null;
+    const previousProject = previousStored.body ? JSON.parse(previousStored.body.toString("utf8")) : null;
     const access = { isLoggedIn: true, ownerEmail: user.email?.toLowerCase(), hasActivePass, daysRemaining,
-      warnExpiration: daysRemaining <= 3 && daysRemaining > 0 && !isAdmin, revision: stored.etag };
+      warnExpiration: daysRemaining <= 3 && daysRemaining > 0 && !isAdmin, revision: stored.etag,
+      hasPreviousProject: Boolean(previousProject && !previousProject.deleted),
+      previousProjectMeta: previousProject && !previousProject.deleted ? {
+        projectName: typeof previousProject.projectName === 'string' ? previousProject.projectName : 'Proyecto guardado',
+        savedAt: previousProject.savedAt,
+        takesCount: Array.isArray(previousProject.tracks) ? previousProject.tracks.reduce((count: number, track: { clips?: unknown[] }) => count + (track.clips?.length ?? 0), 0) : 0,
+      } : null };
     if (!project || project.deleted) return NextResponse.json({ ...access, hasProject: false });
     if (project.beat?.customBeatKey?.startsWith(prefix)) {
-      project.beat.downloadUrl = `/api/studio/project/audio?key=${encodeURIComponent(project.beat.customBeatKey)}`;
+      project.beat.downloadUrl = `/api/studio/project/audio?slot=${slot === 'project.json' ? 'active' : 'previous'}&key=${encodeURIComponent(project.beat.customBeatKey)}`;
     }
     for (const track of project.tracks ?? []) for (const clip of track.clips ?? []) {
-      if (clip.storageKey?.startsWith(prefix)) clip.downloadUrl = `/api/studio/project/audio?key=${encodeURIComponent(clip.storageKey)}`;
+      if (clip.storageKey?.startsWith(prefix)) clip.downloadUrl = `/api/studio/project/audio?slot=${slot === 'project.json' ? 'active' : 'previous'}&key=${encodeURIComponent(clip.storageKey)}`;
     }
-    return NextResponse.json({ ...access, hasProject: true, project });
+    return NextResponse.json({ ...access, revision: stored.etag, hasProject: true, project });
   } catch (error) {
     console.error("[Studio Project GET error]", error);
     return NextResponse.json({ error: "No se pudo consultar el respaldo. Tu proyecto no se ha borrado; reintenta la conexión." }, { status: 503 });

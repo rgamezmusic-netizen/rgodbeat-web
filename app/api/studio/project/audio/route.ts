@@ -7,15 +7,16 @@ import { r2ProjectStorage } from '@/lib/studio/server/r2ProjectStorage';
 
 export const dynamic = 'force-dynamic';
 
-/** Download only audio referenced by this account's current Studio project. */
+/** Download only audio referenced by one of this account's two retained Studio projects. */
 export async function GET(request: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Inicia sesión para recuperar tus voces.' }, { status: 401 });
   const key = request.nextUrl.searchParams.get('key');
+  const slot = request.nextUrl.searchParams.get('slot') === 'previous' ? 'previous-project.json' : 'project.json';
   const prefix = `studio/projects/${user.id}/`;
   if (!key?.startsWith(prefix)) return NextResponse.json({ error: 'Audio no disponible.' }, { status: 404 });
   try {
-    const saved = await r2ProjectStorage.read(`${prefix}project.json`);
+    const saved = await r2ProjectStorage.read(`${prefix}${slot}`);
     if (!saved.body) return NextResponse.json({ error: 'Proyecto no disponible.' }, { status: 404 });
     const project = JSON.parse(saved.body.toString('utf8'));
     if (!canReadProjectAudio(project, key, prefix)) {

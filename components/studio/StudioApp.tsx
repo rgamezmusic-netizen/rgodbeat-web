@@ -72,6 +72,7 @@ import {
   CloudProjectCheckResult,
   deleteProjectFromCloud,
   setCloudProjectUser,
+  archiveCloudProject,
 } from '@/lib/studio/cloudProject';
 
 import { appendRecordingCheckpoint, recoverRecordingCheckpoints, retireRecordingCheckpoints } from '@/lib/studio/audio/recordingRecovery';
@@ -1269,6 +1270,21 @@ export default function App() {
     }
     replacingProjectRef.current = true;
     try {
+      const hadAccountProject = Boolean(cloudProjectInfo?.hasProject || cloudProjectInfo?.hasPreviousProject);
+      if (accessStatusRef.current.isLoggedIn) {
+        let archived = await archiveCloudProject();
+        if (archived.requiresConfirmation) {
+          const confirmed = window.confirm(
+            'Tu cuenta ya conserva un proyecto anterior. Al continuar, ese respaldo se reemplazará por el proyecto abierto. El proyecto nuevo ocupará el espacio actual. ¿Deseas continuar?'
+          );
+          if (!confirmed) return false;
+          archived = await archiveCloudProject(true);
+        }
+        if (!archived.success) {
+          showToast(archived.error || 'No se pudo conservar el proyecto de tu cuenta. Tu proyecto sigue abierto.', 'error');
+          return false;
+        }
+      }
       if (accessStatusRef.current.isLoggedIn && !await deleteProjectFromCloud()) {
         showToast('No se pudo reemplazar el respaldo de cuenta. Tu proyecto sigue intacto; comprueba la conexión.', 'error'); return false;
       }
@@ -1277,7 +1293,14 @@ export default function App() {
       }
       activeProjectIdRef.current = crypto.randomUUID();
       cloudDirtyRef.current = false; cloudConflictRef.current = false;
-      setCloudProjectInfo(null); setCloudBackupStatus(''); setLocalBackupStatus('Espacio listo para el nuevo proyecto');
+      setCloudBackupStatus(''); setLocalBackupStatus('Espacio listo para el nuevo proyecto');
+      if (accessStatusRef.current.isLoggedIn) {
+        setCloudProjectInfo({
+          hasProject: false,
+          hasPreviousProject: hadAccountProject,
+          isLoggedIn: true,
+        });
+      } else setCloudProjectInfo(null);
       setPendingStartupSession(null);
       return true;
     } finally { replacingProjectRef.current = false; }
@@ -1357,7 +1380,7 @@ export default function App() {
   };
 
   const handleStartNewProjectClean = async () => {
-    if (pendingStartupSession?.takesCount && !window.confirm('Nuevo proyecto reemplaza el respaldo activo y borra sus voces. Comprueba que guardaste el archivo .rgodbeat. ¿Deseas continuar?')) return;
+    if (pendingStartupSession?.takesCount && !window.confirm('Tu proyecto abierto se conservará en tu cuenta como el proyecto anterior. Las tomas se quitarán de este espacio para iniciar limpio. ¿Deseas continuar?')) return;
     if (!await clearActiveProjectBackup()) return;
     if (engine) {
       engine.stop();
@@ -2308,7 +2331,7 @@ export default function App() {
   };
 
   // Load Saved Project from User Account Cloud
-  const handleLoadCloudProject = async () => {
+  const handleLoadCloudProject = async (slot: 'active' | 'previous' = 'active') => {
     if (isRecordingRef.current || replacingProjectRef.current) return;
     if (tracksRef.current.some(track => getTrackClips(track).length) && !window.confirm('Cargar la cuenta reemplaza las voces abiertas en este dispositivo. Descarga tu archivo .rgodbeat si quieres conservarlas. ¿Continuar?')) return;
     if (!engine) return;
@@ -2320,7 +2343,7 @@ export default function App() {
 
     try {
       const audioCtx = await engine.ensureAudioContext();
-      const cloudData = await loadProjectFromCloud(audioCtx);
+      const cloudData = await loadProjectFromCloud(audioCtx, slot);
 
       if (!cloudData) {
         showToast('No se pudo encontrar o descargar el proyecto de la nube.', 'error');
@@ -2392,7 +2415,7 @@ export default function App() {
       setCloudNeedsCheck(false);
       setCloudBackupNotice('');
       cloudDirtyRef.current = false;
-      setCloudBackupStatus('Respaldo de cuenta cargado');
+      setCloudBackupStatus(slot === 'previous' ? 'Proyecto guardado anterior cargado' : 'Respaldo de cuenta cargado');
       setLocalBackupStatus('Copia local guardada');
       await retireRecordingCheckpoints(getSessionStorageKey(sessionOwnerRef.current));
       setIsStartupResolved(true);
@@ -2552,7 +2575,7 @@ export default function App() {
     const hasTakes = tracks.some((t) => t.buffer || (t.clips && t.clips.length > 0));
     if (hasTakes) {
       const confirmed = window.confirm(
-        'Nuevo proyecto reemplaza tu único respaldo activo y elimina las voces anteriores.\n\nComprueba que el archivo .rgodbeat está guardado en tu móvil. ¿Deseas continuar?'
+        'Tu proyecto abierto se conservará en tu cuenta como el proyecto anterior. Las voces se quitarán de este espacio para iniciar limpio. ¿Deseas continuar?'
       );
       if (!confirmed) return;
     }
@@ -2636,7 +2659,8 @@ export default function App() {
         }}
         onLogout={handleLogout}
         onSaveCloudProject={handleSaveCloudProject}
-        onLoadCloudProject={handleLoadCloudProject}
+        onLoadCloudProject={() => void handleLoadCloudProject()}
+        onLoadPreviousCloudProject={() => void handleLoadCloudProject('previous')}
         onNewProject={handleNewProject}
         onSaveDeviceProject={handleExportDeviceProject}
         onLoadDeviceProject={handleImportDeviceProject}
@@ -2644,6 +2668,7 @@ export default function App() {
         isSavingCloud={isSavingCloud}
         isLoadingCloud={isLoadingCloud}
         hasCloudProject={Boolean(cloudProjectInfo?.hasProject)}
+        hasPreviousCloudProject={Boolean(cloudProjectInfo?.hasPreviousProject)}
         onSaveAndExit={handleSaveAndExit}
         isSavingAndExiting={isSavingAndExiting}
       />
@@ -2662,7 +2687,7 @@ export default function App() {
         )}
         <details className="mt-1 text-zinc-500">
           <summary className="cursor-pointer">Cómo se guardan tus proyectos</summary>
-          <p className="mt-1 text-zinc-400">Studio conserva un proyecto activo por cuenta. Descarga el archivo .rgodbeat para conservar versiones; «Nuevo proyecto» reemplaza el respaldo activo y sus voces.</p>
+          <p className="mt-1 text-zinc-400">Tu cuenta conserva el proyecto actual y un proyecto anterior. «Nuevo proyecto» guarda el abierto como anterior; si ya hay uno guardado, Studio te pedirá permiso para reemplazarlo.</p>
         </details>
         {startupError && <p className="mt-1 text-amber-300">{startupError} <button className="underline cursor-pointer" onClick={() => window.location.reload()}>Reintentar</button></p>}
       </div>
@@ -2710,13 +2735,13 @@ export default function App() {
           <div className="flex items-center gap-2 min-w-0">
             <Cloud className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="truncate">
-              Tienes 1 proyecto guardado en tu cuenta:{' '}
+              Proyecto actual guardado en tu cuenta:{' '}
               <strong className="text-white font-mono">{cloudProjectInfo.projectMeta?.beatTitle}</strong>
               {cloudProjectInfo.projectMeta?.takesCount ? ` (${cloudProjectInfo.projectMeta.takesCount} tomas)` : ''}
             </span>
           </div>
           <button
-            onClick={handleLoadCloudProject}
+            onClick={() => void handleLoadCloudProject()}
             disabled={isLoadingCloud}
             className="px-3 py-1 rounded-lg bg-emerald-500 text-black font-bold hover:bg-emerald-400 active:scale-95 text-xs transition-all shrink-0 ml-3 cursor-pointer"
           >

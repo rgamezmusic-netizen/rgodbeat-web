@@ -29,16 +29,21 @@ function assetKeys(metadata: CloudMetadata): string[] {
 /** Immutable audio, then a conditional manifest write: failure leaves the previous project intact. */
 export async function replaceCloudProject(
   storage: ProjectStorage, prefix: string, expected: string | null,
-  metadata: CloudMetadata, files: Map<string, Buffer>, staged = new Map<string, StagedAudio>()
+  metadata: CloudMetadata, files: Map<string, Buffer>, staged = new Map<string, StagedAudio>(),
+  manifestName = 'project.json'
 ): Promise<{ revision: string; savedAt: number; cleanupPending: boolean }> {
-  const key = `${prefix}project.json`;
+  const key = `${prefix}${manifestName}`;
   const previous = await storage.read(key);
   if (previous.etag !== expected) throw new ProjectConflict('El proyecto cambió en otra sesión. El respaldo local se conserva.');
   const old: CloudMetadata = previous.body ? JSON.parse(previous.body.toString('utf8')) : {};
+  const archivedStored = await storage.read(`${prefix}previous-project.json`);
+  const archived: CloudMetadata = archivedStored.body ? JSON.parse(archivedStored.body.toString('utf8')) : {};
   const reusable = new Map<string, string>();
-  if (old.beat?.audioHash && old.beat.customBeatKey?.startsWith(prefix)) reusable.set(old.beat.audioHash, old.beat.customBeatKey);
-  for (const track of old.tracks ?? []) for (const clip of track.clips ?? []) {
-    if (clip.audioHash && clip.storageKey?.startsWith(prefix)) reusable.set(clip.audioHash, clip.storageKey);
+  for (const project of [old, archived]) {
+    if (project.beat?.audioHash && project.beat.customBeatKey?.startsWith(prefix)) reusable.set(project.beat.audioHash, project.beat.customBeatKey);
+    for (const track of project.tracks ?? []) for (const clip of track.clips ?? []) {
+      if (clip.audioHash && clip.storageKey?.startsWith(prefix)) reusable.set(clip.audioHash, clip.storageKey);
+    }
   }
   const uploaded: string[] = [];
   const folder = `${prefix}snapshots/${randomUUID()}/`;
@@ -75,7 +80,7 @@ export async function replaceCloudProject(
     // Distinct manifest even for rapid identical edits (prevents ABA after deletion).
     metadata.commitId = randomUUID();
     const revision = await storage.put(key, Buffer.from(JSON.stringify(metadata)), 'application/json', expected);
-    const currentKeys = new Set(assetKeys(metadata));
+    const currentKeys = new Set([...assetKeys(metadata), ...assetKeys(archived)]);
     const stale = assetKeys(old).filter(assetKey => assetKey.startsWith(prefix) && !currentKeys.has(assetKey));
     const deleted = await Promise.allSettled(stale.map(assetKey => storage.remove(assetKey)));
     let collected = true;
@@ -91,7 +96,7 @@ export async function replaceCloudProject(
         return { revision: latest.etag, savedAt: metadata.savedAt!, cleanupPending: true };
       }
     } catch { throw error; }
-    const liveKeys = new Set(assetKeys(committed));
+    const liveKeys = new Set([...assetKeys(committed), ...assetKeys(archived)]);
     await Promise.allSettled(uploaded.filter(assetKey => !liveKeys.has(assetKey)).map(assetKey => storage.remove(assetKey)));
     throw error;
   }

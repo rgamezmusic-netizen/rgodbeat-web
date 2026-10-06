@@ -50,12 +50,15 @@ export const r2ProjectStorage: ProjectStorage = {
     let success = true;
     do {
       const page = await client.send(new ListObjectsV2Command({ Bucket: R2_BUCKET_NAME, Prefix: prefix, ContinuationToken: token }));
-      const stored = await r2ProjectStorage.read(`${prefix}project.json`);
-      const current = stored.body ? JSON.parse(stored.body.toString('utf8')) : {};
-      const live = new Set<string>([current.beat?.customBeatKey,
-        ...(current.tracks ?? []).flatMap((track: { clips?: { storageKey?: string }[] }) => (track.clips ?? []).map(clip => clip.storageKey))]);
+      const [stored, previousStored] = await Promise.all([
+        r2ProjectStorage.read(`${prefix}project.json`),
+        r2ProjectStorage.read(`${prefix}previous-project.json`),
+      ]);
+      const projects = [stored, previousStored].map(result => result.body ? JSON.parse(result.body.toString('utf8')) : {});
+      const live = new Set<string>(projects.flatMap(project => [project.beat?.customBeatKey,
+        ...(project.tracks ?? []).flatMap((track: { clips?: { storageKey?: string }[] }) => (track.clips ?? []).map((clip: { storageKey?: string }) => clip.storageKey))]));
       for (const object of page.Contents ?? []) {
-        if (!object.Key || object.Key === `${prefix}project.json` || live.has(object.Key)) continue;
+        if (!object.Key || object.Key === `${prefix}project.json` || object.Key === `${prefix}previous-project.json` || live.has(object.Key)) continue;
         if (object.LastModified && object.LastModified.getTime() < cutoff) {
           success = await deleteFromR2(object.Key) && success;
         }

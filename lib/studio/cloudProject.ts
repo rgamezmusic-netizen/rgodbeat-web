@@ -4,6 +4,7 @@ import { getCatalogBeatId } from './audio/catalogBeat';
 
 type SaveResult = { success: boolean; error?: string; requiresPass?: boolean; conflict?: boolean };
 let cloudOwner: string | null = null;
+type CloudProjectSlot = 'active' | 'previous';
 let revision: string | null | undefined;
 let knownAudio = new Set<string>();
 let queue: Promise<unknown> = Promise.resolve();
@@ -74,6 +75,28 @@ export function setCloudProjectUser(email: string | null) {
   if (cloudOwner === next) return;
   cloudOwner = next; revision = undefined; knownAudio = new Set();
 }
+export async function archiveCloudProject(replacePrevious = false): Promise<{
+  success: boolean; requiresConfirmation?: boolean; error?: string;
+}> {
+  const owner = cloudOwner;
+  try {
+    await queue;
+    if (owner !== cloudOwner) return { success: false, error: 'La cuenta cambió durante la operación.' };
+    const { response, data } = await requestCloudJson('/api/studio/project/archive', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ replacePrevious, baseRevision: revision ?? null }),
+    });
+    if (owner !== cloudOwner) return { success: false, error: 'La cuenta cambió durante la operación.' };
+    if (response.status === 409 && data.requiresConfirmation) return { success: false, requiresConfirmation: true };
+    if (!response.ok || data.success !== true) return { success: false, error: data.error || 'No se pudo conservar el proyecto anterior.' };
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'No se pudo conectar con tu cuenta.' };
+  }
+}
+function projectUrl(slot: CloudProjectSlot = 'active') {
+  return `/api/studio/project${slot === 'previous' ? '?slot=previous' : ''}`;
+}
 function encode(buffer: AudioBuffer, bitDepth: 24 | 32 = 24) {
   const cache = bitDepth === 32 ? encodedVocals : encoded;
   let result = cache.get(buffer);
@@ -87,17 +110,17 @@ function encode(buffer: AudioBuffer, bitDepth: 24 | 32 = 24) {
   }
   return result;
 }
-async function readCloudState() {
+async function readCloudState(slot: CloudProjectSlot = 'active') {
   const owner = cloudOwner;
-  const previousRevision = revision;
-  const { response, data } = await requestCloudJson('/api/studio/project', { cache: 'no-store' });
+  const previousRevision = slot === 'active' ? revision : undefined;
+  const { response, data } = await requestCloudJson(projectUrl(slot), { cache: 'no-store' });
   if (!response.ok) throw new Error(data.error || 'No se pudo consultar el respaldo de cuenta.');
   if (owner !== cloudOwner) throw new Error('La cuenta cambió durante la consulta.');
   if (owner && (data.isLoggedIn === false || (data.ownerEmail && data.ownerEmail !== owner))) {
     throw new Error('La sesión cambió. Tu respaldo local sigue asociado a la cuenta anterior.');
   }
   // A status query started before a save must not restore its older revision.
-  if (revision === previousRevision) {
+  if (slot === 'active' && revision === previousRevision) {
     revision = data.revision ?? null;
     knownAudio = new Set<string>([
       data.project?.beat?.audioHash,
@@ -132,6 +155,8 @@ export function saveProjectToCloud(...args: Parameters<typeof uploadProject>): P
 
 export interface CloudProjectCheckResult {
   hasProject: boolean;
+  hasPreviousProject?: boolean;
+  previousProjectMeta?: { projectName?: string; savedAt?: number; takesCount?: number } | null;
   unavailable?: boolean;
   isLoggedIn?: boolean;
   hasActivePass?: boolean;
@@ -172,6 +197,8 @@ export async function checkCloudProject(): Promise<CloudProjectCheckResult> {
 
       return {
         hasProject: true,
+        hasPreviousProject: Boolean(data.hasPreviousProject),
+        previousProjectMeta: data.previousProjectMeta ?? null,
         isLoggedIn: true,
         hasActivePass: data.hasActivePass,
         warnExpiration: data.warnExpiration,
@@ -188,6 +215,8 @@ export async function checkCloudProject(): Promise<CloudProjectCheckResult> {
 
     return {
       hasProject: false,
+      hasPreviousProject: Boolean(data.hasPreviousProject),
+      previousProjectMeta: data.previousProjectMeta ?? null,
       isLoggedIn: data.isLoggedIn,
       hasActivePass: data.hasActivePass,
       warnExpiration: data.warnExpiration,
@@ -216,7 +245,7 @@ async function uploadProject(
   const nextHashes = new Set<string>();
   const confirmCommit = async () => {
     try {
-      const { response, data } = await requestCloudJson('/api/studio/project', { cache: 'no-store' });
+      const { response, data } = await requestCloudJson(projectUrl(), { cache: 'no-store' });
       if (!response.ok) return false;
       if (owner !== cloudOwner || (owner && data.ownerEmail && data.ownerEmail !== owner)
         || data.project?.clientSaveId !== clientSaveId || !data.revision) return false;
@@ -364,7 +393,7 @@ async function uploadProject(
     formData.append('baseRevision', baseRevision ?? '');
     if (owner !== cloudOwner) return { success: false, error: 'La cuenta cambió antes de guardar.' };
 
-    const { response: res, data } = await requestCloudJson('/api/studio/project', {
+    const { response: res, data } = await requestCloudJson(projectUrl(), {
       method: 'POST',
       body: formData,
     }, 120_000);
@@ -392,7 +421,8 @@ async function uploadProject(
  * takes from R2 and rebuilding native Web Audio buffers and tracks.
  */
 export async function loadProjectFromCloud(
-  audioCtx: AudioContext
+  audioCtx: AudioContext,
+  slot: CloudProjectSlot = 'active'
 ): Promise<{
   beatData: Partial<BeatData> & { customBeatBuffer?: AudioBuffer } | null;
   tracks: VocalTrack[];
@@ -404,7 +434,7 @@ export async function loadProjectFromCloud(
     // Loading must see the last committed edit, not a snapshot fetched while
     // an earlier save is still being uploaded.
     await queue;
-    const data = await readCloudState();
+    const data = await readCloudState(slot);
     if (!data.hasProject || !data.project) return null;
 
     const project = data.project;
@@ -520,7 +550,7 @@ export async function deleteProjectFromCloud(): Promise<boolean> {
     try {
       if (owner !== cloudOwner) return false;
       if (revision === undefined) await readCloudState();
-      const { response: res, data } = await requestCloudJson('/api/studio/project', { method: 'DELETE',
+      const { response: res, data } = await requestCloudJson(projectUrl(), { method: 'DELETE',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baseRevision: revision, ownerEmail: owner }) });
       if (!res.ok) return res.status >= 500 ? confirmDeletion() : false;
       if (data.success !== true) return false;

@@ -56,6 +56,7 @@ interface TopBarProps {
   onOpenInstallModal?: () => void;
   onSaveCloudProject?: () => void;
   onLoadCloudProject?: () => void;
+  onLoadPreviousCloudProject?: () => void;
   onNewProject?: () => void;
   onSaveDeviceProject?: () => void;
   onLoadDeviceProject?: (file: File) => void;
@@ -63,6 +64,7 @@ interface TopBarProps {
   isSavingCloud?: boolean;
   isLoadingCloud?: boolean;
   hasCloudProject?: boolean;
+  hasPreviousCloudProject?: boolean;
   onSaveAndExit?: () => void;
   isSavingAndExiting?: boolean;
 }
@@ -89,6 +91,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenInstallModal,
   onSaveCloudProject,
   onLoadCloudProject,
+  onLoadPreviousCloudProject,
   onNewProject,
   onSaveDeviceProject,
   onLoadDeviceProject,
@@ -96,6 +99,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   isSavingCloud = false,
   isLoadingCloud = false,
   hasCloudProject = false,
+  hasPreviousCloudProject = false,
   onSaveAndExit,
   isSavingAndExiting = false,
 }) => {
@@ -259,6 +263,20 @@ export const TopBar: React.FC<TopBarProps> = ({
                       <CloudUpload className="w-4 h-4 text-emerald-400" />
                     )}
                     <span>{isLoadingCloud ? 'Cargando...' : 'Cargar de la Nube'}</span>
+                  </button>
+                )}
+
+                {hasPreviousCloudProject && onLoadPreviousCloudProject && (
+                  <button
+                    onClick={() => {
+                      setShowProjectMenu(false);
+                      onLoadPreviousCloudProject();
+                    }}
+                    disabled={isLoadingCloud}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-sky-300 hover:bg-sky-500/15 transition-all text-left cursor-pointer"
+                  >
+                    {isLoadingCloud ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4 text-sky-400" />}
+                    <span>{isLoadingCloud ? 'Cargando...' : 'Cargar proyecto guardado'}</span>
                   </button>
                 )}
 
