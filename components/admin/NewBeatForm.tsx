@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { getBeatUploadUrlsAction, createBeatDirectAction } from "@/lib/actions/beats";
 import { uploadFileToSignedUrl } from "@/lib/storage/upload-client";
 import { formatCurrency } from "@/lib/utils";
+import { getBeatMoodSuggestions } from "@/lib/data/beatMoodSuggestions";
+import { BeatMoodSuggestions } from "@/components/admin/BeatMoodSuggestions";
 
 interface CategoryOption {
   id: string;
@@ -42,7 +44,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
   const [isSlugCustomized, setIsSlugCustomized] = useState(false);
   const [description, setDescription] = useState("");
   const [genreId, setGenreId] = useState(categories[0]?.id || "");
-  const [mood, setMood] = useState("Dark");
+  const [mood, setMood] = useState(() => getBeatMoodSuggestions(categories[0]?.slug)[0] || "Dark");
   const [bpm, setBpm] = useState("140");
   const [key, setKey] = useState("C");
   const [duration, setDuration] = useState("3:00");
@@ -396,7 +398,12 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
             </label>
             <select
               value={genreId}
-              onChange={(e) => setGenreId(e.target.value)}
+              onChange={(e) => {
+                const nextGenreId = e.target.value;
+                setGenreId(nextGenreId);
+                const genreSlug = categories.find((category) => category.id === nextGenreId)?.slug;
+                setMood(getBeatMoodSuggestions(genreSlug)[0]);
+              }}
               className="w-full px-4 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.08] focus:border-purple-500 focus:outline-none text-xs text-white font-mono uppercase cursor-pointer"
             >
               {categories.map((c) => (
@@ -418,6 +425,11 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
               onChange={(e) => setMood(e.target.value)}
               placeholder="e.g. Dark, Melodic, Energetic"
               className="w-full px-4 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.08] focus:border-purple-500 focus:outline-none text-xs text-white placeholder:text-zinc-600 font-mono transition-all"
+            />
+            <BeatMoodSuggestions
+              genre={categories.find((category) => category.id === genreId)?.slug}
+              mood={mood}
+              onSelect={setMood}
             />
           </div>
 

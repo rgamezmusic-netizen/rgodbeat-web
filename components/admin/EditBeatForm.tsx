@@ -8,6 +8,8 @@ import { updateBeatDirectAction, deleteBeatAction, getBeatUploadUrlsAction } fro
 import { uploadFileToSignedUrl } from "@/lib/storage/upload-client";
 import { formatCurrency } from "@/lib/utils";
 import type { BeatEditData } from "@/types";
+import { getBeatMoodSuggestions } from "@/lib/data/beatMoodSuggestions";
+import { BeatMoodSuggestions } from "@/components/admin/BeatMoodSuggestions";
 
 interface CategoryOption {
   id: string;
@@ -409,7 +411,12 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
               </label>
               <select
                 value={genreId}
-                onChange={(e) => setGenreId(e.target.value)}
+                onChange={(e) => {
+                  const nextGenreId = e.target.value;
+                  setGenreId(nextGenreId);
+                  const genreSlug = categories.find((category) => category.id === nextGenreId)?.slug;
+                  setMood(getBeatMoodSuggestions(genreSlug)[0]);
+                }}
                 className="w-full px-4 py-2.5 rounded-lg bg-[#14141c] border border-white/[0.08] focus:border-purple-500 focus:outline-none text-sm text-white font-mono"
               >
                 {categories.map((c) => (
@@ -434,6 +441,11 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
+              <BeatMoodSuggestions
+                genre={categories.find((category) => category.id === genreId)?.slug}
+                mood={mood}
+                onSelect={setMood}
+              />
             </div>
 
             {/* BPM */}
