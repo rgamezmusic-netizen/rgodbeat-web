@@ -11,6 +11,7 @@ export interface SignInResult {
 export interface SignUpResult {
   user: User | null;
   session: Session | null;
+  requiresEmailConfirmation?: boolean;
   error: AuthError | { message: string; name?: string } | null;
 }
 
@@ -52,9 +53,8 @@ export function translateAuthError(errorMessage?: string | null): string {
 
 /**
  * Sign up a new customer/artist account using email and password.
- * Routes through secure server API (/api/auth/register) to automatically
- * confirm the email, sync the customer profile, and bypass Supabase SMTP rate limits.
- * Immediately establishes a valid browser session upon creation.
+ * Uses Supabase's public signup flow so configured email verification and
+ * signup rate limits remain in force. The server only syncs the commerce profile.
  */
 export async function signUpWithEmail(
   email: string,
@@ -85,6 +85,12 @@ export async function signUpWithEmail(
       };
     }
 
+    // With email confirmation enabled there is no session yet. Do not attempt
+    // a password login here; it would fail before the user verifies ownership.
+    if (data.requiresEmailConfirmation) {
+      return { user: null, session: null, requiresEmailConfirmation: true, error: null };
+    }
+
     // 2. Automatically sign in on the client to establish cookie/session in the browser
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
       email: cleanEmail,
@@ -96,6 +102,7 @@ export async function signUpWithEmail(
       return {
         user: data.user,
         session: null,
+        requiresEmailConfirmation: false,
         error: null,
       };
     }
@@ -103,6 +110,7 @@ export async function signUpWithEmail(
     return {
       user: signInData.user,
       session: signInData.session,
+      requiresEmailConfirmation: false,
       error: null,
     };
   } catch (err) {

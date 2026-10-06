@@ -143,6 +143,22 @@ test('invalid recovery links cannot use an existing session as a successful pass
   } finally { globalThis.window = originalWindow; }
 });
 
+test('opening the reset page while signed in is not enough to authorize a password change', async () => {
+  const originalWindow = globalThis.window;
+  globalThis.window = {
+    location: { href: 'https://www.rgodbeat.com/reset-password' },
+    history: { replaceState() {} },
+  };
+  try {
+    const { resolveAuthRecovery } = loadSource('lib/auth/recovery.ts', {
+      '@/lib/supabase/client': { createClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'already-signed-in' } }, error: null }) } }) },
+    });
+    const result = await resolveAuthRecovery();
+    assert.equal(result.user, null);
+    assert.match(result.error, /enlace venció/i);
+  } finally { globalThis.window = originalWindow; }
+});
+
 test('recovery accepts the actual first-party domain redirect, rejects other origins and sends no privileged credentials', async () => {
   let requests = 0;
   const originalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL, originalKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -167,6 +183,102 @@ test('recovery accepts the actual first-party domain redirect, rejects other ori
     if (originalUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = originalUrl;
     if (originalKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = originalKey;
   }
+});
+
+test('registration respects Supabase email verification and never auto-confirms with the service role', async () => {
+  const originalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const originalKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://local.supabase.invalid';
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'local-public-key';
+  let customerSyncs = 0;
+  let signupOptions;
+  try {
+    const { POST } = loadSource('app/api/auth/register/route.ts', {
+      '@supabase/supabase-js': { createClient(_url, key, options) {
+        assert.equal(key, 'local-public-key');
+        assert.equal(options.auth.persistSession, false);
+        return { auth: { signUp: async input => {
+          signupOptions = input;
+          return { data: { user: { id: 'private-user-id', identities: [{ id: 'identity' }] }, session: null }, error: null };
+        } } };
+      } },
+      '@/lib/supabase/admin': { createAdminClient: () => ({ from: table => {
+        assert.equal(table, 'customers');
+        return { upsert: async values => { customerSyncs++; assert.equal(values.email, 'local@example.invalid'); return { error: null }; } };
+      } }) },
+      '@/lib/auth/request': { fetchAuth: async (_input, init) => fetch(_input, init) },
+    });
+
+    const response = await POST(new NextRequest('https://www.rgodbeat.com/api/auth/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', origin: 'https://www.rgodbeat.com' },
+      body: JSON.stringify({ email: 'Local@Example.Invalid', password: 'a-safe-password', fullName: 'Artist' }),
+    }));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(body.requiresEmailConfirmation, true);
+    assert.equal('user' in body, false);
+    assert.equal(JSON.stringify(signupOptions).includes('email_confirm'), false);
+    assert.equal(signupOptions.options.emailRedirectTo, 'https://www.rgodbeat.com/login?confirmed=1');
+    assert.equal(customerSyncs, 1);
+
+    const denied = await POST(new NextRequest('https://www.rgodbeat.com/api/auth/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', origin: 'https://attacker.invalid' },
+      body: JSON.stringify({ email: 'local@example.invalid', password: 'a-safe-password' }),
+    }));
+    assert.equal(denied.status, 403);
+    assert.equal(customerSyncs, 1);
+  } finally {
+    if (originalUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = originalKey;
+  }
+});
+
+test('registration avoids revealing duplicate account identity', async () => {
+  const originalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const originalKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://local.supabase.invalid';
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'local-public-key';
+  let customerSyncs = 0;
+  try {
+    const { POST } = loadSource('app/api/auth/register/route.ts', {
+      '@supabase/supabase-js': { createClient: () => ({ auth: { signUp: async () => ({
+        data: { user: { id: 'obfuscated-user-id', identities: [] }, session: null }, error: null,
+      }) } }) },
+      '@/lib/supabase/admin': { createAdminClient: () => ({ from: () => ({ upsert: async () => { customerSyncs++; return { error: null }; } }) }) },
+      '@/lib/auth/request': { fetchAuth: async (_input, init) => fetch(_input, init) },
+    });
+    const response = await POST(new NextRequest('https://rgodbeat.com/api/auth/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'local@example.invalid', password: 'a-safe-password' }),
+    }));
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.deepEqual(body, { success: true, requiresEmailConfirmation: true });
+    assert.equal(customerSyncs, 0);
+  } finally {
+    if (originalUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = originalKey;
+  }
+});
+
+test('signup does not try to log in before the email owner confirms the address', async () => {
+  const originalFetch = globalThis.fetch;
+  let passwordLoginAttempts = 0;
+  globalThis.fetch = async () => new Response(JSON.stringify({ success: true, requiresEmailConfirmation: true }), {
+    status: 200, headers: { 'Content-Type': 'application/json' },
+  });
+  try {
+    const { signUpWithEmail } = loadSource('lib/auth/client.ts', {
+      '@/lib/supabase/client': { createClient: () => ({ auth: { signInWithPassword: async () => {
+        passwordLoginAttempts++;
+        return { data: {}, error: null };
+      } } }) },
+    });
+    const result = await signUpWithEmail('local@example.invalid', 'a-safe-password');
+    assert.deepEqual(result, { user: null, session: null, requiresEmailConfirmation: true, error: null });
+    assert.equal(passwordLoginAttempts, 0);
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test('Auth outages leave public pages available and protected pages closed', async () => {

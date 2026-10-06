@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 function AuthForm() {
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get("redirect");
+  const emailConfirmed = searchParams.get("confirmed") === "1";
 
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [fullName, setFullName] = useState("");
@@ -61,8 +62,8 @@ function AuthForm() {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMessage("La contraseña debe tener al menos 6 caracteres.");
+    if (password.length < 8 || password.length > 128) {
+      setErrorMessage("La contraseña debe tener entre 8 y 128 caracteres.");
       return;
     }
 
@@ -72,7 +73,7 @@ function AuthForm() {
     }
 
     startTransition(async () => {
-      const { user, session, error } = await signUpWithEmail(cleanEmail, password, fullName);
+      const { user, session, requiresEmailConfirmation, error } = await signUpWithEmail(cleanEmail, password, fullName);
 
       if (error) {
         setErrorMessage(error.message || "Error al crear la cuenta. Inténtalo de nuevo.");
@@ -85,8 +86,11 @@ function AuthForm() {
         const destination = safeAuthRedirect(redirectParam, admin ? "/admin" : "/account");
         window.location.href = destination;
       } else {
-        // Fallback if session creation required manual sign in
-        setSuccessMessage("¡Cuenta creada exitosamente! Por favor ingresa con tu contraseña.");
+        // Keep the response neutral so registration cannot reveal whether an
+        // email already has an account.
+        setSuccessMessage(requiresEmailConfirmation
+          ? "Si el registro puede completarse, recibirás un enlace para confirmar el correo. Revisa también Spam."
+          : "No pudimos iniciar tu sesión automáticamente. Intenta iniciar sesión en un momento.");
         setEmail(cleanEmail);
         setMode("signin");
       }
@@ -178,6 +182,12 @@ function AuthForm() {
             <polyline points="20 6 9 17 4 12" />
           </svg>
           <span className="leading-relaxed">{successMessage}</span>
+        </div>
+      )}
+
+      {emailConfirmed && mode === "signin" && !successMessage && (
+        <div role="status" className="p-3.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-300">
+          Correo confirmado. Ya puedes iniciar sesión.
         </div>
       )}
 
@@ -283,12 +293,13 @@ function AuthForm() {
 
           <div className="space-y-1.5">
             <label className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">
-              Contraseña (mínimo 6 caracteres)
+              Contraseña (mínimo 8 caracteres)
             </label>
             <input
               type="password"
               required
-              minLength={6}
+              minLength={8}
+              maxLength={128}
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -304,7 +315,8 @@ function AuthForm() {
             <input
               type="password"
               required
-              minLength={6}
+              minLength={8}
+              maxLength={128}
               autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}

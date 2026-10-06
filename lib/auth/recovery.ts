@@ -6,6 +6,7 @@ import { safeAuthRedirect } from "@/lib/auth/redirect";
 import { fetchAuth } from "./request";
 
 export const RECOVERY_INVALID = "El enlace venció o ya se usó. Solicita uno nuevo aquí.";
+export const RECOVERY_SESSION_MARKER = "rgodbeat-password-recovery";
 export function recoveryErrorMessage(error: { message: string; code?: string } | null): string {
   if (!error) return RECOVERY_INVALID;
   const value = `${error.code || ""} ${error.message}`.toLowerCase();
@@ -34,8 +35,24 @@ export function resolveAuthRecovery(): Promise<RecoveryResult> {
   const type = url.searchParams.get("type") || hash.get("type");
   const accessToken = hash.get("access_token");
   const refreshToken = hash.get("refresh_token");
+  let sessionMarker = false;
+  if (url.pathname === "/reset-password") {
+    try {
+      sessionMarker = window.sessionStorage.getItem(RECOVERY_SESSION_MARKER) === "1";
+      if (sessionMarker) window.sessionStorage.removeItem(RECOVERY_SESSION_MARKER);
+    } catch { /* Private browsing may disable session storage; link tokens still work. */ }
+  }
   const urlError = hash.get("error_code") || hash.get("error") || url.searchParams.get("error_code") || url.searchParams.get("error");
-  const recovery = type === "recovery" || type === "invite" || url.pathname === "/reset-password";
+  const recovery = type === "recovery" || type === "invite" || sessionMarker || url.pathname === "/reset-password";
+
+  // A normal signed-in session is not proof that the user requested a password
+  // reset. Require a real Supabase link or the SDK's PASSWORD_RECOVERY event.
+  if (url.pathname === "/reset-password" && !tokenHash && !accessToken && !refreshToken && !code && !sessionMarker) {
+    pendingLink = Promise.resolve({ user: null, recovery: true, error: RECOVERY_INVALID });
+    const shared = pendingLink;
+    void shared.finally(() => queueMicrotask(() => { if (pendingLink === shared) pendingLink = null; }));
+    return shared;
+  }
 
   // Remove credentials before any further navigation; keep the intended destination.
   if (hasAuthLinkParameters(url)) {

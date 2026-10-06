@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { hasAuthLinkParameters, hasPendingAuthRecovery, resolveAuthRecovery } from "@/lib/auth/recovery";
+import { hasAuthLinkParameters, hasPendingAuthRecovery, RECOVERY_SESSION_MARKER, resolveAuthRecovery } from "@/lib/auth/recovery";
 
 /** Handles links that land on the Site URL when Supabase rejects a redirect URL. */
 export function RecoveryLinkRedirect() {
@@ -23,7 +23,10 @@ export function RecoveryLinkRedirect() {
       });
     }
     const { data } = createClient().auth.onAuthStateChange(event => {
-      if (event === "PASSWORD_RECOVERY" && active && !processing) window.location.replace("/reset-password");
+      if (event === "PASSWORD_RECOVERY" && active && !processing) {
+        try { window.sessionStorage.setItem(RECOVERY_SESSION_MARKER, "1"); } catch { /* Keep URL-token recovery available without storage. */ }
+        window.location.replace("/reset-password");
+      }
     });
     return () => { active = false; data.subscription.unsubscribe(); };
   }, []);
