@@ -71,24 +71,25 @@ async function fixture(owner = null, options = {}) {
   return { context, page, calls, errors, owner };
 }
 
-async function snapshot({ page, owner }) {
+async function snapshot({ page, owner }, slot = 'active') {
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
-  return page.evaluate(async owner => {
+  return page.evaluate(async ({ owner, slot }) => {
     const ctx = new AudioContext();
-    const session = await StudioTest.restoreLastStudioSession(ctx, owner);
+    const session = await StudioTest.restoreLastStudioSession(ctx, owner, slot);
     await ctx.close();
     return { projectId: session?.projectId, takes: session?.tracks.flatMap(track => track.clips || []).length,
       currentTime: session?.currentTime, loopEnabled: session?.loopSettings?.enabled };
-  }, owner);
+  }, { owner, slot });
 }
 
 try {
   const guest = await fixture();
-  guest.page.once('dialog', async dialog => {
-    assert.equal(dialog.message(), '¿Nuevo proyecto? Se quitarán las tomas actuales.');
-    await dialog.dismiss();
-  });
-  await guest.page.getByRole('button', { name: /Nuevo Proyecto/ }).click();
+  const cancellation = guest.page.waitForEvent('dialog');
+  const cancelledClick = guest.page.getByRole('button', { name: /Nuevo Proyecto/ }).click();
+  const cancellationDialog = await cancellation;
+  assert.equal(cancellationDialog.message(), '¿Nuevo proyecto? El actual se conservará como anterior.');
+  await cancellationDialog.dismiss();
+  await cancelledClick;
   assert(await guest.page.getByText('¿Cómo deseas comenzar?', { exact: true }).isVisible());
   assert.equal((await snapshot(guest)).takes, 1, 'cancel must keep the voice');
   guest.page.once('dialog', dialog => dialog.accept());
@@ -115,7 +116,7 @@ try {
   const checkGate = new Promise(resolve => { releaseCheck = resolve; });
   const account = await fixture('new-project@example.test', { checkGate });
   account.page.once('dialog', async dialog => {
-    assert.equal(dialog.message(), '¿Nuevo proyecto? El respaldo actual pasará a «Anterior».');
+    assert.equal(dialog.message(), '¿Nuevo proyecto? El actual se conservará como anterior.');
     await dialog.accept();
   });
   await account.page.getByRole('button', { name: /Nuevo Proyecto/ }).click();
@@ -132,8 +133,8 @@ try {
   failed.page.once('dialog', dialog => dialog.accept());
   await failed.page.getByRole('button', { name: /Nuevo Proyecto/ }).click();
   await failed.page.getByText('No se pudo conservar el proyecto anterior.', { exact: true }).waitFor();
-  assert(await failed.page.getByText('¿Cómo deseas comenzar?', { exact: true }).isVisible());
-  assert.equal((await snapshot(failed)).takes, 1, 'archive failure must keep local audio');
+  await failed.page.getByText('ESPACIO FÍSICO DE BEATS', { exact: true }).waitFor();
+  assert.equal((await snapshot(failed, 'previous')).takes, 1, 'archive failure must keep local audio in the previous slot');
   assert.equal(failed.calls.deletes, 0);
   assert.deepEqual(failed.errors, []);
   await failed.context.close();

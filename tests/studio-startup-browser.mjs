@@ -37,8 +37,8 @@ async function audioStats(page) {
     premature: window.__studioAudio.premature, active: window.__studioAudio.contexts.filter(c => c.state !== 'closed').length }));
 }
 async function seed(page, account, external = false) {
-  await page.goto(base + '/studio');
-  await page.getByText('Midnight 808', { exact: true }).first().waitFor();
+  // Seed outside Studio so its pagehide autosave cannot replace the fixture.
+  await page.goto(base + '/robots.txt');
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
   await page.evaluate(async ({ account, catalogId, external }) => {
     const engine = new StudioRegression.AudioEngine({});
@@ -88,7 +88,7 @@ for (const name of ['chromium', 'webkit']) {
       return route.fulfill({json:{hasProject:true,ownerEmail:owner,revision:'local-revision',project:{savedAt:Date.now()+60000,beat:{id:'remote-project',title:'Other remote beat'},tracks:[]}}});
     });
     await seed(page,owner); account=owner;
-    await page.reload();
+    await page.goto(base+'/studio');
     await page.getByRole('button',{name:/Continuar Sesión/}).waitFor();
     assert.equal(checks,1);
     assert.deepEqual(await audioStats(page),{contexts:1,resumes:0,premature:0,active:1});
@@ -110,7 +110,7 @@ for (const name of ['chromium', 'webkit']) {
     await page.close();
     const external=await browser.newPage();await external.addInitScript(instrumentAudio);
     await external.route('**/api/studio/access',r=>r.fulfill({json:{isDemo:true,isLoggedIn:false,hasActivePass:false,email:null}}));
-    await seed(external,null,true);await external.reload();
+    await seed(external,null,true);await external.goto(base+'/studio');
     await external.getByRole('button',{name:/Continuar Sesión/}).waitFor();
     assert.equal((await audioStats(external)).resumes,0);
     await external.getByRole('button',{name:/Continuar Sesión/}).click();
@@ -125,7 +125,13 @@ for (const name of ['chromium', 'webkit']) {
     await external.close();
     const authPage = await browser.newPage(), authErrors = [];
     authPage.on('pageerror', error => authErrors.push(error.message));
-    await authPage.route('**/auth/v1/token?**', route => route.fulfill({status:400,json:{code:'invalid_credentials',message:'Invalid login credentials'}}));
+    await authPage.route('**/auth/v1/**', route => route.fulfill({
+      status:route.request().method()==='OPTIONS'?204:400,
+      headers:{'access-control-allow-origin':new URL(base).origin,
+        'access-control-allow-methods':'GET, POST, OPTIONS',
+        'access-control-allow-headers':route.request().headers()['access-control-request-headers'] || 'apikey, authorization, content-type, x-client-info, x-supabase-api-version'},
+      ...(route.request().method()==='OPTIONS'?{}:{json:{code:'invalid_credentials',message:'Invalid login credentials'}}),
+    }));
     await authPage.goto(base+'/login?redirect=%2Fstudio');
     await authPage.locator('input[type=email]').fill('local@example.invalid');
     await authPage.locator('input[type=password]').fill('local-only-invalid');

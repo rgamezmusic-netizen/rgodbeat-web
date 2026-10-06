@@ -45,6 +45,13 @@ export function resolveAuthRecovery(): Promise<RecoveryResult> {
   const urlError = hash.get("error_code") || hash.get("error") || url.searchParams.get("error_code") || url.searchParams.get("error");
   const recovery = type === "recovery" || type === "invite" || sessionMarker || url.pathname === "/reset-password";
 
+  // Clear expired-link errors as well as credentials before returning a result.
+  if (hasAuthLinkParameters(url)) {
+    for (const name of ["code", "token_hash", "type", "error", "error_code", "error_description", "sb_flow_id"]) url.searchParams.delete(name);
+    url.hash = "";
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
+  }
+
   // A normal signed-in session is not proof that the user requested a password
   // reset. Require a real Supabase link or the SDK's PASSWORD_RECOVERY event.
   if (url.pathname === "/reset-password" && !tokenHash && !accessToken && !refreshToken && !code && !sessionMarker) {
@@ -54,12 +61,6 @@ export function resolveAuthRecovery(): Promise<RecoveryResult> {
     return shared;
   }
 
-  // Remove credentials before any further navigation; keep the intended destination.
-  if (hasAuthLinkParameters(url)) {
-    for (const name of ["code", "token_hash", "type", "error", "error_code", "error_description", "sb_flow_id"]) url.searchParams.delete(name);
-    url.hash = "";
-    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}`);
-  }
   pendingLink = (async () => {
     try {
       if (urlError) return { user: null, recovery, error: recoveryErrorMessage({ message: urlError }) };

@@ -1,17 +1,18 @@
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getR2Client, R2_BUCKET_NAME, deleteFromR2 } from '@/lib/storage/r2';
 import { ProjectConflict, type ProjectStorage } from './projectRepository';
+import { decodeProjectManifest } from './projectManifest';
 
 export const r2ProjectStorage: ProjectStorage = {
   async read(key) {
     const client = getR2Client();
     if (!client) throw new Error('El respaldo de cuenta no está configurado.');
     try {
-      const result = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
+      const result = await client.send(new GetObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }), { abortSignal: AbortSignal.timeout(20000) });
       if (!result.Body || !result.ETag) throw new Error('Respuesta de almacenamiento incompleta.');
       return { body: Buffer.from(await result.Body.transformToByteArray()), etag: result.ETag };
     } catch (error) {
-      if ((error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404) return { body: null, etag: null };
+      if ((error as { name?: string }).name === 'NoSuchKey') return { body: null, etag: null };
       throw error;
     }
   },
@@ -22,7 +23,7 @@ export const r2ProjectStorage: ProjectStorage = {
       const result = await client.send(new PutObjectCommand({
         Bucket: R2_BUCKET_NAME, Key: key, Body: body, ContentType: contentType,
         ...(expected === undefined ? {} : expected === null ? { IfNoneMatch: '*' } : { IfMatch: expected }),
-      }));
+      }), { abortSignal: AbortSignal.timeout(120000) });
       if (!result.ETag) throw new Error('No se recibió confirmación del respaldo.');
       return result.ETag;
     } catch (error) {
@@ -54,9 +55,13 @@ export const r2ProjectStorage: ProjectStorage = {
         r2ProjectStorage.read(`${prefix}project.json`),
         r2ProjectStorage.read(`${prefix}previous-project.json`),
       ]);
-      const projects = [stored, previousStored].map(result => result.body ? JSON.parse(result.body.toString('utf8')) : {});
+      const decoded = [stored, previousStored].map(result => decodeProjectManifest(result.body));
+      // Retain unindexed audio while either manifest is damaged; never guess what
+      // may still be recoverable from it during automatic garbage collection.
+      if (decoded.some(result => result.damaged)) return false;
+      const projects = decoded.map(result => result.project ?? {});
       const live = new Set<string>(projects.flatMap(project => [project.beat?.customBeatKey,
-        ...(project.tracks ?? []).flatMap((track: { clips?: { storageKey?: string }[] }) => (track.clips ?? []).map((clip: { storageKey?: string }) => clip.storageKey))]));
+        ...(project.tracks ?? []).flatMap((track: { clips?: { storageKey?: string }[] }) => (track.clips ?? []).map((clip: { storageKey?: string }) => clip.storageKey))]).filter((key): key is string => Boolean(key)));
       for (const object of page.Contents ?? []) {
         if (!object.Key || object.Key === `${prefix}project.json` || object.Key === `${prefix}previous-project.json` || live.has(object.Key)) continue;
         if (object.LastModified && object.LastModified.getTime() < cutoff) {

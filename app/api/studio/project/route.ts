@@ -6,6 +6,7 @@ import { replaceCloudProject, ProjectConflict, type CloudMetadata, type StagedAu
 import { r2ProjectStorage } from "@/lib/studio/server/r2ProjectStorage";
 import { getR2Client } from "@/lib/storage/r2";
 import { createClient } from "@/lib/supabase/server";
+import { decodeProjectManifest, projectServiceError } from '@/lib/studio/server/projectManifest';
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -57,22 +58,30 @@ export async function GET(request: NextRequest) {
     const { data: authData, error: authError } = await supabaseAuth.auth.getUser();
     if (authError && authError.name !== "AuthSessionMissingError") {
       console.warn("[Studio Project GET] Session verification is temporarily unavailable:", authError.name);
-      return NextResponse.json({ error: "No se pudo verificar tu sesión. Reintenta la conexión." }, { status: 503 });
+      const invalid = authError.status === 400 || authError.status === 401 || authError.status === 403;
+      return NextResponse.json({ error: invalid ? 'Vuelve a iniciar sesión. Tu proyecto local se conserva.' : 'No se pudo verificar tu sesión.',
+        code: invalid ? 'SESSION_REQUIRED' : 'SERVICE_UNAVAILABLE', retryable: !invalid }, { status: invalid ? 401 : 503 });
     }
     const user = authError ? null : authData.user;
     if (!user) return NextResponse.json({ hasProject: false, isLoggedIn: false });
     if (!getR2Client()) {
-      return NextResponse.json({ error: "El respaldo de cuenta no está configurado para este entorno." }, { status: 503 });
+      return NextResponse.json({ error: "El respaldo de cuenta no está configurado para este entorno.", code: 'STORAGE_CONFIGURATION', retryable: false }, { status: 503 });
     }
     const { hasActivePass, daysRemaining, isAdmin } = await checkUserAccess(user);
     const prefix = `studio/projects/${user.id}/`;
-    const previousStored = await r2ProjectStorage.read(`${prefix}previous-project.json`);
     const slot = request.nextUrl.searchParams.get('slot') === 'previous' ? 'previous-project.json' : 'project.json';
-    const stored = await r2ProjectStorage.read(`${prefix}${slot}`);
-    const project = stored.body ? JSON.parse(stored.body.toString("utf8")) : null;
-    const previousProject = previousStored.body ? JSON.parse(previousStored.body.toString("utf8")) : null;
+    const [activeStored, previousStored] = await Promise.all([
+      r2ProjectStorage.read(`${prefix}project.json`), r2ProjectStorage.read(`${prefix}previous-project.json`),
+    ]);
+    const stored = slot === 'project.json' ? activeStored : previousStored;
+    const decoded = decodeProjectManifest(stored.body);
+    const previous = decodeProjectManifest(previousStored.body);
+    const project = decoded.project;
+    const previousProject = previous.project;
     const access = { isLoggedIn: true, ownerEmail: user.email?.toLowerCase(), hasActivePass, daysRemaining,
       warnExpiration: daysRemaining <= 3 && daysRemaining > 0 && !isAdmin, revision: stored.etag,
+      projectLost: decoded.damaged, recoveryNotice: decoded.notice || previous.notice,
+      hasActiveProject: Boolean(decodeProjectManifest(activeStored.body).project),
       hasPreviousProject: Boolean(previousProject && !previousProject.deleted),
       previousProjectMeta: previousProject && !previousProject.deleted ? {
         projectName: typeof previousProject.projectName === 'string' ? previousProject.projectName : 'Proyecto guardado',
@@ -89,7 +98,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ...access, revision: stored.etag, hasProject: true, project });
   } catch (error) {
     console.error("[Studio Project GET error]", error);
-    return NextResponse.json({ error: "No se pudo consultar el respaldo. Tu proyecto no se ha borrado; reintenta la conexión." }, { status: 503 });
+    return NextResponse.json(projectServiceError(error), { status: 503 });
   }
 }
 
@@ -130,11 +139,12 @@ export async function POST(req: NextRequest) {
     delete metadata.deleted;
     metadata.userId = user.id; metadata.userEmail = user.email;
     const prefix = `studio/projects/${user.id}/`;
-    const result = await replaceCloudProject(r2ProjectStorage, prefix, base || null, metadata, files, staged);
+    const manifestName = req.nextUrl.searchParams.get('slot') === 'previous' ? 'previous-project.json' : 'project.json';
+    const result = await replaceCloudProject(r2ProjectStorage, prefix, base || null, metadata, files, staged, manifestName);
     // R2 manifest is authoritative; the existing optional account index is maintained.
     try {
       const supabase = createAdminClient();
-      await projectIndex(supabase).upsert({
+      if (manifestName === 'project.json') await projectIndex(supabase).upsert({
         user_id: user.id, email: user.email, project_name: metadata.projectName || "Mi Proyecto",
         beat_id: metadata.beat?.id || null, beat_title: metadata.beat?.title || null,
         beat_file_key: metadata.beat?.customBeatKey || null, tracks_meta: metadata.tracks,
@@ -145,7 +155,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     if (error instanceof ProjectConflict) return NextResponse.json({ error: error.message, conflict: true }, { status: 409 });
     console.error("[Studio Project POST error]", error);
-    return NextResponse.json({ error: "No se completó el respaldo de cuenta. Se conserva la versión anterior." }, { status: 503 });
+    return NextResponse.json(projectServiceError(error), { status: 503 });
   }
 }
 

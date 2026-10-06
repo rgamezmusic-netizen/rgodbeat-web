@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { decodeProjectManifest } from './projectManifest';
 
-type ClipMeta = { id: string; storageKey?: string; audioHash?: string };
+type ClipMeta = { id: string; storageKey?: string; audioHash?: string; downloadUrl?: string };
 type TrackMeta = { id: string; clips?: ClipMeta[] };
 export type CloudMetadata = {
-  beat?: { id?: string; catalogBeatId?: string | null; title?: string; customBeatKey?: string; audioHash?: string } | null;
+  beat?: { id?: string; catalogBeatId?: string | null; title?: string; customBeatKey?: string; audioHash?: string; downloadUrl?: string } | null;
   tracks?: TrackMeta[];
   deleted?: boolean;
   savedAt?: number;
@@ -35,9 +36,10 @@ export async function replaceCloudProject(
   const key = `${prefix}${manifestName}`;
   const previous = await storage.read(key);
   if (previous.etag !== expected) throw new ProjectConflict('El proyecto cambió en otra sesión. El respaldo local se conserva.');
-  const old: CloudMetadata = previous.body ? JSON.parse(previous.body.toString('utf8')) : {};
-  const archivedStored = await storage.read(`${prefix}previous-project.json`);
-  const archived: CloudMetadata = archivedStored.body ? JSON.parse(archivedStored.body.toString('utf8')) : {};
+  const old: CloudMetadata = decodeProjectManifest(previous.body).project ?? {};
+  const retainedName = manifestName === 'previous-project.json' ? 'project.json' : 'previous-project.json';
+  const archivedStored = await storage.read(`${prefix}${retainedName}`);
+  const archived: CloudMetadata = decodeProjectManifest(archivedStored.body).project ?? {};
   const reusable = new Map<string, string>();
   for (const project of [old, archived]) {
     if (project.beat?.audioHash && project.beat.customBeatKey?.startsWith(prefix)) reusable.set(project.beat.audioHash, project.beat.customBeatKey);

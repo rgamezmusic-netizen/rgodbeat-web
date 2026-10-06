@@ -136,10 +136,12 @@ test('recovery supports email token hash, older implicit links and PKCE without 
 
 test('invalid recovery links cannot use an existing session as a successful password recovery', async () => {
   const originalWindow = globalThis.window;
-  globalThis.window = { location: { href: 'https://www.rgodbeat.com/reset-password#error=access_denied&error_code=otp_expired' }, history: { replaceState() {} } };
+  let cleaned;
+  globalThis.window = { location: { href: 'https://www.rgodbeat.com/reset-password#error=access_denied&error_code=otp_expired' }, history: { replaceState(_state,_title,value) {cleaned=value;} } };
   try {
     const { resolveAuthRecovery } = loadSource('lib/auth/recovery.ts', { '@/lib/supabase/client': { createClient() { throw Error('Must not use old session'); } } });
     const result = await resolveAuthRecovery(); assert.equal(result.user, null); assert.match(result.error, /venció/);
+    assert.equal(cleaned,'/reset-password');
   } finally { globalThis.window = originalWindow; }
 });
 

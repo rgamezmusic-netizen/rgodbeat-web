@@ -1,20 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { isSiteAdmin } from "@/lib/auth/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const supabaseAuth = await createClient();
     const { data: authData, error: authError } = await supabaseAuth.auth.getUser();
     if (authError && authError.name !== "AuthSessionMissingError") {
       console.warn("[Studio Access] Session verification is temporarily unavailable:", authError.name);
-      return NextResponse.json(
-        { error: "No se pudo verificar tu sesión. Reintenta la conexión; tu proyecto local sigue disponible." },
-        { status: 503 }
-      );
+      const invalid = [400, 401, 403].includes(authError.status || 0);
+      return NextResponse.json({ error: invalid ? 'Vuelve a iniciar sesión. Tu proyecto local se conserva.' : 'No se pudo verificar tu sesión.',
+        code: invalid ? 'SESSION_REQUIRED' : 'SERVICE_UNAVAILABLE', retryable: !invalid }, { status: invalid ? 401 : 503 });
     }
     const user = authError ? null : authData.user;
 
@@ -30,7 +29,7 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = createAdminClient();
-    const { data: customer } = await (supabase as any)
+    const { data: customer } = await supabase
       .from("customers")
       .select("id, email, name, studio_access_until")
       .eq("email", user.email)
@@ -59,7 +58,7 @@ export async function GET(req: NextRequest) {
       email: user.email,
       name: customer?.name || user.user_metadata?.full_name || "Artista",
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("[Studio Access API Error]:", err);
     return NextResponse.json(
       { error: "No se pudo consultar el acceso a Studio. Reintenta la conexión." },

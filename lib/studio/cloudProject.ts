@@ -1,19 +1,47 @@
 import { BeatData, LoopSettings, VocalClip, VocalTrack, BeatFX, BeatMixSettings } from './types/audio';
 import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from './audio/wavEncoder';
 import { getCatalogBeatId } from './audio/catalogBeat';
+import { restoredVocalFX } from './audio/restoredFX';
 
-type SaveResult = { success: boolean; error?: string; requiresPass?: boolean; conflict?: boolean };
+type SaveResult = { success: boolean; error?: string; requiresPass?: boolean; conflict?: boolean; code?: string; retryable?: boolean };
 let cloudOwner: string | null = null;
 type CloudProjectSlot = 'active' | 'previous';
+let cloudSlot: CloudProjectSlot = 'active';
 let revision: string | null | undefined;
 let knownAudio = new Set<string>();
 let queue: Promise<unknown> = Promise.resolve();
-let pendingSave: { args: Parameters<typeof uploadProject>; owner: string | null; resolve: ((result: SaveResult) => void)[] } | null = null;
+let pendingSave: { args: Parameters<typeof uploadProject>; owner: string | null; slot: CloudProjectSlot; resolve: ((result: SaveResult) => void)[] } | null = null;
 let draining = false;
 const encoded = new WeakMap<AudioBuffer, Promise<{ blob: Blob; hash: string }>>();
 const encodedVocals = new WeakMap<AudioBuffer, Promise<{ blob: Blob; hash: string }>>();
 const CHUNK_BYTES = 2_000_000;
 const STAGED_UPLOAD_THRESHOLD = 2_500_000;
+
+export class CloudConnectionError extends Error {
+  constructor(message: string, public code = 'SERVICE_UNAVAILABLE', public retryable = true) { super(message); }
+}
+
+function confirmedKey() { return `rgodbeat_cloud_confirmed_${cloudOwner}`; }
+export function confirmCloudProject(projectId: string, confirmedRevision: string | null = revision ?? null) {
+  if (!cloudOwner || !confirmedRevision) return;
+  try { localStorage.setItem(confirmedKey(), JSON.stringify({ projectId, revision: confirmedRevision, slot: cloudSlot })); } catch { /* Device storage may be unavailable. */ }
+}
+export function selectCloudProjectSlot(slot: CloudProjectSlot, selectedRevision?: string | null) {
+  cloudSlot = slot; revision = selectedRevision; knownAudio = new Set();
+}
+export function alignCloudProjectSelection(projectId: string) {
+  try {
+    const confirmed = JSON.parse(localStorage.getItem(confirmedKey()) || 'null');
+    if (confirmed?.projectId !== projectId) selectCloudProjectSlot('active');
+  } catch { selectCloudProjectSlot('active'); }
+}
+export function canResumeCloudProject(remote: CloudProjectCheckResult, projectId: string) {
+  if (!remote.hasProject) return true;
+  try {
+    const confirmed = JSON.parse(localStorage.getItem(confirmedKey()) || 'null');
+    return confirmed?.projectId === projectId && confirmed.slot === cloudSlot && confirmed.revision === remote.revision;
+  } catch { return false; }
+}
 
 // Bound each request, including its response body, so a stalled connection
 // cannot hold the save queue and the exit controls forever.
@@ -25,7 +53,7 @@ async function requestCloudJson(url: string, init: RequestInit = {}, timeoutMs =
     const data = await response.json();
     return { response, data };
   } catch (error) {
-    if (controller.signal.aborted) throw new Error('El respaldo tardó demasiado. Tu proyecto sigue abierto; comprueba la conexión y reintenta.');
+    if (controller.signal.aborted) throw new CloudConnectionError('La nube tardó demasiado. Tu proyecto local se conserva.');
     throw error;
   } finally { clearTimeout(timer); }
 }
@@ -74,6 +102,10 @@ export function setCloudProjectUser(email: string | null) {
   const next = email?.trim().toLowerCase() ?? null;
   if (cloudOwner === next) return;
   cloudOwner = next; revision = undefined; knownAudio = new Set();
+  cloudSlot = 'active';
+  try {
+    if (JSON.parse(localStorage.getItem(confirmedKey()) || 'null')?.slot === 'previous') cloudSlot = 'previous';
+  } catch { /* No confirmed selection yet. */ }
 }
 export async function archiveCloudProject(replacePrevious = false): Promise<{
   success: boolean; requiresConfirmation?: boolean; error?: string;
@@ -84,7 +116,7 @@ export async function archiveCloudProject(replacePrevious = false): Promise<{
     if (owner !== cloudOwner) return { success: false, error: 'La cuenta cambió durante la operación.' };
     const { response, data } = await requestCloudJson('/api/studio/project/archive', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ replacePrevious, baseRevision: revision ?? null }),
+      body: JSON.stringify({ replacePrevious, baseRevision: revision ?? null, ownerEmail: owner }),
     });
     if (owner !== cloudOwner) return { success: false, error: 'La cuenta cambió durante la operación.' };
     if (response.status === 409 && data.requiresConfirmation) return { success: false, requiresConfirmation: true };
@@ -94,7 +126,7 @@ export async function archiveCloudProject(replacePrevious = false): Promise<{
     return { success: false, error: error instanceof Error ? error.message : 'No se pudo conectar con tu cuenta.' };
   }
 }
-function projectUrl(slot: CloudProjectSlot = 'active') {
+function projectUrl(slot: CloudProjectSlot = cloudSlot) {
   return `/api/studio/project${slot === 'previous' ? '?slot=previous' : ''}`;
 }
 function encode(buffer: AudioBuffer, bitDepth: 24 | 32 = 24) {
@@ -110,17 +142,19 @@ function encode(buffer: AudioBuffer, bitDepth: 24 | 32 = 24) {
   }
   return result;
 }
-async function readCloudState(slot: CloudProjectSlot = 'active') {
+async function readCloudState(slot: CloudProjectSlot = cloudSlot) {
   const owner = cloudOwner;
-  const previousRevision = slot === 'active' ? revision : undefined;
+  const previousRevision = slot === cloudSlot ? revision : undefined;
   const { response, data } = await requestCloudJson(projectUrl(slot), { cache: 'no-store' });
-  if (!response.ok) throw new Error(data.error || 'No se pudo consultar el respaldo de cuenta.');
+  if (!response.ok) throw new CloudConnectionError(data.error || 'No se pudo consultar el respaldo de cuenta.',
+    data.code || (response.status === 401 ? 'SESSION_REQUIRED' : 'SERVICE_UNAVAILABLE'),
+    data.retryable ?? (response.status === 429 || response.status >= 500));
   if (owner !== cloudOwner) throw new Error('La cuenta cambió durante la consulta.');
   if (owner && (data.isLoggedIn === false || (data.ownerEmail && data.ownerEmail !== owner))) {
-    throw new Error('La sesión cambió. Tu respaldo local sigue asociado a la cuenta anterior.');
+    throw new CloudConnectionError('Vuelve a iniciar sesión. Tu proyecto local se conserva.', 'SESSION_REQUIRED', false);
   }
   // A status query started before a save must not restore its older revision.
-  if (slot === 'active' && revision === previousRevision) {
+  if (slot === cloudSlot && revision === previousRevision) {
     revision = data.revision ?? null;
     knownAudio = new Set<string>([
       data.project?.beat?.audioHash,
@@ -133,18 +167,18 @@ async function readCloudState(slot: CloudProjectSlot = 'active') {
 // Coalesce pending edits and serialize writes. A slow upload cannot overwrite a newer one.
 export function saveProjectToCloud(...args: Parameters<typeof uploadProject>): Promise<SaveResult> {
   return new Promise(resolve => {
-    if (pendingSave && pendingSave.owner === cloudOwner) {
+    if (pendingSave && pendingSave.owner === cloudOwner && pendingSave.slot === cloudSlot) {
       pendingSave.args = args; pendingSave.resolve.push(resolve);
     } else {
       pendingSave?.resolve.forEach(callback => callback({ success: false, error: 'La cuenta cambió antes de guardar.' }));
-      pendingSave = { args, owner: cloudOwner, resolve: [resolve] };
+      pendingSave = { args, owner: cloudOwner, slot: cloudSlot, resolve: [resolve] };
     }
     if (draining) return;
     draining = true;
     queue = queue.then(async () => {
       while (pendingSave) {
         const job = pendingSave; pendingSave = null;
-        const result = job.owner === cloudOwner ? await uploadProject(...job.args)
+        const result = job.owner === cloudOwner && job.slot === cloudSlot ? await uploadProject(...job.args)
           : { success: false, error: 'La cuenta cambió. El respaldo pertenece a la cuenta anterior.' };
         job.resolve.forEach(callback => callback(result));
       }
@@ -155,9 +189,15 @@ export function saveProjectToCloud(...args: Parameters<typeof uploadProject>): P
 
 export interface CloudProjectCheckResult {
   hasProject: boolean;
+  hasActiveProject?: boolean;
   hasPreviousProject?: boolean;
   previousProjectMeta?: { projectName?: string; savedAt?: number; takesCount?: number } | null;
   unavailable?: boolean;
+  retryable?: boolean;
+  code?: string;
+  revision?: string | null;
+  projectId?: string;
+  recoveryNotice?: string;
   isLoggedIn?: boolean;
   hasActivePass?: boolean;
   warnExpiration?: boolean;
@@ -197,6 +237,7 @@ export async function checkCloudProject(): Promise<CloudProjectCheckResult> {
 
       return {
         hasProject: true,
+        revision: data.revision, projectId: data.project.projectId, recoveryNotice: data.recoveryNotice, hasActiveProject: data.hasActiveProject,
         hasPreviousProject: Boolean(data.hasPreviousProject),
         previousProjectMeta: data.previousProjectMeta ?? null,
         isLoggedIn: true,
@@ -215,6 +256,7 @@ export async function checkCloudProject(): Promise<CloudProjectCheckResult> {
 
     return {
       hasProject: false,
+      revision: data.revision, recoveryNotice: data.recoveryNotice, hasActiveProject: data.hasActiveProject,
       hasPreviousProject: Boolean(data.hasPreviousProject),
       previousProjectMeta: data.previousProjectMeta ?? null,
       isLoggedIn: data.isLoggedIn,
@@ -225,7 +267,9 @@ export async function checkCloudProject(): Promise<CloudProjectCheckResult> {
   } catch (err) {
     console.warn('[checkCloudProject error]:', err);
     return { hasProject: false, unavailable: true,
-      message: err instanceof Error && /^(El respaldo|No se pudo|La cuenta|La sesión)/.test(err.message)
+      code: err instanceof CloudConnectionError ? err.code : 'SERVICE_UNAVAILABLE',
+      retryable: err instanceof CloudConnectionError ? err.retryable : true,
+      message: err instanceof CloudConnectionError || (err instanceof Error && /^(El respaldo|No se pudo|La cuenta|La sesión)/.test(err.message))
         ? err.message : 'No se pudo conectar con tu respaldo. Tu copia local se conserva; reintenta la conexión.' };
   }
 }
@@ -238,23 +282,27 @@ async function uploadProject(
   tracks: VocalTrack[],
   currentBeat: BeatData | null,
   loopSettings?: LoopSettings,
-  mix?: BeatMixSettings
+  mix?: BeatMixSettings,
+  projectId?: string
 ): Promise<SaveResult> {
   const owner = cloudOwner;
+  const savingSlot = cloudSlot;
   const clientSaveId = crypto.randomUUID();
   const nextHashes = new Set<string>();
   const confirmCommit = async () => {
     try {
-      const { response, data } = await requestCloudJson(projectUrl(), { cache: 'no-store' });
+      const { response, data } = await requestCloudJson(projectUrl(savingSlot), { cache: 'no-store' });
       if (!response.ok) return false;
-      if (owner !== cloudOwner || (owner && data.ownerEmail && data.ownerEmail !== owner)
+      if (owner !== cloudOwner || savingSlot !== cloudSlot || (owner && data.ownerEmail && data.ownerEmail !== owner)
         || data.project?.clientSaveId !== clientSaveId || !data.revision) return false;
       revision = data.revision; knownAudio = nextHashes;
+      if (projectId) confirmCloudProject(projectId);
       return true;
     } catch { return false; }
   };
   try {
     if (revision === undefined) await readCloudState();
+    if (owner !== cloudOwner || savingSlot !== cloudSlot) return { success: false, error: 'El proyecto cambió antes de guardar.' };
     const baseRevision = revision;
     const confirmedAudio = new Set(knownAudio);
     const formData = new FormData();
@@ -347,6 +395,7 @@ async function uploadProject(
 
     const metadata = {
       clientSaveId,
+      projectId,
       ownerEmail: owner,
       projectName: currentBeat ? `Proyecto: ${currentBeat.title}` : 'Mi Proyecto',
       beat: currentBeat
@@ -393,7 +442,8 @@ async function uploadProject(
     formData.append('baseRevision', baseRevision ?? '');
     if (owner !== cloudOwner) return { success: false, error: 'La cuenta cambió antes de guardar.' };
 
-    const { response: res, data } = await requestCloudJson(projectUrl(), {
+    if (owner !== cloudOwner || savingSlot !== cloudSlot) throw new Error('El proyecto cambió durante el respaldo.');
+    const { response: res, data } = await requestCloudJson(projectUrl(savingSlot), {
       method: 'POST',
       body: formData,
     }, 120_000);
@@ -404,15 +454,21 @@ async function uploadProject(
         error: data.error || 'Error al guardar el proyecto en la nube.',
         requiresPass: Boolean(data.requiresPass),
         conflict: res.status === 409,
+        code: data.code, retryable: data.retryable ?? (res.status === 429 || res.status >= 500),
       };
     }
 
-    if (owner === cloudOwner) { revision = data.revision ?? null; knownAudio = nextHashes; }
+    if (owner === cloudOwner && savingSlot === cloudSlot) {
+      revision = data.revision ?? null; knownAudio = nextHashes;
+      if (projectId) confirmCloudProject(projectId);
+    }
     return { success: true };
   } catch (err: unknown) {
     if (await confirmCommit()) return { success: true };
     console.error('saveProjectToCloud error:', err);
-    return { success: false, error: err instanceof Error ? err.message : 'Error de conexión al guardar.' };
+    return { success: false, error: err instanceof Error ? err.message : 'Error de conexión al guardar.',
+      code: err instanceof CloudConnectionError ? err.code : 'SERVICE_UNAVAILABLE',
+      retryable: err instanceof CloudConnectionError ? err.retryable : true };
   }
 }
 
@@ -422,13 +478,18 @@ async function uploadProject(
  */
 export async function loadProjectFromCloud(
   audioCtx: AudioContext,
-  slot: CloudProjectSlot = 'active'
+  slot: CloudProjectSlot = cloudSlot
 ): Promise<{
   beatData: Partial<BeatData> & { customBeatBuffer?: AudioBuffer } | null;
   tracks: VocalTrack[];
   loopSettings?: LoopSettings;
   beatFX?: BeatFX;
   isBeatMuted?: boolean;
+  projectId: string;
+  revision: string | null;
+  slot: CloudProjectSlot;
+  losses: string[];
+  missingBeat: boolean;
 } | null> {
   try {
     // Loading must see the last committed edit, not a snapshot fetched while
@@ -438,21 +499,35 @@ export async function loadProjectFromCloud(
     if (!data.hasProject || !data.project) return null;
 
     const project = data.project;
+    const owner = cloudOwner;
+    const losses: string[] = [];
+    const download = async (url: string | undefined, label: string): Promise<AudioBuffer | undefined> => {
+      if (!url) { losses.push(label); return; }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 30000);
+      try {
+        const response = await fetch(url, { signal: controller.signal,
+          headers: owner ? { 'x-studio-owner': owner } : {} });
+        if (response.status === 404 || response.status === 410) { losses.push(label); return; }
+        if (!response.ok) throw new CloudConnectionError('No se pudo descargar el audio. Tu proyecto local se conserva.',
+          response.status === 401 ? 'SESSION_REQUIRED' : 'SERVICE_UNAVAILABLE', response.status >= 500 || response.status === 429);
+        const bytes = await response.arrayBuffer();
+        if (owner !== cloudOwner) throw new CloudConnectionError('La cuenta cambió durante la descarga.', 'SESSION_REQUIRED', false);
+        try { return await audioCtx.decodeAudioData(bytes); }
+        catch (error) {
+          if ((error as { name?: string }).name === 'EncodingError' || !bytes.byteLength) { losses.push(label); return; }
+          throw error;
+        }
+      } catch (error) {
+        if (controller.signal.aborted) throw new CloudConnectionError('La descarga tardó demasiado. Tu proyecto local se conserva.');
+        throw error;
+      } finally { clearTimeout(timer); }
+    };
 
     // 1. Download and decode custom beat if present
     let customBeatBuffer: AudioBuffer | undefined = undefined;
-    if (project.beat?.downloadUrl) {
-      try {
-        const beatFetch = await fetch(project.beat.downloadUrl);
-        if (!beatFetch.ok) throw new Error('No se descargó el beat completo.');
-        const beatArrayBuffer = await beatFetch.arrayBuffer();
-        customBeatBuffer = await audioCtx.decodeAudioData(beatArrayBuffer);
-      } catch (err) {
-        throw err;
-      }
-    }
-
-    if (project.beat?.customBeatKey && !customBeatBuffer) throw new Error('Falta el beat del respaldo.');
+    if (project.beat?.customBeatKey || project.beat?.downloadUrl) customBeatBuffer = await download(project.beat.downloadUrl, 'beat');
+    const missingBeat = losses.includes('beat');
     // 2. Download and decode vocal takes
     const restoredTracks: VocalTrack[] = [];
 
@@ -464,12 +539,9 @@ export async function loadProjectFromCloud(
 
         if (Array.isArray(t.clips)) {
           for (const c of t.clips) {
-            if (!c.downloadUrl) throw new Error('Falta una voz del respaldo. No se reemplazará el proyecto.');
             try {
-              const clipFetch = await fetch(c.downloadUrl);
-              if (!clipFetch.ok) throw new Error('No se descargó una toma completa.');
-              const clipArrayBuffer = await clipFetch.arrayBuffer();
-              const decoded = await audioCtx.decodeAudioData(clipArrayBuffer);
+              const decoded = await download(c.downloadUrl, `${t.name || t.id}: ${c.name || 'toma'}`);
+              if (!decoded) continue;
               const waveformSample = extractWaveformPeaks(decoded, WAVEFORM_SAMPLE_COUNT);
 
               restoredClips.push({
@@ -498,7 +570,7 @@ export async function loadProjectFromCloud(
           isCustom: t.isCustom ?? t.id.startsWith('backing'),
           isMuted: Boolean(t.isMuted),
           isSolo: Boolean(t.isSolo),
-          fx: t.fx,
+          fx: restoredVocalFX(t.fx),
           startBeatOffset: t.startBeatOffset || 0,
           duration: t.duration || 0,
           buffer: latestBuffer,
@@ -509,8 +581,10 @@ export async function loadProjectFromCloud(
       }
     }
 
+    if (owner !== cloudOwner) throw new CloudConnectionError('La cuenta cambió durante la descarga.', 'SESSION_REQUIRED', false);
     return {
-      beatData: project.beat
+      projectId: project.projectId || crypto.randomUUID(), revision: data.revision ?? null, slot, losses, missingBeat,
+      beatData: project.beat && !missingBeat
         ? {
             ...project.beat,
             customBeatBuffer,

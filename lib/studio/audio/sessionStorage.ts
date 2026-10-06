@@ -2,6 +2,7 @@ import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalFX, BeatFX, BeatMix
 import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from './wavEncoder';
 import { retireRecordingCheckpoints } from './recordingRecovery';
 import { getCatalogBeatId } from './catalogBeat';
+import { restoredVocalFX } from './restoredFX';
 
 const DB_NAME = 'RGODBEAT_STUDIO_DB';
 const DB_VERSION = 2; // Upgraded to support session persistence
@@ -441,7 +442,8 @@ export async function saveLastProjectBeat(
  */
 export async function restoreLastStudioSession(
   audioCtx: AudioContext,
-  userIdentifier?: string | null
+  userIdentifier?: string | null,
+  slot: 'active' | 'previous' = 'active'
 ): Promise<{
   projectId?: string;
   tracks: VocalTrack[];
@@ -454,10 +456,11 @@ export async function restoreLastStudioSession(
   currentTime?: number;
   activeView?: 'studio' | 'editor';
   timestamp: number;
+  losses: string[];
 } | null> {
   try {
     const db = await getDB();
-    const sessionKey = getSessionStorageKey(userIdentifier);
+    const sessionKey = getSessionStorageKey(userIdentifier) + (slot === 'previous' ? ':previous' : '');
 
     const session: StoredStudioSession | null = await new Promise((resolve) => {
       const tx = db.transaction([SESSIONS_STORE], 'readonly');
@@ -472,6 +475,7 @@ export async function restoreLastStudioSession(
     if (!session) {
       return null;
     }
+    const losses: string[] = [];
 
     // 1. Reconstruct beat AudioBuffer if stored with raw audio
     let restoredBeat: BeatData | null = null;
@@ -482,8 +486,11 @@ export async function restoreLastStudioSession(
           const arrayBufferCopy = session.beatData.audioWavData.slice(0);
           beatBuffer = await audioCtx.decodeAudioData(arrayBufferCopy);
         } catch (decErr) {
-          throw decErr;
+          if ((decErr as { name?: string }).name !== 'EncodingError') throw decErr;
+          losses.push('beat');
         }
+      } else if (session.beatData.isCustomUpload) {
+        losses.push('beat');
       }
 
       if (beatBuffer) {
@@ -524,7 +531,7 @@ export async function restoreLastStudioSession(
         let latestWaveform: number[] | undefined;
 
         for (const sc of st.clips || []) {
-          if (!sc.audioWavData || sc.audioWavData.byteLength === 0) throw new Error('Falta audio en el respaldo local.');
+          if (!sc.audioWavData || sc.audioWavData.byteLength === 0) { losses.push(`${st.name}: ${sc.name || 'toma'}`); continue; }
           try {
             // Decode WAV array buffer back to native WebAudio AudioBuffer
             const decoded = await audioCtx.decodeAudioData(sc.audioWavData.slice(0));
@@ -541,7 +548,8 @@ export async function restoreLastStudioSession(
             latestBuffer = decoded;
             latestWaveform = sc.waveformSample;
           } catch (decErr) {
-            throw decErr;
+            if ((decErr as { name?: string }).name !== 'EncodingError') throw decErr;
+            losses.push(`${st.name}: ${sc.name || 'toma'}`);
           }
         }
 
@@ -553,7 +561,7 @@ export async function restoreLastStudioSession(
           isCustom: st.isCustom ?? st.id.startsWith('backing'),
           isMuted: Boolean(st.isMuted),
           isSolo: Boolean(st.isSolo),
-          fx: st.fx,
+          fx: restoredVocalFX(st.fx),
           startBeatOffset: st.startBeatOffset || (restoredClips[0]?.startBeatOffset ?? 0),
           duration: st.duration || (restoredClips.length > 0 ? Math.max(...restoredClips.map((c) => c.startBeatOffset + c.duration)) : 0),
           buffer: latestBuffer,
@@ -566,9 +574,10 @@ export async function restoreLastStudioSession(
 
     return {
       projectId: session.projectId,
+      losses,
       tracks: restoredTracks,
       beat: restoredBeat,
-      beatId: session.beatId || restoredBeat?.id,
+      beatId: losses.includes('beat') ? null : session.beatId || restoredBeat?.id,
       beatVolume: session.beatVolume,
       beatFX: session.beatFX,
       isBeatMuted: session.isBeatMuted,
@@ -586,6 +595,50 @@ export async function restoreLastStudioSession(
 /**
  * Clears the stored studio session (e.g. when starting a new project)
  */
+export async function archiveSavedStudioSession(userIdentifier?: string | null, replacePrevious = false): Promise<{
+  success: boolean; hasPrevious?: boolean; requiresConfirmation?: boolean;
+}> {
+  const key = getSessionStorageKey(userIdentifier);
+  await latestSaves.get(key)?.promise;
+  try {
+    const db = await getDB();
+    return await new Promise(resolve => {
+      const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+      const store = tx.objectStore(SESSIONS_STORE);
+      let result = { success: true, hasPrevious: false, requiresConfirmation: false };
+      const source = store.get(key);
+      source.onsuccess = () => {
+        const previous = store.get(`${key}:previous`);
+        previous.onsuccess = () => {
+          result.hasPrevious = Boolean(previous.result);
+          const session = source.result as StoredStudioSession | undefined;
+          if (!session) return;
+          const hasVoices = session.tracks?.some(track => track.clips?.length);
+          // An empty workspace must never push the last recorded project out.
+          if (previous.result && !hasVoices) return;
+          if (previous.result && !replacePrevious) {
+            result = { success: false, hasPrevious: true, requiresConfirmation: true }; return;
+          }
+          store.put({ ...session, id: `${key}:previous` });
+          result.hasPrevious = true;
+        };
+      };
+      tx.oncomplete = () => resolve(result);
+      tx.onabort = () => resolve({ success: false });
+      tx.onerror = () => resolve({ success: false });
+    });
+  } catch { return { success: false }; }
+}
+
+export async function hasPreviousStudioSession(userIdentifier?: string | null): Promise<boolean> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(SESSIONS_STORE).objectStore(SESSIONS_STORE).getKey(`${getSessionStorageKey(userIdentifier)}:previous`);
+    request.onsuccess = () => resolve(Boolean(request.result));
+    request.onerror = () => reject(request.error);
+  });
+}
+
 export async function clearSavedStudioSession(userIdentifier?: string | null): Promise<boolean> {
   const key = getSessionStorageKey(userIdentifier);
   saveVersions.set(key, (saveVersions.get(key) ?? 0) + 1);

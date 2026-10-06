@@ -37,7 +37,24 @@ async function main() {
     await replaceCloudProject(r2ProjectStorage, prefix, afterStage.revision,
       { deleted: true, beat: null, tracks: [] }, new Map());
 
-    console.log('R2 live project test passed: save, read, reuse, conflict, staged asset, deletion.');
+    const empty = await r2ProjectStorage.read(`${prefix}project.json`);
+    const current = await replaceCloudProject(r2ProjectStorage, prefix, empty.etag,
+      {projectId:'current',beat:{id:'test-beat'},tracks:[{id:'lead1',clips:[{id:'take'}]}]}, files);
+    const currentStored = await r2ProjectStorage.read(`${prefix}project.json`);
+    const currentMeta = JSON.parse(currentStored.body!.toString());
+    const previous = await replaceCloudProject(r2ProjectStorage, prefix, null,
+      {...structuredClone(currentMeta),projectId:'previous'}, new Map(), new Map(), 'previous-project.json');
+    await replaceCloudProject(r2ProjectStorage, prefix, previous.revision,
+      {...structuredClone(currentMeta),projectId:'previous',beat:null}, new Map(), new Map(), 'previous-project.json');
+    assert.equal((await r2ProjectStorage.read(`${prefix}project.json`)).etag, current.revision);
+    assert.equal((await r2ProjectStorage.read(currentMeta.beat.customBeatKey)).body?.toString(), 'test-beat');
+    await replaceCloudProject(r2ProjectStorage, prefix, current.revision,
+      {deleted:true,beat:null,tracks:[]},new Map());
+    const retained = JSON.parse((await r2ProjectStorage.read(`${prefix}previous-project.json`)).body!.toString());
+    assert.equal(retained.projectId,'previous');
+    assert.equal((await r2ProjectStorage.read(retained.tracks[0].clips[0].storageKey)).body?.toString(),'test-vocal');
+
+    console.log('R2 live project test passed: save, read, reuse, conflict, staged asset, deletion, two independent slots and shared audio retention.');
   } finally {
     if (!await deleteR2Prefix(prefix)) throw new Error('Could not remove isolated R2 test objects.');
   }
