@@ -5,6 +5,9 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { isSiteAdmin } from "@/lib/auth/admin";
 import { getStemRequestByTicketId } from "@/lib/stems/tickets";
 import { EXPECTED_STEM_GROUPS, STEM_GROUP_FILE_NAMES } from "@/lib/stems/types";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthorizedPurchase, guestPurchaseCookieName } from "@/lib/commerce/authorization";
+import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -26,8 +29,15 @@ export default async function CustomerStemTicketPage({ params }: CustomerTicketP
     notFound();
   }
 
+  const cookieStore = await cookies();
+  const authorizedPurchase = await getAuthorizedPurchase(createAdminClient(), ticket.purchaseId, {
+    user,
+    guestToken: orderId => cookieStore.get(guestPurchaseCookieName(orderId))?.value,
+  });
+  if (!authorizedPurchase) notFound();
+
   const isAdmin = isSiteAdmin(user);
-  const isOwner = user.email && ticket.customerEmail.toLowerCase() === user.email.toLowerCase();
+  const isOwner = authorizedPurchase.customer_id === ticket.customerId;
 
   if (!isAdmin && !isOwner) {
     return (

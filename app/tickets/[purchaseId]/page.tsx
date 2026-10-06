@@ -4,6 +4,10 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatCurrency } from "@/lib/utils";
 import { PrintTicketButton } from "@/components/tickets/PrintTicketButton";
+import { notFound as denyPurchaseTicket } from "next/navigation";
+import { cookies } from "next/headers";
+import { getCurrentUser } from "@/lib/auth/server";
+import { getAuthorizedPurchase, guestPurchaseCookieName } from "@/lib/commerce/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +23,12 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
   }
 
   const supabase = createAdminClient();
+  const cookieStore = await cookies();
+  const authorized = await getAuthorizedPurchase(supabase, purchaseId, {
+    user: await getCurrentUser(),
+    guestToken: orderId => cookieStore.get(guestPurchaseCookieName(orderId))?.value,
+  });
+  if (!authorized) denyPurchaseTicket();
 
   // Fetch purchase details with order and beat info
   const { data: purchase, error } = await supabase

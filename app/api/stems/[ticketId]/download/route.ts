@@ -5,6 +5,7 @@ import { getStemRequestByTicketId } from "@/lib/stems/tickets";
 import { ExpectedStemGroup, EXPECTED_STEM_GROUPS } from "@/lib/stems/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getR2SignedDownloadUrl } from "@/lib/storage/r2";
+import { getAuthorizedPurchase, guestPurchaseCookieName } from "@/lib/commerce/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,14 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     if (!user) {
       return NextResponse.json({ error: "Inicia sesión para descargar tus stems." }, { status: 401 });
     }
+    const authorizedPurchase = await getAuthorizedPurchase(createAdminClient(), ticket.purchaseId, {
+      user,
+      guestToken: orderId => req.cookies.get(guestPurchaseCookieName(orderId))?.value,
+    });
     if (!isAdmin && !isOwner) {
+      return NextResponse.json({ error: "No tienes acceso a estos stems." }, { status: 403 });
+    }
+    if (!authorizedPurchase || authorizedPurchase.customer_id !== ticket.customerId) {
       return NextResponse.json({ error: "No tienes acceso a estos stems." }, { status: 403 });
     }
 

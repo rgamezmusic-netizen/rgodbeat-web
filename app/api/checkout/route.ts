@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAuthoritativeCart } from "@/lib/commerce/fulfillment";
 import { getStripe, isStripeConfigured } from "@/lib/stripe/server";
 import { CheckoutPayload, CheckoutResponse } from "@/types/commerce";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentUser } from "@/lib/auth/server";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,21 +19,37 @@ export async function POST(req: NextRequest) {
 
     // 1. Authoritative Server-Side Price Calculation (Zero Browser Trust)
     const authoritativeCart = await resolveAuthoritativeCart(items);
+    const uniqueLines = new Set(authoritativeCart.items.map((item) => `${item.beatId}:${item.licenseTypeId}`));
+    if (uniqueLines.size !== authoritativeCart.items.length) {
+      return NextResponse.json({ error: "No repitas la misma licencia para un beat." }, { status: 400 });
+    }
+    if (!isStripeConfigured()) {
+      return NextResponse.json({
+        error: "STRIPE_SECRET_KEY is not configured in .env.local. Please provide your Stripe Test Mode secret key.",
+        isConfigurationError: true,
+        totalAmount: authoritativeCart.totalAmount,
+      }, { status: 503 });
+    }
+
+    const user = await getCurrentUser();
+    const payerEmail = user?.email || customerEmail || undefined;
+    const payerName = user?.user_metadata?.full_name || customerName || payerEmail?.split("@")[0] || "";
+    const admin = createAdminClient() as any;
+    const { data: intent, error: intentError } = await admin.from("commerce_checkout_intents").insert({
+      buyer_auth_user_id: user?.id || null,
+      buyer_email: payerEmail || null,
+      recipient_mode: "self",
+      snapshot: {
+        version: 1,
+        items: authoritativeCart.items,
+        totalAmountCents: Math.round(authoritativeCart.totalAmount * 100),
+        currency: authoritativeCart.currency,
+      },
+      snapshot_version: 1,
+    }).select("id").single();
+    if (intentError || !intent) throw new Error("CHECKOUT_INTENT_COULD_NOT_BE_SAVED");
 
     const origin = req.nextUrl.origin || "http://localhost:3000";
-
-    // 2. Check if Stripe is configured
-    if (!isStripeConfigured()) {
-      // In development or when Stripe test key is not yet set, provide helpful message
-      return NextResponse.json(
-        {
-          error: "STRIPE_SECRET_KEY is not configured in .env.local. Please provide your Stripe Test Mode secret key.",
-          isConfigurationError: true,
-          totalAmount: authoritativeCart.totalAmount,
-        },
-        { status: 503 }
-      );
-    }
 
     const stripe = getStripe();
 
@@ -59,12 +77,12 @@ export async function POST(req: NextRequest) {
       payment_method_types: ["card"],
       line_items,
       mode: "payment",
-      customer_email: customerEmail || undefined,
-      client_reference_id: customerEmail || undefined,
+      customer_email: payerEmail || undefined,
+      client_reference_id: intent.id,
       metadata: {
-        customerEmail: customerEmail || "",
-        customerName: customerName || "",
-        itemsJson: JSON.stringify(items),
+        commerceIntentId: intent.id,
+        customerEmail: payerEmail || "",
+        customerName: payerName,
         totalAmount: authoritativeCart.totalAmount.toString(),
         termsAccepted: "true",
         termsAcceptedAt: new Date().toISOString(),
@@ -82,7 +100,15 @@ export async function POST(req: NextRequest) {
       sessionParams.cancel_url = `${origin}/checkout/cancel`;
     }
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create(sessionParams, { idempotencyKey: `commerce-intent:${intent.id}` });
+    } catch (stripeError) {
+      await admin.from("commerce_checkout_intents").update({ state: "failed", last_error_code: "stripe_session_creation_failed" }).eq("id", intent.id);
+      throw stripeError;
+    }
+    const { error: sessionLinkError } = await admin.from("commerce_checkout_intents").update({ stripe_checkout_session_id: session.id }).eq("id", intent.id);
+    if (sessionLinkError) throw new Error("CHECKOUT_SESSION_LINK_PENDING_WEBHOOK_RECOVERY");
 
     const responseData: CheckoutResponse = {
       sessionId: session.id,

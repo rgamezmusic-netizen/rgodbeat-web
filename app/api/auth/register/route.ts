@@ -1,6 +1,5 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchAuth } from "@/lib/auth/request";
 
 export const dynamic = "force-dynamic";
@@ -86,22 +85,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No se pudo completar el registro." }, { status: 500, headers });
     }
 
-    // Supabase returns an empty identities array for an existing email when
-    // signup obfuscation is enabled. Do not reveal whether that account exists.
-    if (signupData.user.identities?.length) {
-      try {
-        const admin = createAdminClient();
-        const { error: customerError } = await admin.from("customers").upsert({
-          id: signupData.user.id,
-          email: cleanEmail,
-          name: cleanName || cleanEmail.split("@")[0],
-        }, { onConflict: "id" });
-        if (customerError) console.error("[Register API] Customer sync failed:", customerError.code || "unknown");
-      } catch (customerErr) {
-        console.error("[Register API] Customer sync unavailable:", customerErr instanceof Error ? customerErr.name : "unknown");
-      }
-    }
-
+    // Commercial customer reconciliation happens only after verified Auth
+    // identity via rg_commerce_link_verified_customer. Auth UUIDs are not
+    // customers.id, and guest customers are preserved by the RPC.
     return NextResponse.json({ success: true, requiresEmailConfirmation: !signupData.session }, { headers });
   } catch (err) {
     console.error("[Register API] Unexpected failure:", err instanceof Error ? err.name : "unknown");

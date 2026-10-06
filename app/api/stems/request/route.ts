@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
 import { createStemRequest, getStemRequestByPurchase, isTierEligibleForStems } from "@/lib/stems/tickets";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthorizedPurchase } from "@/lib/commerce/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -21,25 +22,8 @@ export async function POST(req: NextRequest) {
 
     // Verify purchase exists and belongs to this user or customer email
     const supabase = createAdminClient();
-    const { data: purchase, error: pErr } = await supabase
-      .from("purchases")
-      .select(`
-        id,
-        license_tier,
-        customers (
-          email
-        )
-      `)
-      .eq("id", purchaseId)
-      .single();
-
-    if (pErr || !purchase) {
-      return NextResponse.json({ error: "Purchase not found." }, { status: 404 });
-    }
-
-    // Security check: ensure user owns the purchase
-    const customerEmail = (purchase.customers as any)?.email;
-    if (customerEmail && user.email && customerEmail.toLowerCase() !== user.email.toLowerCase()) {
+    const purchase = await getAuthorizedPurchase(supabase, purchaseId, { user });
+    if (!purchase) {
       return NextResponse.json({ error: "Access denied. Purchase belongs to another account." }, { status: 403 });
     }
 

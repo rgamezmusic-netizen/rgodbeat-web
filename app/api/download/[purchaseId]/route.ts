@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolvePrivateDownloadUrl } from "@/lib/storage/private";
+import { getCurrentUser } from "@/lib/auth/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthorizedPurchase, guestPurchaseCookieName } from "@/lib/commerce/authorization";
 
 export async function GET(
   req: NextRequest,
@@ -23,48 +26,27 @@ export async function GET(
       );
     }
 
+    const supabase = createAdminClient();
+    const purchase = await getAuthorizedPurchase(supabase, purchaseId, {
+      user: await getCurrentUser(),
+      guestToken: orderId => req.cookies.get(guestPurchaseCookieName(orderId))?.value,
+    });
+    if (!purchase) {
+      return NextResponse.json({ error: "Inicia sesión con la cuenta titular o recupera el acceso seguro de la compra." }, { status: 403 });
+    }
+
     const ipAddress = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || undefined;
     const userAgent = req.headers.get("user-agent") || undefined;
 
     // Deliver Official License Agreement (Personalized Vector PDF generated on demand from Master Template)
     if (fileType === "contract") {
-      const { createAdminClient } = await import("@/lib/supabase/admin");
       const { extractLicenseMetadata, generateContractPdfBuffer } = await import("@/lib/commerce/contracts");
-      const supabase = createAdminClient();
-
-      const { data: purchase, error: pError } = await supabase
-        .from("purchases")
-        .select(`
-          id,
-          order_id,
-          beat_id,
-          license_tier,
-          contract_text,
-          created_at,
-          beats (
-            title
-          ),
-          orders (
-            total_amount,
-            currency,
-            customers (
-              name,
-              email
-            )
-          )
-        `)
-        .eq("id", purchaseId)
-        .single();
-
-      if (pError || !purchase) {
-        return NextResponse.json({ error: "License agreement not found for this purchase." }, { status: 404 });
-      }
-
       const { licenseId, contractVersion } = extractLicenseMetadata(purchase);
-      const beatTitle = (purchase.beats as any)?.title || "RGODBEAT";
+      const beatTitle = purchase.beats?.title || "RGODBEAT";
       const cleanTitle = beatTitle.replace(/[^a-zA-Z0-9_-]/g, "_");
-      const order = purchase.orders as any;
-      const customer = order?.customers as any;
+      const order = purchase.orders;
+      const purchaser = order.customers;
+      const licensee = purchase.customers;
       const tierUpper = String(purchase.license_tier || "WAV").toUpperCase();
 
       const format = searchParams.get("format") || "pdf";
@@ -76,6 +58,7 @@ export async function GET(
           headers: {
             "Content-Type": "text/plain; charset=utf-8",
             "Content-Disposition": `attachment; filename="${cleanTitle}_${tierUpper}_License_${licenseId}.txt"`,
+            "Cache-Control": "private, no-store",
           },
         });
       }
@@ -83,13 +66,15 @@ export async function GET(
       // Generate official personalized vector PDF dynamically
       const pdfBytes = await generateContractPdfBuffer({
         orderId: purchase.order_id,
-        customerName: customer?.name || "Customer",
-        customerEmail: customer?.email || "",
+        customerName: licensee?.name || "Customer",
+        customerEmail: licensee?.email || "",
+        purchaserName: purchaser?.name || "Customer",
+        isGift: purchase.customer_id !== order.customer_id,
         beatTitle,
         beatId: purchase.beat_id,
         licenseTier: purchase.license_tier,
-        amountPaid: Number(order?.total_amount) || 0,
-        currency: order?.currency || "USD",
+        amountPaid: Number(order.total_amount) || 0,
+        currency: order.currency || "USD",
         purchaseDate: purchase.created_at,
         licenseId,
         version: contractVersion,
@@ -100,7 +85,7 @@ export async function GET(
         headers: {
           "Content-Type": "application/pdf",
           "Content-Disposition": `attachment; filename="${cleanTitle}_${tierUpper}_License_${licenseId}.pdf"`,
-          "Cache-Control": "private, max-age=3600",
+          "Cache-Control": "private, no-store",
         },
       });
     }

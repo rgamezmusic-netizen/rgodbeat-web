@@ -179,6 +179,9 @@ export interface GenerateContractParams {
   orderId: string;
   customerName: string;
   customerEmail: string;
+  /** Payer is distinct from the Licensee for gifts; omitted for legacy/self purchases. */
+  purchaserName?: string;
+  isGift?: boolean;
   beatTitle: string;
   beatId: string;
   licenseTier: LicenseTier | string;
@@ -199,6 +202,8 @@ export function generateLicenseContract({
   orderId,
   customerName,
   customerEmail,
+  purchaserName,
+  isGift = false,
   beatTitle,
   beatId,
   licenseTier,
@@ -241,7 +246,10 @@ export function generateLicenseContract({
   };
 
   const rawTemplate = getMasterTemplate(effectiveVersion, isExclusive);
-  return injectContractVariables(rawTemplate, variables);
+  const rendered = injectContractVariables(rawTemplate, variables);
+  return isGift
+    ? `${rendered}\n\nPURCHASER (PAYER): ${purchaserName || "Customer"}\nLICENSEE: ${customerName || "Customer"} (${customerEmail})`
+    : rendered;
 }
 
 /**
@@ -335,6 +343,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     deliverables: config.deliverables,
     customerName: contractParams.customerName || "Customer",
     customerEmail: contractParams.customerEmail,
+    purchaserName: contractParams.purchaserName || contractParams.customerName || "Customer",
     beatTitle: contractParams.beatTitle,
     beatId: contractParams.beatId,
     orderId: contractParams.orderId,
@@ -447,7 +456,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     x: margin,
     y: tableY,
     width: contentWidth,
-    height: 165,
+    height: 183,
     color: rgb(1, 1, 1),
     borderColor: rgb(0.9, 0.9, 0.92),
     borderWidth: 1,
@@ -455,6 +464,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
 
   const rowItems = [
     ["BEAT TITLE", `"${metadata.beatTitle}" (Catalog ID: ${metadata.beatId})`],
+    ...(contractParams.isGift ? [["PURCHASER (PAYER)", metadata.purchaserName] as [string, string]] : []),
     ["LICENSEE (CUSTOMER)", `${metadata.customerName} (${metadata.customerEmail})`],
     ["LICENSE PRODUCT", `${metadata.tier} (${isExclusive ? "Exclusive" : "Non-Exclusive"})`],
     ["TOTAL CONSIDERATION", `${metadata.price} (Verified & Paid in Full)`],
@@ -464,7 +474,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     ["JURISDICTION", metadata.jurisdiction],
   ];
 
-  let currentY = tableY + 145;
+  let currentY = tableY + 163;
   rowItems.forEach(([label, val]) => {
     page1.drawText(label, {
       x: margin + 12,

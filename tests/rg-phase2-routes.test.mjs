@@ -131,7 +131,7 @@ test('persisted YouTube crossings retry after failure, ignore view dips/recovery
   assert.deepEqual(youtubeMilestoneEvidence(observations,rules,'2026-10-15T00:00:00Z','2026-10-29T00:00:00Z'),[]);
 });
 
-test('actual commerce helper uses atomic shared entitlement and falls back only for an absent RPC',async()=>{
+test('actual commerce helper requires an atomic Studio entitlement RPC and never uses a read/update fallback',async()=>{
   const f=loadSource('lib/commerce/fulfillment.ts',{
     '@/lib/supabase/admin':{},'@/lib/stripe/server':{},'@/lib/commerce/cart':{},'@/lib/commerce/contracts':{},'@/lib/r2/client':{},
   });
@@ -139,7 +139,7 @@ test('actual commerce helper uses atomic shared entitlement and falls back only 
   const live={rpc:async(name,args)=>{assert.equal(name,'rg_extend_studio_access');assert.equal(args.p_customer_id,'customer');return{data:'2030-12-20T00:00:00Z',error:null};},from:()=>q};
   assert.equal(await f.grantStudioAccess(live,'customer',30),'2030-12-20T00:00:00Z');assert.equal(calls.length,0);
   const legacy={rpc:async()=>({data:null,error:{code:'PGRST202'}}),from:()=>q};
-  assert.equal(await f.grantStudioAccess(legacy,'customer',30),'2030-12-20T00:00:00.000Z');assert.equal(calls.length,1);
+  await assert.rejects(()=>f.grantStudioAccess(legacy,'customer',30),/STUDIO_ENTITLEMENT_GRANT_FAILED/);assert.equal(calls.length,0);
   const unavailable={rpc:async()=>({data:null,error:{code:'08006',message:'Fixture unavailable'}}),from:()=>{throw Error('Must not fall back');}};
-  await f.grantStudioAccess(unavailable,'customer',30);assert.equal(calls.length,1);
+  await assert.rejects(()=>f.grantStudioAccess(unavailable,'customer',30),/STUDIO_ENTITLEMENT_GRANT_FAILED/);assert.equal(calls.length,0);
 });

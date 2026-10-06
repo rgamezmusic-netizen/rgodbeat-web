@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStripe, isStripeConfigured } from "@/lib/stripe/server";
 import { getCurrentUser } from "@/lib/auth/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,6 +38,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid service ID" }, { status: 400 });
     }
 
+    const admin = createAdminClient() as any;
+    const { data: intent, error: intentError } = await admin.from("commerce_checkout_intents").insert({
+      buyer_auth_user_id: user.id,
+      buyer_email: customerEmail,
+      recipient_mode: "self",
+      snapshot: { version: 1, kind: "service", serviceId, name, totalAmountCents: price * 100, currency: "usd" },
+      snapshot_version: 1,
+    }).select("id").single();
+    if (intentError || !intent) throw new Error("CHECKOUT_INTENT_COULD_NOT_BE_SAVED");
+
     const sessionParams: any = {
       payment_method_types: ["card"],
       line_items: [
@@ -55,6 +66,7 @@ export async function POST(req: NextRequest) {
       customer_email: customerEmail || undefined,
       metadata: {
         type,
+        commerceIntentId: intent.id,
         customerEmail: customerEmail || "",
         customerName: customerName || "",
       },
@@ -62,7 +74,15 @@ export async function POST(req: NextRequest) {
       cancel_url: `${origin}/beats`,
     };
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create(sessionParams, { idempotencyKey: `commerce-intent:${intent.id}` });
+    } catch (stripeError) {
+      await admin.from("commerce_checkout_intents").update({ state: "failed", last_error_code: "stripe_session_creation_failed" }).eq("id", intent.id);
+      throw stripeError;
+    }
+    const { error: sessionLinkError } = await admin.from("commerce_checkout_intents").update({ stripe_checkout_session_id: session.id }).eq("id", intent.id);
+    if (sessionLinkError) throw new Error("CHECKOUT_SESSION_LINK_PENDING_WEBHOOK_RECOVERY");
 
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (err: any) {

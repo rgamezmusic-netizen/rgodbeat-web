@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fulfillStripeCheckoutSession } from "@/lib/commerce/fulfillment";
 import { getStripe, isStripeConfigured } from "@/lib/stripe/server";
+import { guestPurchaseCookieName, guestPurchaseTokenHash, issueGuestPurchaseAccess } from "@/lib/commerce/authorization";
+import { getCurrentUser } from "@/lib/auth/server";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +31,11 @@ export async function POST(req: NextRequest) {
     await fulfillStripeCheckoutSession(stripeSession);
 
     const supabase = createAdminClient();
-    const { data: order, error } = await supabase
+    const { data: order, error } = await (supabase as any)
       .from("orders")
       .select(`
         id,
+        customer_id,
         status,
         payment_status,
         total_amount,
@@ -58,7 +61,7 @@ export async function POST(req: NextRequest) {
     }
 
     const purchases = (order.purchases as any[] | null) || [];
-    return NextResponse.json({
+    const response = NextResponse.json({
       orderId: order.id,
       totalAmount: Number(order.total_amount),
       currency: order.currency,
@@ -68,6 +71,30 @@ export async function POST(req: NextRequest) {
         beatTitle: purchase.beats?.title || "Beat",
       })),
     });
+    const user = await getCurrentUser();
+    if (!user && purchases.length > 0) {
+      const cookieName = guestPurchaseCookieName(order.id);
+      const currentToken = req.cookies.get(cookieName)?.value;
+      let currentTokenValid = false;
+      if (currentToken) {
+        const { data: existingGrant } = await (supabase as any).from("purchase_guest_access_tokens").select("id")
+          .eq("order_id", order.id).eq("customer_id", order.customer_id)
+          .eq("token_hash", guestPurchaseTokenHash(currentToken)).is("revoked_at", null)
+          .gt("expires_at", new Date().toISOString()).maybeSingle();
+        currentTokenValid = Boolean(existingGrant);
+      }
+      if (!currentTokenValid) {
+        const grant = await issueGuestPurchaseAccess(supabase, order.id, order.customer_id);
+        response.cookies.set(grant.name, grant.token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          expires: new Date(grant.expiresAt),
+        });
+      }
+    }
+    return response;
   } catch (error) {
     console.error("[Checkout Completion Error]:", error);
     return NextResponse.json(
