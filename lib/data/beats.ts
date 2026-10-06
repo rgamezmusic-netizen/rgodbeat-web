@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Beat, Genre, Mood, LicenseTier, BeatEditData, PerformanceMetrics } from "@/types";
 import { getPublicStorageUrl } from "@/lib/storage";
-import { getStorePrice } from "@/lib/commerce/pricing";
 
 export type { BeatEditData };
 
@@ -45,9 +44,9 @@ function mapBeatRowToBeat(row: any): Beat {
     });
   }
 
-  const pricing = Object.fromEntries(
-    Object.entries(regularPricing).map(([tier, price]) => [tier, getStorePrice(price, tier as LicenseTier)])
-  ) as Record<LicenseTier, number>;
+  // Catalog and checkout both use the configured license price/override.
+  // Discount presentation must never change the amount that is actually charged.
+  const pricing = { ...regularPricing };
 
   const durationStr = formatDuration(row.duration_seconds);
   const coverStyle = GENRE_GRADIENTS[genreSlug] || "from-[#1d102e] via-[#121018] to-[#09080d]";

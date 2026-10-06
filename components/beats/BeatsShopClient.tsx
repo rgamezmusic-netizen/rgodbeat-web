@@ -121,9 +121,9 @@ export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientPro
               </p>
             </div>
             <div className="relative z-10 flex items-end justify-between mt-auto">
-              <div className="flex flex-col">
-                <span className="text-sm text-zinc-500 line-through font-mono">$398.00</span>
+              <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className="text-3xl font-black text-white font-mono">$199<span className="text-lg text-cyan-400">.00</span></span>
+                <span className="text-sm text-zinc-500 line-through font-mono">$398.00</span>
               </div>
               <button
                 onClick={() => handlePurchaseService("the_park")}
@@ -148,9 +148,9 @@ export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientPro
               </p>
             </div>
             <div className="relative z-10 flex items-end justify-between mt-auto">
-              <div className="flex flex-col">
-                <span className="text-sm text-zinc-500 line-through font-mono">$20.00</span>
+              <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className="text-3xl font-black text-white font-mono">$10<span className="text-lg text-purple-400">.00</span></span>
+                <span className="text-sm text-zinc-500 line-through font-mono">$20.00</span>
               </div>
               <button
                 onClick={() => handlePurchaseService("studio_pro")}
