@@ -29,6 +29,7 @@
   overflow: hidden;
   perspective: 1150px;
   perspective-origin: 50% 48%;
+  touch-action: pan-y;
   transform-style: preserve-3d;
   mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
 }
@@ -48,11 +49,13 @@
 }
 
 .sleeve {
+  --sleeve-size: clamp(190px, 39vw, 310px);
   position: absolute;
   top: 50%;
   left: 50%;
   display: block;
-  width: clamp(190px, 39vw, 310px);
+  width: var(--sleeve-size);
+  height: var(--sleeve-size);
   aspect-ratio: 1;
   padding: 9px;
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -61,7 +64,7 @@
   box-shadow: 0 25px 55px rgba(0, 0, 0, 0.66), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   transform: translate(-50%, -50%) rotateY(var(--angle)) translateZ(var(--radius));
   transform-style: preserve-3d;
-  transition: transform 720ms cubic-bezier(0.2, 0.74, 0.18, 1), opacity 480ms ease, filter 480ms ease;
+  transition: transform 580ms cubic-bezier(0.2, 0.74, 0.18, 1), opacity 380ms ease;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -72,7 +75,7 @@
 }
 
 .activeSleeve {
-  filter: drop-shadow(0 16px 26px rgba(0, 0, 0, 0.45));
+  transform: translate(-50%, -50%) rotateY(var(--angle)) translateZ(var(--radius)) translateX(-17%) scale(.84);
 }
 
 .disc {
@@ -82,16 +85,82 @@
   right: -21%;
   width: 91%;
   aspect-ratio: 1;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(224, 227, 232, 0.45);
   border-radius: 50%;
-  background:
-    radial-gradient(circle, #161516 0 7%, #7b7770 7.5% 8.2%, #1b1a1b 8.8% 10%, #68655e 10.5% 10.9%, #222123 11.5% 17%, #151416 17.5% 100%);
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.8), 0 9px 25px rgba(0, 0, 0, 0.7);
-  transition: transform 720ms cubic-bezier(0.2, 0.74, 0.18, 1);
+  background: #090a0c;
+  box-shadow: inset 0 0 0 2px #09090b, inset 0 0 0 3px rgba(255,255,255,.18), 2px 8px 18px rgba(0,0,0,.65);
+  transition: transform 580ms cubic-bezier(0.2, 0.74, 0.18, 1);
+  pointer-events: none;
 }
 
 .activeSleeve .disc {
-  transform: translateX(5%);
+  transform: translateX(31%);
+}
+
+.discSurface {
+  position: absolute;
+  inset: 1.1%;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle at center, transparent 0 .9px, rgba(255,255,255,.085) 1px 1.3px, rgba(0,0,0,.65) 1.5px 2.1px),
+    conic-gradient(from -30deg, #090a0c, #222326 45deg, #08090b 90deg, #111215 160deg, #242528 200deg, #08090a 250deg, #18191c 310deg, #090a0c);
+  box-shadow: inset 0 0 0 6px rgba(0,0,0,.45);
+  animation: recordTurn 12s linear infinite;
+  animation-play-state: paused;
+}
+
+.disc::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from -42deg, transparent 0deg, rgba(255,255,255,.16) 24deg, transparent 50deg 175deg, rgba(255,255,255,.1) 202deg, transparent 230deg);
+  box-shadow: inset 1px 1px 1px rgba(255,255,255,.24), inset -1px -2px 2px rgba(0,0,0,.9);
+}
+
+.discLabel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 43%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid rgba(245,241,231,.5);
+  border-radius: 50%;
+  background-position: center;
+  background-size: cover;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 3px #0b0c0e, 0 0 0 4px rgba(255,255,255,.13), inset 0 0 0 3px rgba(0,0,0,.2);
+}
+
+.discLabel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,248,230,.12), transparent 42%, rgba(0,0,0,.28));
+}
+
+.discSpindle {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  width: 10%;
+  aspect-ratio: 1;
+  border: 1px solid rgba(244,239,223,.7);
+  border-radius: 50%;
+  background: #060608;
+  box-shadow: 0 0 0 2px rgba(0,0,0,.3), inset 1px 1px 2px #000;
+  transform: translate(-50%, -50%);
+}
+
+.playingSleeve .discSurface {
+  animation-play-state: running;
+}
+
+@keyframes recordTurn {
+  to { transform: rotate(360deg); }
 }
 
 .artwork {
@@ -314,9 +383,13 @@
   }
 
   .sleeve {
-    width: clamp(180px, 56vw, 245px);
+    --sleeve-size: clamp(180px, 56vw, 245px);
     padding: 7px;
     --radius: 255px !important;
+  }
+
+  .activeSleeve {
+    transform: translate(-50%, -50%) rotateY(var(--angle)) translateZ(var(--radius)) translateX(-17%) scale(.74);
   }
 
   .selectedBeat {
@@ -337,6 +410,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .discSurface {
+    animation: none;
+  }
   .sleeve,
   .disc,
   .arrow,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { memo, useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Heart, Pause, Play, ShoppingBag } from "lucide-react";
 import { Beat } from "@/types";
@@ -19,15 +19,59 @@ function coverIsImage(cover: string) {
   return cover.startsWith("http://") || cover.startsWith("https://") || cover.startsWith("/");
 }
 
+// Playback progress updates the player context frequently. Keep unchanged
+// record artwork out of those renders; only selection and play state affect it.
+const BeatSleeve = memo(function BeatSleeve({ beat, index, offset, playing, onSelect }: {
+  beat: Beat;
+  index: number;
+  offset: number;
+  playing: boolean;
+  onSelect: (index: number) => void;
+}) {
+  const imageCover = coverIsImage(beat.cover);
+  const coverStyle = imageCover ? { backgroundImage: `url(${JSON.stringify(beat.cover)})` } : undefined;
+  const coverClass = imageCover ? '' : `bg-gradient-to-br ${beat.cover}`;
+  return (
+    <button
+      type="button"
+      className={`${styles.sleeve} ${offset === 0 ? styles.activeSleeve : ''} ${playing ? styles.playingSleeve : ''}`}
+      style={{ '--angle': `${offset * 32}deg`, '--radius': 'clamp(245px, 41vw, 390px)',
+        opacity: offset === 0 ? 1 : Math.abs(offset) === 1 ? 0.78 : 0.43,
+        zIndex: 10 - Math.abs(offset) } as React.CSSProperties}
+      onClick={() => offset !== 0 && onSelect(index)}
+      aria-label={`${offset === 0 ? 'Beat seleccionado' : 'Seleccionar beat'}: ${beat.title}`}
+      aria-current={offset === 0 ? 'true' : undefined}
+    >
+      <span className={styles.disc} aria-hidden="true">
+        <span className={styles.discSurface}>
+          <span className={`${styles.discLabel} ${coverClass}`} style={coverStyle}>
+            <span className={styles.discSpindle} />
+          </span>
+        </span>
+      </span>
+      <span className={`${styles.artwork} ${coverClass}`} style={coverStyle}>
+        <span className={styles.artworkShade} />
+        <span className={styles.artworkMark}>RG</span>
+        <span className={styles.artworkInfo}><span>{beat.genre}</span><strong>{beat.title}</strong></span>
+      </span>
+    </button>
+  );
+});
+
 export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [selection, setSelection] = useState({ beats, index: 0 });
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>({});
   const [votedBeatIds, setVotedBeatIds] = useState<Set<string>>(() => new Set());
   const [isVoting, setIsVoting] = useState(false);
   const { addToCart } = useCart();
   const { currentBeat, isPlaying, togglePlay } = usePlayer();
+  const gestureRef = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
+  const selectIndex = useCallback((index: number) => setSelection({ beats, index }), [beats]);
 
-  useEffect(() => setActiveIndex(0), [beats]);
+  // Reset alongside a changed catalog, before committing a stale selection.
+  if (selection.beats !== beats) setSelection({ beats, index: 0 });
+  const activeIndex = selection.beats === beats ? selection.index : 0;
 
   if (beats.length === 0) {
     return (
@@ -59,7 +103,8 @@ export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
       : Array.from({ length: Math.min(5, beats.length) }, (_, i) => i - Math.floor(Math.min(5, beats.length) / 2));
 
   function moveBy(delta: number) {
-    setActiveIndex((index) => (index + delta + beats.length) % beats.length);
+    setSelection((current) => ({ beats,
+      index: ((current.beats === beats ? current.index : 0) + delta + beats.length) % beats.length }));
   }
 
   async function voteForSelected() {
@@ -93,38 +138,43 @@ export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
         <span>{String(activeIndex + 1).padStart(2, "0")} — {String(beats.length).padStart(2, "0")}</span>
       </div>
 
-      <div className={styles.stage}>
+      <div className={styles.stage}
+        onPointerDown={event => {
+          if (!event.isPrimary || event.button !== 0) return;
+          suppressClickRef.current = false;
+          gestureRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, dragging: false };
+        }}
+        onPointerMove={event => {
+          const gesture = gestureRef.current;
+          if (!gesture || gesture.id !== event.pointerId || gesture.dragging) return;
+          const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+          if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+            gesture.dragging = true;
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerUp={event => {
+          const gesture = gestureRef.current;
+          gestureRef.current = null;
+          if (!gesture || gesture.id !== event.pointerId || !gesture.dragging) return;
+          suppressClickRef.current = true;
+          const distance = event.clientX - gesture.x;
+          if (Math.abs(distance) >= 42) moveBy(distance < 0 ? 1 : -1);
+        }}
+        onPointerCancel={() => { gestureRef.current = null; }}
+        onClickCapture={event => {
+          if (!suppressClickRef.current) return;
+          suppressClickRef.current = false;
+          event.preventDefault(); event.stopPropagation();
+        }}
+      >
         <div className={styles.axis} aria-hidden="true" />
         {offsets.map((offset) => {
           const index = (activeIndex + offset + beats.length) % beats.length;
           const beat = beats[index];
-          const imageCover = coverIsImage(beat.cover);
-          const angle = offset * 32;
-          const opacity = offset === 0 ? 1 : Math.abs(offset) === 1 ? 0.78 : 0.43;
-
           return (
-            <button
-              key={beat.id}
-              type="button"
-              className={`${styles.sleeve} ${offset === 0 ? styles.activeSleeve : ""}`}
-              style={{ "--angle": `${angle}deg`, "--radius": "clamp(245px, 41vw, 390px)", opacity, zIndex: 10 - Math.abs(offset) } as React.CSSProperties}
-              onClick={() => offset !== 0 && setActiveIndex(index)}
-              aria-label={`${offset === 0 ? "Beat seleccionado" : "Seleccionar beat"}: ${beat.title}`}
-              aria-current={offset === 0 ? "true" : undefined}
-            >
-              <span className={styles.disc} aria-hidden="true" />
-              <span
-                className={`${styles.artwork} ${imageCover ? "" : `bg-gradient-to-br ${beat.cover}`}`}
-                style={imageCover ? { backgroundImage: `url(${JSON.stringify(beat.cover)})` } : undefined}
-              >
-                <span className={styles.artworkShade} />
-                <span className={styles.artworkMark}>RG</span>
-                <span className={styles.artworkInfo}>
-                  <span>{beat.genre}</span>
-                  <strong>{beat.title}</strong>
-                </span>
-              </span>
-            </button>
+            <BeatSleeve key={beat.id} beat={beat} index={index} offset={offset}
+              playing={offset === 0 && currentBeat?.id === beat.id && isPlaying} onSelect={selectIndex} />
           );
         })}
       </div>
