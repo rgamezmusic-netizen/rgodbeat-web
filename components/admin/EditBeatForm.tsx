@@ -10,6 +10,7 @@ import { formatCurrency } from "@/lib/utils";
 import type { BeatEditData } from "@/types";
 import { getBeatMoodSuggestions } from "@/lib/data/beatMoodSuggestions";
 import { BeatMoodSuggestions } from "@/components/admin/BeatMoodSuggestions";
+import { BeatDescriptionSuggestions } from "@/components/admin/BeatDescriptionSuggestions";
 
 interface CategoryOption {
   id: string;
@@ -45,6 +46,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
   const [slug, setSlug] = useState(beat.slug);
   const [description, setDescription] = useState(beat.description || "");
   const [genreId, setGenreId] = useState(beat.genre_id || categories[0]?.id || "");
+  const selectedGenre = categories.find(category => category.id === genreId);
   const [mood, setMood] = useState(beat.mood || "Dark");
   const [bpm, setBpm] = useState(beat.bpm ? String(beat.bpm) : "140");
   const [key, setKey] = useState(beat.musical_key || "Am");
@@ -258,9 +260,9 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
         setProgressStatus("Saved! Redirecting to catalog...");
         router.push("/admin/beats");
         router.refresh();
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("[EditBeatForm] Error:", err);
-        setFormError(err.message || "Failed to update beat.");
+        setFormError(err instanceof Error ? err.message : "Failed to update beat.");
         setProgressStatus(null);
         setUploadPercent(null);
       }
@@ -299,7 +301,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
             {beat.title}
           </h1>
           <p className="text-xs text-zinc-400 font-mono mt-0.5">
-            ID: {beat.id} // SLUG: /{beat.slug}
+            ID: {beat.id} {'// SLUG: /'}{beat.slug}
           </p>
         </div>
 
@@ -508,14 +510,21 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
 
             {/* Description */}
             <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">
+              <label htmlFor="edit-beat-description" className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">
                 Editorial Description
               </label>
               <textarea
+                id="edit-beat-description"
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.08] focus:border-purple-500 focus:outline-none text-sm text-white placeholder:text-zinc-600 font-mono resize-y"
+              />
+              <BeatDescriptionSuggestions
+                genre={selectedGenre?.slug}
+                genreName={selectedGenre?.name}
+                description={description}
+                onSelect={setDescription}
               />
             </div>
           </div>

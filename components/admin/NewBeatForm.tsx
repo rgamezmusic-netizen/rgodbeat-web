@@ -9,6 +9,7 @@ import { uploadFileToSignedUrl } from "@/lib/storage/upload-client";
 import { formatCurrency } from "@/lib/utils";
 import { getBeatMoodSuggestions } from "@/lib/data/beatMoodSuggestions";
 import { BeatMoodSuggestions } from "@/components/admin/BeatMoodSuggestions";
+import { BeatDescriptionSuggestions } from "@/components/admin/BeatDescriptionSuggestions";
 
 interface CategoryOption {
   id: string;
@@ -44,6 +45,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
   const [isSlugCustomized, setIsSlugCustomized] = useState(false);
   const [description, setDescription] = useState("");
   const [genreId, setGenreId] = useState(categories[0]?.id || "");
+  const selectedGenre = categories.find(category => category.id === genreId);
   const [mood, setMood] = useState(() => getBeatMoodSuggestions(categories[0]?.slug)[0] || "Dark");
   const [bpm, setBpm] = useState("140");
   const [key, setKey] = useState("C");
@@ -254,9 +256,9 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
         setUploadProgressStatus("Beat created successfully! Redirecting...");
         router.push("/admin/beats");
         router.refresh();
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("[NewBeatForm] Upload error:", err);
-        setFormError(err.message || "An error occurred while uploading the beat.");
+        setFormError(err instanceof Error ? err.message : "An error occurred while uploading the beat.");
         setUploadProgressStatus(null);
         setUploadPercent(null);
       }
@@ -379,15 +381,22 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
 
           {/* Description */}
           <div className="space-y-1.5 sm:col-span-2">
-            <label className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">
+            <label htmlFor="new-beat-description" className="text-xs font-mono text-zinc-400 uppercase tracking-wider block">
               Description / Production Notes
             </label>
             <textarea
+              id="new-beat-description"
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Atmospheric sound design notes, intended artist pockets, sample inspirations..."
+              placeholder="Describe el beat o elige una idea según su género..."
               className="w-full px-4 py-2.5 rounded-lg bg-white/[0.03] border border-white/[0.08] focus:border-purple-500 focus:outline-none text-xs text-white placeholder:text-zinc-600 font-mono transition-all resize-y"
+            />
+            <BeatDescriptionSuggestions
+              genre={selectedGenre?.slug}
+              genreName={selectedGenre?.name}
+              description={description}
+              onSelect={setDescription}
             />
           </div>
 

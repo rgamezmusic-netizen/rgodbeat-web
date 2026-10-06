@@ -12,9 +12,13 @@ const MOODS_BY_GENRE: Record<string, string[]> = {
 
 const MOODS = ['Dark', 'Melodic', 'Energetic', 'Atmospheric', 'Aggressive', 'Chill', 'Romantic', 'Epic', 'Soulful'];
 
-export function getBeatMoodSuggestions(genre: string | undefined): string[] {
+export function normalizeBeatGenre(genre: string | undefined): string {
   const key = (genre || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const canonical = key === 'rb' || key === 'rbsoul' || key === 'rhythmandblues' ? 'rnb'
+  return key === 'rb' || key === 'rbsoul' || key === 'rhythmandblues' ? 'rnb'
     : key === 'hiphoprap' || key === 'rap' ? 'hiphop' : key;
+}
+
+export function getBeatMoodSuggestions(genre: string | undefined): string[] {
+  const canonical = normalizeBeatGenre(genre);
   return MOODS_BY_GENRE[canonical] || MOODS.slice(0, 4);
 }
