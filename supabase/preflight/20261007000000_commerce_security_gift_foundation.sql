@@ -23,7 +23,7 @@ WITH required_columns(table_name,column_name,expected_type) AS (
 ), actual AS (
   SELECT r.*,c.data_type actual_type,c.udt_name
     FROM required_columns r LEFT JOIN information_schema.columns c
-      ON c.table_schema=split_part(r.table_name,'.',1)
+      ON c.table_schema=CASE WHEN position('.' in r.table_name)>0 THEN split_part(r.table_name,'.',1) ELSE 'public' END
      AND c.table_name=CASE WHEN position('.' in r.table_name)>0 THEN split_part(r.table_name,'.',2) ELSE r.table_name END
      AND c.column_name=r.column_name
 ), checks AS (

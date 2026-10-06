@@ -199,9 +199,12 @@ CREATE TABLE IF NOT EXISTS public.stripe_event_processing (
   lease_until timestamptz,
   lease_token uuid,
   received_at timestamptz NOT NULL DEFAULT now(),
-  completed_at timestamptz,
-  UNIQUE (event_id,event_type)
+  completed_at timestamptz
 );
+-- event_id is already the primary key. A second unique index on (event_id,event_type)
+-- is redundant and can deadlock simultaneous ON CONFLICT(event_id) inserts.
+ALTER TABLE public.stripe_event_processing
+  DROP CONSTRAINT IF EXISTS stripe_event_processing_event_id_event_type_key;
 CREATE INDEX IF NOT EXISTS idx_stripe_event_retry ON public.stripe_event_processing(status,lease_until,received_at)
   WHERE status IN ('pending','failed','processing');
 

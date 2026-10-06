@@ -222,14 +222,15 @@ test('registration respects Supabase email verification and never auto-confirms 
     assert.equal('user' in body, false);
     assert.equal(JSON.stringify(signupOptions).includes('email_confirm'), false);
     assert.equal(signupOptions.options.emailRedirectTo, 'https://www.rgodbeat.com/login?confirmed=1');
-    assert.equal(customerSyncs, 1);
+    // The commercial customer link is deferred until Auth email verification.
+    assert.equal(customerSyncs, 0);
 
     const denied = await POST(new NextRequest('https://www.rgodbeat.com/api/auth/register', {
       method: 'POST', headers: { 'Content-Type': 'application/json', origin: 'https://attacker.invalid' },
       body: JSON.stringify({ email: 'local@example.invalid', password: 'a-safe-password' }),
     }));
     assert.equal(denied.status, 403);
-    assert.equal(customerSyncs, 1);
+    assert.equal(customerSyncs, 0);
   } finally {
     if (originalUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = originalUrl;
     if (originalKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = originalKey;
