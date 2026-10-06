@@ -46,3 +46,7 @@ export function Performance({ data, seasonNumber }: { data: SeasonPerformance; s
 export function ProductFrame({ children }: { children: ReactNode }) {
   return <div className={styles.page}><Navbar /><main className={styles.main}><Link className={styles.textLink} href={RG_CHART_PATH}>← RG TOP 23</Link>{children}</main><Footer /></div>;
 }
+
+export function ProfileUnavailable({ href }: { href: string }) {
+  return <ProductFrame><section className={`${styles.section} ${styles.empty}`} role="alert"><p className={styles.eyebrow}>RG TOP 23</p><h1>El perfil volverá en un momento.</h1><p>No pudimos cargar sus datos. Inténtalo de nuevo.</p><Link className={styles.button} href={href}>VOLVER A INTENTAR</Link></section></ProductFrame>;
+}

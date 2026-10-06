@@ -1,14 +1,17 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTrackProfile } from '@/lib/rg/product/profiles';
-import { Performance, ProductFrame } from '@/components/ranking/RgProductParts';
+import { Performance, ProductFrame, ProfileUnavailable } from '@/components/ranking/RgProductParts';
 import { formatRg } from '@/lib/rg/product/presentation';
 import styles from '@/components/ranking/RgProduct.module.css';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'RG Track | RGodBeat' };
 export default async function TrackPage({ params }: { params: Promise<{ id: string }> }) {
-  const data = await getTrackProfile((await params).id);
+  const { id } = await params;
+  let data;
+  try { data = await getTrackProfile(id); } catch { /* Do not expose failed privacy verification or fabricate empty metrics. */ }
+  if (data === undefined) return <ProfileUnavailable href={`/rg/tracks/${encodeURIComponent(id)}`} />;
   if (!data) notFound();
   return <ProductFrame><header className={styles.section}><p className={styles.eyebrow}>RG TRACK</p><h1 className={styles.profileTitle}>{data.track.title}</h1><Link className={styles.textLink} href={`/rg/artists/${data.artist.slug}`}>{data.artist.stage_name}</Link><Performance data={data.performance} seasonNumber={data.seasonNumber} /></header>
     {data.beat && <section className={styles.section}><p className={styles.eyebrow}>EL BEAT DETRÁS DEL TRACK</p><h2>{data.beat.title}</h2><p className={styles.muted}>Su actividad también mueve este beat en el chart.</p><Link className={styles.button} href={`/rg/beats/${encodeURIComponent(data.beat.slug)}`}>DESCUBRIR EL BEAT</Link></section>}

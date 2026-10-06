@@ -168,3 +168,31 @@ test('catalog profile preserves existing non-RG slug formats without inferring b
   assert.equal((await profiles(tables).getBeatProfile('Legacy_Beat')).beat.id,ids.beat);
   assert.equal(await profiles(tables).getBeatProfile('../unsafe'),null);
 });
+
+test('every public profile handles service outages without fabricating zero data or exposing error details; absent profiles still 404',async()=>{
+  for(const [file,method,params] of [
+    ['app/rg/artists/[slug]/page.tsx','getArtistProfile',{slug:'fixture-artist'}],
+    ['app/rg/tracks/[id]/page.tsx','getTrackProfile',{id:ids.track}],
+    ['app/rg/beats/[slug]/page.tsx','getBeatProfile',{slug:'fixture-beat'}],
+  ]) {
+    let unavailable=true;
+    const page=loadSource(file,{...replacements,
+      '@/lib/rg/product/profiles':{[method]:async()=>{if(unavailable)throw Error('PRIVATE DATABASE DETAIL');return null;}},
+      '@/components/ranking/RgMemberCard':{RgMemberCard:()=>null},
+    });
+    const markup=renderToStaticMarkup(await page.default({params:Promise.resolve(params)}));
+    assert.match(markup,/role="alert"/);assert.match(markup,/El perfil volverá/);assert.match(markup,/VOLVER A INTENTAR/);
+    assert.doesNotMatch(markup,/PRIVATE DATABASE DETAIL|SEASON SCORE|vistas verificadas|Sin posición/);
+    unavailable=false;await assert.rejects(page.default({params:Promise.resolve(params)}),/NOT_FOUND/);
+  }
+});
+test('authenticated wallet and member sections keep read outages distinct from a zero balance',async()=>{
+  const mocks={...replacements,'@/lib/auth/server':{getCurrentUser:async()=>({id:'owner'})},
+    '@/lib/rg/product/wallet':{getRgWalletSummary:async()=>{throw Error('PRIVATE LEDGER DETAIL');}},
+    '@/lib/rg/identity':{getOwnedArtist:async()=>null},
+  };
+  const wallet=loadSource('app/rg/wallet/page.tsx',mocks);
+  const markup=renderToStaticMarkup(await wallet.default());assert.match(markup,/Tu saldo volverá/);assert.doesNotMatch(markup,/PRIVATE LEDGER DETAIL|0 <span/);
+  const {RgMemberCard}=loadSource('components/ranking/RgMemberCard.tsx',mocks);
+  assert.match(renderToStaticMarkup(await RgMemberCard()),/Tu saldo no está disponible/);
+});
