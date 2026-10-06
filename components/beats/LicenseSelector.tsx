@@ -6,6 +6,7 @@ import { LICENSE_OPTIONS } from "@/lib/mock-data";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { useCart } from "@/contexts/CartContext";
+import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
 interface LicenseSelectorProps {
   beat: Beat;
@@ -43,7 +44,7 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
 
         <div className="sm:text-right">
           <div className="text-2xl sm:text-3xl font-mono font-extrabold text-white">
-            {formatCurrency(currentPrice)}
+            <DiscountPrice regularPrice={beat.regularPricing?.[selectedTier]} price={currentPrice} />
           </div>
           <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
             Pago único por la licencia
@@ -83,7 +84,7 @@ export function LicenseSelector({ beat }: LicenseSelectorProps) {
               </div>
 
               <div className="text-base sm:text-lg font-mono font-bold text-white mt-2">
-                {formatCurrency(price)}
+                <DiscountPrice regularPrice={beat.regularPricing?.[tier]} price={price} compact />
               </div>
             </button>
           );

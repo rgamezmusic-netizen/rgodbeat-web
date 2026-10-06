@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { CartItem } from "@/types";
 import { formatCurrency } from "@/lib/utils";
+import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
 interface CartItemRowProps {
   item: CartItem;
@@ -43,9 +44,11 @@ export function CartItemRow({ item, onRemove, onCloseCart }: CartItemRowProps) {
 
       {/* Price & Remove */}
       <div className="flex flex-col items-end gap-1 shrink-0">
-        <span className="text-sm font-mono font-bold text-white">
-          {formatCurrency(item.price)}
-        </span>
+        {item.customPrice ? (
+          <span className="text-sm font-mono font-bold text-white">{formatCurrency(item.price)}</span>
+        ) : (
+          <DiscountPrice regularPrice={item.beat.regularPricing?.[item.licenseTier]} price={item.price} compact />
+        )}
         <button
           type="button"
           onClick={() => onRemove(item.id)}

@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePlayer } from "@/contexts/PlayerContext";
-import { formatCurrency } from "@/lib/utils";
+import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
 export function BeatPlayer() {
   const {
@@ -172,7 +172,7 @@ export function BeatPlayer() {
             href={`/beats/${currentBeat.slug}`}
             className="text-[11px] font-mono px-3 py-1 rounded-full bg-white/[0.08] hover:bg-purple-500/20 text-white border border-white/10 transition-colors font-bold whitespace-nowrap"
           >
-            {formatCurrency(currentBeat.price)}
+            <DiscountPrice regularPrice={currentBeat.regularPricing?.mp3} price={currentBeat.price} compact />
           </Link>
 
           {/* Desktop Volume Control */}

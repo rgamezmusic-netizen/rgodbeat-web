@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CheckoutItemPayload } from "@/types/commerce";
 import { LicenseTier, Beat } from "@/types";
 import { generateLicenseContract } from "./contracts";
+import { getStorePrice } from "./pricing";
 import type Stripe from "stripe";
 
 export interface AuthoritativeLineItem {
@@ -105,13 +106,16 @@ export async function resolveAuthoritativeCart(
       }
     }
 
-    // Special: Exclusive rights custom offer support (Minimum $200 USD)
+    // Custom exclusive offers are user-entered final prices. Standard license prices
+    // receive the same 50% sale as the storefront, with the existing exclusive floor.
     if (item.licenseTier === "exclusive") {
       if (item.customPrice && !isNaN(Number(item.customPrice))) {
         finalPrice = Math.max(200, Math.round(Number(item.customPrice) * 100) / 100);
       } else {
-        finalPrice = Math.max(200, finalPrice);
+        finalPrice = getStorePrice(finalPrice, item.licenseTier);
       }
+    } else {
+      finalPrice = getStorePrice(finalPrice, item.licenseTier);
     }
 
     items.push({

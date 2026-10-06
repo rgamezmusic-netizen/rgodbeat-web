@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
 import { AtmosphericBackground } from "@/components/atmosphere";
 import { useCart } from "@/contexts/CartContext";
+import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
 export default function CartPage() {
   const { openCart, items, totalAmount, removeFromCart } = useCart();
@@ -64,7 +65,11 @@ export default function CartPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-sm font-bold text-white">${item.price.toFixed(2)}</span>
+                    {item.customPrice ? (
+                      <span className="text-sm font-bold text-white">${item.price.toFixed(2)}</span>
+                    ) : (
+                      <DiscountPrice regularPrice={item.beat.regularPricing?.[item.licenseTier]} price={item.price} compact />
+                    )}
                     <button
                       type="button"
                       onClick={() => removeFromCart(item.id)}

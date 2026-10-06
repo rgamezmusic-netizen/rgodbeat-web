@@ -73,6 +73,8 @@ export interface Beat {
   releasedAt?: string;
   weeklyVotes?: number;
   tags: string[];
+  /** Current storefront price before the active 50% sale. */
+  regularPricing?: Record<LicenseTier, number>;
   pricing: Record<LicenseTier, number>;
   previewAudioUrl?: string;
   rankingStatus?: RankingStatus;

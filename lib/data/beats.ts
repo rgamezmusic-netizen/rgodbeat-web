@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Beat, Genre, Mood, LicenseTier, BeatEditData, PerformanceMetrics } from "@/types";
 import { getPublicStorageUrl } from "@/lib/storage";
+import { getStorePrice } from "@/lib/commerce/pricing";
 
 export type { BeatEditData };
 
@@ -25,7 +26,7 @@ function formatDuration(seconds: number | null): string {
 
 function mapBeatRowToBeat(row: any): Beat {
   const genreSlug = (row.category?.slug || "trap").toLowerCase() as Genre;
-  const pricing: Record<LicenseTier, number> = {
+  const regularPricing: Record<LicenseTier, number> = {
     mp3: 29,
     wav: 49,
     stems: 99,
@@ -36,13 +37,17 @@ function mapBeatRowToBeat(row: any): Beat {
   if (row.beat_licenses && Array.isArray(row.beat_licenses)) {
     row.beat_licenses.forEach((bl: any) => {
       const slug = bl.license_type?.slug as LicenseTier;
-      if (slug && pricing[slug] !== undefined) {
-        pricing[slug] = bl.price_override !== null && bl.price_override !== undefined
+      if (slug && regularPricing[slug] !== undefined) {
+        regularPricing[slug] = bl.price_override !== null && bl.price_override !== undefined
           ? Number(bl.price_override)
-          : Number(bl.license_type?.price || pricing[slug]);
+          : Number(bl.license_type?.price || regularPricing[slug]);
       }
     });
   }
+
+  const pricing = Object.fromEntries(
+    Object.entries(regularPricing).map(([tier, price]) => [tier, getStorePrice(price, tier as LicenseTier)])
+  ) as Record<LicenseTier, number>;
 
   const durationStr = formatDuration(row.duration_seconds);
   const coverStyle = GENRE_GRADIENTS[genreSlug] || "from-[#1d102e] via-[#121018] to-[#09080d]";
@@ -75,6 +80,7 @@ function mapBeatRowToBeat(row: any): Beat {
     createdAt: row.created_at ? new Date(row.created_at).toISOString().split("T")[0] : "2026-03-20",
     releasedAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     tags,
+    regularPricing,
     pricing,
     previewAudioUrl: resolvedPreviewUrl || undefined,
     rankingStatus: row.ranking_status || (row.published ? "active" : "draft"),

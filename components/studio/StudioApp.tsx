@@ -390,6 +390,7 @@ export default function App() {
 
     setRedoStack((prev) => [...prev, { tracks: currentSnapshot, description: lastEntry.description }]);
     setUndoStack(nextUndo);
+    lastEntry.tracks.forEach((track) => saveUserChannelFXTemplate(track.id, track.fx, accessStatus.email));
     setTracks(lastEntry.tracks);
     tracksRef.current = lastEntry.tracks;
     if (engine?.getIsPlaying()) {
@@ -410,6 +411,7 @@ export default function App() {
 
     setUndoStack((prev) => [...prev, { tracks: currentSnapshot, description: nextEntry.description }]);
     setRedoStack(nextRedo);
+    nextEntry.tracks.forEach((track) => saveUserChannelFXTemplate(track.id, track.fx, accessStatus.email));
     setTracks(nextEntry.tracks);
     tracksRef.current = nextEntry.tracks;
     if (engine?.getIsPlaying()) {
@@ -1283,7 +1285,11 @@ export default function App() {
     const customTracks = restoredTracks.filter(
       (t) => !initialTracks.some((it) => it.id === t.id)
     );
-    const finalTracks = [...mergedTracks, ...customTracks];
+    const finalTracks = applyUserFXTemplatesToTracks(
+      [...mergedTracks, ...customTracks],
+      pendingStartupSession.beat || currentBeatRef.current,
+      accessStatus.email
+    );
     restoreBeatMix(pendingStartupSession);
 
     setTracks(finalTracks);
@@ -1940,7 +1946,12 @@ export default function App() {
       },
     };
 
-    const nextTracks = [...tracks, newTrack];
+    const trackWithSavedFX = applyUserFXTemplatesToTracks(
+      [newTrack],
+      currentBeatRef.current,
+      accessStatus.email
+    )[0];
+    const nextTracks = [...tracks, trackWithSavedFX];
     setTracks(nextTracks);
     tracksRef.current = nextTracks;
     showToast(`¡Pista "${newName}" agregada con éxito!`, 'success');
@@ -2336,8 +2347,9 @@ export default function App() {
       activeProjectIdRef.current = crypto.randomUUID();
       currentBeatRef.current = engine.getBeat();
       restoreBeatMix(cloudData);
-      setTracks(cloudData.tracks);
-      tracksRef.current = cloudData.tracks;
+      const cloudTracks = applyUserFXTemplatesToTracks(cloudData.tracks, loadedBeat, accessStatusRef.current.email);
+      setTracks(cloudTracks);
+      tracksRef.current = cloudTracks;
       setUndoStack([]); setRedoStack([]); setPendingStartupSession(null);
 
       // 3. Restore loop settings
@@ -2348,7 +2360,7 @@ export default function App() {
 
       // 4. Synchronize immediately to local session storage
       const locallySaved = await persistStudioSession(
-        cloudData.tracks,
+        cloudTracks,
         currentBeatRef.current,
         cloudData.loopSettings,
         currentTime,
@@ -2486,8 +2498,9 @@ export default function App() {
 
       currentBeatRef.current = engine.getBeat();
       restoreBeatMix(restored);
-      setTracks(restored.tracks);
-      tracksRef.current = restored.tracks;
+      const importedTracks = applyUserFXTemplatesToTracks(restored.tracks, restored.beat, accessStatusRef.current.email);
+      setTracks(importedTracks);
+      tracksRef.current = importedTracks;
       setUndoStack([]); setRedoStack([]); setPendingStartupSession(null);
 
       if (restored.loopSettings) {

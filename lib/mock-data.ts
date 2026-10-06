@@ -1,4 +1,5 @@
 import { Beat, LicenseOption, CategoryInfo, ServiceInfo } from "@/types";
+import { getStorePrice } from "@/lib/commerce/pricing";
 
 export const LICENSE_OPTIONS: LicenseOption[] = [
   {
@@ -70,7 +71,11 @@ export const MOCK_BEATS: Beat[] = [
     published: true,
     createdAt: "2026-09-20",
     tags: ["Reggaeton", "Melodic", "Dark", "Sensual", "95 BPM"],
-    pricing: { mp3: 29, wav: 49, stems: 99, unlimited: 199, exclusive: 499 },
+    regularPricing: { mp3: 29, wav: 49, stems: 99, unlimited: 199, exclusive: 499 },
+    pricing: {
+      mp3: getStorePrice(29, "mp3"), wav: getStorePrice(49, "wav"), stems: getStorePrice(99, "stems"),
+      unlimited: getStorePrice(199, "unlimited"), exclusive: getStorePrice(499, "exclusive"),
+    },
   },
 ];
 

@@ -24,10 +24,11 @@ export function saveUserChannelFXTemplate(trackId: VocalTrackId, fx: VocalFX, us
       reverb: { ...fx.reverb },
     };
     const serialized = JSON.stringify(templateToSave);
-    localStorage.setItem(`${STORAGE_PREFIX}${trackId}`, serialized);
     const cleanEmail = userEmail?.trim().toLowerCase();
     if (cleanEmail) {
       localStorage.setItem(`${STORAGE_PREFIX}${cleanEmail}_${trackId}`, serialized);
+    } else {
+      localStorage.setItem(`${STORAGE_PREFIX}${trackId}`, serialized);
     }
   } catch (err) {
     console.warn(`Error saving FX template for track ${trackId}:`, err);
@@ -46,8 +47,9 @@ export function loadUserChannelFXTemplate(
   if (typeof window === 'undefined') return fallbackFX;
   try {
     const cleanEmail = userEmail?.trim().toLowerCase();
-    const raw = (cleanEmail ? localStorage.getItem(`${STORAGE_PREFIX}${cleanEmail}_${trackId}`) : null) ||
-      localStorage.getItem(`${STORAGE_PREFIX}${trackId}`);
+    const raw = cleanEmail
+      ? localStorage.getItem(`${STORAGE_PREFIX}${cleanEmail}_${trackId}`)
+      : localStorage.getItem(`${STORAGE_PREFIX}${trackId}`);
     if (!raw) return fallbackFX;
     const parsed = JSON.parse(raw);
 
@@ -143,4 +145,3 @@ export function adaptTracksTonalityToBeat(
     };
   });
 }
-

@@ -7,8 +7,8 @@ import { Beat } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { useCart } from "@/contexts/CartContext";
 import { usePlayer } from "@/contexts/PlayerContext";
-import { formatCurrency } from "@/lib/utils";
 import styles from "./BeatGrid.module.css";
+import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
 interface BeatGridProps {
   beats: Beat[];
@@ -163,7 +163,7 @@ export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
           <button type="button" className={styles.buy} onClick={() => addToCart(selected, "mp3")}>
             <ShoppingBag size={16} />
             <span>COMPRAR</span>
-            <strong>{formatCurrency(selected.price)}</strong>
+            <DiscountPrice regularPrice={selected.regularPricing?.mp3} price={selected.price} compact />
           </button>
         </div>
       </div>

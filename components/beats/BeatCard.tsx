@@ -4,11 +4,11 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Heart } from "lucide-react";
 import { Beat } from "@/types";
-import { formatCurrency } from "@/lib/utils";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useCart } from "@/contexts/CartContext";
 
 import { useAtmosphere } from "@/components/atmosphere";
+import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
 interface BeatCardProps {
   beat: Beat;
@@ -153,7 +153,7 @@ export function BeatCard({ beat, isLocked = false }: BeatCardProps) {
         {/* Price Tag Pill */}
         <div className="absolute top-3 right-3 pointer-events-none">
           <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded bg-black/75 backdrop-blur-md text-white border border-white/10">
-            {formatCurrency(beat.price)}
+            <DiscountPrice regularPrice={beat.regularPricing?.mp3} price={beat.price} compact />
           </span>
         </div>
       </div>

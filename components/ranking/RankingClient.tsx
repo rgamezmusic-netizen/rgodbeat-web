@@ -13,6 +13,7 @@ import type { Beat, LicenseTier } from '@/types';
 import { SidePanel } from './SidePanel';
 import { BeatConversation } from './BeatConversation';
 import styles from './Ranking.module.css';
+import { DiscountPrice } from '@/components/commerce/DiscountPrice';
 
 type Panel = { beat: Beat; mode: 'comments' | 'buy' };
 
@@ -42,11 +43,11 @@ function Purchase({ beat, onBuy }: { beat: Beat; onBuy: (beat: Beat, tier: Licen
       const value = item.id as LicenseTier;
       return <label key={item.id} className={tier === value ? styles.selectedLicense : ''}>
         <input type="radio" name="ranking-license" value={value} checked={tier === value} onChange={() => setTier(value)} />
-        <span>{item.name}{item.recommended && <small>POPULAR</small>}</span><strong>{formatCurrency(beat.pricing[value] ?? item.price)}</strong>
+        <span>{item.name}{item.recommended && <small>POPULAR</small>}</span><DiscountPrice regularPrice={beat.regularPricing?.[value]} price={beat.pricing[value] ?? item.price} compact />
       </label>;
     })}</fieldset>
     <div className={styles.licenseDetails}><strong>{option.name}</strong><p>{option.format}</p><ul>{option.features.map(feature => <li key={feature}>{feature}</li>)}</ul></div>
-    <button className={`${styles.goldButton} ${styles.fullButton}`} onClick={() => onBuy(beat, tier)}><ShoppingBag size={17} />Continuar al pago · {formatCurrency(beat.pricing[tier] ?? option.price)}</button>
+      <button className={`${styles.goldButton} ${styles.fullButton}`} onClick={() => onBuy(beat, tier)}><ShoppingBag size={17} />Continuar al pago · <DiscountPrice regularPrice={beat.regularPricing?.[tier]} price={beat.pricing[tier] ?? option.price} compact /></button>
   </>;
 }
 
@@ -139,7 +140,7 @@ export function RankingClient({ initialChart, initialVotedIds }: { initialChart:
     <button className={styles.rowCoverButton} onClick={() => listen(entry.beat)} disabled={!entry.beat.previewAudioUrl} aria-label={`${isPlaying(entry.beat) ? 'Pausar' : 'Escuchar'} ${entry.beat.title}`}><Artwork key={entry.beat.id} beat={entry.beat} /><span>{isPlaying(entry.beat) ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}</span></button>
     <div className={styles.rowTrack}><p>{entry.beat.genre} <span>· {entry.beat.bpm} BPM</span></p><h3>{entry.beat.title}</h3><div className={styles.rowSignals}><span className={styles.points} title="5 puntos por voto y 1 por comentario esta semana">{entry.points} PTS</span>{!outside && <Movement entry={entry} />}</div></div>
     <div className={styles.rowCommunity}>{voteButton(entry)}<button className={styles.commentsButton} onClick={() => openConversation(entry.beat)} aria-label={`Comentarios de ${entry.beat.title}: ${commentText(entry)}`}><MessageCircle size={15} />{commentText(entry)}</button></div>
-    <button className={styles.rowBuy} onClick={() => setPanel({ beat: entry.beat, mode: 'buy' })} aria-label={`Comprar ${entry.beat.title}, desde ${formatCurrency(entry.beat.price)}`}><span>DESDE</span><strong>{formatCurrency(entry.beat.price)}</strong><ArrowRight size={17} /></button>
+    <button className={styles.rowBuy} onClick={() => setPanel({ beat: entry.beat, mode: 'buy' })} aria-label={`Comprar ${entry.beat.title}, desde ${formatCurrency(entry.beat.price)}`}><span>DESDE</span><DiscountPrice regularPrice={entry.beat.regularPricing?.mp3} price={entry.beat.price} compact /><ArrowRight size={17} /></button>
   </article>;
 
   return <main className={styles.main}>
@@ -154,7 +155,7 @@ export function RankingClient({ initialChart, initialVotedIds }: { initialChart:
         <h2 id="champion-title">{champion.beat.title}</h2>
         <div className={styles.championActions}>{voteButton(champion, true)}<span className={styles.points} title="5 puntos por voto y 1 por comentario esta semana">{champion.points} PTS</span><button className={styles.outlineButton} onClick={() => listen(champion.beat)} disabled={!champion.beat.previewAudioUrl}>{isPlaying(champion.beat) ? <Pause size={16} /> : <Play size={16} />} {isPlaying(champion.beat) ? 'Pausar' : 'Escuchar beat'}</button></div>
         <div className={styles.championCommunity}><button className={styles.commentsButton} onClick={() => openConversation(champion.beat)} aria-label={`Comentarios de ${champion.beat.title}: ${commentText(champion)}`}><MessageCircle size={17} />{commentText(champion)}</button><button className={styles.commentsButton} onClick={() => void share(champion.beat)}><Share2 size={16} />Compartir</button></div>
-        <button className={styles.championBuy} onClick={() => setPanel({ beat: champion.beat, mode: 'buy' })}><span>COMPRAR<small>Desde {formatCurrency(champion.beat.price)}</small></span><ArrowRight size={25} /></button>
+        <button className={styles.championBuy} onClick={() => setPanel({ beat: champion.beat, mode: 'buy' })}><span>COMPRAR<small><DiscountPrice regularPrice={champion.beat.regularPricing?.mp3} price={champion.beat.price} compact /></small></span><ArrowRight size={25} /></button>
       </div>
     </section> : <section className={styles.emptyChart}><h2>Sin beats publicados</h2></section>}
     <section className={styles.positions} aria-labelledby="positions-heading"><div className={styles.sectionHeader}><h2 id="positions-heading">POSICIONES<span>/ {String(chart.entries.length).padStart(2, '0')}</span></h2></div>
