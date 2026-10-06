@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { hasAuthLinkParameters, hasPendingAuthRecovery, RECOVERY_SESSION_MARKER, resolveAuthRecovery } from "@/lib/auth/recovery";
+import { safeAuthRedirect } from "@/lib/auth/redirect";
 
 /** Handles links that land on the Site URL when Supabase rejects a redirect URL. */
 export function RecoveryLinkRedirect() {
@@ -19,6 +20,9 @@ export function RecoveryLinkRedirect() {
           if (url.searchParams.get("next")) target.searchParams.set("next", url.searchParams.get("next")!);
           if (result.error) target.searchParams.set("error", "invalid_link");
           window.location.replace(`${target.pathname}${target.search}`);
+        } else if (result.user && url.pathname === "/login") {
+          const destination = safeAuthRedirect(url.searchParams.get("redirect"), "/account");
+          window.location.replace(destination);
         }
       });
     }

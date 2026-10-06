@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createCommerceAdminClient } from "@/lib/commerce/admin-client";
 import { fulfillStripeCheckoutSession } from "@/lib/commerce/fulfillment";
 import { getStripe, isStripeConfigured } from "@/lib/stripe/server";
 import { guestPurchaseCookieName, guestPurchaseTokenHash, issueGuestPurchaseAccess } from "@/lib/commerce/authorization";
@@ -30,8 +30,8 @@ export async function POST(req: NextRequest) {
 
     await fulfillStripeCheckoutSession(stripeSession);
 
-    const supabase = createAdminClient();
-    const { data: order, error } = await (supabase as any)
+    const supabase = createCommerceAdminClient();
+    const { data: order, error } = await supabase
       .from("orders")
       .select(`
         id,
@@ -60,11 +60,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const purchases = (order.purchases as any[] | null) || [];
+    const { data: gifts, error: giftError } = await supabase.from("beat_gifts")
+      .select("id,status").eq("order_id", order.id);
+    if (giftError) throw new Error("Could not load gift delivery status");
+    const isGiftOrder = Array.isArray(gifts) && gifts.length > 0;
+    const purchaseRows = (order.purchases as unknown as Array<{ id: string; license_tier: string; beats: { title: string } | null }> | null) || [];
+    const purchases = isGiftOrder ? [] : purchaseRows;
+    const giftStatus = isGiftOrder
+      ? gifts.every((gift: { status: string }) => gift.status === "claimed") ? "claimed"
+        : gifts.some((gift: { status: string }) => gift.status === "refunded") ? "refunded"
+          : gifts.some((gift: { status: string }) => gift.status === "revoked") ? "revoked" : "ready_to_claim"
+      : null;
     const response = NextResponse.json({
       orderId: order.id,
       totalAmount: Number(order.total_amount),
       currency: order.currency,
+      giftStatus,
       purchases: purchases.map((purchase) => ({
         id: purchase.id,
         licenseTier: purchase.license_tier,
@@ -72,12 +83,12 @@ export async function POST(req: NextRequest) {
       })),
     });
     const user = await getCurrentUser();
-    if (!user && purchases.length > 0) {
+    if (!user && purchases.length > 0 && !isGiftOrder) {
       const cookieName = guestPurchaseCookieName(order.id);
       const currentToken = req.cookies.get(cookieName)?.value;
       let currentTokenValid = false;
       if (currentToken) {
-        const { data: existingGrant } = await (supabase as any).from("purchase_guest_access_tokens").select("id")
+        const { data: existingGrant } = await supabase.from("purchase_guest_access_tokens").select("id")
           .eq("order_id", order.id).eq("customer_id", order.customer_id)
           .eq("token_hash", guestPurchaseTokenHash(currentToken)).is("revoked_at", null)
           .gt("expires_at", new Date().toISOString()).maybeSingle();

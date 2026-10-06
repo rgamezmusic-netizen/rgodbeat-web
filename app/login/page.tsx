@@ -13,8 +13,9 @@ function AuthForm() {
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get("redirect");
   const emailConfirmed = searchParams.get("confirmed") === "1";
+  const giftContextId = searchParams.get("gift_context");
 
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup">(searchParams.get("mode") === "signup" ? "signup" : "signin");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -73,7 +74,7 @@ function AuthForm() {
     }
 
     startTransition(async () => {
-      const { user, session, requiresEmailConfirmation, error } = await signUpWithEmail(cleanEmail, password, fullName);
+      const { user, session, requiresEmailConfirmation, error } = await signUpWithEmail(cleanEmail, password, fullName, giftContextId);
 
       if (error) {
         setErrorMessage(error.message || "Error al crear la cuenta. Inténtalo de nuevo.");

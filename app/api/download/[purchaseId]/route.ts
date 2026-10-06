@@ -11,20 +11,21 @@ export async function GET(
   try {
     const { purchaseId } = await context.params;
     const { searchParams } = new URL(req.url);
-    const fileType = searchParams.get("fileType") as any;
+    const requestedFileType = searchParams.get("fileType");
     const redirectMode = searchParams.get("redirect") !== "false";
 
     if (!purchaseId || typeof purchaseId !== "string") {
       return NextResponse.json({ error: "Missing or invalid purchase ID." }, { status: 400 });
     }
 
-    const validTypes = ["mp3", "wav", "stems", "exclusive", "contract"];
-    if (!fileType || !validTypes.includes(fileType)) {
+    const validTypes = ["mp3", "wav", "stems", "exclusive", "contract"] as const;
+    if (!requestedFileType || !validTypes.includes(requestedFileType as typeof validTypes[number])) {
       return NextResponse.json(
         { error: `Invalid fileType. Allowed values: ${validTypes.join(", ")}` },
         { status: 400 }
       );
     }
+    const fileType = requestedFileType as typeof validTypes[number];
 
     const supabase = createAdminClient();
     const purchase = await getAuthorizedPurchase(supabase, purchaseId, {
@@ -47,6 +48,8 @@ export async function GET(
       const order = purchase.orders;
       const purchaser = order.customers;
       const licensee = purchase.customers;
+      const { data: contractItem } = await supabase.from("order_items").select("unit_price")
+        .eq("id", purchase.order_item_id).maybeSingle();
       const tierUpper = String(purchase.license_tier || "WAV").toUpperCase();
 
       const format = searchParams.get("format") || "pdf";
@@ -73,7 +76,7 @@ export async function GET(
         beatTitle,
         beatId: purchase.beat_id,
         licenseTier: purchase.license_tier,
-        amountPaid: Number(order.total_amount) || 0,
+        amountPaid: Number(contractItem?.unit_price ?? order.total_amount) || 0,
         currency: order.currency || "USD",
         purchaseDate: purchase.created_at,
         licenseId,
@@ -103,8 +106,8 @@ export async function GET(
     }
 
     return NextResponse.json(result, { status: 200 });
-  } catch (err: any) {
-    const message = err.message || "Failed to resolve download link.";
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to resolve download link.";
     const status = message.includes("Violation") || message.includes("denied") ? 403 : 400;
     return NextResponse.json({ error: message }, { status });
   }

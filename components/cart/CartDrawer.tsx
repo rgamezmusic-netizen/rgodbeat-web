@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef, useState } from "react";
-import Link from "next/link";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
 import { getStripeClient } from "@/lib/stripe/client";
 import { useCart } from "@/contexts/CartContext";
@@ -21,6 +20,32 @@ export function CartDrawer() {
   const [checkoutComplete, setCheckoutComplete] = useState(false);
   const [completionStatus, setCompletionStatus] = useState<"idle" | "loading" | "ready" | "pending" | "error">("idle");
   const [completedPurchases, setCompletedPurchases] = useState<Array<{ id: string; licenseTier: string; beatTitle: string }>>([]);
+  const [recipientMode, setRecipientMode] = useState<"self" | "gift">("self");
+  const [recipientKind, setRecipientKind] = useState<"artist" | "email">("email");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [artistQuery, setArtistQuery] = useState("");
+  const [artistResults, setArtistResults] = useState<Array<{ stage_name: string; slug: string; bio: string | null }>>([]);
+  const [selectedArtist, setSelectedArtist] = useState<{ stage_name: string; slug: string; bio: string | null } | null>(null);
+  const [giftStatus, setGiftStatus] = useState<string | null>(null);
+  const [giftError, setGiftError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (recipientMode !== "gift" || recipientKind !== "artist" || artistQuery.trim().length < 2) {
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/gift/artists?q=${encodeURIComponent(artistQuery.trim())}`, { signal: controller.signal });
+        const data = await response.json();
+        if (response.ok) setArtistResults(Array.isArray(data.artists) ? data.artists : []);
+        else setGiftError(data.error || "No se pudo buscar RG Artists.");
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setGiftError("No se pudo buscar RG Artists.");
+      }
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [artistQuery, recipientKind, recipientMode]);
 
   const handleEmbeddedComplete = useCallback(async () => {
     setCheckoutComplete(true);
@@ -49,17 +74,18 @@ export function CartDrawer() {
       }
 
       setCompletedPurchases(data.purchases || []);
+      setGiftStatus(data.giftStatus || null);
       setCheckoutTotal(typeof data.totalAmount === "number" ? data.totalAmount : checkoutTotal);
       setCompletionStatus("ready");
       clearCart();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[Checkout Completion Error]:", error);
-      setErrorMessage(error.message || "No pudimos cargar tus archivos. Inténtalo de nuevo.");
+      setErrorMessage(error instanceof Error ? error.message : "No pudimos cargar tus archivos. Inténtalo de nuevo.");
       setCompletionStatus("error");
     }
   }, [checkoutSessionId, checkoutTotal, clearCart]);
   const completionHandlerRef = useRef(handleEmbeddedComplete);
-  completionHandlerRef.current = handleEmbeddedComplete;
+  useEffect(() => { completionHandlerRef.current = handleEmbeddedComplete; }, [handleEmbeddedComplete]);
   const handleStripeComplete = useCallback(() => {
     void completionHandlerRef.current();
   }, []);
@@ -73,6 +99,11 @@ export function CartDrawer() {
     try {
       const payload = {
         embedded: true,
+        recipientMode,
+        ...(recipientMode === "gift" ? recipientKind === "email"
+          ? { recipientKind, recipientEmail: recipientEmail.trim() }
+          : { recipientKind, recipientArtistSlug: selectedArtist?.slug }
+          : {}),
         items: items.map((item) => ({
           beatId: item.beat.id,
           licenseTier: item.licenseTier,
@@ -104,9 +135,9 @@ export function CartDrawer() {
       } else {
         throw new Error("No se recibió el formulario de pago integrado.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("[Checkout Error]:", err);
-      setErrorMessage(err.message || "Failed to initiate checkout. Please try again.");
+      setErrorMessage(err instanceof Error ? err.message : "Failed to initiate checkout. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -119,6 +150,14 @@ export function CartDrawer() {
     setCheckoutComplete(false);
     setCompletionStatus("idle");
     setCompletedPurchases([]);
+    setGiftStatus(null);
+    setRecipientMode("self");
+    setRecipientKind("email");
+    setRecipientEmail("");
+    setArtistQuery("");
+    setArtistResults([]);
+    setSelectedArtist(null);
+    setGiftError(null);
     setErrorMessage(null);
     closeCart();
   };
@@ -217,6 +256,13 @@ export function CartDrawer() {
                     </div>
                   )}
 
+                  {completionStatus === "ready" && giftStatus && (
+                    <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100">
+                      <strong className="block text-xs tracking-wider">{giftStatus === "claimed" ? "REGALO RECLAMADO" : "ESPERANDO RECLAMO"}</strong>
+                      <span className="mt-1 block text-zinc-300">{giftStatus === "claimed" ? "La licencia quedó disponible para el destinatario." : "Enviamos las instrucciones para reclamar la licencia."}</span>
+                    </div>
+                  )}
+
                   {completionStatus === "ready" && completedPurchases.length === 0 && (
                     <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-200">
                       Tu pago está confirmado. Estamos terminando de preparar tus licencias.
@@ -312,6 +358,31 @@ export function CartDrawer() {
                 <span>Pago con Stripe</span>
               </div>
 
+              <section className="rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-3">
+                <h2 className="text-xs font-mono font-bold tracking-wider text-white">¿PARA QUIÉN ES?</h2>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => { setRecipientMode("self"); setArtistResults([]); }} aria-pressed={recipientMode === "self"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "self" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PARA MÍ</button>
+                  <button type="button" onClick={() => { setRecipientMode("gift"); setArtistResults([]); }} aria-pressed={recipientMode === "gift"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "gift" ? "border-amber-400 bg-amber-400/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>ENVIAR COMO REGALO</button>
+                </div>
+                {recipientMode === "gift" && <div className="space-y-3">
+                  <p className="text-[11px] text-zinc-400">La licencia y los 30 días de Studio serán para quien reciba el beat.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => { setRecipientKind("artist"); setArtistResults([]); }} aria-pressed={recipientKind === "artist"} className={`rounded-lg border px-3 py-2 text-xs ${recipientKind === "artist" ? "border-amber-300 text-amber-100" : "border-white/10 text-zinc-400"}`}>RG ARTIST</button>
+                    <button type="button" onClick={() => { setRecipientKind("email"); setArtistResults([]); }} aria-pressed={recipientKind === "email"} className={`rounded-lg border px-3 py-2 text-xs ${recipientKind === "email" ? "border-amber-300 text-amber-100" : "border-white/10 text-zinc-400"}`}>CORREO</button>
+                  </div>
+                  {recipientKind === "email" ? <label className="block space-y-1.5 text-[11px] text-zinc-400">CORREO DEL DESTINATARIO
+                    <input type="email" autoComplete="off" maxLength={254} value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} placeholder="artista@correo.com" className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400" />
+                  </label> : <div className="space-y-2">
+                    <label className="block space-y-1.5 text-[11px] text-zinc-400">BUSCAR RG ARTIST
+                      <input value={artistQuery} onChange={(event) => { setArtistQuery(event.target.value); setArtistResults([]); setSelectedArtist(null); }} placeholder="Nombre artístico" className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400" />
+                    </label>
+                    {artistResults.length > 0 && !selectedArtist && <ul className="max-h-36 overflow-y-auto rounded-lg border border-white/10 bg-[#111116]">{artistResults.map((artist) => <li key={artist.slug}><button type="button" onClick={() => { setSelectedArtist(artist); setArtistQuery(artist.stage_name); setArtistResults([]); }} className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/5"><span className="block font-semibold">{artist.stage_name}</span><span className="text-xs text-zinc-500">RG Artist</span></button></li>)}</ul>}
+                    {selectedArtist && <p className="text-xs text-amber-100">La licencia será para {selectedArtist.stage_name}.</p>}
+                  </div>}
+                  {giftError && <p role="alert" className="text-xs text-rose-300">{giftError}</p>}
+                </div>}
+              </section>
+
               {/* Electronic Acceptance Disclosure */}
               <div className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06] text-[10px] text-zinc-400 font-mono leading-relaxed">
                 <span className="text-purple-400 font-semibold block mb-0.5">⚖️ ACEPTACIÓN DE LICENCIA</span>
@@ -345,7 +416,9 @@ export function CartDrawer() {
                 size="lg"
                 className="w-full justify-center text-sm tracking-wider"
                 onClick={handleCheckout}
-                disabled={isLoading}
+                disabled={isLoading || (recipientMode === "gift" && (recipientKind === "email"
+                  ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail.trim())
+                  : !selectedArtist))}
               >
                 {isLoading ? (
                   <span className="flex items-center gap-2">
@@ -356,7 +429,7 @@ export function CartDrawer() {
                     CARGANDO FORMULARIO DE PAGO...
                   </span>
                 ) : (
-                  `CONTINUAR AL PAGO (${formatCurrency(totalAmount)})`
+                  recipientMode === "gift" ? `CONFIRMAR REGALO (${formatCurrency(totalAmount)})` : `CONTINUAR AL PAGO (${formatCurrency(totalAmount)})`
                 )}
               </Button>
 

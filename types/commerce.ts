@@ -83,6 +83,10 @@ export interface CheckoutPayload {
   customerEmail?: string;
   customerName?: string;
   embedded?: boolean;
+  recipientMode?: "self" | "gift";
+  recipientKind?: "artist" | "email";
+  recipientArtistSlug?: string;
+  recipientEmail?: string;
 }
 
 export interface CheckoutResponse {

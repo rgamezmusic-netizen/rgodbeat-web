@@ -1,8 +1,10 @@
 import "server-only";
-import { createAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createCommerceAdminClient } from "@/lib/commerce/admin-client";
 import { CheckoutItemPayload } from "@/types/commerce";
-import { LicenseTier, Beat } from "@/types";
+import { LicenseTier } from "@/types";
 import { generateLicenseContract } from "./contracts";
+import { fulfillPaidGiftCheckout } from "./gift-fulfillment";
 import type Stripe from "stripe";
 
 export interface AuthoritativeLineItem {
@@ -20,6 +22,13 @@ export interface AuthoritativeCartResult {
   currency: string;
 }
 
+type CheckoutIntent = {
+  id: string; recipient_mode: string; recipient_kind: "artist" | "email" | null;
+  recipient_email: string | null; recipient_artist_id: string | null; recipient_artist_slug: string | null;
+  snapshot: { siteOrigin?: string; kind?: string; serviceId?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string };
+  state: string; buyer_email: string | null; attempt_count: number;
+};
+
 /**
  * Validates cart items against Supabase and returns authoritative pricing.
  * ZERO browser trust: client prices are ignored completely.
@@ -31,7 +40,7 @@ export async function resolveAuthoritativeCart(
     throw new Error("Cart is empty or invalid.");
   }
 
-  const supabase = createAdminClient();
+  const supabase = createCommerceAdminClient();
 
   // 1. Fetch license types (excluding standalone stems)
   const { data: licenseTypes, error: ltError } = await supabase
@@ -70,8 +79,7 @@ export async function resolveAuthoritativeCart(
     throw new Error(`Failed to verify beats: ${beatsError.message}`);
   }
 
-  const beatsMap = new Map<string, any>();
-  (beats || []).forEach((b) => beatsMap.set(b.id, b));
+  const beatsMap = new Map((beats || []).map((beat) => [beat.id, beat]));
 
   const items: AuthoritativeLineItem[] = [];
   let totalAmount = 0;
@@ -93,7 +101,7 @@ export async function resolveAuthoritativeCart(
     // Check for beat-specific price override or inactive status
     let finalPrice = licenseConfig.price;
     const beatLicense = (beat.beat_licenses || []).find(
-      (bl: any) => bl.license_type_id === licenseConfig.id
+      (bl) => bl.license_type_id === licenseConfig.id
     );
 
     if (beatLicense) {
@@ -138,7 +146,7 @@ export async function resolveAuthoritativeCart(
  * Extends or activates 30 days of full studio access for a customer.
  * If the customer already has an active period, it accumulates 30 days onto the existing expiration date.
  */
-export async function grantStudioCommerceAccess(supabase: any, sourceId: string, customerId: string, days = 30) {
+export async function grantStudioCommerceAccess(supabase: SupabaseClient, sourceId: string, customerId: string, days = 30) {
   const grant = await supabase.rpc("rg_grant_commerce_studio_access", {
     p_source_type: "order", p_source_id: sourceId, p_customer_id: customerId, p_days: days,
   });
@@ -147,7 +155,7 @@ export async function grantStudioCommerceAccess(supabase: any, sourceId: string,
 }
 
 /** Atomic legacy/admin grant; purchase fulfillment uses the source-keyed variant above. */
-export async function grantStudioAccess(supabase: any, customerId: string, days = 30): Promise<string> {
+export async function grantStudioAccess(supabase: SupabaseClient, customerId: string, days = 30): Promise<string> {
   const grant = await supabase.rpc("rg_extend_studio_access", {
     p_customer_id: customerId, p_days: days,
   });
@@ -159,7 +167,7 @@ export async function grantStudioAccess(supabase: any, customerId: string, days 
  * Idempotently fulfills a completed Stripe Checkout Session.
  */
 export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Session) {
-  const supabase = createAdminClient();
+  const supabase = createCommerceAdminClient();
   const sessionId = session.id;
   if (session.payment_status !== "paid") throw new Error("STRIPE_PAYMENT_NOT_VERIFIED");
 
@@ -171,7 +179,7 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
     .maybeSingle();
 
   if (checkError) throw new Error("ORDER_IDEMPOTENCY_LOOKUP_FAILED");
-  if (existingOrder && existingOrder.payment_status === "refunded") throw new Error("PAYMENT_ALREADY_REFUNDED");
+  if (existingOrder && ["refunded", "disputed"].includes(existingOrder.payment_status)) throw new Error("PAYMENT_ALREADY_REVERSED");
 
   const intentId = session.metadata?.commerceIntentId;
   const isStudioPass = session.metadata?.type === "studio_pass";
@@ -185,23 +193,23 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
     }
     throw new Error("LEGACY_CHECKOUT_WITHOUT_FROZEN_SNAPSHOT_NEEDS_REVIEW");
   }
-  let intent: any = null;
+  let intent: CheckoutIntent | null = null;
   let authoritativeCart: AuthoritativeCartResult | null = null;
   if (intentId) {
-    const { data, error } = await (supabase as any).from("commerce_checkout_intents")
-      .select("id,recipient_mode,snapshot,state,buyer_email,buyer_auth_user_id,stripe_checkout_session_id,attempt_count")
+    const { data, error } = await supabase.from("commerce_checkout_intents")
+      .select("id,recipient_mode,recipient_kind,recipient_email,recipient_artist_id,recipient_artist_slug,snapshot,state,buyer_email,buyer_auth_user_id,stripe_checkout_session_id,attempt_count")
       .eq("id", intentId).maybeSingle();
     if (error || !data) throw new Error("CHECKOUT_INTENT_NOT_FOUND");
-    intent = data;
-    if (["refunded", "disputed"].includes(intent.state)) {
+    const resolvedIntent = data as unknown as CheckoutIntent;
+    intent = resolvedIntent;
+    if (["refunded", "disputed"].includes(resolvedIntent.state)) {
       if (existingOrder) {
-        await (supabase as any).rpc("rg_revoke_commerce_order", { p_order_id: existingOrder.id, p_reason: intent.state === "refunded" ? "refund" : "dispute" });
+        await supabase.rpc("rg_revoke_commerce_order", { p_order_id: existingOrder.id, p_reason: resolvedIntent.state === "refunded" ? "refund" : "dispute" });
       }
       return { status: "payment_reversed", orderId: existingOrder?.id || sessionId };
     }
-    if (intent.state === "needs_review") throw new Error("PAYMENT_REQUIRES_MANUAL_REVIEW");
-    if (intent.recipient_mode !== "self") throw new Error("GIFT_FULFILLMENT_REQUIRES_GIFT_HANDLER");
-    const snapshot = intent.snapshot as { kind?: string; serviceId?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string };
+    if (resolvedIntent.state === "needs_review") throw new Error("PAYMENT_REQUIRES_MANUAL_REVIEW");
+    const snapshot = resolvedIntent.snapshot as { kind?: string; serviceId?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string };
     if (!Number.isInteger(snapshot?.totalAmountCents)
       || snapshot.currency?.toLowerCase() !== (session.currency || "usd").toLowerCase()
       || session.amount_total !== snapshot.totalAmountCents) throw new Error("PAYMENT_SNAPSHOT_MISMATCH");
@@ -211,11 +219,11 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
       if (!Array.isArray(snapshot?.items) || snapshot.items.length === 0) throw new Error("PURCHASE_SNAPSHOT_MISSING_ITEMS");
       authoritativeCart = { items: snapshot.items, totalAmount: snapshot.totalAmountCents / 100, currency: snapshot.currency };
     }
-    const verifiedIntent = await (supabase as any).from("commerce_checkout_intents")
+    const verifiedIntent = await supabase.from("commerce_checkout_intents")
       .update({ state: "fulfilling", attempt_count: Number(intent.attempt_count || 0) + 1,
         stripe_payment_intent_id: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || null,
         verified_paid_at: new Date().toISOString(), payment_amount_cents: session.amount_total, payment_currency: session.currency })
-      .eq("id", intent.id).not("state", "in", "(refunded,disputed,needs_review)").select("id").maybeSingle();
+        .eq("id", resolvedIntent.id).not("state", "in", "(refunded,disputed,needs_review)").select("id").maybeSingle();
     if (verifiedIntent.error || !verifiedIntent.data) throw new Error("CHECKOUT_INTENT_PAYMENT_STATE_FAILED");
   }
 
@@ -226,11 +234,21 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
   const paymentIntentId = (typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id) || null;
 
   // Resolve the payer by normalized verified Stripe email under a database lock, preserving any guest row.
-  const { data: resolvedCustomerId, error: customerResolveError } = await (supabase as any).rpc("rg_resolve_commerce_payer_customer", {
+  const { data: resolvedCustomerId, error: customerResolveError } = await supabase.rpc("rg_resolve_commerce_payer_customer", {
     p_email: customerEmail, p_name: customerName, p_stripe_customer_id: stripeCustomerId,
   });
   if (customerResolveError || typeof resolvedCustomerId !== "string") throw new Error("CUSTOMER_IDENTITY_RESOLUTION_FAILED");
   const customerId: string = resolvedCustomerId;
+
+  if (intent?.recipient_mode === "gift") {
+    if (!authoritativeCart) throw new Error("FROZEN_GIFT_SNAPSHOT_UNAVAILABLE");
+    if (!intent.recipient_kind || !["artist", "email"].includes(intent.recipient_kind)) throw new Error("FROZEN_GIFT_RECIPIENT_UNAVAILABLE");
+    const result = await fulfillPaidGiftCheckout({
+      supabase, intent: { ...intent, recipient_kind: intent.recipient_kind }, session, existingOrder, cart: authoritativeCart,
+      payer: { customerId, email: customerEmail, name: customerName },
+    });
+    return result;
+  }
 
   // Handle standalone Studio Pass purchase
   if (isStudioPass) {
@@ -272,15 +290,15 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
 
     const newExpiry = await grantStudioCommerceAccess(supabase, orderId, customerId, 30);
     if (intentId) {
-      const intentCompletion = await (supabase as any).from("commerce_checkout_intents").update({
+      const intentCompletion = await supabase.from("commerce_checkout_intents").update({
         state: "fulfilled", stripe_payment_intent_id: paymentIntentId, verified_paid_at: new Date().toISOString(),
         fulfilled_at: new Date().toISOString(), payment_amount_cents: session.amount_total, payment_currency: session.currency,
       }).eq("id", intentId).not("state", "in", "(refunded,disputed,needs_review)").select("id").maybeSingle();
       if (intentCompletion.error) throw new Error("CHECKOUT_INTENT_COMPLETION_FAILED");
       if (!intentCompletion.data) {
-        const { data: currentIntent } = await (supabase as any).from("commerce_checkout_intents").select("state").eq("id", intentId).maybeSingle();
+        const { data: currentIntent } = await supabase.from("commerce_checkout_intents").select("state").eq("id", intentId).maybeSingle();
         if (currentIntent?.state === "refunded" || currentIntent?.state === "disputed") {
-          await (supabase as any).rpc("rg_revoke_commerce_order", { p_order_id: orderId, p_reason: currentIntent.state === "refunded" ? "refund" : "dispute" });
+          await supabase.rpc("rg_revoke_commerce_order", { p_order_id: orderId, p_reason: currentIntent.state === "refunded" ? "refund" : "dispute" });
           return { status: "payment_reversed", orderId };
         }
         throw new Error("CHECKOUT_INTENT_COMPLETION_FAILED");
@@ -360,12 +378,12 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
 
     if (oiError || !orderItem) throw new Error(`ORDER_ITEM_FULFILLMENT_FAILED:${oiError?.code || "missing_row"}`);
 
-    const { data: priorPurchase, error: priorPurchaseError } = await (supabase as any).from("purchases")
+    const { data: priorPurchase, error: priorPurchaseError } = await supabase.from("purchases")
       .select("id,license_id,status").eq("order_item_id", orderItem.id).maybeSingle();
     if (priorPurchaseError) throw new Error("PURCHASE_IDEMPOTENCY_LOOKUP_FAILED");
     const { data: allocatedLicenseId, error: licenseIdError } = priorPurchase?.license_id
       ? { data: priorPurchase.license_id, error: null }
-      : await (supabase as any).rpc("rg_allocate_commerce_license_id", { p_tier: item.licenseTier });
+      : await supabase.rpc("rg_allocate_commerce_license_id", { p_tier: item.licenseTier });
     if (licenseIdError || typeof allocatedLicenseId !== "string") throw new Error("LICENSE_ID_ALLOCATION_FAILED");
     const licenseId = allocatedLicenseId;
 
@@ -384,7 +402,7 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
     });
 
     // Upsert Purchase Entitlement
-    const basePurchaseRow: any = {
+    const basePurchaseRow = {
       order_id: orderId,
       order_item_id: orderItem.id,
       customer_id: customerId,
@@ -396,7 +414,7 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
     };
 
     // Attempt upsert with dedicated license_id and contract_version columns
-    const { data: fulfilledPurchase, error: purchaseError } = await (supabase as any)
+    const { data: fulfilledPurchase, error: purchaseError } = await supabase
       .from("purchases")
       .upsert(
         {
@@ -410,7 +428,7 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
 
     // If Exclusive Rights purchased: retire beat from active store catalog!
     if (item.licenseTier === "exclusive") {
-      const { error: inventoryError } = await (supabase as any).from("beat_exclusive_inventory").upsert({
+      const { error: inventoryError } = await supabase.from("beat_exclusive_inventory").upsert({
         beat_id: item.beatId,
         order_item_id: orderItem.id,
         order_id: orderId,
@@ -422,13 +440,13 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
         await supabase.from("purchases").update({ status: "revoked" }).eq("order_item_id", orderItem.id);
         throw new Error("EXCLUSIVE_INVENTORY_CONFLICT");
       }
-      const { data: reserved, error: reservationCheckError } = await (supabase as any).from("beat_exclusive_inventory")
+      const { data: reserved, error: reservationCheckError } = await supabase.from("beat_exclusive_inventory")
         .select("order_item_id").eq("beat_id", item.beatId).maybeSingle();
       if (reservationCheckError || reserved?.order_item_id !== orderItem.id) {
         await supabase.from("purchases").update({ status: "revoked" }).eq("order_item_id", orderItem.id);
         throw new Error("EXCLUSIVE_INVENTORY_CONFLICT");
       }
-      const { error: inventoryLinkError } = await (supabase as any).from("beat_exclusive_inventory").update({ purchase_id: fulfilledPurchase.id }).eq("beat_id", item.beatId);
+      const { error: inventoryLinkError } = await supabase.from("beat_exclusive_inventory").update({ purchase_id: fulfilledPurchase.id }).eq("beat_id", item.beatId);
       if (inventoryLinkError) throw new Error("EXCLUSIVE_INVENTORY_LINK_FAILED");
       const { error: retireError } = await supabase
         .from("beats")
@@ -445,14 +463,14 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
 
   // Grant 30 days of studio access for beat purchase
   await grantStudioCommerceAccess(supabase, orderId, customerId, 30);
-  const intentCompletion = await (supabase as any).from("commerce_checkout_intents")
+  const intentCompletion = await supabase.from("commerce_checkout_intents")
     .update({ state: "fulfilled", stripe_payment_intent_id: paymentIntentId, verified_paid_at: new Date().toISOString(), fulfilled_at: new Date().toISOString(), payment_amount_cents: session.amount_total, payment_currency: session.currency })
     .eq("id", intentId).not("state", "in", "(refunded,disputed,needs_review)").select("id").maybeSingle();
   if (intentCompletion.error) throw new Error("CHECKOUT_INTENT_COMPLETION_FAILED");
   if (!intentCompletion.data) {
-    const { data: currentIntent } = await (supabase as any).from("commerce_checkout_intents").select("state").eq("id", intentId).maybeSingle();
+    const { data: currentIntent } = await supabase.from("commerce_checkout_intents").select("state").eq("id", intentId).maybeSingle();
     if (currentIntent?.state === "refunded" || currentIntent?.state === "disputed") {
-      const { error: revokeError } = await (supabase as any).rpc("rg_revoke_commerce_order", {
+      const { error: revokeError } = await supabase.rpc("rg_revoke_commerce_order", {
         p_order_id: orderId, p_reason: currentIntent.state === "refunded" ? "refund" : "dispute",
       });
       if (revokeError) throw new Error("REVERSED_ORDER_CLEANUP_FAILED");

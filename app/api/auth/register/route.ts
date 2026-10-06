@@ -1,6 +1,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAuth } from "@/lib/auth/request";
+import { createCommerceAdminClient } from "@/lib/commerce/admin-client";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Solicitud no permitida." }, { status: 403, headers });
     }
 
-    let body: { email?: unknown; password?: unknown; fullName?: unknown };
+    let body: { email?: unknown; password?: unknown; fullName?: unknown; giftContextId?: unknown };
     try { body = await request.json(); }
     catch { return NextResponse.json({ error: "Solicitud inválida." }, { status: 400, headers }); }
     if (!body || typeof body !== "object") {
@@ -27,6 +28,8 @@ export async function POST(request: NextRequest) {
     const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
     const cleanPassword = typeof password === "string" ? password : "";
     const cleanName = typeof fullName === "string" ? fullName.trim().slice(0, 100) : "";
+    const giftContextId = typeof body.giftContextId === "string" && /^[0-9a-f-]{36}$/i.test(body.giftContextId)
+      ? body.giftContextId : null;
 
     // 1. Validations
     if (!cleanEmail || !cleanPassword) {
@@ -64,11 +67,22 @@ export async function POST(request: NextRequest) {
       global: { fetch: fetchAuth },
       auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     });
+    let emailRedirectTo = new URL("/login?confirmed=1", origin).toString();
+    if (body.giftContextId !== undefined) {
+      if (!giftContextId) return NextResponse.json({ error: "El enlace del regalo ya no está disponible." }, { status: 400, headers });
+      const { data: contextRows, error: contextError } = await createCommerceAdminClient()
+        .rpc("rg_resolve_gift_claim_context", { p_context_id: giftContextId });
+      if (contextError || !Array.isArray(contextRows) || contextRows.length !== 1) {
+        return NextResponse.json({ error: "El enlace del regalo ya no está disponible." }, { status: 400, headers });
+      }
+      const giftReturn = `/gifts/claim?context=${encodeURIComponent(giftContextId)}`;
+      emailRedirectTo = new URL(`/login?confirmed=1&redirect=${encodeURIComponent(giftReturn)}`, origin).toString();
+    }
     const { data: signupData, error: signupError } = await supabase.auth.signUp({
       email: cleanEmail,
       password: cleanPassword,
       options: {
-        emailRedirectTo: new URL("/login?confirmed=1", origin).toString(),
+        emailRedirectTo,
         data: { full_name: cleanName || cleanEmail.split("@")[0], role: "customer" },
       },
     });

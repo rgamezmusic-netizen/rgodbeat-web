@@ -59,7 +59,8 @@ export function translateAuthError(errorMessage?: string | null): string {
 export async function signUpWithEmail(
   email: string,
   password: string,
-  fullName?: string
+  fullName?: string,
+  giftContextId?: string | null
 ): Promise<SignUpResult> {
   const cleanEmail = email.trim().toLowerCase();
   try {
@@ -72,6 +73,7 @@ export async function signUpWithEmail(
         email: cleanEmail,
         password,
         fullName: fullName?.trim() || "",
+        ...(giftContextId ? { giftContextId } : {}),
       }),
     });
 

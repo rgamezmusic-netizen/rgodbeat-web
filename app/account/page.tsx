@@ -5,10 +5,11 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, signOutAdmin } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Button } from "@/components/ui/Button";
-import { formatCurrency } from "@/lib/utils";
 import { extractLicenseMetadata } from "@/lib/commerce/contracts";
 import { listStemRequestsForCustomer, isTierEligibleForStems } from "@/lib/stems/tickets";
 import { RequestStemsButton } from "@/components/stems/RequestStemsButton";
+import { GiftStatusList } from "@/components/commerce/GiftStatusList";
+import { linkVerifiedCommerceCustomer } from "@/lib/commerce/authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -21,15 +22,21 @@ export default async function AccountPage() {
 
   const supabase = createAdminClient();
 
-  // Find customer profile by email
-  const { data: customer } = await supabase
-    .from("customers")
-    .select("id, name, email, created_at")
-    .eq("email", user.email!)
-    .maybeSingle();
+  // Resolve through the private Auth↔customer bridge; guest purchase history stays on the same customer row.
+  const linkedCustomerId = await linkVerifiedCommerceCustomer(supabase, user);
+  const { data: customer } = linkedCustomerId
+    ? await supabase.from("customers").select("id,name,email,created_at").eq("id", linkedCustomerId).maybeSingle()
+    : { data: null };
 
   // Fetch purchases and entitlements for this user/email
-  let purchases: any[] = [];
+  let purchases: Array<{
+    id: string;
+    license_tier: string;
+    status: string;
+    created_at: string;
+    beats: { id: string; title: string; slug: string; cover_path: string | null; bpm: number | null; musical_key: string | null } | null;
+    license_types: { name: string } | null;
+  }> = [];
   if (customer?.id) {
     const { data: customerPurchases } = await supabase
       .from("purchases")
@@ -144,6 +151,8 @@ export default async function AccountPage() {
           </div>
         </div>
 
+        <GiftStatusList />
+
         {/* Purchases Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
@@ -176,10 +185,13 @@ export default async function AccountPage() {
                       {/* Cover Preview */}
                       <div className="w-16 h-16 rounded-lg bg-zinc-900 border border-white/10 overflow-hidden shrink-0 relative flex items-center justify-center">
                         {beat?.cover_path ? (
-                          <img
+                          <Image
                             src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/rgodbeat-public/${beat.cover_path}`}
                             alt={beat.title || "Beat Cover"}
-                            className="w-full h-full object-cover"
+                            fill
+                            sizes="64px"
+                            unoptimized
+                            className="object-cover"
                           />
                         ) : (
                           <span className="text-xl">🎵</span>

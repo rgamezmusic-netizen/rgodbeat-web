@@ -126,3 +126,53 @@ test('transactional gift queue rejects plaintext claim credentials and needs a d
   if (previous === undefined) delete process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY;
   else process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY = previous;
 });
+
+test('transactional email worker delivers a claim message through an injected test provider', async () => {
+  const previous = process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY;
+  process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString('base64');
+  const link = 'https://rgodbeat.test/gifts/claim?token=' + 'A'.repeat(43);
+  const encrypted = email.encryptTransactionalSecret(link);
+  const calls = [];
+  const supabase = { rpc: async (name, args) => {
+    calls.push({ name, args });
+    if (name === 'rg_claim_transactional_email_job') return { data: [{ job_id: 'job-1', lease_token: 'lease-1', attempt: 1,
+      message_type: 'gift_claim', recipient_email: 'recipient@example.test', encrypted_secret: encrypted,
+      payload: { beatTitle: 'Aura Latina', licenseName: 'Standard MP3' } }], error: null };
+    return { data: null, error: null };
+  } };
+  let delivered;
+  const result = await email.processNextGiftEmail(supabase, { send: async (message) => { delivered = message; return { providerMessageId: 'mock-1' }; } });
+  assert.deepEqual(result, { status: 'sent' });
+  assert.match(delivered.text, /Aura Latina/);
+  assert.ok(delivered.text.includes(link));
+  assert.equal(calls.at(-1).name, 'rg_finish_transactional_email_job');
+  assert.equal(calls.at(-1).args.p_status, 'sent');
+  assert.equal(calls.at(-1).args.p_provider_message_id, 'mock-1');
+  if (previous === undefined) delete process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY;
+  else process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY = previous;
+});
+
+test('transactional email worker records temporary retry and permanent provider failure states', async () => {
+  const previous = process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY;
+  process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 4).toString('base64');
+  const encrypted = email.encryptTransactionalSecret('https://rgodbeat.test/gifts/claim?token=' + 'B'.repeat(43));
+  const makeClient = (attempt) => {
+    const calls = [];
+    return { calls, rpc: async (name, args) => {
+      calls.push({ name, args });
+      return name === 'rg_claim_transactional_email_job'
+        ? { data: [{ job_id: 'job-2', lease_token: 'lease-2', attempt, message_type: 'gift_claim', recipient_email: 'recipient@example.test', encrypted_secret: encrypted, payload: {} }], error: null }
+        : { data: null, error: null };
+    } };
+  };
+  const instant = new Date('2026-10-06T12:00:00.000Z');
+  const retryClient = makeClient(1);
+  assert.deepEqual(await email.processNextGiftEmail(retryClient, { send: async () => { throw new email.TransactionalEmailDeliveryError('temporary outage', true); } }, () => instant), { status: 'retry' });
+  assert.equal(retryClient.calls.at(-1).args.p_status, 'retry');
+  assert.equal(retryClient.calls.at(-1).args.p_next_attempt_at, '2026-10-06T12:00:30.000Z');
+  const failedClient = makeClient(1);
+  assert.deepEqual(await email.processNextGiftEmail(failedClient, { send: async () => { throw new email.TransactionalEmailDeliveryError('permanent rejection', false); } }, () => instant), { status: 'failed' });
+  assert.equal(failedClient.calls.at(-1).args.p_status, 'failed');
+  if (previous === undefined) delete process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY;
+  else process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY = previous;
+});

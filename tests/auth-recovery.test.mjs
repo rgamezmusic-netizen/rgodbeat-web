@@ -265,6 +265,43 @@ test('registration avoids revealing duplicate account identity', async () => {
   }
 });
 
+test('gift signup confirmation returns to an opaque context without carrying the claim secret', async () => {
+  const originalUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const originalKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://local.supabase.invalid';
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = 'local-public-key';
+  let signupOptions;
+  try {
+    const { POST } = loadSource('app/api/auth/register/route.ts', {
+      '@supabase/supabase-js': { createClient: () => ({ auth: { signUp: async input => {
+        signupOptions = input;
+        return { data: { user: { id: 'private-user', identities: [{ id: 'identity' }] }, session: null }, error: null };
+      } } }) },
+      '@/lib/commerce/admin-client': { createCommerceAdminClient: () => ({ rpc: async (name, args) => {
+        assert.equal(name, 'rg_resolve_gift_claim_context');
+        assert.equal(args.p_context_id, 'a0000000-0000-4000-8000-000000000001');
+        return { data: [{ claim_token_hash: 'private-hash', expires_at: '2030-01-01T00:00:00Z' }], error: null };
+      } }) },
+      '@/lib/auth/request': { fetchAuth: async (_input, init) => fetch(_input, init) },
+    });
+    const response = await POST(new NextRequest('https://www.rgodbeat.com/api/auth/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', origin: 'https://www.rgodbeat.com' },
+      body: JSON.stringify({ email: 'recipient@example.invalid', password: 'a-safe-password', giftContextId: 'a0000000-0000-4000-8000-000000000001' }),
+    }));
+    assert.equal(response.status, 200);
+    const redirect = new URL(signupOptions.options.emailRedirectTo);
+    assert.equal(redirect.pathname, '/login');
+    assert.equal(redirect.searchParams.get('confirmed'), '1');
+    const destination = new URL(redirect.searchParams.get('redirect'), 'https://www.rgodbeat.com');
+    assert.equal(destination.pathname, '/gifts/claim');
+    assert.equal(destination.searchParams.get('context'), 'a0000000-0000-4000-8000-000000000001');
+    assert.doesNotMatch(signupOptions.options.emailRedirectTo, /private-hash|token=/);
+  } finally {
+    if (originalUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL; else process.env.NEXT_PUBLIC_SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY; else process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = originalKey;
+  }
+});
+
 test('signup does not try to log in before the email owner confirms the address', async () => {
   const originalFetch = globalThis.fetch;
   let passwordLoginAttempts = 0;
