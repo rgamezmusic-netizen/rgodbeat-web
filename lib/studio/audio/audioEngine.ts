@@ -82,6 +82,8 @@ export class AudioEngine {
 
   // Recording
   private micStream: MediaStream | null = null;
+  private microphoneRequest: Promise<MediaStream> | null = null;
+  private microphoneRequestId = 0;
   private micSource: MediaStreamAudioSourceNode | null = null;
   private micHighPassFilter: BiquadFilterNode | null = null;
   private micInputGain: GainNode | null = null;
@@ -185,7 +187,7 @@ export class AudioEngine {
    */
   public triggerMobileSpeakerRouting() {
     if (typeof window === 'undefined') return;
-    if (this.isRecording || this.startingRecording) return;
+    if (this.isRecording || this.startingRecording || this.microphoneRequest || this.micStream?.active) return;
     try {
       if (typeof navigator !== 'undefined' && 'audioSession' in navigator) {
         try {
@@ -219,17 +221,29 @@ export class AudioEngine {
    */
   public async unlockAudio(): Promise<void> {
     this.triggerMobileSpeakerRouting();
-    if (!this.ctx) {
-      await this.ensureAudioContext();
-    }
-    if (!this.ctx) return;
+    if (!this.ctx) await this.ensureAudioContext({ resume: false });
+    if (!this.ctx || this.disposed) throw new Error('El audio no está disponible. Vuelve a abrir Studio.');
     if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        await this.ctx.resume();
-      } catch {
-        // ignore
+        // Called from Play/REC's real gesture; do not let a stalled browser resume
+        // leave transport controls claiming to play or record indefinitely.
+        await Promise.race([
+          this.ctx.resume(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('No se pudo activar el audio. Toca Play o REC para reintentar.')), 5000);
+          }),
+        ]);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'NotAllowedError') {
+          throw new Error('El navegador bloqueó el audio. Toca Play o REC y permite el sonido para este sitio.');
+        }
+        throw error;
+      } finally {
+        if (timer) clearTimeout(timer);
       }
     }
+    if (this.ctx.state !== 'running') throw new Error('No se pudo activar el audio. Toca Play o REC para reintentar.');
     try {
       const buffer = this.ctx.createBuffer(1, 1, 22050);
       const source = this.ctx.createBufferSource();
@@ -575,17 +589,14 @@ export class AudioEngine {
       return;
     }
 
-    // Force loudspeaker media route for devices without headphones plugged in
-    this.triggerMobileSpeakerRouting();
-    await this.unlockAudio();
-    if (!this.ctx) return;
-    if (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted') {
-      try {
-        await this.ctx.resume();
-      } catch (err) {
-        console.warn('AudioEngine: error resuming AudioContext in play():', err);
-      }
+    try {
+      await this.unlockAudio();
+    } catch (error) {
+      this.pause();
+      this.callbacks.onError(error instanceof Error ? error.message : 'No se pudo activar el audio.');
+      return;
     }
+    if (!this.ctx || this.disposed) return;
 
     if (this.isPlaying) {
       this.stopSources();
@@ -859,6 +870,19 @@ export class AudioEngine {
       }
     }
 
+    if (this.disposed) throw new DOMException('Grabación cancelada.', 'AbortError');
+    if (this.microphoneRequest) return this.microphoneRequest;
+    const requestId = this.microphoneRequestId;
+    const request = this.acquireMicrophone(requestId);
+    this.microphoneRequest = request;
+    try {
+      return await request;
+    } finally {
+      if (this.microphoneRequest === request) this.microphoneRequest = null;
+    }
+  }
+
+  private async acquireMicrophone(requestId: number): Promise<MediaStream> {
     // 1. Completely release any legacy silent audio element so it cannot tie up the audio session
     if (this.silentAudioEl) {
       try {
@@ -876,46 +900,64 @@ export class AudioEngine {
         const audioSession = (navigator as unknown as { audioSession: { type: string } }).audioSession;
         if (audioSession.type !== 'play-and-record') {
           audioSession.type = 'play-and-record';
-          // Allow WebKit's IPC to notify mediaserverd of the category change
-          await new Promise((resolve) => setTimeout(resolve, 60));
+          // Keep the microphone request in the REC gesture; no arbitrary delay.
         }
       } catch (e) {
         console.warn('Could not set audioSession to play-and-record:', e);
       }
     }
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      // Legacy getUserMedia check
+    let stream: MediaStream;
+    if (!navigator.mediaDevices?.getUserMedia) {
       const legacyGetUserMedia =
         (navigator as unknown as { getUserMedia?: (c: unknown, s: (st: MediaStream) => void, e: (er: unknown) => void) => void }).getUserMedia ||
         (navigator as unknown as { webkitGetUserMedia?: (c: unknown, s: (st: MediaStream) => void, e: (er: unknown) => void) => void }).webkitGetUserMedia;
-
-      if (legacyGetUserMedia) {
-        return new Promise((resolve, reject) => {
-          legacyGetUserMedia.call(navigator, { audio: true }, resolve, reject);
-        });
-      }
-      throw new Error('Tu navegador no soporta grabación de micrófono (getUserMedia no disponible).');
-    }
-
-    try {
-      this.micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      if (!legacyGetUserMedia) throw new Error('Este navegador no permite grabar. Abre Studio por HTTPS en un navegador actualizado.');
+      stream = await new Promise<MediaStream>((resolve, reject) => {
+        legacyGetUserMedia.call(navigator, { audio: true }, resolve, reject);
       });
-    } catch (error) {
-      // Retry only unsupported constraints; permission and hardware errors need user action.
-      if (!(error instanceof DOMException) || error.name !== 'OverconstrainedError') throw error;
-      this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } else {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        });
+      } catch (error) {
+        // Retry only unsupported constraints, never permission/hardware failures.
+        if (!(error instanceof DOMException) || error.name !== 'OverconstrainedError'
+          || this.disposed || requestId !== this.microphoneRequestId) throw error;
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
     }
-    return this.micStream;
+    if (this.disposed || requestId !== this.microphoneRequestId) {
+      stream.getTracks().forEach(track => track.stop());
+      throw new DOMException('Grabación cancelada.', 'AbortError');
+    }
+    this.micStream = stream;
+    return stream;
+  }
+
+  private beginRecordingAudio() {
+    if (!this.ctx) void this.ensureAudioContext({ resume: false }).catch(() => {});
+    if (this.ctx && (this.ctx.state === 'suspended' || (this.ctx.state as string) === 'interrupted')) {
+      // Begin activation in the real gesture, but let the user take their time
+      // answering the microphone dialog. Verify/bound audio after permission.
+      void this.ctx.resume().catch(() => {});
+    }
   }
 
   /** Request microphone access directly from the REC gesture, before any async backup work. */
   public async prepareMicrophone(): Promise<boolean> {
     try {
-      await this.getMicrophoneStream();
+      // Both requests begin synchronously in the REC gesture. Waiting for the
+      // permission dialog first can lose Safari's AudioContext activation.
+      const microphone = this.getMicrophoneStream();
+      this.beginRecordingAudio();
+      await microphone;
+      await this.unlockAudio();
       return true;
     } catch (error) {
+      this.releaseMicrophone();
+      if (error instanceof DOMException && error.name === 'AbortError') return false;
       const denied = error instanceof DOMException && error.name === 'NotAllowedError';
       this.callbacks.onError(denied
         ? 'Permiso de micrófono denegado. Permite el acceso en los ajustes del navegador.'
@@ -930,6 +972,7 @@ export class AudioEngine {
    */
   public releaseMicrophone() {
     if (this.isFinalizingRecording && !this.disposed) return;
+    ++this.microphoneRequestId;
     if (this.scriptProcessor) this.scriptProcessor.onaudioprocess = null;
     if (this.pcmRecorder) this.pcmRecorder.port.onmessage = null;
     for (const node of [this.micSource, this.micHighPassFilter, this.micInputGain,
@@ -1092,9 +1135,11 @@ export class AudioEngine {
     this.captureStartFrame = Infinity;
     const requestId = ++this.recordingRequestId;
     try {
-      const stream = await this.getMicrophoneStream();
+      const microphone = this.getMicrophoneStream();
+      this.beginRecordingAudio();
+      const stream = await microphone;
+      await this.unlockAudio();
       if (requestId !== this.recordingRequestId || this.disposed) { this.releaseMicrophone(); return false; }
-      await this.ensureAudioContext();
       if (!this.ctx || requestId !== this.recordingRequestId) return false;
       const wasPlaying = this.isPlaying;
       this.recordingTrackId = trackId;
@@ -1136,6 +1181,7 @@ export class AudioEngine {
       if (requestId !== this.recordingRequestId || !this.isRecording) return false;
       this.clearTrackSources(trackId);
       if (!wasPlaying) await this.play(vocalTracks);
+      if (!this.isPlaying) throw new Error('No se pudo reproducir el beat. Toca Play o REC para reintentar.');
       if (requestId !== this.recordingRequestId || !this.isRecording) return false;
       const start = Math.max(this.ctx.currentTime, this.playbackStartCtxTime + this.currentPlaybackPosition);
       this.recordingTimelineOrigin = this.playbackStartCtxTime;

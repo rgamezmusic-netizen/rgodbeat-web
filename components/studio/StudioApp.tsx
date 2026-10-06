@@ -1181,7 +1181,7 @@ export default function App() {
   useEffect(() => {
     if (!engine) return;
     const handleFirstGesture = () => {
-      engine.unlockAudio();
+      void engine.unlockAudio().catch(() => { /* Play/REC reports activation failures. */ });
     };
     window.addEventListener('touchstart', handleFirstGesture, { passive: true, once: true });
     window.addEventListener('touchend', handleFirstGesture, { passive: true, once: true });
@@ -1514,7 +1514,6 @@ export default function App() {
     if (!engine.getBeat() && currentBeat) {
       engine.setBeat(currentBeat);
     }
-    await engine.unlockAudio();
     if (isRecording) {
       handleStopRecord();
       return;
@@ -1524,7 +1523,7 @@ export default function App() {
       setIsPlaying(false);
     } else {
       await engine.play(tracksRef.current);
-      setIsPlaying(true);
+      setIsPlaying(engine.getIsPlaying());
     }
   };
 
