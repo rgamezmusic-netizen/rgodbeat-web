@@ -15,6 +15,7 @@ const fulfillment = loadSource(resolve('lib/commerce/fulfillment.ts'), {
 });
 const contracts = loadSource(resolve('lib/commerce/contracts.ts'));
 const email = loadSource(resolve('lib/commerce/email.ts'));
+const giftFeature = loadSource(resolve('lib/commerce/gift-feature.ts'));
 
 const purchase = (patch = {}) => ({
   id: 'purchase-1', order_id: 'order-1', order_item_id: 'item-1', customer_id: 'licensee-customer',
@@ -42,7 +43,7 @@ function fakeSupabase({ row = purchase(), linkedCustomer = null, tokenGrant = nu
         update() { state.updated = true; return this; },
         eq(key, value) { state.filters.push([key, value]); return this; },
         is(key, value) { state.filters.push([key, value]); return this; },
-        gt(key, value) { state.filters.push([key, value]); return this; },
+        gt(key, value) { state.filters.push([key, 'gt', value]); return this; },
         maybeSingle: async () => {
           calls.push({ kind: 'query', ...state });
           return table === 'purchases' ? { data: row, error: null } : { data: tokenGrant, error: null };
@@ -69,6 +70,20 @@ test('paid download/contract access follows the license holder, not the payer', 
   }), null);
 });
 
+test('gift checkout defaults off while self checkout stays available', () => {
+  const previous = process.env.RG_GIFTS_ENABLED;
+  delete process.env.RG_GIFTS_ENABLED;
+  assert.equal(giftFeature.isGiftCheckoutEnabled(), false);
+  assert.equal(giftFeature.canCheckoutRecipientMode('self'), true);
+  assert.equal(giftFeature.canCheckoutRecipientMode('gift'), false);
+  process.env.RG_GIFTS_ENABLED = 'true';
+  assert.equal(giftFeature.canCheckoutRecipientMode('gift'), true);
+  process.env.RG_GIFTS_ENABLED = 'TRUE';
+  assert.equal(giftFeature.canCheckoutRecipientMode('gift'), false);
+  if (previous === undefined) delete process.env.RG_GIFTS_ENABLED;
+  else process.env.RG_GIFTS_ENABLED = previous;
+});
+
 test('revoked/refunded or unpaid entitlements fail closed before account or guest authorization', async () => {
   const revoked = fakeSupabase({ row: purchase({ status: 'revoked' }), linkedCustomer: 'licensee-customer' });
   assert.equal(await authorization.getAuthorizedPurchase(revoked, 'purchase-1', {
@@ -88,6 +103,29 @@ test('guest credentials are high entropy, order scoped and only their hash is se
   assert.equal(call.args.p_customer_id, 'payer-customer');
   assert.equal(call.args.p_token_hash, authorization.guestPurchaseTokenHash(issued.token));
   assert.notEqual(call.args.p_token_hash, issued.token);
+});
+
+test('guest protected access checks purchase, customer, token hash, revocation and expiry scope', async () => {
+  const token = 'Q'.repeat(43);
+  const valid = fakeSupabase({ tokenGrant: { id: 'guest-grant-1' } });
+  const authorized = await authorization.getAuthorizedPurchase(valid, 'purchase-1', {
+    guestToken: (orderId) => { assert.equal(orderId, 'order-1'); return token; },
+  });
+  assert.equal(authorized.id, 'purchase-1');
+  const grantQuery = valid.calls.find((entry) => entry.table === 'purchase_guest_access_tokens');
+  assert.deepEqual(grantQuery.filters.slice(0, 4), [
+    ['order_id', 'order-1'], ['customer_id', 'licensee-customer'],
+    ['token_hash', authorization.guestPurchaseTokenHash(token)], ['revoked_at', null],
+  ]);
+  assert.deepEqual(grantQuery.filters[4].slice(0, 2), ['expires_at', 'gt']);
+  assert.ok(Date.parse(grantQuery.filters[4][2]) > Date.now() - 5_000);
+
+  const invalid = fakeSupabase({ tokenGrant: null });
+  assert.equal(await authorization.getAuthorizedPurchase(invalid, 'purchase-1', { guestToken: () => 'Z'.repeat(43) }), null);
+  assert.equal(await authorization.getAuthorizedPurchase(fakeSupabase(), 'purchase-1', { guestToken: () => 'short' }), null);
+  // The live database filter is strictly expires_at > now; a missing match covers expired credentials.
+  const expired = fakeSupabase({ tokenGrant: null });
+  assert.equal(await authorization.getAuthorizedPurchase(expired, 'purchase-1', { guestToken: () => token }), null);
 });
 
 test('gift contract text names payer and recipient in separate roles', () => {

@@ -44,12 +44,9 @@ ALTER TABLE public.purchases ALTER COLUMN license_id SET NOT NULL;
 ALTER TABLE public.purchases ALTER COLUMN contract_version SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_purchases_license_id ON public.purchases(license_id);
 CREATE INDEX IF NOT EXISTS idx_purchases_contract_version ON public.purchases(contract_version);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_order_items_commercial_line ON public.order_items(order_id,beat_id,license_type_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_purchases_commercial_line ON public.purchases(order_id,beat_id,license_type_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_stripe_checkout_session ON public.orders(stripe_checkout_session_id)
-  WHERE stripe_checkout_session_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_stripe_payment_intent ON public.orders(stripe_payment_intent_id)
-  WHERE stripe_payment_intent_id IS NOT NULL;
+-- The verified base schema already has UNIQUE constraints for these four key sets.
+-- Their backing indexes provide the same uniqueness and lookup behavior; avoid
+-- creating a second physical index for each identical key set.
 
 -- Explicit bridge; an Auth UUID is never assumed to equal customers.id.
 ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS auth_user_id uuid;
@@ -578,6 +575,22 @@ BEGIN
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',v_table);
     EXECUTE format('REVOKE ALL ON public.%I FROM PUBLIC,anon,authenticated',v_table);
     EXECUTE format('GRANT ALL ON public.%I TO service_role',v_table);
+  END LOOP;
+  -- Preserve the existing authenticated SELECT policies on these four tables.
+  -- RLS policies do not grant SQL privileges; authenticated needs SELECT for
+  -- those policies to continue serving owner-scoped reads. No write/DDL-like
+  -- table privileges are restored to anon or authenticated.
+  GRANT SELECT ON public.customers,public.orders,public.order_items,public.purchases TO authenticated;
+  -- Stop the migration rather than commit an unexpectedly inherited client grant.
+  FOREACH v_table IN ARRAY ARRAY['customers','orders','order_items','purchases'] LOOP
+    IF has_table_privilege('anon',format('public.%I',v_table),
+        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN
+      RAISE EXCEPTION 'anon_commerce_table_privilege_remains:%',v_table;
+    END IF;
+    IF has_table_privilege('authenticated',format('public.%I',v_table),
+        'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN
+      RAISE EXCEPTION 'authenticated_commerce_write_privilege_remains:%',v_table;
+    END IF;
   END LOOP;
 END
 $rls$;

@@ -3,22 +3,23 @@ import { spawn } from 'node:child_process';
 
 const expectedDatabase = 'rgodbeat_validation';
 const beatId = 'e945fabb-86f7-45fd-b879-734ea211b500';
-const orderA = '41000000-0000-4000-8000-000000000001';
-const orderB = '41000000-0000-4000-8000-000000000002';
-const orderC = '42000000-0000-4000-8000-000000000001';
-const itemA = '51000000-0000-4000-8000-000000000001';
-const itemB = '51000000-0000-4000-8000-000000000002';
-const itemC = '52000000-0000-4000-8000-000000000001';
+const orderA = '81000000-0000-4000-8000-000000000001';
+const orderB = '81000000-0000-4000-8000-000000000002';
+const orderC = '82000000-0000-4000-8000-000000000001';
+const itemA = '91000000-0000-4000-8000-000000000001';
+const itemB = '91000000-0000-4000-8000-000000000002';
+const itemC = '92000000-0000-4000-8000-000000000001';
 const intentC = '32000000-0000-4000-8000-000000000001';
 const giftC = '62000000-0000-4000-8000-000000000001';
 const tokenC = '72000000-0000-4000-8000-000000000001';
 const userC = '12000000-0000-4000-8000-000000000001';
 const customerC = '22000000-0000-4000-8000-000000000001';
+const stripeEventId = 'evt_rg_commerce_concurrency_fixture';
 const psqlArgs = ['-X', '-v', 'ON_ERROR_STOP=1', '-Atq', '-d', expectedDatabase];
 
-if (process.env.PGDATABASE !== expectedDatabase || process.env.PGPORT !== '55439'
-  || !process.env.PGHOST?.includes('rgodbeat-sock')) {
-  throw new Error('Set PGHOST=/private/tmp/rgodbeat-sock.kgznUf PGPORT=55439 PGUSER=rafael PGDATABASE=rgodbeat_validation');
+if (process.env.PGDATABASE !== expectedDatabase || !/^\d+$/.test(process.env.PGPORT || '')
+  || !process.env.PGHOST?.includes('rgodbeat-')) {
+  throw new Error('Set PGHOST to an isolated /private/tmp/rgodbeat-* socket, PGPORT, PGUSER, PGDATABASE=rgodbeat_validation');
 }
 
 function query(sql) {
@@ -45,7 +46,11 @@ function hold(sql) {
 }
 
 await query(`DO $$ BEGIN IF current_database()<>'${expectedDatabase}' THEN RAISE EXCEPTION 'wrong database'; END IF; END $$;
+INSERT INTO public.customers(id,email,name) VALUES('00000000-0000-4000-8000-000000000001','commerce-payer@rgodbeat.test','Commerce Payer') ON CONFLICT(id) DO NOTHING;
+INSERT INTO public.beats(id,title,slug,published) VALUES('${beatId}','Exclusive concurrency fixture','exclusive-concurrency-fixture',true) ON CONFLICT(id) DO NOTHING;
+INSERT INTO public.beats(id,title,slug,published) VALUES('08e7ff1f-b73a-4403-949f-46bf39018bcb','Gift claim concurrency fixture','gift-claim-concurrency-fixture',true) ON CONFLICT(id) DO NOTHING;
 DELETE FROM public.transactional_email_jobs WHERE source_id='${orderA}' AND message_type='lease_race';
+DELETE FROM public.stripe_event_processing WHERE event_id='${stripeEventId}';
 UPDATE public.customers SET studio_access_until=(SELECT prior_until FROM public.commerce_studio_access_grants WHERE source_type='order' AND source_id='${orderA}')
  WHERE id='00000000-0000-4000-8000-000000000001' AND EXISTS (SELECT 1 FROM public.commerce_studio_access_grants WHERE source_type='order' AND source_id='${orderA}');
 DELETE FROM public.commerce_studio_access_grants WHERE source_type='order' AND source_id='${orderA}';
@@ -123,6 +128,28 @@ COMMIT;`;
     'SKIP LOCKED must lease a queue job to exactly one concurrent worker');
   const job = await query(`SELECT status||':'||attempts FROM public.transactional_email_jobs WHERE source_id='${orderA}' AND message_type='lease_race'`);
   assert.equal(job, 'sending:1');
+
+  const stripeClaim = `BEGIN;
+SELECT public.rg_claim_stripe_event('${stripeEventId}','checkout.session.completed','cs_concurrent_fixture');
+SELECT pg_sleep(2);
+COMMIT;`;
+  const stripeFirst = hold(stripeClaim);
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const stripeSecond = hold(`SELECT public.rg_claim_stripe_event('${stripeEventId}','checkout.session.completed','cs_concurrent_fixture');`);
+  const stripeClaimResults = await Promise.all([stripeFirst.done, stripeSecond.done]);
+  assert.equal(stripeClaimResults.filter((output) => /^[0-9a-f-]{36}$/i.test(output.trim())).length, 1,
+    'one concurrent delivery may own the persistent Stripe event lease');
+  const stripeLease = stripeClaimResults.find((output) => /^[0-9a-f-]{36}$/i.test(output.trim())).trim();
+  assert.equal(await query(`SELECT status||':'||attempts FROM public.stripe_event_processing WHERE event_id='${stripeEventId}'`), 'processing:1');
+  await query(`SELECT public.rg_finish_stripe_event('${stripeEventId}','${stripeLease}',false,'fixture_partial_failure')`);
+  assert.equal(await query(`SELECT status FROM public.stripe_event_processing WHERE event_id='${stripeEventId}'`), 'failed');
+  const retryLease = await query(`SELECT public.rg_claim_stripe_event('${stripeEventId}','checkout.session.completed','cs_concurrent_fixture')`);
+  assert.match(retryLease, /^[0-9a-f-]{36}$/i, 'failed verified event can be retried');
+  await query(`SELECT public.rg_finish_stripe_event('${stripeEventId}','${retryLease}',true,NULL)`);
+  assert.equal(await query(`SELECT status||':'||attempts FROM public.stripe_event_processing WHERE event_id='${stripeEventId}'`), 'completed:2');
+  assert.equal(await query(`SELECT public.rg_claim_stripe_event('${stripeEventId}','checkout.session.completed','cs_concurrent_fixture')`), '',
+    'completed event cannot be claimed a second time');
+
   const claimSql = (license) => `BEGIN;
 SELECT gift_id FROM public.rg_claim_beat_gift(repeat('f',64),'${userC}','${customerC}','${license}','PURCHASER (PAYER): Buyer\\nLICENSEE: Concurrent Recipient');
 SELECT pg_sleep(2);
@@ -139,10 +166,12 @@ COMMIT;`;
   assert.equal(claimState, '1:claimed:1', 'one purchase, claim state and Studio grant commit atomically');
   console.log('PASS: PostgreSQL 16 exclusive reservation race has exactly one winner');
   console.log('PASS: PostgreSQL 16 concurrent normal Studio grants are idempotent');
+  console.log('PASS: PostgreSQL 16 Stripe event lease is unique, retryable, and idempotent');
   console.log('PASS: PostgreSQL 16 email queue SKIP LOCKED race has exactly one lease');
   console.log('PASS: PostgreSQL 16 concurrent gift claim commits exactly one recipient entitlement');
 } finally {
-  await query(`DELETE FROM public.transactional_email_jobs WHERE source_id='${orderA}' AND message_type='lease_race';
+await query(`DELETE FROM public.transactional_email_jobs WHERE source_id='${orderA}' AND message_type='lease_race';
+DELETE FROM public.stripe_event_processing WHERE event_id='${stripeEventId}';
 DELETE FROM public.gift_claim_contexts WHERE gift_id='${giftC}';
 DELETE FROM public.gift_claim_tokens WHERE id='${tokenC}';
 DELETE FROM public.beat_gifts WHERE id='${giftC}';

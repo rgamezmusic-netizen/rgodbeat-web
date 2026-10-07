@@ -3,6 +3,7 @@ import { resolveAuthoritativeCart } from "@/lib/commerce/fulfillment";
 import { getStripe, isStripeConfigured } from "@/lib/stripe/server";
 import { CheckoutPayload, CheckoutResponse } from "@/types/commerce";
 import { createCommerceAdminClient } from "@/lib/commerce/admin-client";
+import { canCheckoutRecipientMode } from "@/lib/commerce/gift-feature";
 import { getCurrentUser } from "@/lib/auth/server";
 import type Stripe from "stripe";
 
@@ -13,6 +14,9 @@ export async function POST(req: NextRequest) {
     const recipientMode = body.recipientMode ?? "self";
     if (recipientMode !== "self" && recipientMode !== "gift") {
       return NextResponse.json({ error: "El destinatario de la compra no es válido." }, { status: 400 });
+    }
+    if (!canCheckoutRecipientMode(recipientMode)) {
+      return NextResponse.json({ error: "Los regalos no están disponibles por el momento." }, { status: 503 });
     }
 
     if (!items || !Array.isArray(items) || items.length === 0) {

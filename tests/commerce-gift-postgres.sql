@@ -7,6 +7,17 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- Self-contained catalog fixtures (the test database intentionally starts empty).
+INSERT INTO public.customers(id,email,name) VALUES
+ ('00000000-0000-4000-8000-000000000001','commerce-payer@rgodbeat.test','Commerce Payer')
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO public.beats(id,title,slug,published) VALUES
+ ('83c4054a-67d1-4347-8a6e-8c727a31cde3','Gift fixture one','gift-fixture-one',true),
+ ('2af14652-2e53-4bc8-8095-dd28c1d0284f','Gift fixture two','gift-fixture-two',true),
+ ('a8206dea-899c-4f17-8744-d23787650ddf','Gift fixture three','gift-fixture-three',true),
+ ('e945fabb-86f7-45fd-b879-734ea211b500','Exclusive fixture','exclusive-fixture',true)
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO auth.users(id,email,email_confirmed_at,raw_user_meta_data) VALUES
  ('10000000-0000-4000-8000-000000000001','gift-recipient@rgodbeat.test',now(),'{}'),
  ('10000000-0000-4000-8000-000000000002','wrong-recipient@rgodbeat.test',now(),'{}'),
@@ -30,8 +41,8 @@ INSERT INTO public.orders(id,customer_id,stripe_checkout_session_id,stripe_payme
 VALUES('40000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000001','cs_gift_fixture','pi_gift_fixture','completed','paid','usd',49,49);
 UPDATE public.commerce_checkout_intents SET stripe_checkout_session_id='cs_gift_fixture',stripe_payment_intent_id='pi_gift_fixture' WHERE id='30000000-0000-4000-8000-000000000001';
 INSERT INTO public.order_items(id,order_id,beat_id,license_type_id,unit_price,currency)
-VALUES('50000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001',
- 'e945fabb-86f7-45fd-b879-734ea211b500','2b72a216-58c3-44e1-8b83-99fb1649447f',499,'usd');
+SELECT '50000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001',
+ 'e945fabb-86f7-45fd-b879-734ea211b500',id,499,'usd' FROM public.license_types WHERE slug='exclusive';
 INSERT INTO public.beat_exclusive_inventory(beat_id,order_item_id,order_id,state,source)
 VALUES('e945fabb-86f7-45fd-b879-734ea211b500','50000000-0000-4000-8000-000000000001','40000000-0000-4000-8000-000000000001','held','verified_payment');
 INSERT INTO public.beat_gifts(id,intent_id,order_id,order_item_id,recipient_kind,recipient_email,status,payment_status)
@@ -46,8 +57,8 @@ VALUES('30000000-0000-4000-8000-000000000002','buyer@rgodbeat.test','gift','emai
   '{"items":[{"beatId":"2af14652-2e53-4bc8-8095-dd28c1d0284f","licenseTier":"mp3"}],"totalAmountCents":2900,"currency":"usd"}', 'fulfilled');
 UPDATE public.commerce_checkout_intents SET stripe_checkout_session_id='cs_gift_fixture_2',stripe_payment_intent_id='pi_gift_fixture_2' WHERE id='30000000-0000-4000-8000-000000000002';
 INSERT INTO public.order_items(id,order_id,beat_id,license_type_id,unit_price,currency)
-VALUES('50000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000001',
- '2af14652-2e53-4bc8-8095-dd28c1d0284f','d14a9b12-b753-4fce-92dc-3ec0d98772a5',29,'usd');
+SELECT '50000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000001',
+ '2af14652-2e53-4bc8-8095-dd28c1d0284f',id,29,'usd' FROM public.license_types WHERE slug='mp3';
 INSERT INTO public.beat_gifts(id,intent_id,order_id,order_item_id,recipient_kind,recipient_email,status,payment_status)
 VALUES('60000000-0000-4000-8000-000000000002','30000000-0000-4000-8000-000000000002','40000000-0000-4000-8000-000000000001',
  '50000000-0000-4000-8000-000000000002','email','gift-recipient@rgodbeat.test','paid_pending_recipient','paid');
@@ -62,8 +73,8 @@ INSERT INTO public.orders(id,customer_id,stripe_checkout_session_id,stripe_payme
 VALUES('40000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000001','cs_gift_fixture_3','pi_gift_fixture_3','completed','paid','usd',49,49);
 UPDATE public.commerce_checkout_intents SET stripe_checkout_session_id='cs_gift_fixture_3',stripe_payment_intent_id='pi_gift_fixture_3' WHERE id='30000000-0000-4000-8000-000000000003';
 INSERT INTO public.order_items(id,order_id,beat_id,license_type_id,unit_price,currency)
-VALUES('50000000-0000-4000-8000-000000000003','40000000-0000-4000-8000-000000000002',
- 'a8206dea-899c-4f17-8744-d23787650ddf','31c1a718-6c04-4c80-bc36-b9f3b801d849',49,'usd');
+SELECT '50000000-0000-4000-8000-000000000003','40000000-0000-4000-8000-000000000002',
+ 'a8206dea-899c-4f17-8744-d23787650ddf',id,49,'usd' FROM public.license_types WHERE slug='wav';
 INSERT INTO public.beat_gifts(id,intent_id,order_id,order_item_id,recipient_kind,recipient_email,status,payment_status)
 VALUES('60000000-0000-4000-8000-000000000003','30000000-0000-4000-8000-000000000003','40000000-0000-4000-8000-000000000002',
  '50000000-0000-4000-8000-000000000003','email','gift-recipient@rgodbeat.test','ready_to_claim','paid');
@@ -89,6 +100,9 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM public.rg_get_gift_claim_preview(repeat('a',64))) THEN RAISE EXCEPTION 'paid gift preview missing'; END IF;
+  IF (SELECT used_at IS NOT NULL FROM public.gift_claim_tokens WHERE token_hash=repeat('a',64)) THEN
+    RAISE EXCEPTION 'gift preview consumed the claim token';
+  END IF;
   IF EXISTS (SELECT 1 FROM public.rg_get_gift_claim_preview(repeat('b',64))) THEN RAISE EXCEPTION 'unknown token preview leaked'; END IF;
 
   BEGIN
@@ -114,6 +128,9 @@ BEGIN
   SELECT * INTO v_context FROM public.rg_create_gift_claim_context(repeat('c',64));
   IF v_context.expires_at<now()+interval '71 hours' THEN RAISE EXCEPTION 'signup context expires before claim token'; END IF;
   IF NOT EXISTS (SELECT 1 FROM public.rg_resolve_gift_claim_context(v_context.context_id)) THEN RAISE EXCEPTION 'GET context did not remain usable'; END IF;
+  IF (SELECT used_at IS NOT NULL FROM public.gift_claim_tokens WHERE token_hash=repeat('c',64)) THEN
+    RAISE EXCEPTION 'claim context read consumed the gift token';
+  END IF;
   UPDATE public.beat_gifts SET claim_email_last_sent_at=now()-interval '61 seconds' WHERE id='60000000-0000-4000-8000-000000000002';
   PERFORM public.rg_prepare_gift_claim_email('60000000-0000-4000-8000-000000000002',repeat('d',64),now()+interval '72 hours','replacement-secret','{"beatTitle":"Aura Latina"}'::jsonb);
   IF EXISTS (SELECT 1 FROM public.rg_get_gift_claim_preview(repeat('c',64)))

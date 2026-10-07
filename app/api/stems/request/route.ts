@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
-import { createStemRequest, getStemRequestByPurchase, isTierEligibleForStems } from "@/lib/stems/tickets";
+import { createStemRequest, isTierEligibleForStems } from "@/lib/stems/tickets";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getAuthorizedPurchase } from "@/lib/commerce/authorization";
+import { getAuthorizedPurchase, guestPurchaseCookieName } from "@/lib/commerce/authorization";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
-    }
-
     const body = await req.json();
     const { purchaseId } = body;
 
@@ -22,7 +18,10 @@ export async function POST(req: NextRequest) {
 
     // Verify purchase exists and belongs to this user or customer email
     const supabase = createAdminClient();
-    const purchase = await getAuthorizedPurchase(supabase, purchaseId, { user });
+    const purchase = await getAuthorizedPurchase(supabase, purchaseId, {
+      user,
+      guestToken: orderId => req.cookies.get(guestPurchaseCookieName(orderId))?.value,
+    });
     if (!purchase) {
       return NextResponse.json({ error: "Access denied. Purchase belongs to another account." }, { status: 403 });
     }
@@ -45,10 +44,10 @@ export async function POST(req: NextRequest) {
       success: true,
       ticket,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Stem Request API Error]:", error);
     return NextResponse.json(
-      { error: error?.message || "Internal server error creating stem request" },
+      { error: error instanceof Error ? error.message : "Internal server error creating stem request" },
       { status: 500 }
     );
   }

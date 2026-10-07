@@ -40,15 +40,12 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const user = await getCurrentUser();
     const isAdmin = isSiteAdmin(user);
     const isOwner = user?.email && ticket.customerEmail.toLowerCase() === user.email.toLowerCase();
-
-    if (!user) {
-      return NextResponse.json({ error: "Inicia sesión para descargar tus stems." }, { status: 401 });
-    }
     const authorizedPurchase = await getAuthorizedPurchase(createAdminClient(), ticket.purchaseId, {
       user,
       guestToken: orderId => req.cookies.get(guestPurchaseCookieName(orderId))?.value,
     });
-    if (!isAdmin && !isOwner) {
+    const hasGuestEntitlement = !user && authorizedPurchase?.customer_id === ticket.customerId;
+    if (!isAdmin && !isOwner && !hasGuestEntitlement) {
       return NextResponse.json({ error: "No tienes acceso a estos stems." }, { status: 403 });
     }
     if (!authorizedPurchase || authorizedPurchase.customer_id !== ticket.customerId) {
@@ -95,8 +92,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         ? "No se pudo acceder al archivo de stems. Inténtalo de nuevo."
         : "El archivo de stems todavía no está disponible. Contacta con RGODBEAT.",
     }, { status: storagePath ? 503 : 409 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Stem Download Error]:", error);
-    return NextResponse.json({ error: error?.message || "Failed to download stem file" }, { status: 500 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to download stem file" }, { status: 500 });
   }
 }

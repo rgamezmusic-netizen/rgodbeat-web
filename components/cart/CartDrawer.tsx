@@ -7,8 +7,10 @@ import { useCart } from "@/contexts/CartContext";
 import { formatCurrency } from "@/lib/utils";
 import { CartItemRow } from "./CartItemRow";
 import { Button } from "@/components/ui/Button";
+import { isGiftCheckoutVisible } from "@/lib/commerce/gift-feature";
 
 export function CartDrawer() {
+  const giftCheckoutVisible = isGiftCheckoutVisible();
   const { items, isCartOpen, closeCart, removeFromCart, clearCart, totalAmount, itemCount } = useCart();
   const hasExclusiveLicense = items.some((item) => item.licenseTier === "exclusive");
   const hasNonExclusiveLicense = items.some((item) => item.licenseTier !== "exclusive");
@@ -358,7 +360,7 @@ export function CartDrawer() {
                 <span>Pago con Stripe</span>
               </div>
 
-              <section className="rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-3">
+              {giftCheckoutVisible ? <section className="rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-3">
                 <h2 className="text-xs font-mono font-bold tracking-wider text-white">¿PARA QUIÉN ES?</h2>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => { setRecipientMode("self"); setArtistResults([]); }} aria-pressed={recipientMode === "self"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "self" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PARA MÍ</button>
@@ -381,7 +383,7 @@ export function CartDrawer() {
                   </div>}
                   {giftError && <p role="alert" className="text-xs text-rose-300">{giftError}</p>}
                 </div>}
-              </section>
+              </section> : <p className="text-xs text-zinc-500">Esta compra es para ti.</p>}
 
               {/* Electronic Acceptance Disclosure */}
               <div className="p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06] text-[10px] text-zinc-400 font-mono leading-relaxed">
