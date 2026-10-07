@@ -32,7 +32,8 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'recipient_customer_identity_mismatch'; END IF;
  SELECT g.* INTO gift FROM public.beat_gifts g WHERE g.id=p_gift_id FOR UPDATE;
  IF NOT FOUND OR gift.market_pass_id IS NULL OR gift.payment_status<>'paid'
-   OR lower(btrim(gift.recipient_email))<>recipient_mail OR (gift.recipient_user_id IS NOT NULL AND gift.recipient_user_id<>p_user_id)
+   OR lower(btrim(gift.recipient_email))<>recipient_mail
+   OR (gift.recipient_kind='artist' AND gift.recipient_user_id IS NOT NULL AND gift.recipient_user_id<>p_user_id)
    OR gift.status NOT IN ('paid_pending_recipient','ready_to_claim','claimed') THEN RAISE EXCEPTION 'market_gift_not_claimable'; END IF;
  IF gift.recipient_kind='artist' AND NOT EXISTS(SELECT 1 FROM public.rg_artists WHERE id=gift.recipient_artist_id AND user_id=p_user_id AND status='active') THEN RAISE EXCEPTION 'artist_recipient_identity_mismatch'; END IF;
  SELECT * INTO intent FROM public.commerce_checkout_intents WHERE id=gift.intent_id AND state='fulfilled' FOR UPDATE;

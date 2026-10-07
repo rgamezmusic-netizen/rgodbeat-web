@@ -33,10 +33,14 @@ export async function POST(request: NextRequest) {
   `).eq("id", tokenRow.gift_id).maybeSingle();
   const order = gift && (Array.isArray(gift.orders) ? gift.orders[0] : gift.orders);
   if (giftError || !gift || gift.status !== "ready_to_claim" || gift.payment_status !== "paid"
-    || order?.status !== "completed" || order?.payment_status !== "paid"
-    || gift.recipient_email?.trim().toLowerCase() !== user.email.trim().toLowerCase()
-    || (gift.recipient_user_id && gift.recipient_user_id !== user.id)) {
+    || order?.status !== "completed" || order?.payment_status !== "paid") {
     return NextResponse.json({ error: "Este regalo no está disponible para esta cuenta." }, { status: 403 });
+  }
+  // Email gifts are bound to the verified email address. The Auth UUID can
+  // change if the account was recreated or relinked while keeping that email.
+  if (gift.recipient_kind === "email"
+    && gift.recipient_email?.trim().toLowerCase() !== user.email.trim().toLowerCase()) {
+    return NextResponse.json({ error: "Este regalo fue enviado a otro correo. Inicia sesión con el correo verificado del destinatario." }, { status: 403 });
   }
   if (gift.recipient_kind === "artist") {
     const { data: artist } = await admin.from("rg_artists").select("id,user_id,status")
@@ -44,6 +48,8 @@ export async function POST(request: NextRequest) {
     if (!artist || artist.status !== "active" || artist.user_id !== user.id) {
       return NextResponse.json({ error: "Este regalo no está disponible para esta cuenta." }, { status: 403 });
     }
+  } else if (gift.recipient_kind !== "email") {
+    return NextResponse.json({ error: "El destinatario del regalo no es válido." }, { status: 403 });
   }
 
   const customerId = await linkVerifiedCommerceCustomer(admin, user);
