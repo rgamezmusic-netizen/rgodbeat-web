@@ -80,7 +80,15 @@ export async function POST(request: NextRequest) {
   if (gift.market_pass_id) {
     const claim = await admin.rpc('rg_claim_beat_gift', { p_token_hash: claimHash, p_user_id: user.id, p_customer_id: customerId,
       p_license_id: null, p_contract_text: null });
-    if (claim.error || !Array.isArray(claim.data) || claim.data.length !== 1) return NextResponse.json({ error: 'El regalo cambió de estado o ya fue reclamado.' }, { status: 409 });
+    if (claim.error || !Array.isArray(claim.data) || claim.data.length !== 1) {
+      const databaseMessage = claim.error?.message || "";
+      const message = databaseMessage.includes("gift_not_claimable_for_account")
+        ? "No se pudo validar el destinatario. Inicia sesión con el correo verificado al que enviaron el regalo."
+        : databaseMessage.includes("gift_token_invalid_expired_or_used")
+          ? "El enlace venció o ya se utilizó. Si el regalo sigue pendiente, pide que lo reenvíen."
+          : "El regalo cambió de estado o ya fue reclamado. Actualiza la página.";
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
     return NextResponse.json({ claimed: true, benefitKind: claim.data[0].license_tier,
       studioAccessUntil: claim.data[0].studio_access_until }, { headers: { 'Cache-Control': 'no-store' } });
   }
@@ -105,7 +113,15 @@ export async function POST(request: NextRequest) {
     p_license_id: allocated.data, p_contract_text: contract,
   });
   if (claimError || !Array.isArray(result) || result.length !== 1) {
-    return NextResponse.json({ error: "El regalo cambió de estado o ya fue reclamado. Actualiza esta página." }, { status: 409 });
+    const databaseMessage = claimError?.message || "";
+    const message = databaseMessage.includes("gift_not_claimable_for_account")
+      ? "No se pudo validar el destinatario. Inicia sesión con el correo verificado al que enviaron el regalo."
+      : databaseMessage.includes("gift_token_invalid_expired_or_used")
+        ? "El enlace venció o ya se utilizó. Si el regalo sigue pendiente, pide que lo reenvíen."
+        : databaseMessage.includes("gift_payment_not_verified_or_reversed")
+          ? "El pago del regalo aún no está confirmado o fue revertido."
+          : "El regalo cambió de estado o ya fue reclamado. Actualiza esta página.";
+    return NextResponse.json({ error: message }, { status: 409 });
   }
   return NextResponse.json({ claimed: true, purchaseId: result[0].purchase_id, beatTitle: beat.title, licenseTier: result[0].license_tier }, { headers: { "Cache-Control": "no-store" } });
 }

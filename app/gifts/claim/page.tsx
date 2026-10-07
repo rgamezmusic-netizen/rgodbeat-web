@@ -19,7 +19,7 @@ export default async function GiftClaimPage({ searchParams }: { searchParams: Pr
     token = null;
   }
   const preview = hash ? await admin.rpc("rg_get_gift_claim_preview", { p_token_hash: hash }) : { data: null, error: true };
-  let gift = !preview.error && Array.isArray(preview.data) && preview.data.length === 1 ? preview.data[0] : null;
+  const gift = !preview.error && Array.isArray(preview.data) && preview.data.length === 1 ? preview.data[0] : null;
   let alreadyClaimed = false;
   let claimedPurchaseId: string | null = null;
   let claimedBenefitKind: string | null = null;
