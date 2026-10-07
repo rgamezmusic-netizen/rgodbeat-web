@@ -25,10 +25,10 @@ export function decodeProjectManifest(body: Buffer | null): {
 /** Only retry transport failures. Permissions and configuration require a repair. */
 export function projectServiceError(error: unknown) {
   const failure = error as { name?: string; $metadata?: { httpStatusCode?: number } };
-  const permanent = ['AccessDenied', 'InvalidAccessKeyId', 'SignatureDoesNotMatch', 'NoSuchBucket'].includes(failure?.name || '')
+  const permanent = ['AccessDenied', 'InvalidAccessKeyId', 'InvalidArgument', 'SignatureDoesNotMatch', 'NoSuchBucket'].includes(failure?.name || '')
     || [401, 403].includes(failure?.$metadata?.httpStatusCode || 0);
   return {
-    error: permanent ? 'La nube no está disponible por un problema de configuración. Guarda una copia en tu dispositivo.'
+    error: permanent ? 'La conexión de nube requiere corregir su configuración. Tu proyecto local se conserva.'
       : 'No se pudo conectar con la nube. Tu proyecto local se conserva.',
     code: permanent ? 'STORAGE_CONFIGURATION' : 'SERVICE_UNAVAILABLE',
     retryable: !permanent,

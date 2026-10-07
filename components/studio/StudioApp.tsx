@@ -1014,22 +1014,36 @@ export default function App() {
           const projectId = activeProjectIdRef.current;
           const localTimestamp = lastSession?.timestamp;
           const verifyAccount = async (): Promise<CloudProjectCheckResult | null> => {
-            const remote = await checkCloudProject();
-            if (cancelled || cloudWorkPausedRef.current || owner !== accessStatusRef.current.email
-              || projectId !== activeProjectIdRef.current || replacingProjectRef.current) return null;
-            setCloudProjectInfo(remote);
-            if (remote.unavailable) { pauseCloudVerification(remote.message, remote.retryable, remote.code, remote.requestId); return remote; }
-            cloudVerificationPendingRef.current = false;
-            setCloudNeedsCheck(false);
-            setCloudBackupNotice(remote.recoveryNotice || '');
-            if (remote.hasProject && localTimestamp !== undefined && !canResumeCloudProject(remote, projectId)) {
-              // A late account response must never replace the open local audio.
-              cloudConflictRef.current = true;
-              setCloudBackupStatus('Hay una copia más reciente en tu cuenta. Tu proyecto local se conserva.');
-            } else if (!cloudConflictRef.current) {
-              setCloudBackupStatus('Cuenta conectada');
+            try {
+              // Revalidate the same account before checking its cloud project.
+              // A stale auth cookie must not leave startup showing “Conectando…” forever.
+              await verifyStudioAccount(owner);
+              const remote = await checkCloudProject();
+              if (cancelled || cloudWorkPausedRef.current || owner !== accessStatusRef.current.email
+                || projectId !== activeProjectIdRef.current || replacingProjectRef.current) return null;
+              setCloudProjectInfo(remote);
+              if (remote.unavailable) { pauseCloudVerification(remote.message, remote.retryable, remote.code, remote.requestId); return remote; }
+              cloudVerificationPendingRef.current = false;
+              setCloudNeedsCheck(false);
+              setCloudBackupNotice(remote.recoveryNotice || '');
+              if (remote.hasProject && localTimestamp !== undefined && !canResumeCloudProject(remote, projectId)) {
+                // A late account response must never replace the open local audio.
+                cloudConflictRef.current = true;
+                setCloudBackupStatus('Hay una copia más reciente en tu cuenta. Tu proyecto local se conserva.');
+              } else if (!cloudConflictRef.current) {
+                setCloudBackupStatus('Cuenta conectada');
+              }
+              return remote;
+            } catch (error) {
+              if (!cancelled && !cloudWorkPausedRef.current && owner === accessStatusRef.current.email
+                && projectId === activeProjectIdRef.current && !replacingProjectRef.current) {
+                pauseCloudVerification(error instanceof Error ? error.message : undefined,
+                  error instanceof CloudConnectionError ? error.retryable : true,
+                  error instanceof CloudConnectionError ? error.code : undefined,
+                  error instanceof CloudConnectionError ? error.reference : undefined);
+              }
+              return null;
             }
-            return remote;
           };
           if (lastSession) {
             // The verified owner's local project can open while the account reconnects.
@@ -2895,48 +2909,42 @@ export default function App() {
         isSavingAndExiting={isSavingAndExiting}
       />
 
-      {/* Backup status stays separate from a recoverable account connection issue. */}
-      <div className="shrink-0 border-b border-zinc-800 bg-zinc-950 px-3 py-2 text-[11px] leading-relaxed text-zinc-300" role="status" aria-live="polite">
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-          <p>{localBackupStatus}</p>
-          {cloudWorkPaused ? <p className="text-zinc-400">En dispositivo · Nube pausada</p>
-            : cloudBackupStatus && <p className="text-zinc-400">{cloudBackupStatus}</p>}
-        </div>
-        {cloudWorkPaused && <button type="button" disabled={isCheckingCloud}
-          className="mt-1 underline underline-offset-2 text-zinc-400 cursor-pointer disabled:opacity-50"
-          onClick={() => void retryCloudBackup(true)}>Conectar nube</button>}
-        {cloudBackupNotice && !cloudWorkPaused && (
-          <div className="mt-1.5 text-amber-200">
-            <p>{cloudBackupNotice}</p>
-            {cloudNeedsCheck && <div className="flex flex-wrap gap-x-3"><button type="button" disabled={isCheckingCloud} className="mt-1 underline underline-offset-2 cursor-pointer disabled:cursor-wait disabled:opacity-60" onClick={() => {
+      {/* Keep cloud status compact; recovery details and device actions stay available on demand. */}
+      <div className="shrink-0 border-b border-zinc-800 bg-zinc-950 px-3 py-1.5 text-[11px] leading-relaxed text-zinc-300" role="status" aria-live="polite">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <p className="min-w-0 truncate">
+            <span>{localBackupStatus}</span><span className="text-zinc-600"> · </span>
+            <span className={cloudBackupNotice ? 'text-amber-200' : 'text-zinc-400'}>
+              {cloudWorkPaused ? 'Nube pausada' : cloudBackupStatus || (isCheckingCloud ? 'Conectando…' : accessStatus.isLoggedIn ? 'Nube conectada' : 'Inicia sesión para usar la nube')}
+            </span>
+          </p>
+          {(cloudWorkPaused || cloudNeedsCheck) && <button type="button" disabled={isCheckingCloud}
+            className="shrink-0 underline underline-offset-2 text-amber-200 cursor-pointer disabled:cursor-wait disabled:opacity-60"
+            onClick={() => {
               if (cloudRequiresSignIn) { setUnlockModalReason('general'); setIsUnlockModalOpen(true); }
               else void retryCloudBackup(true);
-            }}>{isCheckingCloud ? 'Comprobando conexión…' : cloudRequiresSignIn ? 'Iniciar sesión' : 'Reintentar conexión'}</button>
-              <button type="button" className="mt-1 underline underline-offset-2 cursor-pointer" onClick={() => setDeviceWorkingMode(true)}>Trabajar en dispositivo</button>
-            </div>}
-          </div>
-        )}
-        {cloudWorkPaused && cloudBackupNotice && <details className="mt-1 text-zinc-500">
-          <summary className="cursor-pointer">Estado de nube</summary><p className="mt-1">{cloudBackupNotice}</p>
-          {cloudBackupDiagnostic && <p className="mt-1 break-all">{cloudBackupDiagnostic}</p>}
-        </details>}
-        {!cloudWorkPaused && cloudBackupDiagnostic && <details className="mt-1 text-zinc-500">
-          <summary className="cursor-pointer">Detalle del error</summary><p className="mt-1 break-all">{cloudBackupDiagnostic}</p>
-        </details>}
-        {recoveryNotice && <p className="mt-1 text-amber-200">{recoveryNotice}</p>}
-        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-          <button type="button" disabled={isRecording || isSavingDevice || !isStartupResolved}
-            className="underline underline-offset-2 text-zinc-200 disabled:opacity-50 cursor-pointer"
-            onClick={handleExportDeviceProject}>{isSavingDevice ? 'Preparando archivo…' : 'Guardar en dispositivo'}</button>
-          {hasLocalPrevious && <button type="button" disabled={isRecording || !isStartupResolved}
-            className="underline underline-offset-2 text-zinc-400 disabled:opacity-50 cursor-pointer"
-            onClick={handleRestoreLocalPrevious}>Recuperar anterior local</button>}
+            }}>{isCheckingCloud ? 'Conectando…' : cloudRequiresSignIn ? 'Iniciar sesión' : 'Conectar'}</button>}
         </div>
-        <details className="mt-1 text-zinc-500">
-          <summary className="cursor-pointer">Cómo se guardan tus proyectos</summary>
-          <p className="mt-1 text-zinc-400">Nube: 2 proyectos. Guarda archivos .rgodbeat en tu dispositivo para conservar más proyectos.</p>
+        <details className="mt-0.5 text-zinc-500">
+          <summary className="w-fit cursor-pointer">Estado y opciones</summary>
+          <div className="mt-1 space-y-1.5">
+            {cloudBackupNotice && <p className="text-amber-200">{cloudBackupNotice}</p>}
+            {cloudBackupDiagnostic && <p className="break-all">{cloudBackupDiagnostic}</p>}
+            {cloudNeedsCheck && !cloudWorkPaused && <button type="button" className="underline underline-offset-2 cursor-pointer"
+              onClick={() => setDeviceWorkingMode(true)}>Trabajar en dispositivo</button>}
+            {recoveryNotice && <p className="text-amber-200">{recoveryNotice}</p>}
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <button type="button" disabled={isRecording || isSavingDevice || !isStartupResolved}
+                className="underline underline-offset-2 text-zinc-200 disabled:opacity-50 cursor-pointer"
+                onClick={handleExportDeviceProject}>{isSavingDevice ? 'Preparando archivo…' : 'Guardar en dispositivo'}</button>
+              {hasLocalPrevious && <button type="button" disabled={isRecording || !isStartupResolved}
+                className="underline underline-offset-2 text-zinc-400 disabled:opacity-50 cursor-pointer"
+                onClick={handleRestoreLocalPrevious}>Recuperar anterior local</button>}
+            </div>
+            <p className="text-zinc-500">Nube: 2 proyectos. Guarda archivos .rgodbeat en tu dispositivo para conservar más proyectos.</p>
+            {startupError && <p className="text-amber-300">{startupError} <button className="underline cursor-pointer" onClick={() => window.location.reload()}>Reintentar</button></p>}
+          </div>
         </details>
-        {startupError && <p className="mt-1 text-amber-300">{startupError} <button className="underline cursor-pointer" onClick={() => window.location.reload()}>Reintentar</button></p>}
       </div>
       {accessStatus.hasActivePass &&
         accessStatus.daysRemaining <= 3 &&
