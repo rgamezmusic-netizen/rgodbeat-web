@@ -29,8 +29,32 @@ WITH checks AS (
   UNION ALL
   SELECT 'private_purchase_tables',
     (SELECT count(*)=4 AND bool_and(c.relrowsecurity)
-       AND bool_and(NOT has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE'))
-       AND bool_and(NOT has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE'))
+       -- anon must have no table- or column-level commerce data access.
+       AND bool_and(NOT has_table_privilege('anon',c.oid,'SELECT'))
+       AND bool_and(NOT has_table_privilege('anon',c.oid,'INSERT'))
+       AND bool_and(NOT has_table_privilege('anon',c.oid,'UPDATE'))
+       AND bool_and(NOT has_table_privilege('anon',c.oid,'DELETE'))
+       AND bool_and(NOT has_any_column_privilege('anon',c.oid,'SELECT'))
+       AND bool_and(NOT has_any_column_privilege('anon',c.oid,'INSERT'))
+       AND bool_and(NOT has_any_column_privilege('anon',c.oid,'UPDATE'))
+       -- Authenticated users may SELECT only through an applicable, scoped RLS policy.
+       AND bool_and(EXISTS (
+         SELECT 1 FROM pg_policies p
+          WHERE p.schemaname='public' AND p.tablename=c.relname
+            AND p.cmd IN ('SELECT','ALL')
+            AND ('authenticated'=ANY(p.roles) OR 'public'=ANY(p.roles))
+            AND p.qual IS NOT NULL AND btrim(p.qual) NOT IN ('true','(true)')
+       ))
+       AND bool_and(NOT has_table_privilege('authenticated',c.oid,'INSERT'))
+       AND bool_and(NOT has_table_privilege('authenticated',c.oid,'UPDATE'))
+       AND bool_and(NOT has_table_privilege('authenticated',c.oid,'DELETE'))
+       AND bool_and(NOT has_any_column_privilege('authenticated',c.oid,'INSERT'))
+       AND bool_and(NOT has_any_column_privilege('authenticated',c.oid,'UPDATE'))
+       -- Backend fulfillment relies on the service role for CRUD on these records.
+       AND bool_and(has_table_privilege('service_role',c.oid,'SELECT'))
+       AND bool_and(has_table_privilege('service_role',c.oid,'INSERT'))
+       AND bool_and(has_table_privilege('service_role',c.oid,'UPDATE'))
+       AND bool_and(has_table_privilege('service_role',c.oid,'DELETE'))
        FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='public' AND c.relname=ANY(ARRAY['customers','orders','order_items','purchases'])),
     (SELECT count(*)::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
