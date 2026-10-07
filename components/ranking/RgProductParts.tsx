@@ -21,10 +21,10 @@ export function ChartRow({ entry, kind }: { entry: ChartEntry; kind: 'tracks' | 
     <div className={styles.points}>{formatRg(entry.score)} <small>pts</small><Movement movement={entry.movement} isNew={entry.isNew} /></div>
   </Link>;
 }
-export function ArtistRewards({ rewards }: { rewards: ChartData['rewards'] }) {
+export function ArtistRewards({ rewards, tail }: { rewards: ChartData['rewards']; tail?: ChartData['rewardTail'] }) {
   return <section aria-label="Premios del Top 3 de artistas"><p className={styles.eyebrow}>TOP 3 ARTISTS · PREMIOS DE TEMPORADA</p><div className={styles.rewardGrid}>
     {rewards.map(reward => <article key={reward.place} className={styles.reward}><span className={styles.eyebrow}>#{reward.place}</span><strong>{reward.premiumDays} DÍAS PREMIUM</strong><small>+ {reward.poolSharePercent}% DEL REWARD POOL</small></article>)}
-  </div></section>;
+  </div>{tail && <p className={styles.muted}>#{tail.firstPlace}–#{tail.lastPlace} comparten el {tail.poolSharePercent}% restante, con peso descendente por posición. El pool real varía por temporada.</p>}</section>;
 }
 export function Sponsors({ sponsors }: { sponsors: ChartData['sponsors'] }) {
   if (!sponsors.length) return null;

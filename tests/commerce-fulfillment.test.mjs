@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { loadSource } from './helpers/rg-fixtures.mjs';
+import { marketRows } from './helpers/rg-market-fixtures.mjs';
 
 const checkoutIntent = () => ({
   id: 'intent-fixture', recipient_mode: 'self', recipient_kind: null, recipient_email: null,
   recipient_artist_id: null, recipient_artist_slug: null, buyer_email: 'payer@example.test',
-  state: 'awaiting_payment', attempt_count: 0,
+  state: 'awaiting_payment', attempt_count: 0, buyer_auth_user_id:'payer-user',
   snapshot: { items: [{ beatId: 'beat-frozen', beatTitle: 'Frozen Beat', licenseTypeId: 'license-wav', licenseTier: 'wav', licenseName: 'WAV', unitPrice: 12.5 }], totalAmountCents: 2500, currency: 'usd' },
 });
 
@@ -53,6 +54,10 @@ function commerceFixture({ failPurchaseOnce = false, snapshot = checkoutIntent()
       } else if (query.action === 'update') {
         if (state.order) Object.assign(state.order, query.values);
       }
+    } else if (query.table === 'rg_beat_passes') {
+      data={id:'market-pass',user_id:'payer-user',product_key:state.intent.snapshot.utility.productKey,product_version:1,status:'reserved',reserved_intent_id:state.intent.id};
+    } else if (query.table === 'rg_market_products') {
+      data=marketRows.find(row=>row.product_key===value('product_key'));
     } else if (query.table === 'commerce_checkout_intents') {
       if (query.action === 'select') data = { ...state.intent };
       else if (query.action === 'update') {
@@ -134,4 +139,27 @@ test('mandatory purchase failure leaves order processing and a retry completes i
   assert.equal(fixture.state.order.status, 'completed');
   assert.equal(fixture.state.purchase.license_tier, 'wav');
   assert.equal(fixture.state.calls.filter((call) => call.name === 'rg_grant_commerce_studio_access').length, 1);
+});
+
+const utilitySnapshot = (key) => {
+ const product=marketRows.find(row=>row.product_key===key);
+ return {kind:'rg_market',paymentMethod:'rg_market',currency:'usd',totalAmountCents:key==='studio_30'?0:2175,
+ items:key==='studio_30'?[]:[{beatId:'beat-frozen',beatTitle:'Frozen Beat',licenseTypeId:'license-mp3',licenseTier:'mp3',licenseName:'MP3',catalogUnitPrice:29,unitPrice:21.75}],
+ utility:{passId:'market-pass',productKey:key,version:1,benefitKind:product.benefit_kind,name:product.name,studioDays:product.studio_days,giftPass:false,discountCents:key==='studio_30'?0:725}};
+};
+test('actual Market fulfillment preserves the partial USD price and consumes only after canonical completion',async()=>{
+ const fixture=commerceFixture({snapshot:utilitySnapshot('mp3_25')});
+ const result=await fulfillmentFor(fixture).fulfillStripeCheckoutSession(session({amount_total:2175,metadata:{type:'rg_market',commerceIntentId:'intent-fixture'}}));
+ assert.equal(result.status,'fulfilled');assert.equal(fixture.state.order.total_amount,21.75);assert.equal(fixture.state.purchase.license_tier,'mp3');
+ const consumption=fixture.state.calls.findIndex(c=>c.name==='rg_consume_market_pass');
+ const completion=fixture.state.calls.findIndex(c=>c.table==='orders'&&c.action==='update'&&c.values.status==='completed');
+ assert.ok(consumption>completion);assert.equal(fixture.state.intent.state,'fulfilled');
+});
+test('actual RG Studio fulfillment uses the existing idempotent Studio grant for the purchaser at zero USD',async()=>{
+ const fixture=commerceFixture({snapshot:utilitySnapshot('studio_30')});const fulfillment=fulfillmentFor(fixture);
+ const marketSession=session({id:'rgmarket:intent-fixture',amount_total:0,payment_intent:null,metadata:{type:'rg_market',commerceIntentId:'intent-fixture'}});
+ for(let i=0;i<2;i++)assert.equal((await fulfillment.fulfillStripeCheckoutSession(marketSession)).status,'fulfilled');
+ assert.equal(fixture.state.order.total_amount,0);assert.equal(fixture.state.purchase,null);
+ for(const grant of fixture.state.calls.filter(c=>c.name==='rg_grant_commerce_studio_access'))assert.deepEqual(grant.args,{p_source_type:'order',p_source_id:'order-fixture',p_customer_id:'payer-customer',p_days:30});
+ assert.equal(fixture.state.calls.filter(c=>c.name==='rg_consume_market_pass').length,2);
 });

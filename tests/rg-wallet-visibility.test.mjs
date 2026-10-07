@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { loadSource } from './helpers/rg-fixtures.mjs';
+import { marketRows, marketProducts } from './helpers/rg-market-fixtures.mjs';
 
-const summary = (changes = {}) => ({ balanceRg: 10000, availableBeatPasses: 0, reservedBeatPasses: 0, consumedBeatPasses: 0,
-  beatPassEnabled: true, beatPassCostRg: 10000, beatPassEligibleTiers: ['mp3'], maxDiscountPercent: 50,
-  purchasesEnabled: false, redemptionEnabled: false, rgPerUsdCent: 1, cashWithdrawalEnabled: false, tradingEnabled: false, ...changes });
+const summary = (changes = {}) => {
+ const counts={availableBeatPasses:0,reservedBeatPasses:0,consumedBeatPasses:0,...changes};
+ return { balanceRg:10000,beatPassEnabled:true,beatPassCostRg:10000,beatPassEligibleTiers:['mp3'],cashWithdrawalEnabled:false,tradingEnabled:false,
+  products:marketProducts,passes:['available','reserved','consumed'].flatMap(status=>Array.from({length:counts[status+'BeatPasses']??0},(_,i)=>({id:status+i,productKey:'beat_pass',version:1,status}))),...counts };
+};
 const css = { __esModule: true, default: new Proxy({}, { get: (_, key) => String(key) }) };
 const replacements = {
   'next/link': { __esModule: true, default: ({ children, ...props }) => React.createElement('a', props, children) },
@@ -39,16 +42,17 @@ test('Wallet and account show earned RG, purchased inventory and consumed/reserv
 });
 
 test('server inventory counts only the authenticated owner and keeps failed counts distinct from zero', async () => {
-  const rows = [{ user_id: 'owner', status: 'available' }, { user_id: 'owner', status: 'reserved' }, { user_id: 'owner', status: 'consumed' }, { user_id: 'other', status: 'available' }];
+  const rows = ['available','reserved','consumed'].map(status=>({id:status,user_id:'owner',status,product_key:'beat_pass',product_version:1})).concat([{id:'other',user_id:'other',status:'available',product_key:'beat_pass',product_version:1}]);
   let failed = false;
   const db = { from(table) {
     const filters = [];
-    const query = { select() { return query; }, eq(k, v) { filters.push([k, v]); return query; }, single() { return query; }, maybeSingle() { return query; },
+    const query = { range() { return query; }, order() { return query; }, select() { return query; }, eq(k, v) { filters.push([k, v]); return query; }, single() { return query; }, maybeSingle() { return query; },
       then(resolve) {
         if (table === 'rg_economy_config') return Promise.resolve({ data: { beat_pass_enabled: true, beat_pass_cost_rg: 10000, beat_pass_eligible_license_tiers: ['mp3'], max_rg_discount_percent: 50 }, error: null }).then(resolve);
+        if (table === 'rg_market_products') return Promise.resolve({data:marketRows,error:null}).then(resolve);
         assert.ok(filters.some(([k, v]) => k === 'user_id' && v === 'owner'));
-        if (table === 'rg_coin_balances') return Promise.resolve({ data: { balance_rg: '0' }, error: null }).then(resolve);
-        return Promise.resolve({ data: null, count: failed ? null : rows.filter(row => filters.every(([k, v]) => row[k] === v)).length, error: null }).then(resolve);
+        if (table === 'rg_spendable_balances') return Promise.resolve({ data: { balance_rg: '0' }, error: null }).then(resolve);
+        return Promise.resolve({ data: failed ? null : rows.filter(row=>filters.every(([k,v])=>row[k]===v)), count: failed ? null : rows.filter(row=>filters.every(([k,v])=>row[k]===v)).length, error: failed ? {message:'inventory unavailable'} : null }).then(resolve);
       } };
     return query;
   } };
@@ -59,7 +63,7 @@ test('server inventory counts only the authenticated owner and keeps failed coun
   assert.equal(wallet.reservedBeatPasses, 1);
   assert.equal(wallet.consumedBeatPasses, 1);
   failed = true;
-  await assert.rejects(getWallet('owner'), /inventory is unavailable/);
+  await assert.rejects(getWallet('owner'), /unavailable/);
 });
 
 // Drive the real client components with isolated hook storage and mocked network calls.
@@ -115,7 +119,9 @@ test('Market refreshes the real server summary after purchase, including a respo
   let tree = market.render({ initialWallet: summary() });
   assert.match(renderToStaticMarkup(tree), /10,000 RG/);
   await market.effects();
-  findElement(tree, el => el.type === 'button').props.onClick();
+  const actionProps=findElement(tree, el=>el.type?.name==='RgPassActions'&&el.props.product.productKey==='beat_pass').props;
+  const actions=client('components/rg/RgPassActions.tsx','RgPassActions');
+  await findElement(actions.render(actionProps), el=>el.type==='button').props.onClick();
   await new Promise(resolve => setImmediate(resolve));
   tree = market.render({ initialWallet: summary() });
   assert.match(renderToStaticMarkup(tree), />0 RG</);
@@ -132,10 +138,12 @@ test('a successful purchase with an unavailable inventory read shows unknown sta
   const market = client('components/rg/RgMarketClient.tsx', 'RgMarketClient');
   const tree = market.render({ initialWallet: summary() });
   await market.effects();
-  findElement(tree, el => el.type === 'button').props.onClick();
+  const actionProps=findElement(tree, el=>el.type?.name==='RgPassActions'&&el.props.product.productKey==='beat_pass').props;
+  const actions=client('components/rg/RgPassActions.tsx','RgPassActions');
+  await findElement(actions.render(actionProps), el=>el.type==='button').props.onClick();
   await new Promise(resolve => setImmediate(resolve));
   const after = renderToStaticMarkup(market.render({ initialWallet: summary() }));
-  assert.match(after, /RG Beat Pass agregado a tu cuenta/);
+  assert.match(renderToStaticMarkup(actions.render(actionProps)), /Pase agregado a MY PASSES/);
   assert.match(after, /sin confirmar/);
   assert.doesNotMatch(after, /1 AVAILABLE|0 AVAILABLE|10,000 RG<\/dd>/);
 }));
@@ -178,4 +186,37 @@ test('Cart shows the selected pass and balance, then server-confirmed consumed i
   const after = renderToStaticMarkup(tree);
   assert.match(after, />0 RG</); assert.match(after, /0 AVAILABLE/); assert.match(after, /1 CONSUMED/);
   assert.equal(calls.filter(call => call.method === 'POST').length, 1);
+}));
+
+test('MY PASSES shows ticket and Studio statuses and only available entitlements expose USE/GIFT',()=>{
+ const wallet=summary({passes:[{id:'mp3',productKey:'mp3_25',version:1,status:'available'},{id:'wav',productKey:'wav_50',version:1,status:'reserved'},{id:'studio',productKey:'studio_30',version:1,status:'consumed'}]});
+ const {RgMyPasses}=loadSource('components/rg/RgMyPasses.tsx',replacements);const result=markup(RgMyPasses,{wallet});
+ assert.match(result,/MY PASSES/);assert.match(result,/25% MP3 Ticket/);assert.match(result,/50% WAV Ticket/);assert.match(result,/RG Studio Pass/);
+ assert.match(result,/1 RESERVED/);assert.match(result,/1 CONSUMED/);assert.equal((result.match(/>USE</g)??[]).length,1);
+});
+test('Market Studio GET FOR ME uses the purchased server pass to activate Studio exactly once',()=>environment(async()=>{
+ const calls=[];globalThis.fetch=async(url,options)=>{calls.push({url,body:JSON.parse(options.body)});return{ok:true,json:async()=>url==='/api/rg/market/pass'?{passId:'server-studio-pass'}:{status:'fulfilled'}};};
+ const actions=client('components/rg/RgPassActions.tsx','RgPassActions');const props={product:{...marketProducts.find(p=>p.productKey==='studio_30'),active:true}};
+ await findElement(actions.render(props),el=>el.type==='button'&&textOf(el)==='GET FOR ME').props.onClick();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(calls.map(c=>c.url),['/api/rg/market/pass','/api/checkout/rg-market']);assert.equal(calls[1].body.passId,'server-studio-pass');assert.equal(calls[1].body.recipientMode,'self');assert.equal(calls[1].body.giftPass,false);
+ assert.match(renderToStaticMarkup(actions.render(props)),/Studio extendido por 30 días/);
+}));
+
+test('wallet reads every inventory page instead of silently truncating authoritative counts at the REST row limit',async()=>{
+ const ownerRows=Array.from({length:1251},(_,i)=>({id:`owned-${i}`,product_key:'beat_pass',product_version:1,status:'available',coin_ledger_id:'PRIVATE'}));
+ const ranges=[];
+ const db={from(table){let start=0,end=Infinity;const q={select(){return q;},eq(k,v){if(table==='rg_beat_passes'||table==='rg_spendable_balances'){assert.equal(k,'user_id');assert.equal(v,'owner');}return q;},order(){return q;},range(a,b){start=a;end=b;ranges.push([a,b]);return q;},single(){return q;},maybeSingle(){return q;},then(resolve){const data=table==='rg_beat_passes'?ownerRows.slice(start,end+1):table==='rg_market_products'?marketRows:table==='rg_spendable_balances'?{balance_rg:0}:{beat_pass_enabled:true,market_v1_enabled:false};return Promise.resolve({data,count:ownerRows.length,error:null}).then(resolve);}};return q;}};
+ const {getRgWalletSummary}=loadSource('lib/rg/product/wallet.ts',{'@/lib/rg/phase2/database':{createPhase2AdminClient:()=>db}});
+ const result=await getRgWalletSummary('owner');assert.equal(result.availableBeatPasses,1251);assert.equal(result.passes.length,1251);assert.deepEqual(ranges,[[0,499],[500,999],[1000,1499]]);
+ assert.doesNotMatch(JSON.stringify(result),/PRIVATE|coin_ledger_id/);
+});
+
+test('cart total and confirmation button both use the server ticket quote while normal payment stays available',()=>environment(async()=>{
+ const cart={items:[{id:'item',beat:{id:'beat'},licenseTier:'mp3'}],isCartOpen:true,closeCart(){},removeFromCart(){},clearCart(){},totalAmount:29,itemCount:1};
+ const calls=[];globalThis.fetch=async(url,options)=>{calls.push({url,body:options?.body?JSON.parse(options.body):null});return{ok:true,json:async()=>url==='/api/rg/wallet'?summary({passes:[{id:'ticket',productKey:'mp3_25',version:1,status:'available'}]}):{remainingCents:2175,discountCents:725,passName:'25% MP3 Ticket'}};};
+ const drawer=client('components/cart/CartDrawer.tsx','CartDrawer',{'@/contexts/CartContext':{useCart:()=>cart},'@/lib/commerce/gift-feature':{isGiftCheckoutVisible:()=>false},'./CartItemRow':{CartItemRow:()=>null},'@/components/ui/Button':{Button:({children,...props})=>React.createElement('button',props,children)},'@stripe/react-stripe-js':{EmbeddedCheckoutProvider:()=>null,EmbeddedCheckout:()=>null},'@/lib/stripe/client':{getStripeClient:()=>{throw Error('Must not start Stripe from selection');}}});
+ drawer.render();await drawer.effects();let tree=drawer.render();findElement(tree,el=>el.type==='select').props.onChange({target:{value:'ticket'}});drawer.render();await drawer.effects();tree=drawer.render();
+ const html=renderToStaticMarkup(tree);assert.match(html,/CONTINUAR AL PAGO \(\$21\.75\)/);assert.match(html,/PAY NORMALLY/);assert.match(html,/Se consumirá un pase/);
+ assert.ok(calls.filter(call=>call.body).every(call=>call.body.quoteOnly===true),'selection is a server quote, never a redemption or gift');
 }));

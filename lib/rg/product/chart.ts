@@ -16,6 +16,12 @@ export async function getRgChart(): Promise<ChartData> {
   const rewards = [1, 2, 3].map(place => ({ place, premiumDays: Number(days?.[place]), poolSharePercent: Number(distribution[place]) }));
   if (rewards.some(r => !Number.isSafeInteger(r.premiumDays) || r.premiumDays < 0 || !Number.isSafeInteger(r.poolSharePercent) || r.poolSharePercent < 0)
     || rewards.reduce((sum, r) => sum + r.poolSharePercent, 0) > 80) throw new Error('Season reward configuration is invalid.');
+  let rewardTail: ChartData['rewardTail'];
+  if (source.season.rules_version === 2) {
+    if (rewards.some(r => r.poolSharePercent !== 20) || distribution.tail_percent !== 40
+      || distribution.tail_start !== 4 || distribution.tail_end !== 23 || distribution.tail_weight !== '24-rank') throw new Error('Season reward configuration is invalid.');
+    rewardTail = { firstPlace: 4, lastPlace: 23, poolSharePercent: 40 };
+  }
   const rankings: ChartData['rankings'] = { tracks: [], artists: [], beats: [] };
   for (const kind of ['tracks', 'artists', 'beats'] as const) {
     rankings[kind] = source.rankings[kind].map(row => {
@@ -33,7 +39,7 @@ export async function getRgChart(): Promise<ChartData> {
   return {
     season: { id: source.season.id, season_number: source.season.season_number, name: source.season.name,
       starts_at: source.season.starts_at, ends_at: source.season.ends_at, status: source.season.status },
-    serverTime: source.serverTime, rewardPoolRg: source.rewardPoolRg, rewards, rankings,
+    serverTime: source.serverTime, rewardPoolRg: source.rewardPoolRg, rewards, ...(rewardTail ? { rewardTail } : {}), rankings,
     sponsors: source.sponsors.flatMap(link => link.sponsor ? [{ name: link.sponsor.name,
       websiteUrl: safeHttpsUrl(link.sponsor.website_url), logoUrl: getPublicStorageUrl(link.sponsor.logo_path), tier: link.visibility_tier }] : []),
   };

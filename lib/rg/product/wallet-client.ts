@@ -11,7 +11,8 @@ export async function fetchRgWalletSummary(): Promise<RgWalletSummary> {
     if (!Number.isSafeInteger(data?.[key]) || data[key] < 0) throw new Error('No pudimos validar tu saldo ni tus pases.');
   }
   if (typeof data.beatPassEnabled !== 'boolean' || !Array.isArray(data.beatPassEligibleTiers)
-    || !data.beatPassEligibleTiers.every((tier: unknown) => typeof tier === 'string')) {
+    || !data.beatPassEligibleTiers.every((tier: unknown) => typeof tier === 'string')
+    || !Array.isArray(data.products) || !Array.isArray(data.passes)) {
     throw new Error('No pudimos validar el estado de RG Beat Pass.');
   }
   return data;

@@ -13,6 +13,7 @@ export type ChartData = {
   season: { id: string; season_number: number; name: string; starts_at: string; ends_at: string; status: string };
   serverTime: string; rewardPoolRg: number;
   rewards: Array<{ place: number; premiumDays: number; poolSharePercent: number }>;
+  rewardTail?: { firstPlace: number; lastPlace: number; poolSharePercent: number };
   sponsors: Array<{ name: string; websiteUrl: string | null; logoUrl: string | null; tier: string }>;
   rankings: Record<RankingKind, ChartEntry[]>;
 };

@@ -34,10 +34,17 @@ export function CartDrawer() {
   const [selectedArtist, setSelectedArtist] = useState<{ stage_name: string; slug: string; bio: string | null } | null>(null);
   const [giftStatus, setGiftStatus] = useState<string | null>(null);
   const [giftError, setGiftError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "rg_beat_pass">("stripe");
+  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "rg_beat_pass" | "rg_market">("stripe");
   const [passWallet, setPassWallet] = useState<RgWalletSummary | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
+  const [selectedPassId, setSelectedPassId] = useState('');
+  const [lastTicketQuote, setTicketQuote] = useState<{ remainingCents: number; discountCents: number; passName: string; signature: string } | null>(null);
+  const quoteSignature = JSON.stringify({ passId: selectedPassId, items: items.map(item => ({ beatId: item.beat.id, licenseTier: item.licenseTier })) });
+  const ticketQuote = lastTicketQuote?.signature === quoteSignature ? lastTicketQuote : null;
+  const [marketIntentId, setMarketIntentId] = useState<string | null>(null);
+  const eligiblePasses = (passWallet?.passes ?? []).filter(pass => pass.status === 'available' && items.length === 1
+    && passWallet?.products.some(product => product.productKey === pass.productKey && product.version === pass.version && product.allowedCategory === items[0].licenseTier));
   const [completedWithPass, setCompletedWithPass] = useState(false);
   const passRequestRef = useRef<{ signature: string; key: string } | null>(null);
 
@@ -50,11 +57,18 @@ export function CartDrawer() {
     setWalletError(null);
     try {
       const wallet = await fetchRgWalletSummary();
-      if (readId === reads.sequence) setPassWallet(wallet);
+      if (readId === reads.sequence) {
+        setPassWallet(wallet);
+        const wanted = sessionStorage.getItem('rg-selected-pass-v1');
+        if (wanted && items.length === 1 && wallet.passes.some(pass => pass.id === wanted && pass.status === 'available'
+          && wallet.products.some(product => product.productKey === pass.productKey && product.version === pass.version && product.allowedCategory === items[0].licenseTier))) {
+          setSelectedPassId(wanted); setPaymentMethod('rg_market'); sessionStorage.removeItem('rg-selected-pass-v1');
+        }
+      }
     } catch {
       if (readId === reads.sequence) setWalletError("No pudimos consultar tu saldo ni tus pases. Vuelve a abrir el carrito para intentarlo de nuevo.");
     } finally { if (readId === reads.sequence) setWalletLoading(false); }
-  }, []);
+  }, [items]);
 
   useEffect(() => {
     if (!isCartOpen) return;
@@ -64,6 +78,17 @@ export function CartDrawer() {
     window.addEventListener("focus", refresh);
     return () => { reads.sequence++; window.removeEventListener("focus", refresh); };
   }, [isCartOpen, paymentMethod, refreshPassWallet]);
+
+  useEffect(() => {
+    if (!isCartOpen || paymentMethod !== 'rg_market' || !selectedPassId || items.length !== 1) return;
+    const controller = new AbortController();
+    void fetch('/api/checkout/rg-market', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+      body: JSON.stringify({ quoteOnly: true, passId: selectedPassId, items: items.map(item => ({ beatId: item.beat.id, licenseTier: item.licenseTier })) }) })
+      .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || 'No se pudo validar el ticket.');
+        if (!controller.signal.aborted && Number.isSafeInteger(data.remainingCents) && data.remainingCents >= 0 && Number.isSafeInteger(data.discountCents) && data.discountCents >= 0) setTicketQuote({ ...data, signature: quoteSignature }); })
+      .catch(error => { if (!controller.signal.aborted) setErrorMessage(error instanceof Error ? error.message : 'No se pudo validar el ticket.'); });
+    return () => controller.abort();
+  }, [isCartOpen, paymentMethod, selectedPassId, items, quoteSignature]);
 
   useEffect(() => {
     if (recipientMode !== "gift" || recipientKind !== "artist" || artistQuery.trim().length < 2) {
@@ -114,13 +139,14 @@ export function CartDrawer() {
       setCompletedWithPass(false);
       setCheckoutTotal(typeof data.totalAmount === "number" ? data.totalAmount : checkoutTotal);
       setCompletionStatus("ready");
+      if (paymentMethod === 'rg_market') { await refreshPassWallet(); router.refresh(); window.dispatchEvent(new Event('rg-wallet-updated')); }
       clearCart();
     } catch (error: unknown) {
       console.error("[Checkout Completion Error]:", error);
       setErrorMessage(error instanceof Error ? error.message : "No pudimos cargar tus archivos. Inténtalo de nuevo.");
       setCompletionStatus("error");
     }
-  }, [checkoutSessionId, checkoutTotal, clearCart]);
+  }, [checkoutSessionId, checkoutTotal, clearCart, paymentMethod, refreshPassWallet, router]);
   const completionHandlerRef = useRef(handleEmbeddedComplete);
   useEffect(() => { completionHandlerRef.current = handleEmbeddedComplete; }, [handleEmbeddedComplete]);
   const handleStripeComplete = useCallback(() => {
@@ -137,6 +163,7 @@ export function CartDrawer() {
     const payload = {
         embedded: true,
         paymentMethod,
+        ...(paymentMethod === "rg_market" ? { passId: selectedPassId } : {}),
         recipientMode,
         ...(recipientMode === "gift" ? recipientKind === "email"
           ? { recipientKind, recipientEmail: recipientEmail.trim() }
@@ -148,7 +175,7 @@ export function CartDrawer() {
       })),
     };
 
-      if (paymentMethod === "rg_beat_pass") {
+      if (paymentMethod === "rg_beat_pass" || paymentMethod === "rg_market") {
         const signature = JSON.stringify(payload);
         if (!passRequestRef.current) {
           try {
@@ -160,13 +187,18 @@ export function CartDrawer() {
           passRequestRef.current = { signature, key: crypto.randomUUID() };
         }
         sessionStorage.setItem("rg-beat-pass-redemption-request-v1", JSON.stringify(passRequestRef.current));
-        const response = await fetch("/api/checkout/rg-beat-pass", {
+        const response = await fetch(paymentMethod === "rg_market" ? "/api/checkout/rg-market" : "/api/checkout/rg-beat-pass", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...payload, idempotencyKey: passRequestRef.current.key }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "No se pudo canjear RG Beat Pass.");
-        setCheckoutTotal(0);
+        if (paymentMethod === 'rg_market') setMarketIntentId(data.intentId || null);
+        if (data.clientSecret && data.sessionId) {
+          setCheckoutTotal(data.totalAmount); setCheckoutSessionId(data.sessionId); setClientSecret(data.clientSecret);
+          setCheckoutComplete(false); setCompletionStatus('idle'); setCompletedPurchases([]); return;
+        }
+        setCheckoutTotal(data.totalAmount ?? 0);
         setCompletedPurchases(data.purchases || []);
         setGiftStatus(data.giftStatus || null);
         setCheckoutSessionId(null);
@@ -193,6 +225,7 @@ export function CartDrawer() {
       }
 
       if (data.clientSecret) {
+        setMarketIntentId(null);
         if (typeof data.sessionId !== "string") {
           throw new Error("No se recibió el identificador de la sesión de pago.");
         }
@@ -209,7 +242,7 @@ export function CartDrawer() {
       console.error("[Checkout Error]:", err);
       setErrorMessage(err instanceof Error ? err.message : "Failed to initiate checkout. Please try again.");
     } finally {
-      if (paymentMethod === "rg_beat_pass") {
+      if (paymentMethod === "rg_beat_pass" || paymentMethod === "rg_market") {
         await refreshPassWallet();
         router.refresh();
         window.dispatchEvent(new Event("rg-wallet-updated"));
@@ -218,7 +251,22 @@ export function CartDrawer() {
     }
   };
 
+  const cancelTicketPayment = async () => {
+    if (!marketIntentId) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/checkout/rg-market/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ intentId: marketIntentId }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo cancelar.');
+      setClientSecret(null); setCheckoutSessionId(null); setMarketIntentId(null); setPaymentMethod('stripe');
+      passRequestRef.current = null; sessionStorage.removeItem('rg-beat-pass-redemption-request-v1');
+      await refreshPassWallet(); router.refresh();
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'No se pudo cancelar.'); }
+    finally { setIsLoading(false); }
+  };
+
   const handleClose = () => {
+    setMarketIntentId(null);
     setClientSecret(null);
     setCheckoutTotal(null);
     setCheckoutSessionId(null);
@@ -344,11 +392,11 @@ export function CartDrawer() {
                   {completionStatus === "ready" && giftStatus && (
                     <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100">
                       <strong className="block text-xs tracking-wider">{giftStatus === "claimed" ? "REGALO RECLAMADO" : "ESPERANDO RECLAMO"}</strong>
-                      <span className="mt-1 block text-zinc-300">{giftStatus === "claimed" ? "La licencia quedó disponible para el destinatario." : "Enviamos las instrucciones para reclamar la licencia."}</span>
+                      <span className="mt-1 block text-zinc-300">{giftStatus === "claimed" ? "La licencia quedó disponible para el destinatario." : "El regalo quedó preparado. Consulta su entrega o reenvía el enlace desde tu cuenta."}</span>
                     </div>
                   )}
 
-                  {completionStatus === "ready" && completedPurchases.length === 0 && (
+                  {completionStatus === "ready" && completedPurchases.length === 0 && !giftStatus && (
                     <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-200">
                       Tu pago está confirmado. Estamos terminando de preparar tus licencias.
                     </p>
@@ -371,6 +419,7 @@ export function CartDrawer() {
                   </div>
 
                   <div className="rounded-xl overflow-hidden min-h-[420px]">
+                    {marketIntentId && <button type="button" disabled={isLoading} onClick={() => void cancelTicketPayment()} className="mb-4 rounded-lg border border-white/10 p-3 text-xs text-white">CANCELAR PAGO Y LIBERAR TICKET</button>}
                     <EmbeddedCheckoutProvider
                       stripe={getStripeClient()}
                       options={{ clientSecret, onComplete: handleStripeComplete }}
@@ -437,6 +486,22 @@ export function CartDrawer() {
                   {passWallet.availableBeatPasses < 1 && <p className="text-[11px] text-zinc-400">Compra un pase desde <a className="text-amber-200 underline" href="/rg/market">RG Market</a>.</p>}
                 </section>}
 
+                {eligiblePasses.length > 0 && <section className="rounded-xl border border-amber-300/20 p-4 space-y-3">
+                  <h2 className="text-xs font-bold tracking-wider text-amber-200">USE RG PASS</h2>
+                  <label className="block text-xs text-zinc-400">Un pase por licencia
+                    <select value={paymentMethod === 'rg_market' ? selectedPassId : ''} disabled={isLoading} onChange={event => {
+                      setSelectedPassId(event.target.value); setTicketQuote(null); setPaymentMethod(event.target.value ? 'rg_market' : 'stripe');
+                    }} className="mt-2 w-full rounded-lg border border-white/10 bg-[#101014] p-3 text-white">
+                      <option value="">PAY NORMALLY</option>
+                      {eligiblePasses.map(pass => <option key={pass.id} value={pass.id}>{passWallet?.products.find(product => product.productKey === pass.productKey && product.version === pass.version)?.name} · AVAILABLE</option>)}
+                    </select>
+                  </label>
+                </section>}
+                {paymentMethod === 'rg_market' && <section className="rounded-xl border border-amber-300/20 p-4 space-y-2">
+                  <RgWalletStatus wallet={passWallet} />
+                  <p className="text-xs text-zinc-300">{ticketQuote ? `${ticketQuote.passName} · Se consumirá un pase. Pago restante: ${formatCurrency(ticketQuote.remainingCents / 100)}` : 'Validando el pase y el importe en el servidor…'}</p>
+                  <button type="button" disabled={isLoading} onClick={() => setPaymentMethod('stripe')} className="text-xs text-zinc-300 underline">PAY NORMALLY</button>
+                </section>}
                 {paymentMethod === "rg_beat_pass" && <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.035] p-4 space-y-3">
                   <RgWalletStatus wallet={passWallet} />
                   <p className="text-xs text-zinc-300">Esta compra consume 1 RG Beat Pass disponible. No se descontarán RG adicionales.</p>
@@ -508,13 +573,13 @@ export function CartDrawer() {
               <div className="flex items-center justify-between text-sm font-mono">
                 <span className="text-zinc-400">SUBTOTAL</span>
                 <span className="text-lg font-bold text-white">
-                  {formatCurrency(paymentMethod === "rg_beat_pass" ? 0 : totalAmount)}
+                  {paymentMethod === "rg_market" ? ticketQuote ? formatCurrency(ticketQuote.remainingCents / 100) : "…" : formatCurrency(paymentMethod === "rg_beat_pass" ? 0 : totalAmount)}
                 </span>
               </div>
 
               <div className="text-[11px] text-zinc-500 font-mono flex items-center justify-between">
                 <span>Entrega digital</span>
-                <span>{paymentMethod === "rg_beat_pass" ? "Canje RG" : "Pago con Stripe"}</span>
+                <span>{paymentMethod !== "stripe" ? "Aplicación de pase RG" : "Pago con Stripe"}</span>
               </div>
 
               {/* Checkout Button */}
@@ -523,7 +588,7 @@ export function CartDrawer() {
                 size="lg"
                 className="w-full justify-center text-sm tracking-wider"
                 onClick={handleCheckout}
-                disabled={isLoading || (paymentMethod === "rg_beat_pass" && (walletLoading || !passWallet?.beatPassEnabled || passWallet.availableBeatPasses < 1 || items.length !== 1 || !passWallet.beatPassEligibleTiers.includes(items[0]?.licenseTier || ""))) || (recipientMode === "gift" && (recipientKind === "email"
+                disabled={isLoading || (paymentMethod === "rg_market" && (walletLoading || !ticketQuote || !eligiblePasses.some(pass => pass.id === selectedPassId))) || (paymentMethod === "rg_beat_pass" && (walletLoading || !passWallet?.beatPassEnabled || passWallet.availableBeatPasses < 1 || items.length !== 1 || !passWallet.beatPassEligibleTiers.includes(items[0]?.licenseTier || ""))) || (recipientMode === "gift" && (recipientKind === "email"
                   ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail.trim())
                   : !selectedArtist))}
               >
@@ -533,10 +598,13 @@ export function CartDrawer() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    {paymentMethod === "rg_beat_pass" ? "CANJEANDO RG BEAT PASS..." : "CARGANDO FORMULARIO DE PAGO..."}
+                    {paymentMethod === "rg_beat_pass" ? "CANJEANDO RG BEAT PASS..." : paymentMethod === 'rg_market' ? 'APLICANDO RG PASS…' : "CARGANDO FORMULARIO DE PAGO..."}
                   </span>
                 ) : (
-                  paymentMethod === "rg_beat_pass" ? "CANJEAR RG BEAT PASS" : recipientMode === "gift" ? `CONFIRMAR REGALO (${formatCurrency(totalAmount)})` : `CONTINUAR AL PAGO (${formatCurrency(totalAmount)})`
+                  paymentMethod === "rg_beat_pass" ? "CANJEAR RG BEAT PASS"
+                    : paymentMethod === 'rg_market' ? ticketQuote?.remainingCents === 0 ? recipientMode === 'gift' ? 'CONFIRMAR REGALO CON RG PASS' : 'USAR RG PASS'
+                      : `${recipientMode === 'gift' ? 'CONFIRMAR REGALO' : 'CONTINUAR AL PAGO'} (${ticketQuote ? formatCurrency(ticketQuote.remainingCents / 100) : '…'})`
+                      : recipientMode === "gift" ? `CONFIRMAR REGALO (${formatCurrency(totalAmount)})` : `CONTINUAR AL PAGO (${formatCurrency(totalAmount)})`
                 )}
               </Button>
 

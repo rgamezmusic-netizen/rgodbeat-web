@@ -8,6 +8,7 @@ import { canCheckoutRecipientMode } from '@/lib/commerce/gift-feature';
 import { fulfillStripeCheckoutSession, resolveAuthoritativeCart } from '@/lib/commerce/fulfillment';
 import type { CheckoutItemPayload } from '@/types/commerce';
 import type Stripe from 'stripe';
+import { calculateTicketPayment, readMarketProduct } from '@/lib/rg/product/catalog';
 
 export const dynamic = 'force-dynamic';
 const sameOrigin = (request: NextRequest) => !request.headers.get('origin') || request.headers.get('origin') === request.nextUrl.origin;
@@ -51,6 +52,10 @@ export async function POST(request: NextRequest) {
   if (!eligibleTiers.includes(line.licenseTier) || ['exclusive', 'unlimited', 'stems'].includes(line.licenseTier)) {
     return NextResponse.json({ error: 'Esta licencia no es elegible para RG Beat Pass.' }, { status: 400 });
   }
+  const catalog = await admin.from('rg_market_products').select('*').eq('product_key', 'beat_pass').eq('version', 1).single();
+  if (catalog.error || !catalog.data) return NextResponse.json({ error: 'No se pudo validar RG Beat Pass.' }, { status: 503 });
+  try { calculateTicketPayment(readMarketProduct(catalog.data), line.licenseTier, Math.round(line.unitPrice * 100)); }
+  catch { return NextResponse.json({ error: 'Esta licencia supera el beneficio estándar de RG Beat Pass.' }, { status: 400 }); }
 
   let recipientKind: RecipientKind | null = null;
   let recipientEmail: string | null = null;

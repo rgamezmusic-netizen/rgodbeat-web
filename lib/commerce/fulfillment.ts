@@ -6,6 +6,7 @@ import { LicenseTier } from "@/types";
 import { generateLicenseContract } from "./contracts";
 import { fulfillPaidGiftCheckout } from "./gift-fulfillment";
 import type Stripe from "stripe";
+import { validateMarketUtility, type MarketUtility } from './market-utility';
 
 export interface AuthoritativeLineItem {
   beatId: string;
@@ -14,6 +15,7 @@ export interface AuthoritativeLineItem {
   licenseTier: LicenseTier;
   licenseName: string;
   unitPrice: number;
+  catalogUnitPrice?: number;
 }
 
 export interface AuthoritativeCartResult {
@@ -25,7 +27,8 @@ export interface AuthoritativeCartResult {
 type CheckoutIntent = {
   id: string; recipient_mode: string; recipient_kind: "artist" | "email" | null;
   recipient_email: string | null; recipient_artist_id: string | null; recipient_artist_slug: string | null;
-  snapshot: { siteOrigin?: string; kind?: string; serviceId?: string; paymentMethod?: string; beat_pass_request_key?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string };
+  buyer_auth_user_id?: string;
+  snapshot: { siteOrigin?: string; kind?: string; serviceId?: string; paymentMethod?: string; beat_pass_request_key?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string; utility?: MarketUtility };
   state: string; buyer_email: string | null; attempt_count: number;
 };
 
@@ -184,6 +187,8 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
   const intentId = session.metadata?.commerceIntentId;
   const isStudioPass = session.metadata?.type === "studio_pass";
   const isBeatPassRedemption = session.metadata?.type === "rg_beat_pass";
+  const isMarketUtility = session.metadata?.type === 'rg_market';
+  let marketUtility: MarketUtility | null = null;
   if (!intentId && !isStudioPass) {
     if (existingOrder?.status === "completed") {
       const [{ count: itemCount }, { count: purchaseCount }] = await Promise.all([
@@ -210,11 +215,17 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
       return { status: "payment_reversed", orderId: existingOrder?.id || sessionId };
     }
     if (resolvedIntent.state === "needs_review") throw new Error("PAYMENT_REQUIRES_MANUAL_REVIEW");
-    const snapshot = resolvedIntent.snapshot as { kind?: string; serviceId?: string; paymentMethod?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string };
+    const snapshot = resolvedIntent.snapshot;
     if (!Number.isInteger(snapshot?.totalAmountCents)
       || snapshot.currency?.toLowerCase() !== (session.currency || "usd").toLowerCase()
       || session.amount_total !== snapshot.totalAmountCents) throw new Error("PAYMENT_SNAPSHOT_MISMATCH");
-    if (isStudioPass) {
+    if (isMarketUtility) {
+      if (snapshot.kind !== 'rg_market' || snapshot.paymentMethod !== 'rg_market') throw new Error('MARKET_SNAPSHOT_MISMATCH');
+      marketUtility = await validateMarketUtility(supabase, resolvedIntent, snapshot);
+      authoritativeCart = { items: snapshot.items ?? [], totalAmount: snapshot.totalAmountCents! / 100, currency: snapshot.currency! };
+    } else if (snapshot.paymentMethod === 'rg_market') {
+      throw new Error('MARKET_PAYMENT_METHOD_MISMATCH');
+    } else if (isStudioPass) {
       if (snapshot.kind !== "service" || snapshot.serviceId !== "studio_pro") throw new Error("SERVICE_SNAPSHOT_MISMATCH");
     } else if (isBeatPassRedemption) {
       if (snapshot.kind !== "beat_pass_redemption" || snapshot.paymentMethod !== "rg_beat_pass"
@@ -253,16 +264,21 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
     const result = await fulfillPaidGiftCheckout({
       supabase, intent: { ...intent, recipient_kind: intent.recipient_kind }, session, existingOrder, cart: authoritativeCart,
       payer: { customerId, email: customerEmail, name: customerName },
+      utility: marketUtility && (marketUtility.giftPass || marketUtility.benefitKind === 'studio') ? marketUtility : null,
     });
     if (isBeatPassRedemption && result.status === "fulfilled") {
       const { error } = await supabase.rpc("rg_consume_beat_pass", { p_intent_id: intent.id, p_order_id: result.orderId });
       if (error) throw new Error("BEAT_PASS_CONSUMPTION_FAILED");
     }
+    if (marketUtility && !marketUtility.giftPass && marketUtility.benefitKind !== 'studio' && result.status === 'fulfilled') {
+      const consumed = await supabase.rpc('rg_consume_market_pass', { p_intent_id: intent.id, p_order_id: result.orderId });
+      if (consumed.error) throw new Error('MARKET_PASS_CONSUMPTION_FAILED');
+    }
     return result;
   }
 
   // Handle standalone Studio Pass purchase
-  if (isStudioPass) {
+  if (isStudioPass || marketUtility?.benefitKind === 'studio') {
     let orderId: string;
     if (existingOrder) {
       if (!intentId && existingOrder.status === "completed") return { status: "already_fulfilled", orderId: existingOrder.id, customerId, type: "studio_pass" };
@@ -273,8 +289,8 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
           status: "processing",
           payment_status: "paid",
           stripe_payment_intent_id: paymentIntentId,
-          subtotal_amount: 10,
-          total_amount: 10,
+          subtotal_amount: (session.amount_total ?? 0) / 100,
+          total_amount: (session.amount_total ?? 0) / 100,
           metadata: session.metadata || {},
         })
         .eq("id", orderId);
@@ -289,8 +305,8 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
           status: "processing",
           payment_status: "paid",
           currency: session.currency || "usd",
-          subtotal_amount: 10,
-          total_amount: 10,
+          subtotal_amount: (session.amount_total ?? 0) / 100,
+          total_amount: (session.amount_total ?? 0) / 100,
           metadata: session.metadata || {},
         })
         .select("id")
@@ -317,6 +333,10 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
     }
     const { error: completeError } = await supabase.from("orders").update({ status: "completed" }).eq("id", orderId);
     if (completeError) throw new Error("STUDIO_PASS_COMPLETION_FAILED");
+    if (marketUtility && intentId) {
+      const consumed = await supabase.rpc('rg_consume_market_pass', { p_intent_id: intentId, p_order_id: orderId });
+      if (consumed.error) throw new Error('MARKET_PASS_CONSUMPTION_FAILED');
+    }
     console.log(`[Fulfillment] Studio pass (30 days) activated for ${customerEmail} until ${newExpiry}`);
     return { status: "fulfilled", orderId, customerId, type: "studio_pass" };
   }
@@ -495,6 +515,10 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
   if (isBeatPassRedemption && intentId) {
     const { error: passError } = await supabase.rpc("rg_consume_beat_pass", { p_intent_id: intentId, p_order_id: orderId });
     if (passError) throw new Error("BEAT_PASS_CONSUMPTION_FAILED");
+  }
+  if (marketUtility && intentId) {
+    const consumed = await supabase.rpc('rg_consume_market_pass', { p_intent_id: intentId, p_order_id: orderId });
+    if (consumed.error) throw new Error('MARKET_PASS_CONSUMPTION_FAILED');
   }
 
   console.log(`[Fulfillment] Successfully fulfilled order ${orderId} for customer ${customerEmail} (Granted 30 days Studio Access)`);

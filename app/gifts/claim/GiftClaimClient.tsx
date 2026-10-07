@@ -13,6 +13,7 @@ export default function GiftClaimClient({ token, contextId, gift }: { token: str
   const [authRequired, setAuthRequired] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [purchaseId, setPurchaseId] = useState<string | null>(null);
+  const [claimed, setClaimed] = useState(false);
   const autoClaimStarted = useRef(false);
 
   const ensureContext = async () => {
@@ -50,7 +51,8 @@ export default function GiftClaimClient({ token, contextId, gift }: { token: str
       if (response.status === 401) { setAuthRequired(true); setMessage(data.error); return; }
       if (!response.ok) throw new Error(data.error || "No se pudo reclamar el regalo.");
       setPurchaseId(data.purchaseId);
-      setMessage("La licencia ya está disponible en tu cuenta.");
+      setClaimed(data.claimed === true);
+      setMessage(data.benefitKind === 'studio' ? 'Los 30 días de Studio ya están activos en tu cuenta.' : data.benefitKind === 'rg_pass' ? 'El pase ya está disponible en tu RG Wallet.' : 'La licencia ya está disponible en tu cuenta.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo reclamar el regalo.");
     } finally { setPending(false); }
@@ -68,10 +70,10 @@ export default function GiftClaimClient({ token, contextId, gift }: { token: str
     : <div className="flex h-40 w-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-4xl">♫</div>;
   return <main className="min-h-[100dvh] bg-[#08080a] px-4 py-10 text-white" style={{ paddingTop: "max(40px, env(safe-area-inset-top))" }}>
     <section className="mx-auto w-full max-w-md space-y-6 rounded-2xl border border-white/10 bg-[#101014] p-5 shadow-2xl sm:p-7">
-      <div className="space-y-1"><p className="text-[11px] font-mono tracking-[.18em] text-amber-300">RGODBEAT · REGALO</p><h1 className="text-2xl font-bold">{gift ? "Recibiste un beat" : "Este enlace no está disponible"}</h1></div>
-      {gift ? <div className="flex flex-col items-center gap-4 rounded-xl border border-white/5 bg-black/20 p-4 text-center sm:flex-row sm:text-left">{art}<div className="min-w-0"><h2 className="text-lg font-semibold">{gift.beatTitle}</h2><p className="mt-1 text-sm text-zinc-400">{gift.licenseName} · {gift.licenseTier.toUpperCase()}</p><p className="mt-3 text-xs text-zinc-500">Al reclamar, la licencia y el acceso Studio se asignarán a esta cuenta.</p></div></div>
+      <div className="space-y-1"><p className="text-[11px] font-mono tracking-[.18em] text-amber-300">RGODBEAT · REGALO</p><h1 className="text-2xl font-bold">{gift ? "Recibiste un regalo" : "Este enlace no está disponible"}</h1></div>
+      {gift ? <div className="flex flex-col items-center gap-4 rounded-xl border border-white/5 bg-black/20 p-4 text-center sm:flex-row sm:text-left">{art}<div className="min-w-0"><h2 className="text-lg font-semibold">{gift.beatTitle}</h2><p className="mt-1 text-sm text-zinc-400">{gift.licenseName} · {gift.licenseTier.toUpperCase()}</p><p className="mt-3 text-xs text-zinc-500">{gift.licenseTier === 'studio' ? 'Los 30 días de Studio empiezan al reclamar.' : gift.licenseTier === 'rg_pass' ? 'El pase queda disponible en tu wallet al reclamar.' : 'La licencia y el acceso Studio se asignan a esta cuenta al reclamar.'}</p></div></div>
         : <p className="text-sm leading-6 text-zinc-400">El regalo pudo reclamarse ya o el enlace venció. Si sigue pendiente, pide al comprador que lo reenvíe desde su cuenta.</p>}
-      {gift && !purchaseId && <div className="space-y-3">
+      {gift && !claimed && <div className="space-y-3">
         <button type="button" disabled={pending} onClick={() => void claim()} className="w-full rounded-xl bg-amber-400 px-4 py-3.5 text-sm font-bold text-black disabled:opacity-60">{pending ? "VALIDANDO…" : "RECLAMAR REGALO"}</button>
         <div className="grid grid-cols-2 gap-2">
           <button type="button" disabled={pending} onClick={() => void goToAuth("signin")} className="rounded-xl border border-white/10 px-3 py-3 text-xs font-semibold text-white disabled:opacity-60">INICIAR SESIÓN</button>
@@ -79,6 +81,7 @@ export default function GiftClaimClient({ token, contextId, gift }: { token: str
         </div>
       </div>}
       {purchaseId && <a href={`/tickets/${purchaseId}`} className="block w-full rounded-xl bg-amber-400 px-4 py-3 text-center text-sm font-bold text-black">ABRIR LICENCIA</a>}
+      {claimed && !purchaseId && <a href={gift?.licenseTier === 'studio' ? '/studio' : '/rg/wallet'} className="block rounded-xl bg-amber-400 px-4 py-3 text-center text-sm font-bold text-black">{gift?.licenseTier === 'studio' ? 'ABRIR STUDIO' : 'ABRIR RG WALLET'}</a>}
       {message && <p role="status" className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-zinc-200">{message}</p>}
       {authRequired && <p className="text-center text-xs text-zinc-500">Usa el correo verificado al que se envió este regalo.</p>}
     </section>

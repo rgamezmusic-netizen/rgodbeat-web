@@ -162,16 +162,20 @@ export async function processNextGiftEmail(
     const safeArtwork = artwork.replace(/"/g, "%22");
     const isBuyerReceipt = messageType === "gift_purchase_receipt";
     const isGiftClaim = messageType === "gift_claim";
-    const heading = isBuyerReceipt ? "Recibo de tu regalo" : "Recibiste un beat";
+    const isUtility = payload.licenseTier === 'studio' || payload.licenseTier === 'rg_pass';
+    const heading = isBuyerReceipt ? "Recibo de tu regalo" : isUtility ? 'Recibiste un pase RG' : "Recibiste un beat";
     const description = isBuyerReceipt
-      ? "Tu pago fue confirmado. Puedes consultar el estado de entrega de este regalo en tu cuenta RGODBEAT."
-      : isGiftClaim ? "Alguien te envió una licencia de beat por RGODBEAT." : "Un RG Artist recibió una licencia de beat que enviaste.";
+      ? "Tu compra fue confirmada. Puedes consultar el estado de entrega de este regalo en tu cuenta RGODBEAT."
+      : isUtility ? payload.licenseTier === 'studio'
+        ? isGiftClaim ? 'Recibiste 30 días de Studio. Empiezan al reclamar con tu correo verificado.' : 'Los 30 días de Studio ya están activos en tu cuenta.'
+        : isGiftClaim ? 'Alguien te envió un pase RG. Reclámalo con tu correo verificado.' : 'Tu pase RG ya está disponible en tu cuenta.'
+        : isGiftClaim ? "Alguien te envió una licencia de beat por RGODBEAT." : 'La licencia de regalo ya está disponible en tu cuenta.';
     const amount = typeof payload.amount === "number" && Number.isFinite(payload.amount) ? payload.amount : null;
     const currency = typeof payload.currency === "string" ? payload.currency.toUpperCase() : "USD";
     const total = isBuyerReceipt && amount !== null ? ` Total: ${amount.toFixed(2)} ${currency}.` : "";
     const action = isGiftClaim && claimUrl ? `<p><a href="${claimUrl}">RECLAMAR REGALO</a></p>` : "";
     const result = await provider.send({
-      to: job.recipient_email, subject: isBuyerReceipt ? "Recibo de tu regalo en RGODBEAT" : "Recibiste un beat en RGODBEAT",
+      to: job.recipient_email, subject: isBuyerReceipt ? "Recibo de tu regalo en RGODBEAT" : isUtility ? 'Recibiste un pase RG en RGODBEAT' : "Recibiste un beat en RGODBEAT",
       text: `${description} ${safeTitle} · ${safeLicense}.${total}${claimUrl ? ` Reclama tu regalo: ${claimUrl}` : ""}`,
       html: `<main><h1>${heading}</h1>${safeArtwork ? `<img alt="Portada de ${safeTitle}" src="${safeArtwork}" width="240">` : ""}<h2>${safeTitle}</h2><p>${safeLicense}</p><p>${description}</p>${total ? `<p>${total.trim()}</p>` : ""}${action}</main>`,
       idempotencyKey: createHash("sha256")

@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateLicenseContract } from "./contracts";
 import { encryptTransactionalSecret, enqueueTransactionalEmail, processQueuedGiftEmailImmediately } from "./email";
 import type { AuthoritativeCartResult } from "./fulfillment";
+import type { MarketUtility } from "./market-utility";
 
 type GiftIntent = {
   id: string;
@@ -33,6 +34,7 @@ export interface GiftFulfillmentInput {
   payer: { customerId: string; email: string; name: string };
   cart: AuthoritativeCartResult;
   now?: () => Date;
+  utility?: MarketUtility | null;
 };
 
 const tokenHash = (token: string) => createHash("sha256").update(token).digest("hex");
@@ -41,6 +43,32 @@ const message = (error: unknown) => error instanceof Error ? error.message : "GI
 async function failOnError<T extends { error: unknown }>(result: T, code: string): Promise<T> {
   if (result.error) throw new Error(code);
   return result;
+}
+
+
+async function prepareGiftClaimEmail(supabase: SupabaseClient, giftId: string, intent: GiftIntent,
+  item: { title: string; licenseName: string; licenseTier: string; coverPath: string | null }, now: () => Date) {
+  const [{ data: activeTokens }, { data: mailJob }] = await Promise.all([
+    supabase.from("gift_claim_tokens").select("id").eq("gift_id", giftId).is("used_at", null).is("revoked_at", null)
+      .gt("expires_at", now().toISOString()).limit(1),
+    supabase.from("transactional_email_jobs").select("id,status").eq("source_type", "beat_gift")
+      .eq("source_id", giftId).eq("message_type", "gift_claim").maybeSingle(),
+  ]);
+  if (!(activeTokens?.length && mailJob && mailJob.status !== "failed" && mailJob.status !== "cancelled")) {
+    const token = randomBytes(32).toString("base64url");
+    const origin = intent.snapshot.siteOrigin || process.env.NEXT_PUBLIC_SITE_URL;
+    if (!origin) throw new Error("GIFT_CLAIM_ORIGIN_NOT_CONFIGURED");
+    const claimUrl = new URL("/gifts/claim", origin);
+    claimUrl.searchParams.set("token", token);
+    const { error } = await supabase.rpc("rg_prepare_gift_claim_email", {
+      p_gift_id: giftId, p_token_hash: tokenHash(token),
+      p_expiry: new Date(now().getTime() + 72 * 60 * 60 * 1000).toISOString(),
+      p_encrypted_secret: encryptTransactionalSecret(claimUrl.toString()),
+      p_payload: { beatTitle: item.title, coverPath: item.coverPath, licenseName: item.licenseName, licenseTier: item.licenseTier },
+    });
+    if (error) throw new Error(error.message.includes("rate_limit") ? "GIFT_RESEND_RATE_LIMITED" : "GIFT_EMAIL_QUEUE_FAILED");
+    await processQueuedGiftEmailImmediately(supabase);
+  }
 }
 
 /** Verified-payment gift fulfillment. Each step is idempotently repairable before order completion. */
@@ -83,6 +111,28 @@ export async function fulfillPaidGiftCheckout(input: GiftFulfillmentInput) {
   }
   if (!recipientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) throw new Error("GIFT_RECIPIENT_EMAIL_UNRESOLVED");
   let directArtistGift = isArtistGift && Boolean(recipientCustomerId);
+
+  let utilityGiftId: string | null = null;
+  if (input.utility) {
+    const utility = input.utility;
+    const line = await supabase.from('order_items').upsert({ order_id: orderId, beat_id: null, license_type_id: null,
+      market_pass_id: utility.passId, unit_price: 0, currency: cart.currency }, { onConflict: 'order_id,market_pass_id' }).select('id').single();
+    if (line.error || !line.data) throw new Error('GIFT_ORDER_ITEM_FULFILLMENT_FAILED');
+    const existing = await supabase.from('beat_gifts').select('id,status').eq('order_item_id', line.data.id).maybeSingle();
+    if (existing.error) throw new Error('GIFT_IDEMPOTENCY_LOOKUP_FAILED');
+    let gift = existing.data;
+    if (!gift) {
+      const created = await supabase.from('beat_gifts').insert({ intent_id: intent.id, order_id: orderId, order_item_id: line.data.id,
+        market_pass_id: utility.passId, recipient_kind: intent.recipient_kind, recipient_email: recipientEmail,
+        recipient_user_id: recipientUserId, recipient_artist_id: intent.recipient_artist_id, recipient_artist_slug: intent.recipient_artist_slug,
+        status: 'paid_pending_recipient', payment_status: 'paid' }).select('id,status').single();
+      if (created.error || !created.data) throw new Error('GIFT_RECORD_CREATE_FAILED');
+      gift = created.data;
+    }
+    utilityGiftId = gift.id;
+    if (!directArtistGift && gift.status !== 'claimed') await prepareGiftClaimEmail(supabase, gift.id, intent,
+      { title: utility.name, licenseName: utility.name, licenseTier: utility.benefitKind === 'studio' ? 'studio' : 'rg_pass', coverPath: null }, now);
+  }
 
   for (const item of cart.items) {
     const { data: orderItem, error: itemError } = await supabase.from("order_items").upsert({
@@ -153,33 +203,14 @@ export async function fulfillPaidGiftCheckout(input: GiftFulfillmentInput) {
     } else {
       directArtistGift = false;
       if (!gift.purchase_id) {
-        const [{ data: activeTokens }, { data: mailJob }] = await Promise.all([
-          supabase.from("gift_claim_tokens").select("id").eq("gift_id", gift.id).is("used_at", null).is("revoked_at", null)
-            .gt("expires_at", now().toISOString()).limit(1),
-          supabase.from("transactional_email_jobs").select("id,status").eq("source_type", "beat_gift")
-            .eq("source_id", gift.id).eq("message_type", "gift_claim").maybeSingle(),
-        ]);
-        if (!(activeTokens?.length && mailJob && mailJob.status !== "failed" && mailJob.status !== "cancelled")) {
-          const token = randomBytes(32).toString("base64url");
-          const origin = intent.snapshot.siteOrigin || process.env.NEXT_PUBLIC_SITE_URL;
-          if (!origin) throw new Error("GIFT_CLAIM_ORIGIN_NOT_CONFIGURED");
-          const claimUrl = new URL("/gifts/claim", origin);
-          claimUrl.searchParams.set("token", token);
-          const { data: beat } = await supabase.from("beats").select("cover_path").eq("id", item.beatId).maybeSingle();
-          const { error } = await supabase.rpc("rg_prepare_gift_claim_email", {
-            p_gift_id: gift.id, p_token_hash: tokenHash(token),
-            p_expiry: new Date(now().getTime() + 72 * 60 * 60 * 1000).toISOString(),
-            p_encrypted_secret: encryptTransactionalSecret(claimUrl.toString()),
-            p_payload: { beatTitle: item.beatTitle, coverPath: beat?.cover_path || null, licenseName: item.licenseName, licenseTier: item.licenseTier },
-          });
-          if (error) throw new Error(error.message.includes("rate_limit") ? "GIFT_RESEND_RATE_LIMITED" : "GIFT_EMAIL_QUEUE_FAILED");
-          await processQueuedGiftEmailImmediately(supabase);
-        }
+        const { data: beat } = await supabase.from("beats").select("cover_path").eq("id", item.beatId).maybeSingle();
+        await prepareGiftClaimEmail(supabase, gift.id, intent, { title: item.beatTitle, licenseName: item.licenseName,
+          licenseTier: item.licenseTier, coverPath: beat?.cover_path || null }, now);
       }
     }
   }
 
-  if (directArtistGift && recipientCustomerId) {
+  if (directArtistGift && recipientCustomerId && !input.utility) {
     const studio = await supabase.rpc("rg_grant_commerce_studio_access", {
       p_source_type: "gift", p_source_id: intent.id, p_customer_id: recipientCustomerId, p_days: 30,
     });
@@ -189,8 +220,8 @@ export async function fulfillPaidGiftCheckout(input: GiftFulfillmentInput) {
     sourceType: "commerce_receipt", sourceId: orderId, messageType: "gift_purchase_receipt",
     recipientEmail: payer.email,
     payload: {
-      beatTitle: cart.items.map((item) => item.beatTitle).join(", ").slice(0, 500),
-      licenseName: cart.items.map((item) => item.licenseName).join(", ").slice(0, 500),
+      beatTitle: input.utility?.name || cart.items.map((item) => item.beatTitle).join(", ").slice(0, 500),
+      licenseName: input.utility?.name || cart.items.map((item) => item.licenseName).join(", ").slice(0, 500),
       amount: cart.totalAmount, currency: cart.currency,
     },
   });
@@ -210,7 +241,16 @@ export async function fulfillPaidGiftCheckout(input: GiftFulfillmentInput) {
   const { data: completedOrder, error: orderError } = await supabase.from("orders").update({ status: "completed" })
     .eq("id", orderId).eq("payment_status", "paid").select("id").maybeSingle();
   if (orderError || !completedOrder) throw new Error("GIFT_ORDER_COMPLETION_FAILED");
-  return { status: "fulfilled", orderId, giftStatus: directArtistGift ? "claimed" : "ready_to_claim" };
+  if (utilityGiftId && directArtistGift && recipientCustomerId && recipientUserId) {
+    const assigned = await supabase.rpc('rg_assign_market_gift', { p_gift_id: utilityGiftId, p_user_id: recipientUserId, p_customer_id: recipientCustomerId });
+    if (assigned.error) throw new Error('GIFT_UTILITY_ASSIGNMENT_FAILED');
+    await enqueueTransactionalEmail(supabase, { sourceType: 'beat_gift', sourceId: utilityGiftId, messageType: 'gift_received', recipientEmail,
+      payload: { beatTitle: input.utility!.name, licenseName: input.utility!.name,
+        licenseTier: input.utility!.benefitKind === 'studio' ? 'studio' : 'rg_pass', coverPath: null } });
+  }
+  const delivery = await supabase.from('beat_gifts').select('status').eq('order_id', orderId);
+  if (delivery.error || !delivery.data?.length) throw new Error('GIFT_DELIVERY_STATUS_UNAVAILABLE');
+  return { status: "fulfilled", orderId, giftStatus: delivery.data.every(gift => gift.status === 'claimed') ? 'claimed' : 'ready_to_claim' };
 }
 
 export function giftErrorCode(error: unknown): string { return message(error); }

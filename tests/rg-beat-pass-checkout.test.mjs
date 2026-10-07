@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { NextRequest } from 'next/server.js';
 import { loadSource } from './helpers/rg-fixtures.mjs';
+import { marketRows } from './helpers/rg-market-fixtures.mjs';
 
 const user = { id: '40000000-0000-4000-8000-000000000001', email: 'payer@example.test', email_confirmed_at: '2026-10-01', role: 'authenticated', app_metadata: {}, user_metadata: {} };
 const line = { beatId: 'beat', beatTitle: 'Beat', licenseTier: 'mp3', licenseTypeId: 'mp3-license', licenseName: 'MP3', unitPrice: 29 };
@@ -36,6 +37,7 @@ function fixture({ reserveError = null, fulfillmentError = false } = {}) {
       async function execute() {
         calls.push({ ...state });
         if (table === 'rg_economy_config') return { data: { beat_pass_enabled: true, beat_pass_cost_rg: 10000, beat_pass_eligible_license_tiers: ['mp3'] }, error: null };
+        if (table === 'rg_market_products') return {data:marketRows.find(row=>row.product_key==='beat_pass'),error:null};
         if (table === 'purchases') return { data: [], error: null };
         if (state.action === 'insert') return { data: { id: 'intent' }, error: null };
         return { data: null, error: null };

@@ -7,7 +7,7 @@ export function RgBalance({ wallet }: { wallet: RgWalletSummary }) {
     <p className={styles.eyebrow}>SOLO VISIBLE PARA TI</p>
     <h1 className={styles.profileTitle}>Mi RG Wallet</h1>
     <RgWalletStatus wallet={wallet} />
-    <p className={styles.muted}>Gana RG con los premios de temporada. Las actividades y los hitos verificados te ayudan a competir por el Top 3.</p>
+    <p className={styles.muted}>Tu saldo muestra los RG gastables para utilidades. Los premios de temporada y las actividades verificadas se rigen por las reglas activas.</p>
     <section className={styles.section}>
       <h2>Tus pases y tu saldo</h2>
       <p className={styles.muted}>Los RG canjeados por un Beat Pass se descuentan de tu saldo. El pase queda disponible hasta que lo uses para una licencia elegible.</p>

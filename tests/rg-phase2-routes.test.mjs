@@ -6,10 +6,11 @@ function cronFixture({ factoryThrows=false, finalizationError=false }={}) {
   const calls=[];
   const db={
     rpc: async(name,args)=>{calls.push([name,args]);return {data:name==='rg_ensure_seasons'?'active':true,error:finalizationError&&name==='rg_finalize_season'?{code:'P0001'}:null};},
-    from:()=>{const q={select:()=>q,eq:()=>q,lte:async()=>({data:[{id:'ended'}],error:null})};return q;},
+    from:()=>{const q={select:()=>q,eq:()=>q,single:async()=>({data:{season_rewards_v2_enabled:true},error:null}),lte:async()=>({data:[{id:'ended'}],error:null})};return q;},
   };
   const route=loadSource('app/api/cron/rg-ecosystem/route.ts',{
     '@/lib/rg/phase2/database':{createPhase2AdminClient:()=>{if(factoryThrows)throw new Error('Missing credential');return db;}},
+    '@/lib/rg/phase2/direct-earning':{reconcileVerifiedRgEarnings:async()=>({enabled:false,issued:0})},
     '@/lib/rg/phase2/youtube':{refreshRgYoutubeMilestones:async()=>({checked:0,viewSnapshots:0,milestonesRecorded:0})},
     '@/lib/rg/phase2/publication-scores':{reconcileRgPublicationScores:async()=>({checked:1,capped:0})},
   });

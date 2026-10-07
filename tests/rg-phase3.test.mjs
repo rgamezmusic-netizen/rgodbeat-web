@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { loadSource } from './helpers/rg-fixtures.mjs';
+import { marketRows } from './helpers/rg-market-fixtures.mjs';
 
 const presentation = loadSource('lib/rg/product/presentation.ts');
 const ids={track:'11111111-1111-4111-8111-111111111111',artist:'22222222-2222-4222-8222-222222222222',beat:'33333333-3333-4333-8333-333333333333'};
@@ -118,11 +119,11 @@ test('private wallet presentation shows real zero and available inventory withou
   assert.match(markup,/SOLO VISIBLE PARA TI/);assert.match(markup,/0 RG/);assert.match(markup,/1 AVAILABLE/);assert.doesNotMatch(markup,/50%/);assert.doesNotMatch(markup,/<button|<input|BUY RG|REDEEM/);
 });
 test('wallet queries validated owner only, prevents bad balances, and authenticated API never caches publicly',async()=>{
-  const db=database({rg_coin_balances:[{user_id:'owner',balance_rg:'1250'},{user_id:'other',balance_rg:9999}],rg_economy_config:[{id:true,rg_per_usd_cent:1,max_rg_discount_percent:50,purchases_enabled:false,redemption_enabled:false}]});
+  const db=database({rg_spendable_balances:[{user_id:'owner',balance_rg:'1250'},{user_id:'other',balance_rg:9999}],rg_beat_passes:[],rg_market_products:marketRows,rg_economy_config:[{id:true,beat_pass_enabled:true,market_v1_enabled:false}]});
   const mocks={'@/lib/rg/phase2/database':{createPhase2AdminClient:()=>db},'@/lib/auth/server':{getCurrentUser:async()=>({id:'owner',email:'NEVER-PUBLIC'})}};
   const {getRgWalletSummary}=loadSource('lib/rg/product/wallet.ts',mocks);assert.equal((await getRgWalletSummary('owner')).balanceRg,1250);
   const response=await loadSource('app/api/rg/wallet/route.ts',mocks).GET();assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'private, no-store');assert.ok(!JSON.stringify(await response.json()).includes('NEVER-PUBLIC'));
-  const bad=database({rg_coin_balances:[{user_id:'owner',balance_rg:-1}],rg_economy_config:[{id:true}]});
+  const bad=database({rg_spendable_balances:[{user_id:'owner',balance_rg:-1}],rg_beat_passes:[],rg_market_products:marketRows,rg_economy_config:[{id:true}]});
   await assert.rejects(loadSource('lib/rg/product/wallet.ts',{'@/lib/rg/phase2/database':{createPhase2AdminClient:()=>bad}}).getRgWalletSummary('owner'),/invalid/);
 });
 test('public API still uses Phase 2 automatic projection and no repeated client polling is introduced',async()=>{

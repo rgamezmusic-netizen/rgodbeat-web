@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     .gt("expires_at", new Date().toISOString()).maybeSingle();
   if (tokenError || !tokenRow) return NextResponse.json({ error: "Este regalo ya no puede reclamarse. Solicita un enlace nuevo al comprador." }, { status: 410 });
   const { data: gift, error: giftError } = await admin.from("beat_gifts").select(`
-    id,recipient_kind,recipient_email,recipient_artist_id,recipient_user_id,status,payment_status,purchase_id,intent_id,
+    id,market_pass_id,recipient_kind,recipient_email,recipient_artist_id,recipient_user_id,status,payment_status,purchase_id,intent_id,
     order_id,order_item_id,orders!inner(status,payment_status,total_amount,currency,customers(name)),
     order_items!inner(unit_price,beat_id,license_type_id,beats(title),license_types(slug))
   `).eq("id", tokenRow.gift_id).maybeSingle();
@@ -48,6 +48,13 @@ export async function POST(request: NextRequest) {
 
   const customerId = await linkVerifiedCommerceCustomer(admin, user);
   if (!customerId) return NextResponse.json({ error: "No pudimos validar la cuenta para completar el regalo." }, { status: 409 });
+  if (gift.market_pass_id) {
+    const claim = await admin.rpc('rg_claim_beat_gift', { p_token_hash: claimHash, p_user_id: user.id, p_customer_id: customerId,
+      p_license_id: null, p_contract_text: null });
+    if (claim.error || !Array.isArray(claim.data) || claim.data.length !== 1) return NextResponse.json({ error: 'El regalo cambió de estado o ya fue reclamado.' }, { status: 409 });
+    return NextResponse.json({ claimed: true, benefitKind: claim.data[0].license_tier,
+      studioAccessUntil: claim.data[0].studio_access_until }, { headers: { 'Cache-Control': 'no-store' } });
+  }
   const line = Array.isArray(gift.order_items) ? gift.order_items[0] : gift.order_items;
   const beat = Array.isArray(line?.beats) ? line.beats[0] : line?.beats;
   const license = Array.isArray(line?.license_types) ? line.license_types[0] : line?.license_types;

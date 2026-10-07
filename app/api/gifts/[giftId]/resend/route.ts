@@ -19,7 +19,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gi
   const customerId = await linkVerifiedCommerceCustomer(admin, user);
   if (!customerId) return NextResponse.json({ error: "No se pudo validar tu cuenta." }, { status: 409 });
   const { data: gift, error: giftError } = await admin.from("beat_gifts")
-    .select("id,intent_id,order_id,order_item_id,recipient_email,status,payment_status,purchase_id")
+    .select("id,market_pass_id,intent_id,order_id,order_item_id,recipient_email,status,payment_status,purchase_id")
     .eq("id", giftId).maybeSingle();
   if (giftError || !gift) return NextResponse.json({ error: "Regalo no disponible." }, { status: 404 });
   const { data: order } = await admin.from("orders").select("id,customer_id,status,payment_status")
@@ -39,8 +39,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gi
     admin.from("order_items").select("unit_price,beat_id,license_type_id,beats(title,cover_path),license_types(name,slug)").eq("id", gift.order_item_id).maybeSingle(),
     admin.from("commerce_checkout_intents").select("snapshot").eq("id", gift.intent_id).maybeSingle(),
   ]);
-  const beat = Array.isArray(item?.beats) ? item.beats[0] : item?.beats;
-  const license = Array.isArray(item?.license_types) ? item.license_types[0] : item?.license_types;
+  let beat = Array.isArray(item?.beats) ? item.beats[0] : item?.beats;
+  let license = Array.isArray(item?.license_types) ? item.license_types[0] : item?.license_types;
+  if (gift.market_pass_id) {
+    const pass = await admin.from('rg_beat_passes').select('product_key,product_version').eq('id', gift.market_pass_id).single();
+    const product = pass.data && await admin.from('rg_market_products').select('name,benefit_kind')
+      .eq('product_key', pass.data.product_key).eq('version', pass.data.product_version).single();
+    if (product?.data) {
+      beat = { title: product.data.name, cover_path: null };
+      license = { name: product.data.name, slug: product.data.benefit_kind === 'studio' ? 'studio' : 'rg_pass' };
+    }
+  }
   const origin = intent?.snapshot?.siteOrigin || process.env.NEXT_PUBLIC_SITE_URL;
   if (!item || !beat || !license || !origin) return NextResponse.json({ error: "No se pudo preparar el reenvío." }, { status: 503 });
   const token = randomBytes(32).toString("base64url");

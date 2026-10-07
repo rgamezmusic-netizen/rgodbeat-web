@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { refreshRgYoutubeMilestones } from '@/lib/rg/phase2/youtube';
 import { reconcileRgPublicationScores } from '@/lib/rg/phase2/publication-scores';
 import { createPhase2AdminClient } from '@/lib/rg/phase2/database';
+import { reconcileVerifiedRgEarnings } from '@/lib/rg/phase2/direct-earning';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,12 +20,17 @@ export async function GET(request: NextRequest) {
     try { youtube = await refreshRgYoutubeMilestones(now); }
     catch (error) { youtubeError = true; console.error('[RG scheduled YouTube metrics]', error instanceof Error ? error.message : 'FAILED'); }
     if (youtubeError) throw new Error('YouTube metric verification failed; season finalization is deferred.');
+    const earnings = await reconcileVerifiedRgEarnings(String(activeSeasonId));
+    const settings = await db.from('rg_economy_config').select('season_rewards_v2_enabled').eq('id', true).single();
+    if (settings.error || !settings.data) throw new Error('Season issuance configuration unavailable.');
+    const rewardsEnabled = (settings.data as { season_rewards_v2_enabled: boolean }).season_rewards_v2_enabled === true;
     const { data: endedSeasons, error: endedError } = await db.from('rg_seasons').select('id')
       .eq('status', 'ended').lte('ends_at', now.toISOString());
     if (endedError) throw new Error('Ended seasons could not be loaded.');
     let finalized = 0;
     let failures = 0;
     for (const season of (endedSeasons ?? []) as Array<{ id: string }>) {
+      if (!rewardsEnabled) continue;
       const { error } = await db.rpc('rg_finalize_season', { p_season_id: season.id });
       if (!error) finalized++;
       else { failures++; console.error('[RG season finalization]', error.code || 'FAILED'); }
@@ -32,7 +38,7 @@ export async function GET(request: NextRequest) {
     if (failures) throw new Error('One or more ended RG seasons failed to finalize.');
     const { error: snapshotError } = await db.rpc('rg_capture_rank_snapshot', { p_season_id: activeSeasonId, p_final: false });
     if (snapshotError) throw new Error('Season ranking snapshot could not be created.');
-    return NextResponse.json({ success: true, seasonId: activeSeasonId, endedSeasonsFinalized: finalized, publications, youtube, youtubeMetricsAvailable: Boolean(youtube?.connectionVerified) }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ success: true, seasonId: activeSeasonId, endedSeasonsFinalized: finalized, rewardsEnabled, earnings, publications, youtube, youtubeMetricsAvailable: Boolean(youtube?.connectionVerified) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('[RG ecosystem cron]', error instanceof Error ? error.message : 'UNKNOWN');
     return NextResponse.json({ error: 'RG ecosystem schedule could not complete.' }, { status: 503 });
