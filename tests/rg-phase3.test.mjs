@@ -21,7 +21,7 @@ function database(tables, errors={}) {
     const q={select(v){columns=v;return q;},eq(k,v){filters.push([k,v]);return q;},in(k,v){filters.push([k,v,true]);return q;},lte(k,v){filters.push([k,v,'lte']);return q;},order(k,o){orders.push([k,o]);return q;},limit(v){max=v;return q;},range(a,b){start=a;end=b;return q;},maybeSingle(){one=true;return q;},single(){one=true;return q;},then(fn){
       queries.push({table,columns,filters});let rows=(tables[table]??[]).filter(row=>filters.every(([key,val,multiple])=>{const actual=key.split('.').reduce((v,k)=>v?.[k],row);return multiple==='lte'?actual<=val:multiple===true?val.includes(actual):actual===val;}));
       for(const [key,options] of orders)rows=rows.toSorted((a,b)=>String(a[key]).localeCompare(String(b[key]))*(options?.ascending===false?-1:1));
-      rows=rows.slice(start,Math.min(end+1,start+max));return Promise.resolve({data:one?rows[0]??null:rows,error:errors[table]??null}).then(fn);
+      rows=rows.slice(start,Math.min(end+1,start+max));return Promise.resolve({data:one?rows[0]??null:rows,error:errors[table]??null,count:rows.length}).then(fn);
     }};return q;
   }};
 }
@@ -113,9 +113,9 @@ test('sponsor UI hides empty area and shows only provided approved names/links',
   assert.equal(html(Sponsors,{sponsors:[]}),'');const markup=html(Sponsors,{sponsors:[{name:'Local approved sponsor',websiteUrl:'https://example.invalid/',logoUrl:null,tier:'TITLE_PARTNER'}]});
   assert.match(markup,/PRESENTADO POR/);assert.match(markup,/noopener noreferrer/);assert.doesNotMatch(markup,/<img/);
 });
-test('private wallet presentation shows zero honestly without buy or redemption actions',()=>{
-  const {RgBalance}=loadSource('components/ranking/RgBalance.tsx',replacements);const markup=html(RgBalance,{balanceRg:0,maxDiscountPercent:50});
-  assert.match(markup,/SOLO VISIBLE PARA TI/);assert.match(markup,/0 <span/);assert.match(markup,/50%/);assert.doesNotMatch(markup,/<button|<input|BUY RG|REDEEM/);
+test('private wallet presentation shows real zero and available inventory without inventing discounts',()=>{
+  const {RgBalance}=loadSource('components/ranking/RgBalance.tsx',replacements);const markup=html(RgBalance,{wallet:{balanceRg:0,availableBeatPasses:1,reservedBeatPasses:0,consumedBeatPasses:0,beatPassEnabled:true}});
+  assert.match(markup,/SOLO VISIBLE PARA TI/);assert.match(markup,/0 RG/);assert.match(markup,/1 AVAILABLE/);assert.doesNotMatch(markup,/50%/);assert.doesNotMatch(markup,/<button|<input|BUY RG|REDEEM/);
 });
 test('wallet queries validated owner only, prevents bad balances, and authenticated API never caches publicly',async()=>{
   const db=database({rg_coin_balances:[{user_id:'owner',balance_rg:'1250'},{user_id:'other',balance_rg:9999}],rg_economy_config:[{id:true,rg_per_usd_cent:1,max_rg_discount_percent:50,purchases_enabled:false,redemption_enabled:false}]});

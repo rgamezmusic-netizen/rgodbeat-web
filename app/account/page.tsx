@@ -10,6 +10,8 @@ import { listStemRequestsForCustomer, isTierEligibleForStems } from "@/lib/stems
 import { RequestStemsButton } from "@/components/stems/RequestStemsButton";
 import { GiftStatusList } from "@/components/commerce/GiftStatusList";
 import { linkVerifiedCommerceCustomer } from "@/lib/commerce/authorization";
+import { getRgWalletSummary } from "@/lib/rg/product/wallet";
+import { RgAccountWallet } from "@/components/rg/RgAccountWallet";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,13 @@ export default async function AccountPage() {
 
   if (!user) {
     redirect("/login?redirect=/account");
+  }
+
+  let wallet: Awaited<ReturnType<typeof getRgWalletSummary>> | null = null;
+  try {
+    wallet = await getRgWalletSummary(user.id);
+  } catch {
+    // A failed read must not appear as an empty wallet.
   }
 
   const supabase = createAdminClient();
@@ -123,6 +132,8 @@ export default async function AccountPage() {
             </form>
           </div>
         </div>
+
+        <RgAccountWallet wallet={wallet} />
 
         {/* Studio Pass / App VIP Banner */}
         <div className="p-6 rounded-2xl bg-gradient-to-r from-purple-950/40 via-[#0e0e14] to-[#0e0e14] border border-purple-500/20 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
