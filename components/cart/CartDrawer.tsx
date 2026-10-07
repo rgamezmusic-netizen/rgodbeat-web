@@ -30,6 +30,20 @@ export function CartDrawer() {
   const [selectedArtist, setSelectedArtist] = useState<{ stage_name: string; slug: string; bio: string | null } | null>(null);
   const [giftStatus, setGiftStatus] = useState<string | null>(null);
   const [giftError, setGiftError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "rg_beat_pass">("stripe");
+  const [passWallet, setPassWallet] = useState<{ beatPassEnabled: boolean; beatPassCostRg: number; availableBeatPasses: number; beatPassEligibleTiers: string[] } | null>(null);
+  const [completedWithPass, setCompletedWithPass] = useState(false);
+  const passRequestRef = useRef<{ signature: string; key: string } | null>(null);
+
+  useEffect(() => {
+    if (!isCartOpen) return;
+    let active = true;
+    void fetch("/api/rg/market/pass", { cache: "no-store" }).then(async response => {
+      if (!response.ok) return null;
+      return await response.json() as { beatPassEnabled: boolean; beatPassCostRg: number; availableBeatPasses: number; beatPassEligibleTiers: string[] };
+    }).then(data => { if (active && data) setPassWallet(data); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [isCartOpen]);
 
   useEffect(() => {
     if (recipientMode !== "gift" || recipientKind !== "artist" || artistQuery.trim().length < 2) {
@@ -77,6 +91,7 @@ export function CartDrawer() {
 
       setCompletedPurchases(data.purchases || []);
       setGiftStatus(data.giftStatus || null);
+      setCompletedWithPass(false);
       setCheckoutTotal(typeof data.totalAmount === "number" ? data.totalAmount : checkoutTotal);
       setCompletionStatus("ready");
       clearCart();
@@ -99,7 +114,7 @@ export function CartDrawer() {
     setErrorMessage(null);
 
     try {
-      const payload = {
+    const payload = {
         embedded: true,
         recipientMode,
         ...(recipientMode === "gift" ? recipientKind === "email"
@@ -109,8 +124,40 @@ export function CartDrawer() {
         items: items.map((item) => ({
           beatId: item.beat.id,
           licenseTier: item.licenseTier,
-        })),
-      };
+      })),
+    };
+
+      if (paymentMethod === "rg_beat_pass") {
+        const signature = JSON.stringify(payload);
+        if (!passRequestRef.current) {
+          try {
+            const saved = JSON.parse(sessionStorage.getItem("rg-beat-pass-redemption-request-v1") || "null") as { signature?: string; key?: string } | null;
+            if (saved?.signature === signature && saved.key) passRequestRef.current = { signature, key: saved.key };
+          } catch { sessionStorage.removeItem("rg-beat-pass-redemption-request-v1"); }
+        }
+        if (!passRequestRef.current || passRequestRef.current.signature !== signature) {
+          passRequestRef.current = { signature, key: crypto.randomUUID() };
+        }
+        sessionStorage.setItem("rg-beat-pass-redemption-request-v1", JSON.stringify(passRequestRef.current));
+        const response = await fetch("/api/checkout/rg-beat-pass", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, idempotencyKey: passRequestRef.current.key }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "No se pudo canjear RG Beat Pass.");
+        setCheckoutTotal(0);
+        setCompletedPurchases(data.purchases || []);
+        setGiftStatus(data.giftStatus || null);
+        setCheckoutSessionId(null);
+        setCompletedWithPass(true);
+        setCheckoutComplete(true);
+        setCompletionStatus("ready");
+        setClientSecret(null);
+        clearCart();
+        passRequestRef.current = null;
+        sessionStorage.removeItem("rg-beat-pass-redemption-request-v1");
+        return;
+      }
 
       const res = await fetch("/api/checkout", {
         method: "POST",
@@ -160,6 +207,9 @@ export function CartDrawer() {
     setArtistResults([]);
     setSelectedArtist(null);
     setGiftError(null);
+    setPaymentMethod("stripe");
+    setCompletedWithPass(false);
+    passRequestRef.current = null;
     setErrorMessage(null);
     closeCart();
   };
@@ -217,24 +267,24 @@ export function CartDrawer() {
           </div>
 
           {/* Embedded Stripe Checkout Mode */}
-          {clientSecret ? (
+          {clientSecret || checkoutComplete ? (
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#08080c] space-y-4">
               {checkoutComplete ? (
                 <div className="space-y-5 py-3">
                   <div className="text-center space-y-2">
                     <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 text-2xl">✓</div>
                     <h2 className="text-xl font-bold text-white">
-                      {completionStatus === "ready" ? "Pago confirmado" : "Pago recibido"}
+                      {completionStatus === "ready" ? completedWithPass ? "Canje confirmado" : "Pago confirmado" : "Pago recibido"}
                     </h2>
                     <p className="text-sm text-zinc-400">
                       {completionStatus === "ready"
-                        ? "Tu compra y tus archivos están listos aquí."
+                        ? completedWithPass ? "Tu RG Beat Pass se aplicó y la licencia quedó preparada." : "Tu compra y tus archivos están listos aquí."
                         : completionStatus === "loading"
                           ? "Estamos verificando el pago y preparando tus archivos."
                           : "Estamos terminando de verificar la compra. Actualiza el estado antes de volver a pagar."}
                     </p>
                     {checkoutTotal !== null && (
-                      <p className="text-sm font-mono text-emerald-300">TOTAL: {formatCurrency(checkoutTotal)}</p>
+                      <p className="text-sm font-mono text-emerald-300">{completedWithPass ? "TOTAL: 0 USD · RG BEAT PASS" : `TOTAL: ${formatCurrency(checkoutTotal)}`}</p>
                     )}
                   </div>
 
@@ -357,8 +407,17 @@ export function CartDrawer() {
 
               <div className="text-[11px] text-zinc-500 font-mono flex items-center justify-between">
                 <span>Entrega digital</span>
-                <span>Pago con Stripe</span>
+                <span>{paymentMethod === "rg_beat_pass" ? "Canje RG" : "Pago con Stripe"}</span>
               </div>
+
+              {passWallet?.beatPassEnabled && items.length === 1 && passWallet.beatPassEligibleTiers.includes(items[0].licenseTier) && <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.035] p-4 space-y-2">
+                <h2 className="text-xs font-mono font-bold tracking-wider text-amber-200">PAGA CON</h2>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setPaymentMethod("stripe")} aria-pressed={paymentMethod === "stripe"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${paymentMethod === "stripe" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PAGO NORMAL</button>
+                  <button type="button" onClick={() => setPaymentMethod("rg_beat_pass")} disabled={passWallet.availableBeatPasses < 1} aria-pressed={paymentMethod === "rg_beat_pass"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold disabled:opacity-50 ${paymentMethod === "rg_beat_pass" ? "border-amber-300 bg-amber-300/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>RG BEAT PASS ({passWallet.availableBeatPasses})</button>
+                </div>
+                {passWallet.availableBeatPasses < 1 && <p className="text-[11px] text-zinc-400">Compra un pase desde <a className="text-amber-200 underline" href="/rg/market">RG Market</a>.</p>}
+              </section>}
 
               {giftCheckoutVisible ? <section className="rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-3">
                 <h2 className="text-xs font-mono font-bold tracking-wider text-white">¿PARA QUIÉN ES?</h2>
@@ -418,7 +477,7 @@ export function CartDrawer() {
                 size="lg"
                 className="w-full justify-center text-sm tracking-wider"
                 onClick={handleCheckout}
-                disabled={isLoading || (recipientMode === "gift" && (recipientKind === "email"
+                disabled={isLoading || (paymentMethod === "rg_beat_pass" && (!passWallet?.beatPassEnabled || passWallet.availableBeatPasses < 1 || items.length !== 1 || !passWallet.beatPassEligibleTiers.includes(items[0]?.licenseTier || ""))) || (recipientMode === "gift" && (recipientKind === "email"
                   ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail.trim())
                   : !selectedArtist))}
               >

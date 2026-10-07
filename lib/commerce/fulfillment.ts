@@ -25,7 +25,7 @@ export interface AuthoritativeCartResult {
 type CheckoutIntent = {
   id: string; recipient_mode: string; recipient_kind: "artist" | "email" | null;
   recipient_email: string | null; recipient_artist_id: string | null; recipient_artist_slug: string | null;
-  snapshot: { siteOrigin?: string; kind?: string; serviceId?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string };
+  snapshot: { siteOrigin?: string; kind?: string; serviceId?: string; paymentMethod?: string; beat_pass_request_key?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string };
   state: string; buyer_email: string | null; attempt_count: number;
 };
 
@@ -183,6 +183,7 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
 
   const intentId = session.metadata?.commerceIntentId;
   const isStudioPass = session.metadata?.type === "studio_pass";
+  const isBeatPassRedemption = session.metadata?.type === "rg_beat_pass";
   if (!intentId && !isStudioPass) {
     if (existingOrder?.status === "completed") {
       const [{ count: itemCount }, { count: purchaseCount }] = await Promise.all([
@@ -209,12 +210,18 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
       return { status: "payment_reversed", orderId: existingOrder?.id || sessionId };
     }
     if (resolvedIntent.state === "needs_review") throw new Error("PAYMENT_REQUIRES_MANUAL_REVIEW");
-    const snapshot = resolvedIntent.snapshot as { kind?: string; serviceId?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string };
+    const snapshot = resolvedIntent.snapshot as { kind?: string; serviceId?: string; paymentMethod?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string };
     if (!Number.isInteger(snapshot?.totalAmountCents)
       || snapshot.currency?.toLowerCase() !== (session.currency || "usd").toLowerCase()
       || session.amount_total !== snapshot.totalAmountCents) throw new Error("PAYMENT_SNAPSHOT_MISMATCH");
     if (isStudioPass) {
       if (snapshot.kind !== "service" || snapshot.serviceId !== "studio_pro") throw new Error("SERVICE_SNAPSHOT_MISMATCH");
+    } else if (isBeatPassRedemption) {
+      if (snapshot.kind !== "beat_pass_redemption" || snapshot.paymentMethod !== "rg_beat_pass"
+        || !Array.isArray(snapshot.items) || snapshot.items.length !== 1 || snapshot.items[0].unitPrice !== 0) {
+        throw new Error("BEAT_PASS_SNAPSHOT_MISMATCH");
+      }
+      authoritativeCart = { items: snapshot.items, totalAmount: 0, currency: snapshot.currency || "usd" };
     } else {
       if (!Array.isArray(snapshot?.items) || snapshot.items.length === 0) throw new Error("PURCHASE_SNAPSHOT_MISSING_ITEMS");
       authoritativeCart = { items: snapshot.items, totalAmount: snapshot.totalAmountCents / 100, currency: snapshot.currency };
@@ -247,6 +254,10 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
       supabase, intent: { ...intent, recipient_kind: intent.recipient_kind }, session, existingOrder, cart: authoritativeCart,
       payer: { customerId, email: customerEmail, name: customerName },
     });
+    if (isBeatPassRedemption && result.status === "fulfilled") {
+      const { error } = await supabase.rpc("rg_consume_beat_pass", { p_intent_id: intent.id, p_order_id: result.orderId });
+      if (error) throw new Error("BEAT_PASS_CONSUMPTION_FAILED");
+    }
     return result;
   }
 
@@ -480,6 +491,11 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
   }
   const { error: completionError } = await supabase.from("orders").update({ status: "completed" }).eq("id", orderId);
   if (completionError) throw new Error("ORDER_COMPLETION_FAILED");
+
+  if (isBeatPassRedemption && intentId) {
+    const { error: passError } = await supabase.rpc("rg_consume_beat_pass", { p_intent_id: intentId, p_order_id: orderId });
+    if (passError) throw new Error("BEAT_PASS_CONSUMPTION_FAILED");
+  }
 
   console.log(`[Fulfillment] Successfully fulfilled order ${orderId} for customer ${customerEmail} (Granted 30 days Studio Access)`);
   return { status: "fulfilled", orderId, customerId };

@@ -13,5 +13,5 @@ export default async function WalletPage() {
   if (!user) redirect('/login?redirect=/rg/wallet');
   let wallet;
   try { wallet = await getRgWalletSummary(user.id); } catch { /* Do not invent a zero balance when a service fails. */ }
-  return <ProductFrame><section className={styles.section}>{wallet ? <RgBalance balanceRg={wallet.balanceRg} maxDiscountPercent={wallet.maxDiscountPercent} /> : <div role="alert"><h1 className={styles.profileTitle}>Tu saldo volverá en un momento.</h1><p className={styles.muted}>No pudimos consultar tu saldo RG. Inténtalo de nuevo.</p><Link className={styles.button} href="/rg/wallet">VOLVER A INTENTAR</Link></div>}</section></ProductFrame>;
+  return <ProductFrame><section className={styles.section}>{wallet ? <><RgBalance balanceRg={wallet.balanceRg} maxDiscountPercent={wallet.maxDiscountPercent} /><Link className={styles.button} href="/rg/market">ABRIR RG MARKET →</Link></> : <div role="alert"><h1 className={styles.profileTitle}>Tu saldo volverá en un momento.</h1><p className={styles.muted}>No pudimos consultar tu saldo RG. Inténtalo de nuevo.</p><Link className={styles.button} href="/rg/wallet">VOLVER A INTENTAR</Link></div>}</section></ProductFrame>;
 }
