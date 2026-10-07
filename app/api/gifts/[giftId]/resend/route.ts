@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
 import { createCommerceAdminClient } from "@/lib/commerce/admin-client";
 import { hasVerifiedEmail, linkVerifiedCommerceCustomer } from "@/lib/commerce/authorization";
-import { encryptTransactionalSecret } from "@/lib/commerce/email";
+import { encryptTransactionalSecret, processQueuedGiftEmailImmediately } from "@/lib/commerce/email";
 
 export const dynamic = "force-dynamic";
 const sameOrigin = (request: NextRequest) => !request.headers.get("origin") || request.headers.get("origin") === request.nextUrl.origin;
@@ -55,5 +55,6 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gi
     const limited = error.message.includes("rate_limited") || error.message.includes("daily_limit");
     return NextResponse.json({ error: limited ? "Espera un momento antes de volver a reenviar." : "No se pudo preparar el reenvío." }, { status: limited ? 429 : 503 });
   }
+  await processQueuedGiftEmailImmediately(admin);
   return NextResponse.json({ queued: true }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -2,7 +2,7 @@ import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateLicenseContract } from "./contracts";
-import { encryptTransactionalSecret, enqueueTransactionalEmail } from "./email";
+import { encryptTransactionalSecret, enqueueTransactionalEmail, processQueuedGiftEmailImmediately } from "./email";
 import type { AuthoritativeCartResult } from "./fulfillment";
 
 type GiftIntent = {
@@ -173,6 +173,7 @@ export async function fulfillPaidGiftCheckout(input: GiftFulfillmentInput) {
             p_payload: { beatTitle: item.beatTitle, coverPath: beat?.cover_path || null, licenseName: item.licenseName, licenseTier: item.licenseTier },
           });
           if (error) throw new Error(error.message.includes("rate_limit") ? "GIFT_RESEND_RATE_LIMITED" : "GIFT_EMAIL_QUEUE_FAILED");
+          await processQueuedGiftEmailImmediately(supabase);
         }
       }
     }

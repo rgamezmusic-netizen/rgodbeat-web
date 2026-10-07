@@ -214,3 +214,56 @@ test('transactional email worker records temporary retry and permanent provider 
   if (previous === undefined) delete process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY;
   else process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY = previous;
 });
+
+test('queued gift email is processed inline and temporary Resend failure keeps retry state', async () => {
+  const previous = {
+    key: process.env.RESEND_API_KEY,
+    from: process.env.RESEND_FROM_EMAIL,
+    encryptionKey: process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY,
+    fetch: globalThis.fetch,
+  };
+  process.env.RESEND_API_KEY = 'test-key';
+  process.env.RESEND_FROM_EMAIL = 'RGODBEAT <gifts@example.test>';
+  process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY = Buffer.alloc(32, 5).toString('base64');
+  const encrypted = email.encryptTransactionalSecret(`https://rgodbeat.test/gifts/claim?token=${'C'.repeat(43)}`);
+  const calls = [];
+  const supabase = { rpc: async (name, args) => {
+    calls.push({ name, args });
+    return name === 'rg_claim_transactional_email_job'
+      ? { data: [{ job_id: 'job-inline', lease_token: 'lease-inline', attempt: 1, message_type: 'gift_claim',
+        recipient_email: 'recipient@example.test', encrypted_secret: encrypted,
+        payload: { beatTitle: 'Beat', licenseName: 'MP3' } }], error: null }
+      : { data: null, error: null };
+  } };
+  globalThis.fetch = async () => new Response('temporarily unavailable', { status: 503 });
+  try {
+    assert.deepEqual(await email.processQueuedGiftEmailImmediately(supabase), { status: 'retry' });
+    assert.equal(calls[0].name, 'rg_claim_transactional_email_job');
+    assert.equal(calls.at(-1).name, 'rg_finish_transactional_email_job');
+    assert.equal(calls.at(-1).args.p_status, 'retry');
+  } finally {
+    if (previous.key === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = previous.key;
+    if (previous.from === undefined) delete process.env.RESEND_FROM_EMAIL;
+    else process.env.RESEND_FROM_EMAIL = previous.from;
+    if (previous.encryptionKey === undefined) delete process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY;
+    else process.env.RG_TRANSACTIONAL_EMAIL_ENCRYPTION_KEY = previous.encryptionKey;
+    globalThis.fetch = previous.fetch;
+  }
+});
+
+test('inline gift email processing leaves the durable queue untouched when Resend is not configured', async () => {
+  const previous = { key: process.env.RESEND_API_KEY, from: process.env.RESEND_FROM_EMAIL };
+  delete process.env.RESEND_API_KEY;
+  delete process.env.RESEND_FROM_EMAIL;
+  let calls = 0;
+  try {
+    assert.deepEqual(await email.processQueuedGiftEmailImmediately({ rpc: async () => { calls += 1; return { data: null, error: null }; } }), { status: 'queued' });
+    assert.equal(calls, 0);
+  } finally {
+    if (previous.key === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = previous.key;
+    if (previous.from === undefined) delete process.env.RESEND_FROM_EMAIL;
+    else process.env.RESEND_FROM_EMAIL = previous.from;
+  }
+});

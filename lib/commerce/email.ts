@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import type { Json } from "@/types/database";
 
 export interface TransactionalEmail {
@@ -8,6 +8,8 @@ export interface TransactionalEmail {
   subject: string;
   text: string;
   html: string;
+  /** Stable for retries, distinct when a gift claim token is replaced. */
+  idempotencyKey?: string;
 }
 
 export interface TransactionalEmailProvider {
@@ -16,6 +18,47 @@ export interface TransactionalEmailProvider {
 
 export class TransactionalEmailDeliveryError extends Error {
   constructor(message: string, readonly retryable: boolean) { super(message); this.name = "TransactionalEmailDeliveryError"; }
+}
+
+/** Resend-backed production adapter. It never logs message contents or recipient data. */
+export class ResendTransactionalEmailProvider implements TransactionalEmailProvider {
+  async send(message: TransactionalEmail) {
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.RESEND_FROM_EMAIL;
+    if (!apiKey || !from) throw new TransactionalEmailDeliveryError("resend_not_configured", false);
+
+    let response: Response;
+    try {
+      response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          ...(message.idempotencyKey ? { "Idempotency-Key": message.idempotencyKey } : {}),
+        },
+        body: JSON.stringify({ from, to: [message.to], subject: message.subject, text: message.text, html: message.html }),
+        cache: "no-store",
+      });
+    } catch {
+      throw new TransactionalEmailDeliveryError("resend_network_error", true);
+    }
+
+    if (!response.ok) {
+      const retryable = response.status === 408 || response.status === 409 || response.status === 429 || response.status >= 500;
+      throw new TransactionalEmailDeliveryError(`resend_http_${response.status}`, retryable);
+    }
+
+    let result: { id?: unknown };
+    try {
+      result = await response.json() as { id?: unknown };
+    } catch {
+      throw new TransactionalEmailDeliveryError("resend_invalid_response", true);
+    }
+    if (typeof result.id !== "string" || !result.id) {
+      throw new TransactionalEmailDeliveryError("resend_message_id_missing", true);
+    }
+    return { providerMessageId: result.id };
+  }
 }
 
 /** Encrypt one-time links before they enter the durable mail queue. */
@@ -131,6 +174,9 @@ export async function processNextGiftEmail(
       to: job.recipient_email, subject: isBuyerReceipt ? "Recibo de tu regalo en RGODBEAT" : "Recibiste un beat en RGODBEAT",
       text: `${description} ${safeTitle} · ${safeLicense}.${total}${claimUrl ? ` Reclama tu regalo: ${claimUrl}` : ""}`,
       html: `<main><h1>${heading}</h1>${safeArtwork ? `<img alt="Portada de ${safeTitle}" src="${safeArtwork}" width="240">` : ""}<h2>${safeTitle}</h2><p>${safeLicense}</p><p>${description}</p>${total ? `<p>${total.trim()}</p>` : ""}${action}</main>`,
+      idempotencyKey: createHash("sha256")
+        .update(`${job.job_id}:${typeof job.encrypted_secret === "string" ? job.encrypted_secret : ""}`)
+        .digest("hex"),
     });
     await finish("sent", result.providerMessageId || null, null, null);
     return { status: "sent" as const };
@@ -142,5 +188,16 @@ export async function processNextGiftEmail(
     await finish(status, null, error instanceof TransactionalEmailDeliveryError && !error.retryable ? "provider_rejected" : "provider_temporary_failure",
       status === "retry" ? new Date(now().getTime() + delaySeconds * 1000).toISOString() : null);
     return { status };
+  }
+}
+
+/** Best-effort inline delivery after a durable gift job is queued. Queue state remains authoritative. */
+export async function processQueuedGiftEmailImmediately(supabase: SupabaseClient) {
+  if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) return { status: "queued" as const };
+  try {
+    return await processNextGiftEmail(supabase, new ResendTransactionalEmailProvider());
+  } catch {
+    // The job was committed before this call; a failed lease/finish operation is recovered by the fallback worker.
+    return { status: "queued" as const };
   }
 }
