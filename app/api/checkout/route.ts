@@ -9,7 +9,10 @@ import type Stripe from "stripe";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as CheckoutPayload;
+    const body = (await req.json()) as CheckoutPayload & { paymentMethod?: "stripe" | "rg_beat_pass" };
+    if (body.paymentMethod && body.paymentMethod !== "stripe") {
+      return NextResponse.json({ error: "Usa el canje RG Beat Pass para esta operación." }, { status: 400 });
+    }
     const { items, customerEmail, customerName } = body;
     const recipientMode = body.recipientMode ?? "self";
     if (recipientMode !== "self" && recipientMode !== "gift") {

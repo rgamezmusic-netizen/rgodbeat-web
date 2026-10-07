@@ -116,6 +116,7 @@ export function CartDrawer() {
     try {
     const payload = {
         embedded: true,
+        paymentMethod,
         recipientMode,
         ...(recipientMode === "gift" ? recipientKind === "email"
           ? { recipientKind, recipientEmail: recipientEmail.trim() }
@@ -401,7 +402,7 @@ export function CartDrawer() {
               <div className="flex items-center justify-between text-sm font-mono">
                 <span className="text-zinc-400">SUBTOTAL</span>
                 <span className="text-lg font-bold text-white">
-                  {formatCurrency(totalAmount)}
+                  {formatCurrency(paymentMethod === "rg_beat_pass" ? 0 : totalAmount)}
                 </span>
               </div>
 
@@ -413,8 +414,8 @@ export function CartDrawer() {
               {passWallet?.beatPassEnabled && items.length === 1 && passWallet.beatPassEligibleTiers.includes(items[0].licenseTier) && <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.035] p-4 space-y-2">
                 <h2 className="text-xs font-mono font-bold tracking-wider text-amber-200">PAGA CON</h2>
                 <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setPaymentMethod("stripe")} aria-pressed={paymentMethod === "stripe"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${paymentMethod === "stripe" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PAGO NORMAL</button>
-                  <button type="button" onClick={() => setPaymentMethod("rg_beat_pass")} disabled={passWallet.availableBeatPasses < 1} aria-pressed={paymentMethod === "rg_beat_pass"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold disabled:opacity-50 ${paymentMethod === "rg_beat_pass" ? "border-amber-300 bg-amber-300/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>RG BEAT PASS ({passWallet.availableBeatPasses})</button>
+                  <button type="button" onClick={() => setPaymentMethod("stripe")} disabled={isLoading} aria-pressed={paymentMethod === "stripe"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${paymentMethod === "stripe" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PAGO NORMAL</button>
+                  <button type="button" onClick={() => setPaymentMethod("rg_beat_pass")} disabled={isLoading || passWallet.availableBeatPasses < 1} aria-pressed={paymentMethod === "rg_beat_pass"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold disabled:opacity-50 ${paymentMethod === "rg_beat_pass" ? "border-amber-300 bg-amber-300/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>RG BEAT PASS ({passWallet.availableBeatPasses})</button>
                 </div>
                 {passWallet.availableBeatPasses < 1 && <p className="text-[11px] text-zinc-400">Compra un pase desde <a className="text-amber-200 underline" href="/rg/market">RG Market</a>.</p>}
               </section>}
@@ -487,10 +488,10 @@ export function CartDrawer() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    CARGANDO FORMULARIO DE PAGO...
+                    {paymentMethod === "rg_beat_pass" ? "CANJEANDO RG BEAT PASS..." : "CARGANDO FORMULARIO DE PAGO..."}
                   </span>
                 ) : (
-                  recipientMode === "gift" ? `CONFIRMAR REGALO (${formatCurrency(totalAmount)})` : `CONTINUAR AL PAGO (${formatCurrency(totalAmount)})`
+                  paymentMethod === "rg_beat_pass" ? "CANJEAR RG BEAT PASS" : recipientMode === "gift" ? `CONFIRMAR REGALO (${formatCurrency(totalAmount)})` : `CONTINUAR AL PAGO (${formatCurrency(totalAmount)})`
                 )}
               </Button>
 
