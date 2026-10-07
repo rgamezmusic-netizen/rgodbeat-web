@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useTransition, Suspense } from "react";
+import React, { useEffect, useState, useTransition, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signInWithEmail, signUpWithEmail } from "@/lib/auth/client";
+import { createClient } from "@/lib/supabase/client";
 import { isSiteAdmin } from "@/lib/auth/admin";
 import { requestPasswordRecovery } from "@/lib/auth/recovery";
 import { safeAuthRedirect } from "@/lib/auth/redirect";
@@ -23,6 +24,23 @@ function AuthForm() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!emailConfirmed) return;
+    const destination = safeAuthRedirect(redirectParam, "/");
+    const supabase = createClient();
+    let redirected = false;
+    const redirectIfConfirmed = (user: { email_confirmed_at?: string | null; confirmed_at?: string | null } | null) => {
+      if (redirected || !user || !(user.email_confirmed_at || user.confirmed_at)) return;
+      redirected = true;
+      window.location.replace(destination);
+    };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      redirectIfConfirmed(session?.user ?? null);
+    });
+    void supabase.auth.getSession().then(({ data }) => redirectIfConfirmed(data.session?.user ?? null));
+    return () => subscription.unsubscribe();
+  }, [emailConfirmed, redirectParam]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,7 +206,7 @@ function AuthForm() {
 
       {emailConfirmed && mode === "signin" && !successMessage && (
         <div role="status" className="p-3.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-300">
-          Correo confirmado. Ya puedes iniciar sesión.
+          Correo confirmado. Abriendo RGODBEAT… Si no continúa, inicia sesión con ese correo.
         </div>
       )}
 
