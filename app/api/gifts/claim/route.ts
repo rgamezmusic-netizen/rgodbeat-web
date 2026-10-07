@@ -23,8 +23,7 @@ export async function POST(request: NextRequest) {
   if (!claimHash) return NextResponse.json({ error: "Este regalo ya no puede reclamarse. Solicita un enlace nuevo al comprador." }, { status: 410 });
 
   const { data: tokenRow, error: tokenError } = await admin.from("gift_claim_tokens")
-    .select("gift_id").eq("token_hash", claimHash).is("used_at", null).is("revoked_at", null)
-    .gt("expires_at", new Date().toISOString()).maybeSingle();
+    .select("gift_id,used_at,revoked_at,expires_at").eq("token_hash", claimHash).maybeSingle();
   if (tokenError || !tokenRow) return NextResponse.json({ error: "Este regalo ya no puede reclamarse. Solicita un enlace nuevo al comprador." }, { status: 410 });
   const { data: gift, error: giftError } = await admin.from("beat_gifts").select(`
     id,market_pass_id,recipient_kind,recipient_email,recipient_artist_id,recipient_user_id,status,payment_status,purchase_id,intent_id,
@@ -32,9 +31,33 @@ export async function POST(request: NextRequest) {
     order_items!inner(unit_price,beat_id,license_type_id,beats(title),license_types(slug))
   `).eq("id", tokenRow.gift_id).maybeSingle();
   const order = gift && (Array.isArray(gift.orders) ? gift.orders[0] : gift.orders);
-  if (giftError || !gift || gift.status !== "ready_to_claim" || gift.payment_status !== "paid"
-    || order?.status !== "completed" || order?.payment_status !== "paid") {
+  if (giftError || !gift) {
     return NextResponse.json({ error: "Este regalo no está disponible para esta cuenta." }, { status: 403 });
+  }
+  // A double submit or a reopened email link must report an existing claim,
+  // never attempt to grant the same license/pass again.
+  if (gift.status === "claimed") {
+    if (gift.recipient_user_id !== user.id) return NextResponse.json({ error: "Este regalo ya fue reclamado desde otra cuenta." }, { status: 403 });
+    if (gift.market_pass_id) {
+      const { data: pass } = await admin.from("rg_beat_passes").select("product_key,product_version")
+        .eq("id", gift.market_pass_id).maybeSingle();
+      if (!pass) return NextResponse.json({ error: "El regalo figura reclamado, pero no pudimos localizar el pase en tu wallet." }, { status: 409 });
+      const { data: product } = await admin.from("rg_market_products").select("benefit_kind")
+        .eq("product_key", pass.product_key).eq("version", pass.product_version).maybeSingle();
+      return NextResponse.json({ claimed: true, benefitKind: product?.benefit_kind === "studio" ? "studio" : "rg_pass" },
+        { headers: { "Cache-Control": "no-store" } });
+    }
+    if (!gift.purchase_id) return NextResponse.json({ error: "El regalo figura reclamado, pero no encontramos su licencia." }, { status: 409 });
+    return NextResponse.json({ claimed: true, purchaseId: gift.purchase_id }, { headers: { "Cache-Control": "no-store" } });
+  }
+  if (tokenRow.used_at || tokenRow.revoked_at || new Date(tokenRow.expires_at).getTime() <= Date.now()) {
+    return NextResponse.json({ error: "El enlace venció o ya se utilizó. Si el regalo sigue pendiente, pide al comprador que lo reenvíe." }, { status: 410 });
+  }
+  if (gift.status !== "ready_to_claim") {
+    return NextResponse.json({ error: "El regalo todavía no está listo para reclamarse. Espera a que termine la confirmación del pago." }, { status: 409 });
+  }
+  if (gift.payment_status !== "paid" || order?.status !== "completed" || order?.payment_status !== "paid") {
+    return NextResponse.json({ error: "El pago del regalo todavía se está confirmando. Vuelve a intentarlo en un momento." }, { status: 409 });
   }
   // Email gifts are bound to the verified email address. The Auth UUID can
   // change if the account was recreated or relinked while keeping that email.

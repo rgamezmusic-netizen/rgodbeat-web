@@ -9,6 +9,7 @@ import { extractLicenseMetadata } from "@/lib/commerce/contracts";
 import { listStemRequestsForCustomer, isTierEligibleForStems } from "@/lib/stems/tickets";
 import { RequestStemsButton } from "@/components/stems/RequestStemsButton";
 import { GiftStatusList } from "@/components/commerce/GiftStatusList";
+import { ReceivedGiftList } from "@/components/commerce/ReceivedGiftList";
 import { linkVerifiedCommerceCustomer } from "@/lib/commerce/authorization";
 import { getRgWalletSummary } from "@/lib/rg/product/wallet";
 import { RgAccountWallet } from "@/components/rg/RgAccountWallet";
@@ -163,16 +164,17 @@ export default async function AccountPage() {
         </div>
 
         <GiftStatusList />
+        <ReceivedGiftList />
 
         {/* Purchases Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
             <div>
               <h2 className="text-lg font-extrabold tracking-tight text-white uppercase font-sans">
-                Tus Beats y Licencias Compradas
+                Mi biblioteca: compras y licencias
               </h2>
               <p className="text-xs text-zinc-400">
-                Archivos master de alta fidelidad, stems y contratos oficiales descargables en cualquier momento.
+                Tus licencias reclamadas, compras, descargas y contratos oficiales en un solo lugar.
               </p>
             </div>
             <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-white/[0.04] text-zinc-300 border border-white/[0.08]">
