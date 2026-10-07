@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     .select("gift_id,used_at,revoked_at,expires_at").eq("token_hash", claimHash).maybeSingle();
   if (tokenError || !tokenRow) return NextResponse.json({ error: "Este regalo ya no puede reclamarse. Solicita un enlace nuevo al comprador." }, { status: 410 });
   const { data: gift, error: giftError } = await admin.from("beat_gifts").select(`
-    id,market_pass_id,recipient_kind,recipient_email,recipient_artist_id,recipient_user_id,status,payment_status,purchase_id,intent_id,
+    id,recipient_kind,recipient_email,recipient_artist_id,recipient_user_id,status,payment_status,purchase_id,intent_id,
     order_id,order_item_id,orders!inner(status,payment_status,total_amount,currency,customers(name)),
     order_items!inner(unit_price,beat_id,license_type_id,beats(title),license_types(slug))
   `).eq("id", tokenRow.gift_id).maybeSingle();
@@ -34,13 +34,23 @@ export async function POST(request: NextRequest) {
   if (giftError || !gift) {
     return NextResponse.json({ error: "Este regalo no está disponible para esta cuenta." }, { status: 403 });
   }
+  // Production may not have the later RG Market gift columns yet. Read the
+  // optional link separately so a standard Gift V1 beat license still claims.
+  const { data: marketLink, error: marketLinkError } = await admin.from("beat_gifts")
+    .select("market_pass_id").eq("id", gift.id).maybeSingle();
+  let marketPassId: string | null = null;
+  if (!marketLinkError) {
+    marketPassId = marketLink?.market_pass_id ?? null;
+  } else if (marketLinkError.code !== "42703" && marketLinkError.code !== "PGRST204") {
+    return NextResponse.json({ error: "No pudimos validar el beneficio del regalo." }, { status: 503 });
+  }
   // A double submit or a reopened email link must report an existing claim,
   // never attempt to grant the same license/pass again.
   if (gift.status === "claimed") {
     if (gift.recipient_user_id !== user.id) return NextResponse.json({ error: "Este regalo ya fue reclamado desde otra cuenta." }, { status: 403 });
-    if (gift.market_pass_id) {
+    if (marketPassId) {
       const { data: pass } = await admin.from("rg_beat_passes").select("product_key,product_version")
-        .eq("id", gift.market_pass_id).maybeSingle();
+        .eq("id", marketPassId).maybeSingle();
       if (!pass) return NextResponse.json({ error: "El regalo figura reclamado, pero no pudimos localizar el pase en tu wallet." }, { status: 409 });
       const { data: product } = await admin.from("rg_market_products").select("benefit_kind")
         .eq("product_key", pass.product_key).eq("version", pass.product_version).maybeSingle();
@@ -77,7 +87,7 @@ export async function POST(request: NextRequest) {
 
   const customerId = await linkVerifiedCommerceCustomer(admin, user);
   if (!customerId) return NextResponse.json({ error: "No pudimos validar la cuenta para completar el regalo." }, { status: 409 });
-  if (gift.market_pass_id) {
+  if (marketPassId) {
     const claim = await admin.rpc('rg_claim_beat_gift', { p_token_hash: claimHash, p_user_id: user.id, p_customer_id: customerId,
       p_license_id: null, p_contract_text: null });
     if (claim.error || !Array.isArray(claim.data) || claim.data.length !== 1) {
