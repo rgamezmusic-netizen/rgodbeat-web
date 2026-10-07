@@ -213,7 +213,7 @@ export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
           <button type="button" className={styles.buy} onClick={() => addToCart(selected, "mp3")}>
             <ShoppingBag size={16} />
             <span>COMPRAR</span>
-            <DiscountPrice regularPrice={selected.regularPricing?.mp3} price={selected.price} compact />
+            <DiscountPrice regularPrice={selected.regularPricing?.mp3} price={selected.price} compact tone="dark" />
           </button>
         </div>
       </div>

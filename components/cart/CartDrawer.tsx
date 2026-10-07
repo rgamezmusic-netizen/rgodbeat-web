@@ -241,7 +241,7 @@ export function CartDrawer() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div className="fixed inset-0 z-50 h-dvh overflow-hidden">
       {/* Backdrop */}
       <div
         onClick={handleClose}
@@ -253,10 +253,10 @@ export function CartDrawer() {
         <div
           className={`w-screen ${
             clientSecret ? "max-w-lg" : "max-w-md"
-          } bg-[#0e0e13] border-l border-white/[0.1] shadow-2xl flex flex-col justify-between animate-slideLeft transition-all duration-300`}
+          } h-full min-h-0 min-w-0 bg-[#0e0e13] border-l border-white/[0.1] shadow-2xl flex flex-col animate-slideLeft transition-all duration-300`}
         >
           {/* Header */}
-          <div className="p-6 border-b border-white/[0.08] flex items-center justify-between">
+          <div className="shrink-0 px-4 py-4 sm:px-6 border-b border-white/[0.08] flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               {clientSecret ? (
                 <button
@@ -294,7 +294,7 @@ export function CartDrawer() {
 
           {/* Embedded Stripe Checkout Mode */}
           {clientSecret || checkoutComplete ? (
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#08080c] space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 bg-[#08080c] space-y-4">
               {checkoutComplete ? (
                 <div className="space-y-5 py-3">
                   <div className="text-center space-y-2">
@@ -383,7 +383,8 @@ export function CartDrawer() {
             </div>
           ) : (
             /* Standard Cart Items Body */
-            <div className="flex-1 overflow-y-auto p-6 space-y-3.5">
+            <div role="region" aria-label="Contenido del carrito" tabIndex={0}
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-3.5">
               {errorMessage && (
                 <div className="p-3.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-xs font-mono">
                   {errorMessage}
@@ -425,61 +426,45 @@ export function CartDrawer() {
                   />
                 ))
               )}
-            </div>
-          )}
 
-          {/* Footer Subtotal & Actions (Only when not in embedded checkout) */}
-          {!clientSecret && items.length > 0 && (
-            <div className="p-6 border-t border-white/[0.08] bg-[#09090d] space-y-4">
-              <div className="flex items-center justify-between text-sm font-mono">
-                <span className="text-zinc-400">SUBTOTAL</span>
-                <span className="text-lg font-bold text-white">
-                  {formatCurrency(paymentMethod === "rg_beat_pass" ? 0 : totalAmount)}
-                </span>
-              </div>
-
-              <div className="text-[11px] text-zinc-500 font-mono flex items-center justify-between">
-                <span>Entrega digital</span>
-                <span>{paymentMethod === "rg_beat_pass" ? "Canje RG" : "Pago con Stripe"}</span>
-              </div>
-
-              {passWallet?.beatPassEnabled && items.length === 1 && passWallet.beatPassEligibleTiers.includes(items[0].licenseTier) && <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.035] p-4 space-y-2">
-                <h2 className="text-xs font-mono font-bold tracking-wider text-amber-200">PAGA CON</h2>
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setPaymentMethod("stripe")} disabled={isLoading} aria-pressed={paymentMethod === "stripe"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${paymentMethod === "stripe" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PAGO NORMAL</button>
-                  <button type="button" onClick={() => setPaymentMethod("rg_beat_pass")} disabled={isLoading || passWallet.availableBeatPasses < 1} aria-pressed={paymentMethod === "rg_beat_pass"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold disabled:opacity-50 ${paymentMethod === "rg_beat_pass" ? "border-amber-300 bg-amber-300/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>RG BEAT PASS ({passWallet.availableBeatPasses})</button>
-                </div>
-                {passWallet.availableBeatPasses < 1 && <p className="text-[11px] text-zinc-400">Compra un pase desde <a className="text-amber-200 underline" href="/rg/market">RG Market</a>.</p>}
-              </section>}
-
-              {paymentMethod === "rg_beat_pass" && <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.035] p-4 space-y-3">
-                <RgWalletStatus wallet={passWallet} />
-                <p className="text-xs text-zinc-300">Esta compra consume 1 RG Beat Pass disponible. No se descontarán RG adicionales.</p>
-                {walletLoading && <p role="status" className="text-xs text-zinc-400">Consultando saldo y pases…</p>}
-                <button type="button" onClick={() => setPaymentMethod("stripe")} disabled={isLoading} className="text-xs text-zinc-300 underline hover:text-white disabled:opacity-50">USAR PAGO NORMAL</button>
-              </section>}
-              {walletError && <p role="alert" className="text-xs text-rose-300">{walletError}</p>}
-
-              {giftCheckoutVisible ? <section className="rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-3">
-                <h2 className="text-xs font-mono font-bold tracking-wider text-white">¿PARA QUIÉN ES?</h2>
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => { setRecipientMode("self"); setArtistResults([]); }} aria-pressed={recipientMode === "self"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "self" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PARA MÍ</button>
-                  <button type="button" onClick={() => { setRecipientMode("gift"); setArtistResults([]); }} aria-pressed={recipientMode === "gift"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "gift" ? "border-amber-400 bg-amber-400/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>ENVIAR COMO REGALO</button>
-                </div>
-                {recipientMode === "gift" && <div className="space-y-3">
-                  <p className="text-[11px] text-zinc-400">La licencia y los 30 días de Studio serán para quien reciba el beat.</p>
+              {items.length > 0 && <div className="space-y-4 border-t border-white/[0.08] pt-5">
+                {passWallet?.beatPassEnabled && items.length === 1 && passWallet.beatPassEligibleTiers.includes(items[0].licenseTier) && <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.035] p-4 space-y-2">
+                  <h2 className="text-xs font-mono font-bold tracking-wider text-amber-200">PAGA CON</h2>
                   <div className="grid grid-cols-2 gap-2">
-                    <button type="button" onClick={() => { setRecipientKind("artist"); setArtistResults([]); }} aria-pressed={recipientKind === "artist"} className={`rounded-lg border px-3 py-2 text-xs ${recipientKind === "artist" ? "border-amber-300 text-amber-100" : "border-white/10 text-zinc-400"}`}>RG ARTIST</button>
-                    <button type="button" onClick={() => { setRecipientKind("email"); setArtistResults([]); }} aria-pressed={recipientKind === "email"} className={`rounded-lg border px-3 py-2 text-xs ${recipientKind === "email" ? "border-amber-300 text-amber-100" : "border-white/10 text-zinc-400"}`}>CORREO</button>
+                    <button type="button" onClick={() => setPaymentMethod("stripe")} disabled={isLoading} aria-pressed={paymentMethod === "stripe"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${paymentMethod === "stripe" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PAGO NORMAL</button>
+                    <button type="button" onClick={() => setPaymentMethod("rg_beat_pass")} disabled={isLoading || passWallet.availableBeatPasses < 1} aria-pressed={paymentMethod === "rg_beat_pass"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold disabled:opacity-50 ${paymentMethod === "rg_beat_pass" ? "border-amber-300 bg-amber-300/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>RG BEAT PASS ({passWallet.availableBeatPasses})</button>
                   </div>
-                  {recipientKind === "email" ? <label className="block space-y-1.5 text-[11px] text-zinc-400">CORREO DEL DESTINATARIO
-                    <input type="email" autoComplete="off" maxLength={254} value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} placeholder="artista@correo.com" className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400" />
-                  </label> : <div className="space-y-2">
-                    <label className="block space-y-1.5 text-[11px] text-zinc-400">BUSCAR RG ARTIST
-                      <input value={artistQuery} onChange={(event) => { setArtistQuery(event.target.value); setArtistResults([]); setSelectedArtist(null); }} placeholder="Nombre artístico" className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400" />
-                    </label>
-                    {artistResults.length > 0 && !selectedArtist && <ul className="max-h-36 overflow-y-auto rounded-lg border border-white/10 bg-[#111116]">{artistResults.map((artist) => <li key={artist.slug}><button type="button" onClick={() => { setSelectedArtist(artist); setArtistQuery(artist.stage_name); setArtistResults([]); }} className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/5"><span className="block font-semibold">{artist.stage_name}</span><span className="text-xs text-zinc-500">RG Artist</span></button></li>)}</ul>}
-                    {selectedArtist && <p className="text-xs text-amber-100">La licencia será para {selectedArtist.stage_name}.</p>}
+                  {passWallet.availableBeatPasses < 1 && <p className="text-[11px] text-zinc-400">Compra un pase desde <a className="text-amber-200 underline" href="/rg/market">RG Market</a>.</p>}
+                </section>}
+
+                {paymentMethod === "rg_beat_pass" && <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.035] p-4 space-y-3">
+                  <RgWalletStatus wallet={passWallet} />
+                  <p className="text-xs text-zinc-300">Esta compra consume 1 RG Beat Pass disponible. No se descontarán RG adicionales.</p>
+                  {walletLoading && <p role="status" className="text-xs text-zinc-400">Consultando saldo y pases…</p>}
+                  <button type="button" onClick={() => setPaymentMethod("stripe")} disabled={isLoading} className="text-xs text-zinc-300 underline hover:text-white disabled:opacity-50">USAR PAGO NORMAL</button>
+                </section>}
+                {walletError && <p role="alert" className="text-xs text-rose-300">{walletError}</p>}
+
+                {giftCheckoutVisible ? <section className="rounded-xl border border-white/10 bg-white/[0.025] p-4 space-y-3">
+                  <h2 className="text-xs font-mono font-bold tracking-wider text-white">¿PARA QUIÉN ES?</h2>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => { setRecipientMode("self"); setArtistResults([]); }} aria-pressed={recipientMode === "self"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "self" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PARA MÍ</button>
+                    <button type="button" onClick={() => { setRecipientMode("gift"); setArtistResults([]); }} aria-pressed={recipientMode === "gift"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "gift" ? "border-amber-400 bg-amber-400/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>ENVIAR COMO REGALO</button>
+                  </div>
+                  {recipientMode === "gift" && <div className="space-y-3">
+                    <p className="text-[11px] text-zinc-400">La licencia y los 30 días de Studio serán para quien reciba el beat.</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => { setRecipientKind("artist"); setArtistResults([]); }} aria-pressed={recipientKind === "artist"} className={`rounded-lg border px-3 py-2 text-xs ${recipientKind === "artist" ? "border-amber-300 text-amber-100" : "border-white/10 text-zinc-400"}`}>RG ARTIST</button>
+                      <button type="button" onClick={() => { setRecipientKind("email"); setArtistResults([]); }} aria-pressed={recipientKind === "email"} className={`rounded-lg border px-3 py-2 text-xs ${recipientKind === "email" ? "border-amber-300 text-amber-100" : "border-white/10 text-zinc-400"}`}>CORREO</button>
+                    </div>
+                    {recipientKind === "email" ? <label className="block space-y-1.5 text-[11px] text-zinc-400">CORREO DEL DESTINATARIO
+                      <input type="email" autoComplete="off" maxLength={254} value={recipientEmail} onChange={(event) => setRecipientEmail(event.target.value)} placeholder="artista@correo.com" className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400" />
+                    </label> : <div className="space-y-2">
+                      <label className="block space-y-1.5 text-[11px] text-zinc-400">BUSCAR RG ARTIST
+                        <input value={artistQuery} onChange={(event) => { setArtistQuery(event.target.value); setArtistResults([]); setSelectedArtist(null); }} placeholder="Nombre artístico" className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400" />
+                      </label>
+                      {artistResults.length > 0 && !selectedArtist && <ul className="max-h-36 overflow-y-auto rounded-lg border border-white/10 bg-[#111116]">{artistResults.map((artist) => <li key={artist.slug}><button type="button" onClick={() => { setSelectedArtist(artist); setArtistQuery(artist.stage_name); setArtistResults([]); }} className="w-full px-3 py-2 text-left text-sm text-white hover:bg-white/5"><span className="block font-semibold">{artist.stage_name}</span><span className="text-xs text-zinc-500">RG Artist</span></button></li>)}</ul>}
+                      {selectedArtist && <p className="text-xs text-amber-100">La licencia será para {selectedArtist.stage_name}.</p>}
                   </div>}
                   {giftError && <p role="alert" className="text-xs text-rose-300">{giftError}</p>}
                 </div>}
@@ -512,6 +497,26 @@ export function CartDrawer() {
                 )}.
               </div>
 
+              </div>}
+            </div>
+          )}
+
+          {/* Footer Subtotal & Actions (Only when not in embedded checkout) */}
+          {!clientSecret && !checkoutComplete && items.length > 0 && (
+            <footer aria-label="Confirmar compra" className="shrink-0 border-t border-white/[0.08] bg-[#09090d] px-4 pt-3 sm:px-6 space-y-2"
+              style={{ paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))" }}>
+              <div className="flex items-center justify-between text-sm font-mono">
+                <span className="text-zinc-400">SUBTOTAL</span>
+                <span className="text-lg font-bold text-white">
+                  {formatCurrency(paymentMethod === "rg_beat_pass" ? 0 : totalAmount)}
+                </span>
+              </div>
+
+              <div className="text-[11px] text-zinc-500 font-mono flex items-center justify-between">
+                <span>Entrega digital</span>
+                <span>{paymentMethod === "rg_beat_pass" ? "Canje RG" : "Pago con Stripe"}</span>
+              </div>
+
               {/* Checkout Button */}
               <Button
                 variant="primary"
@@ -542,7 +547,7 @@ export function CartDrawer() {
               >
                 Vaciar carrito
               </button>
-            </div>
+            </footer>
           )}
         </div>
       </div>
