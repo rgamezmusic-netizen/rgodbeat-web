@@ -24,7 +24,7 @@ export async function linkVerifiedCommerceCustomer(
   user: User | null | undefined
 ): Promise<string | null> {
   if (!hasVerifiedEmail(user)) return null;
-  const { data, error } = await (supabase as SupabaseClient<any>).rpc("rg_commerce_link_verified_customer", { p_user_id: user.id });
+  const { data, error } = await (supabase as unknown as SupabaseClient).rpc("rg_commerce_link_verified_customer", { p_user_id: user.id });
   if (error || typeof data !== "string") return null;
   return data;
 }
@@ -51,7 +51,7 @@ export async function getAuthorizedPurchase(
   purchaseId: string,
   options: { user?: User | null; guestToken?: (orderId: string) => string | null | undefined }
 ): Promise<ProtectedPurchase | null> {
-  const admin = supabase as SupabaseClient<any>;
+  const admin = supabase as unknown as SupabaseClient;
   const { data, error } = await admin.from("purchases").select(`
     id,order_id,order_item_id,customer_id,beat_id,license_tier,status,contract_text,license_id,contract_version,created_at,
     beats(title),
@@ -98,7 +98,7 @@ export async function issueGuestPurchaseAccess(
   customerId: string
 ) {
   const token = randomBytes(32).toString("base64url");
-  const { data, error } = await (supabase as SupabaseClient<any>).rpc("rg_rotate_purchase_guest_access", {
+  const { data, error } = await (supabase as unknown as SupabaseClient).rpc("rg_rotate_purchase_guest_access", {
     p_order_id: orderId,
     p_customer_id: customerId,
     p_token_hash: guestPurchaseTokenHash(token),

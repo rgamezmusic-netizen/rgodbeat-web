@@ -255,7 +255,16 @@ export function generateLicenseContract({
 /**
  * Extracts or derives official License ID and Contract Version from purchase record and contract_text.
  */
-export function extractLicenseMetadata(purchase: any): {
+export type PurchaseContractRecord = {
+  id: string;
+  created_at: string;
+  license_tier: string;
+  license_id?: string | null;
+  contract_version?: string | null;
+  contract_text?: string | null;
+};
+
+export function extractLicenseMetadata(purchase: PurchaseContractRecord): {
   licenseId: string;
   contractVersion: string;
   deliverables: string;

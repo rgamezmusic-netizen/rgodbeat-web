@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStripe, getStripeWebhookSecret, stripeWebhookSecret, isStripeConfigured } from "@/lib/stripe/server";
+import { getStripe, getStripeWebhookSecret, isStripeConfigured } from "@/lib/stripe/server";
 import { fulfillStripeCheckoutSession } from "@/lib/commerce/fulfillment";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
@@ -44,17 +45,18 @@ export async function POST(req: NextRequest) {
     // Cryptographic signature verification
     try {
       event = stripe.webhooks.constructEvent(rawBody, signature, secret);
-    } catch (err: any) {
-      console.error("[Webhook Signature Verification Failed]:", err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Invalid webhook signature.";
+      console.error("[Webhook Signature Verification Failed]:", message);
       return NextResponse.json(
-        { error: `Webhook signature verification failed: ${err.message}` },
+        { error: `Webhook signature verification failed: ${message}` },
         { status: 400 }
       );
     }
     verifiedEventId = event.id;
 
-    const supabase = createAdminClient() as any;
-    const object = event.data.object as any;
+    const supabase = createAdminClient() as unknown as SupabaseClient;
+    const object = event.data.object as { id?: unknown };
     const stripeObjectId = typeof object.id === "string" ? object.id : null;
     const { data: claimed, error: claimError } = await supabase.rpc("rg_claim_stripe_event", {
       p_event_id: event.id,
@@ -176,14 +178,20 @@ export async function POST(req: NextRequest) {
     });
     if (finishError) throw new Error("STRIPE_EVENT_COMPLETION_UNRECORDED");
     return NextResponse.json({ received: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[Stripe Webhook Route Error]:", err);
     // Fail the ledger lease so Stripe's retry can repair the incomplete work.
-    if (verifiedEventId) await (createAdminClient() as any).rpc("rg_finish_stripe_event", {
-      p_event_id: verifiedEventId, p_lease_token: verifiedLeaseToken, p_success: false, p_error_code: "stripe_event_processing_failed",
-    }).catch(() => undefined);
+    if (verifiedEventId) {
+      try {
+        await (createAdminClient() as unknown as SupabaseClient).rpc("rg_finish_stripe_event", {
+          p_event_id: verifiedEventId, p_lease_token: verifiedLeaseToken, p_success: false, p_error_code: "stripe_event_processing_failed",
+        });
+      } catch {
+        // Preserve the original webhook failure so Stripe can retry the event.
+      }
+    }
     return NextResponse.json(
-      { error: err.message || "Webhook processing error" },
+      { error: err instanceof Error ? err.message : "Webhook processing error" },
       { status: 500 }
     );
   }
