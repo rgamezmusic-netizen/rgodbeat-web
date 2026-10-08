@@ -13,6 +13,8 @@ import { ReceivedGiftList } from "@/components/commerce/ReceivedGiftList";
 import { linkVerifiedCommerceCustomer } from "@/lib/commerce/authorization";
 import { getRgWalletSummary } from "@/lib/rg/product/wallet";
 import { RgAccountWallet } from "@/components/rg/RgAccountWallet";
+import { LegalNameForm } from '@/components/account/LegalNameForm';
+import { getLegalName } from '@/lib/account/legal-name';
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +136,7 @@ export default async function AccountPage() {
           </div>
         </div>
 
+        <LegalNameForm initialName={getLegalName(user) || ''} />
         <RgAccountWallet wallet={wallet} />
 
         {/* Studio Pass / App VIP Banner */}

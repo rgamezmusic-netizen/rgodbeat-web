@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
 import { AtmosphericBackground } from "@/components/atmosphere";
 import { TheParkSection } from "@/components/home/TheParkSection";
+import { SOCIAL_URLS } from '@/lib/social-links';
 
 export const metadata = {
   title: "The Park | RGODBEAT Studio Residency & Producer Collective",
@@ -40,7 +41,7 @@ export default function TheParkPage() {
               EXPLORAR BEATS
             </Link>
             <a
-              href="https://discord.gg/p7mxUXW8A"
+              href={SOCIAL_URLS.discord}
               target="_blank"
               rel="noopener noreferrer"
               className="px-8 py-3.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-white font-semibold text-xs tracking-widest uppercase transition-all"

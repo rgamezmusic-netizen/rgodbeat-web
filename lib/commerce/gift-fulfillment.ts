@@ -5,6 +5,7 @@ import { generateLicenseContract } from "./contracts";
 import { encryptTransactionalSecret, enqueueTransactionalEmail, processQueuedGiftEmailImmediately } from "./email";
 import type { AuthoritativeCartResult } from "./fulfillment";
 import type { MarketUtility } from "./market-utility";
+import { resolveContractCustomerName } from './contract-identity';
 
 type GiftIntent = {
   id: string;
@@ -134,6 +135,11 @@ export async function fulfillPaidGiftCheckout(input: GiftFulfillmentInput) {
       { title: utility.name, licenseName: utility.name, licenseTier: utility.benefitKind === 'studio' ? 'studio' : 'rg_pass', coverPath: null }, now);
   }
 
+  if (directArtistGift && cart.items.length > 0) {
+    recipientName = await resolveContractCustomerName(supabase, {
+      authUserId: recipientUserId, email: recipientEmail, fallbackName: recipientName,
+    });
+  }
   for (const item of cart.items) {
     const { data: orderItem, error: itemError } = await supabase.from("order_items").upsert({
       order_id: orderId, beat_id: item.beatId, license_type_id: item.licenseTypeId,

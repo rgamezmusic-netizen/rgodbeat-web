@@ -43,7 +43,7 @@ export type ProtectedPurchase = {
   created_at: string;
   beats: { title: string } | null;
   customers: { email: string; name: string | null; auth_user_id: string | null } | null;
-  orders: { id: string; customer_id: string; status: string; payment_status: string; total_amount: number; currency: string; customers: { email: string; name: string | null } | null };
+  orders: { id: string; customer_id: string; status: string; payment_status: string; total_amount: number; currency: string; customers: { email: string; name: string | null; auth_user_id?: string | null } | null };
 };
 
 export async function getAuthorizedPurchase(
@@ -56,7 +56,7 @@ export async function getAuthorizedPurchase(
     id,order_id,order_item_id,customer_id,beat_id,license_tier,status,contract_text,license_id,contract_version,created_at,
     beats(title),
     customers!inner(id,email,name,auth_user_id),
-    orders!inner(id,customer_id,status,payment_status,total_amount,currency,customers(email,name))
+    orders!inner(id,customer_id,status,payment_status,total_amount,currency,customers(email,name,auth_user_id))
   `).eq("id", purchaseId).maybeSingle();
   if (error || !data) return null;
   const purchase = data as unknown as ProtectedPurchase;

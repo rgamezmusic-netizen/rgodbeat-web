@@ -1,4 +1,6 @@
 import React from "react";
+import Link from 'next/link';
+import { SocialLink } from './SocialLink';
 
 export function Footer() {
   return (
@@ -37,18 +39,18 @@ export function Footer() {
               CATALOG
             </div>
             <ul className="space-y-2 text-zinc-400">
-              <li><a href="/beats" className="hover:text-white transition-colors">All Beats</a></li>
-              <li><a href="/beats?genre=trap" className="hover:text-white transition-colors">Trap Beats</a></li>
-              <li><a href="/beats?genre=reggaeton" className="hover:text-white transition-colors">Reggaeton Beats</a></li>
-              <li><a href="/beats?genre=rnb" className="hover:text-white transition-colors">R&B / Soul</a></li>
-              <li><a href="/beats?genre=afrobeat" className="hover:text-white transition-colors">Afrobeat</a></li>
+              <li><Link href="/beats" className="hover:text-white transition-colors">All Beats</Link></li>
+              <li><Link href="/beats?genre=trap" className="hover:text-white transition-colors">Trap Beats</Link></li>
+              <li><Link href="/beats?genre=reggaeton" className="hover:text-white transition-colors">Reggaeton Beats</Link></li>
+              <li><Link href="/beats?genre=rnb" className="hover:text-white transition-colors">R&B / Soul</Link></li>
+              <li><Link href="/beats?genre=afrobeat" className="hover:text-white transition-colors">Afrobeat</Link></li>
               <li className="pt-1">
-                <a href="/download" className="text-amber-400 hover:text-amber-300 font-semibold transition-colors flex items-center gap-1.5">
+                <Link href="/download" className="text-amber-400 hover:text-amber-300 font-semibold transition-colors flex items-center gap-1.5">
                   <span>App Android (.apk)</span>
                   <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300">
                     OFICIAL
                   </span>
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -59,11 +61,11 @@ export function Footer() {
               SERVICES
             </div>
             <ul className="space-y-2 text-zinc-400">
-              <li><a href="/#services" className="hover:text-white transition-colors">Custom Production</a></li>
-              <li><a href="/#services" className="hover:text-white transition-colors">Mixing & Mastering</a></li>
-              <li><a href="/#services" className="hover:text-white transition-colors">Artist Development</a></li>
-              <li><a href="/#the-park" className="hover:text-white transition-colors">The Park Residency</a></li>
-              <li><a href="/#about" className="hover:text-white transition-colors">Producer Biography</a></li>
+              <li><Link href="/#services" className="hover:text-white transition-colors">Custom Production</Link></li>
+              <li><Link href="/#services" className="hover:text-white transition-colors">Mixing & Mastering</Link></li>
+              <li><Link href="/#services" className="hover:text-white transition-colors">Artist Development</Link></li>
+              <li><Link href="/#the-park" className="hover:text-white transition-colors">The Park Residency</Link></li>
+              <li><Link href="/#about" className="hover:text-white transition-colors">Producer Biography</Link></li>
             </ul>
           </div>
 
@@ -74,34 +76,34 @@ export function Footer() {
             </div>
             <ul className="space-y-2 text-zinc-400">
               <li>
-                <a href="https://www.instagram.com/rgodbeat/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                <SocialLink service="instagram" className="hover:text-white transition-colors">
                   Instagram
-                </a>
+                </SocialLink>
               </li>
               <li>
-                <a href="https://open.spotify.com/intl-es/artist/5alBtZYlDSCtuCx31K7c3n" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                <SocialLink service="spotify" className="hover:text-white transition-colors">
                   Spotify
-                </a>
+                </SocialLink>
               </li>
               <li>
-                <a href="https://www.youtube.com/@RafaLary" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                <SocialLink service="youtube" className="hover:text-white transition-colors">
                   YouTube
-                </a>
+                </SocialLink>
               </li>
               <li>
-                <a href="https://www.tiktok.com/@rgodbeat" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                <SocialLink service="tiktok" className="hover:text-white transition-colors">
                   TikTok
-                </a>
+                </SocialLink>
               </li>
               <li>
-                <a href="https://soundcloud.com/rafael-gamez-443960876" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                <SocialLink service="soundcloud" className="hover:text-white transition-colors">
                   SoundCloud
-                </a>
+                </SocialLink>
               </li>
               <li>
-                <a href="https://discord.gg/p7mxUXW8A" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                <SocialLink service="discord" className="hover:text-white transition-colors">
                   Discord (The Park)
-                </a>
+                </SocialLink>
               </li>
             </ul>
           </div>

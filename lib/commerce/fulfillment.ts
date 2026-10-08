@@ -7,6 +7,7 @@ import { generateLicenseContract } from "./contracts";
 import { fulfillPaidGiftCheckout } from "./gift-fulfillment";
 import type Stripe from "stripe";
 import { validateMarketUtility, type MarketUtility } from './market-utility';
+import { resolveContractCustomerName } from './contract-identity';
 
 export interface AuthoritativeLineItem {
   beatId: string;
@@ -247,7 +248,10 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
 
   const customerEmail = (session.customer_details?.email || intent?.buyer_email || session.metadata?.customerEmail || "").trim().toLowerCase();
   if (!customerEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail)) throw new Error("VERIFIED_PAYER_EMAIL_UNAVAILABLE");
-  const customerName = session.customer_details?.name || (session.metadata?.customerName as string) || "RGODBEAT Customer";
+  const customerName = await resolveContractCustomerName(supabase, {
+    authUserId: intent?.buyer_auth_user_id, email: customerEmail,
+    fallbackName: session.customer_details?.name || (session.metadata?.customerName as string) || 'RGODBEAT Customer',
+  });
   const stripeCustomerId = (typeof session.customer === "string" ? session.customer : session.customer?.id) || null;
   const paymentIntentId = (typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id) || null;
 

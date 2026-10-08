@@ -11,10 +11,14 @@ const checkoutIntent = () => ({
   snapshot: { items: [{ beatId: 'beat-frozen', beatTitle: 'Frozen Beat', licenseTypeId: 'license-wav', licenseTier: 'wav', licenseName: 'WAV', unitPrice: 12.5 }], totalAmountCents: 2500, currency: 'usd' },
 });
 
-function commerceFixture({ failPurchaseOnce = false, snapshot = checkoutIntent().snapshot } = {}) {
+function commerceFixture({ failPurchaseOnce = false, snapshot = checkoutIntent().snapshot, legalName = null } = {}) {
   const state = { intent: { ...checkoutIntent(), snapshot }, order: null, orderItem: null, purchase: null,
     calls: [], failPurchaseOnce, allocated: 0, studioUntil: '2030-01-31T00:00:00.000Z' };
   const client = {
+    auth: { admin: { getUserById: async id => ({ data: { user: {
+      id, email: 'payer@example.test', email_confirmed_at: '2026-01-01',
+      user_metadata: { full_name: 'Payer Stage', legal_name: legalName },
+    } }, error: null }) } },
     calls: state.calls,
     async rpc(name, args) {
       state.calls.push({ kind: 'rpc', name, args });
@@ -115,6 +119,16 @@ test('normal fulfillment preserves the paid frozen price, license, payer and Stu
   assert.equal(fixture.state.purchase.license_id, 'RG-WAV-2026-000001');
   const studioGrant = fixture.state.calls.find((call) => call.name === 'rg_grant_commerce_studio_access');
   assert.deepEqual(studioGrant.args, { p_source_type: 'order', p_source_id: 'order-fixture', p_customer_id: 'payer-customer', p_days: 30 });
+});
+
+test('paid fulfillment uses the saved legal identity instead of Stripe or artistic display name', async () => {
+  const fixture = commerceFixture({ legalName: 'José Rafael Gámez' });
+  await fulfillmentFor(fixture).fulfillStripeCheckoutSession(session());
+  assert.match(fixture.state.purchase.contract_text, /José Rafael Gámez/);
+  assert.match(fixture.state.purchase.contract_text, /RAFAEL GAMEZ \(RGODBEAT\)/);
+  assert.doesNotMatch(fixture.state.purchase.contract_text, /Payer Stage/);
+  const resolution = fixture.state.calls.find(call => call.name === 'rg_resolve_commerce_payer_customer');
+  assert.equal(resolution.args.p_name, 'José Rafael Gámez');
 });
 
 test('Stripe amount mismatch cannot replace the frozen checkout result', async () => {

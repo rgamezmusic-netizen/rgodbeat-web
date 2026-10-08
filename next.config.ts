@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
+    "/api/download/*": ["./public/images/rgodbeat-logo.png"],
     // This binary is checked in the admin page and Studio status route as
     // well as executed in the publish route. Trace it in each server bundle.
     "/admin/youtube": ["./node_modules/ffmpeg-static/ffmpeg"],

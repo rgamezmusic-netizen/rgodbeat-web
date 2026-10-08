@@ -3,6 +3,7 @@ import { resolvePrivateDownloadUrl } from "@/lib/storage/private";
 import { getCurrentUser } from "@/lib/auth/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthorizedPurchase, guestPurchaseCookieName } from "@/lib/commerce/authorization";
+import { resolveContractCustomerName } from '@/lib/commerce/contract-identity';
 
 export async function GET(
   req: NextRequest,
@@ -41,7 +42,7 @@ export async function GET(
 
     // Deliver Official License Agreement (Personalized Vector PDF generated on demand from Master Template)
     if (fileType === "contract") {
-      const { extractLicenseMetadata, generateContractPdfBuffer } = await import("@/lib/commerce/contracts");
+      const { extractLicenseMetadata, generateContractPdfBuffer, generateLicenseContract } = await import("@/lib/commerce/contracts");
       const { licenseId, contractVersion } = extractLicenseMetadata(purchase);
       const beatTitle = purchase.beats?.title || "RGODBEAT";
       const cleanTitle = beatTitle.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -53,10 +54,20 @@ export async function GET(
       const tierUpper = String(purchase.license_tier || "WAV").toUpperCase();
 
       const format = searchParams.get("format") || "pdf";
+      const [customerName, purchaserName] = await Promise.all([
+        resolveContractCustomerName(supabase, { authUserId: licensee?.auth_user_id, email: licensee?.email || '', fallbackName: licensee?.name }),
+        resolveContractCustomerName(supabase, { authUserId: purchaser?.auth_user_id, email: purchaser?.email || '', fallbackName: purchaser?.name }),
+      ]);
+      const contractParams = {
+        orderId: purchase.order_id, customerName, customerEmail: licensee?.email || '', purchaserName,
+        isGift: purchase.customer_id !== order.customer_id, beatTitle, beatId: purchase.beat_id,
+        licenseTier: purchase.license_tier, amountPaid: Number(contractItem?.unit_price ?? order.total_amount) || 0,
+        currency: order.currency || 'USD', purchaseDate: purchase.created_at, licenseId, version: contractVersion,
+      };
 
       // Plaintext certificate fallback if explicitly requested (?format=txt)
-      if (format === "txt" && purchase.contract_text) {
-        return new NextResponse(purchase.contract_text, {
+      if (format === "txt") {
+        return new NextResponse(generateLicenseContract(contractParams), {
           status: 200,
           headers: {
             "Content-Type": "text/plain; charset=utf-8",
@@ -67,21 +78,7 @@ export async function GET(
       }
 
       // Generate official personalized vector PDF dynamically
-      const pdfBytes = await generateContractPdfBuffer({
-        orderId: purchase.order_id,
-        customerName: licensee?.name || "Customer",
-        customerEmail: licensee?.email || "",
-        purchaserName: purchaser?.name || "Customer",
-        isGift: purchase.customer_id !== order.customer_id,
-        beatTitle,
-        beatId: purchase.beat_id,
-        licenseTier: purchase.license_tier,
-        amountPaid: Number(contractItem?.unit_price ?? order.total_amount) || 0,
-        currency: order.currency || "USD",
-        purchaseDate: purchase.created_at,
-        licenseId,
-        version: contractVersion,
-      });
+      const pdfBytes = await generateContractPdfBuffer(contractParams);
 
       return new NextResponse(Buffer.from(pdfBytes), {
         status: 200,

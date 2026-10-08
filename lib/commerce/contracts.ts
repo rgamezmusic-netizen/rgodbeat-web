@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, PDFName, PDFStream, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { LicenseTier } from "@/types";
 
 export const CONTRACT_VERSIONS = {
@@ -12,6 +12,8 @@ export type ContractVersion = (typeof CONTRACT_VERSIONS)[keyof typeof CONTRACT_V
 
 export const DEFAULT_GOVERNING_LAW = "State of Texas, United States";
 export const DEFAULT_JURISDICTION = "Travis County, Texas, United States";
+export const LICENSOR_LEGAL_NAME = 'RAFAEL GAMEZ';
+export const LICENSOR_CONTRACT_NAME = `${LICENSOR_LEGAL_NAME} (RGODBEAT)`;
 
 export interface TierContractConfig {
   licenseType: "NON_EXCLUSIVE" | "EXCLUSIVE";
@@ -96,6 +98,7 @@ export function generateDeterministicLicenseId(params: {
 }
 
 export interface ContractVariables {
+  LICENSOR_NAME: string;
   LICENSE_ID: string;
   ORDER_ID: string;
   CUSTOMER_NAME: string;
@@ -150,7 +153,7 @@ License ID:       {{LICENSE_ID}}
 ORDER IDENTIFIER:  {{ORDER_ID}}
 DATE OF EXECUTION: {{PURCHASE_DATE}}
 
-1. PARTIES: RGODBEAT ("Licensor") and {{CUSTOMER_NAME}} ({{CUSTOMER_EMAIL}}) ("Licensee").
+1. PARTIES: {{LICENSOR_NAME}} ("Licensor") and {{CUSTOMER_NAME}} ({{CUSTOMER_EMAIL}}) ("Licensee").
 2. BEAT IDENTIFICATION: "{{BEAT_NAME}}" (Beat ID: {{BEAT_ID}}).
 3. LICENSE TIER: {{LICENSE_TIER}} ({{PURCHASE_PRICE}} Paid in Full).
 4. PURCHASED DELIVERABLES: {{DELIVERABLES}}.
@@ -159,7 +162,7 @@ DATE OF EXECUTION: {{PURCHASE_DATE}}
 7. GOVERNING LAW & JURISDICTION: {{GOVERNING_LAW}}, Courts of {{JURISDICTION}}.
 
 ================================================================================
-Licensor: RGODBEAT • rgodbeat@gmail.com • Electronically Executed
+Licensor: {{LICENSOR_NAME}} • rgodbeat@gmail.com • Electronically Executed
 ================================================================================`;
 }
 
@@ -167,12 +170,8 @@ Licensor: RGODBEAT • rgodbeat@gmail.com • Electronically Executed
  * Injects dynamic transaction variables into any contract template.
  */
 export function injectContractVariables(template: string, vars: ContractVariables): string {
-  let output = template;
-  for (const [key, value] of Object.entries(vars)) {
-    const pattern = new RegExp(`\\{\\{${key}\\}\\}`, "g");
-    output = output.replace(pattern, value);
-  }
-  return output;
+  return template.replace(/\{\{([A-Z_]+)\}\}/g, (placeholder, key: string) =>
+    Object.prototype.hasOwnProperty.call(vars, key) ? vars[key as keyof ContractVariables] : placeholder);
 }
 
 export interface GenerateContractParams {
@@ -230,6 +229,7 @@ export function generateLicenseContract({
   });
 
   const variables: ContractVariables = {
+    LICENSOR_NAME: LICENSOR_CONTRACT_NAME,
     LICENSE_ID: effectiveLicenseId,
     ORDER_ID: orderId,
     CUSTOMER_NAME: customerName || "Customer",
@@ -333,6 +333,21 @@ function wrapLines(text: string, maxChars = 92): string[] {
   return out;
 }
 
+function wrapPdfValue(text: string, font: PDFFont, size: number, width: number): string[] {
+  const lines: string[] = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    if (font.widthOfTextAtSize(remaining, size) <= width) { lines.push(remaining); break; }
+    let fit = 1;
+    while (fit < remaining.length && font.widthOfTextAtSize(remaining.slice(0, fit + 1), size) <= width) fit++;
+    const space = remaining.lastIndexOf(' ', fit);
+    const end = space > 0 ? space : fit;
+    lines.push(remaining.slice(0, end));
+    remaining = remaining.slice(end).trimStart();
+  }
+  return lines.length ? lines : [''];
+}
+
 /**
  * Generates an official, multi-page vector PDF containing the transaction certificate
  * and the complete legal sections of the RGODBEAT Agreement (NE-v1.0 or EX-v1.0).
@@ -380,10 +395,29 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
   const margin = 50;
   const contentWidth = pageWidth - margin * 2;
 
+  const logoPath = path.join(process.cwd(), "public", "images", "rgodbeat-logo.png");
+  const watermark = await pdfDoc.embedPng(fs.readFileSync(/*turbopackIgnore: true*/ logoPath));
+  await watermark.embed();
+  // The original logo is white on transparency. Invert only its PDF rendering;
+  // keep the source asset and its alpha mask intact, then fade it to light gray.
+  const logoImage = pdfDoc.context.lookup(watermark.ref, PDFStream);
+  logoImage.dict.set(PDFName.of("Decode"), pdfDoc.context.obj([1, 0, 1, 0, 1, 0]));
+  const watermarkSize = watermark.scaleToFit(contentWidth, 190);
+  const drawWatermark = (page: PDFPage, centerY = pageHeight / 2) => {
+    page.drawImage(watermark, {
+      x: (pageWidth - watermarkSize.width) / 2,
+      y: centerY - watermarkSize.height / 2,
+      ...watermarkSize,
+      opacity: 0.08,
+    });
+  };
+
   // ---------------------------------------------------------------------------
   // PAGE 1: Official Executive Certificate & License Summary
   // ---------------------------------------------------------------------------
   const page1 = pdfDoc.addPage([pageWidth, pageHeight]);
+  // Keep the certificate watermark below the opaque transaction/notice boxes.
+  drawWatermark(page1, 230);
 
   // Header Banner
   page1.drawRectangle({
@@ -459,18 +493,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     color: rgb(0.4, 0.4, 0.45),
   });
 
-  // Transaction Summary Table
-  const tableY = folioY - 175;
-  page1.drawRectangle({
-    x: margin,
-    y: tableY,
-    width: contentWidth,
-    height: 183,
-    color: rgb(1, 1, 1),
-    borderColor: rgb(0.9, 0.9, 0.92),
-    borderWidth: 1,
-  });
-
+  // Transaction Summary Table: long legal names must stay inside the page.
   const rowItems = [
     ["BEAT TITLE", `"${metadata.beatTitle}" (Catalog ID: ${metadata.beatId})`],
     ...(contractParams.isGift ? [["PURCHASER (PAYER)", metadata.purchaserName] as [string, string]] : []),
@@ -482,9 +505,20 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
     ["GOVERNING LAW", metadata.governingLaw],
     ["JURISDICTION", metadata.jurisdiction],
   ];
+  const rows = rowItems.map(([label, value]) => {
+    const lines = wrapPdfValue(value, fontRegular, 8, contentWidth - 167);
+    return { label, lines, height: Math.max(18, lines.length * 11 + 7) };
+  });
+  const tableHeight = 24 + rows.reduce((sum, row) => sum + row.height, 0);
+  const tableTop = folioY - 12;
+  const tableY = tableTop - tableHeight;
+  page1.drawRectangle({
+    x: margin, y: tableY, width: contentWidth, height: tableHeight,
+    color: rgb(1, 1, 1), borderColor: rgb(0.9, 0.9, 0.92), borderWidth: 1,
+  });
 
-  let currentY = tableY + 163;
-  rowItems.forEach(([label, val]) => {
+  let currentY = tableTop - 18;
+  rows.forEach(({ label, lines, height }) => {
     page1.drawText(label, {
       x: margin + 12,
       y: currentY,
@@ -492,14 +526,13 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
       font: fontBold,
       color: rgb(0.35, 0.35, 0.4),
     });
-    page1.drawText(val, {
-      x: margin + 155,
-      y: currentY,
-      size: 8,
-      font: fontRegular,
-      color: rgb(0.15, 0.15, 0.2),
+    lines.forEach((line, index) => {
+      page1.drawText(line, {
+        x: margin + 155, y: currentY - index * 11, size: 8, font: fontRegular,
+        color: rgb(0.15, 0.15, 0.2),
+      });
     });
-    currentY -= 18;
+    currentY -= height;
   });
 
   // Preamble & Electronic Acceptance Notice Box
@@ -629,6 +662,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
   for (let pIdx = 0; pIdx < totalBodyPages; pIdx++) {
     const pageNum = 2 + pIdx;
     const bodyPage = pdfDoc.addPage([pageWidth, pageHeight]);
+    drawWatermark(bodyPage);
 
     // Running Header
     bodyPage.drawText(
@@ -682,7 +716,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
       color: rgb(0.85, 0.85, 0.9),
     });
 
-    bodyPage.drawText("Licensor: RGODBEAT • Austin, TX • Contact: rgodbeat@gmail.com", {
+    bodyPage.drawText(`Licensor: ${LICENSOR_CONTRACT_NAME} • Austin, TX • Contact: rgodbeat@gmail.com`, {
       x: margin,
       y: 34,
       size: 7,

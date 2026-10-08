@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import {
   X,
   Share,
@@ -6,8 +7,6 @@ import {
   MoreVertical,
   Download,
   Laptop,
-  ArrowRight,
-  Sparkles,
 } from 'lucide-react';
 
 interface InstallAppModalProps {
@@ -16,102 +15,72 @@ interface InstallAppModalProps {
   isFirstVisitWelcome?: boolean;
 }
 
-type PlatformType = 'ios' | 'android' | 'windows';
+interface InstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
 
 export const InstallAppModal: React.FC<InstallAppModalProps> = ({
   isOpen,
   onClose,
-  isFirstVisitWelcome = false,
 }) => {
-  const [activeOs, setActiveOs] = useState<PlatformType>('ios');
-  const [detectedOs, setDetectedOs] = useState<PlatformType>('ios');
+  const device = useDeviceProfile();
+  const activeOs = device?.os ?? 'unknown';
+  const macSafari = activeOs === 'macos' && device?.browser === 'safari';
   const [activeStep, setActiveStep] = useState<number>(1);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<InstallPromptEvent | null>(null);
+  const handleClose = useCallback(() => {
+    setActiveStep(1);
+    onClose();
+  }, [onClose]);
 
   // Capture PWA installation prompt if available (Android Chrome / Edge / Windows)
   useEffect(() => {
     const handleBeforeInstall = (e: Event) => {
+      if (!('prompt' in e) || !('userChoice' in e)) return;
       e.preventDefault();
-      setDeferredPrompt(e);
+      setDeferredPrompt(e as InstallPromptEvent);
     };
+    const installed = () => setDeferredPrompt(null);
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', installed);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', installed);
+    };
   }, []);
-
-  // Auto-detect Operating System on mount
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const ua = navigator.userAgent || '';
-    if (/iPhone|iPad|iPod/i.test(ua)) {
-      setActiveOs('ios');
-      setDetectedOs('ios');
-    } else if (/Android/i.test(ua)) {
-      setActiveOs('android');
-      setDetectedOs('android');
-    } else if (/Windows|Win32|Win64/i.test(ua)) {
-      setActiveOs('windows');
-      setDetectedOs('windows');
-    } else if (/Macintosh/i.test(ua)) {
-      // Mac desktop: Safari-compatible flow
-      setActiveOs('ios');
-      setDetectedOs('ios');
-    } else {
-      setActiveOs('android');
-      setDetectedOs('android');
-    }
-  }, []);
-
-  // Reset to step 1 whenever modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setActiveStep(1);
-    }
-  }, [isOpen]);
 
   // Handle ESC key to dismiss modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, handleClose]);
 
   if (!isOpen) return null;
 
-  // Format detected device label cleanly
-  const getDeviceLabel = () => {
-    if (typeof window !== 'undefined') {
-      const ua = navigator.userAgent || '';
-      if (/iPad/i.test(ua)) return 'iPad · Safari';
-      if (/iPhone|iPod/i.test(ua)) return 'iPhone · Safari';
-      if (/Android/i.test(ua)) return 'Android · Chrome';
-      if (/Windows/i.test(ua)) return 'Windows · Chrome / Edge';
-    }
-    if (activeOs === 'ios') return 'iPhone · Safari';
-    if (activeOs === 'android') return 'Android · Chrome';
-    return 'Windows · Chrome / Edge';
-  };
-
-  const handleNext = () => {
+  const handleNext = async () => {
     if (activeStep < 3) {
       setActiveStep((prev) => prev + 1);
     } else {
       // Step 3 final CTA
       if (deferredPrompt) {
+        // A real browser installation prompt can only be used once.
+        const install = deferredPrompt;
+        setDeferredPrompt(null);
         try {
-          deferredPrompt.prompt();
-          deferredPrompt.userChoice.then(() => {
-            onClose();
-          });
+          await install.prompt();
+          await install.userChoice;
+          handleClose();
         } catch {
-          onClose();
+          handleClose();
         }
       } else {
-        onClose();
+        handleClose();
       }
     }
   };
@@ -124,7 +93,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
           return {
             num: '01',
             title: 'Abre Compartir',
-            desc: 'Toca el botón Compartir de Safari.',
+            desc: device?.browser === 'safari' ? 'Toca el botón Compartir de Safari.' : 'Abre rgodbeat.com en Safari y toca Compartir.',
           };
         case 2:
           return {
@@ -148,7 +117,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
           return {
             num: '01',
             title: 'Menú de Opciones',
-            desc: 'Toca los tres puntos (⋮) en la esquina de Chrome.',
+            desc: device?.browser === 'chrome' ? 'Toca los tres puntos (⋮) en la esquina de Chrome.' : 'Para instalar la web app, abre rgodbeat.com en Chrome y toca los tres puntos (⋮).',
           };
         case 2:
           return {
@@ -166,26 +135,36 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
       }
     }
 
-    // Windows / Desktop
+    if (macSafari) {
+      return [
+        { num: '01', title: 'Añadir al Dock', desc: 'En Safari 17 o posterior, abre Archivo → Añadir al Dock (macOS Sonoma o posterior).' },
+        { num: '02', title: 'Confirma el nombre', desc: 'Usa RGODBEAT Studio y pulsa Añadir.' },
+        { num: '03', title: 'Listo.', desc: 'Abre RGODBEAT desde el Dock de tu Mac.' },
+      ][activeStep - 1];
+    }
+
+    // Desktop installation is offered only by an actual browser prompt.
     switch (activeStep) {
       case 1:
         return {
           num: '01',
           title: 'Barra de Direcciones',
-          desc: 'Busca el icono de instalar (⊕) en la barra de Chrome o Edge.',
+          desc: device?.browser === 'chrome' || device?.browser === 'edge'
+            ? 'Busca el icono de instalar (⊕) en la barra de Chrome o Edge.'
+            : 'Para instalar, abre rgodbeat.com en Chrome o Edge.',
         };
       case 2:
         return {
           num: '02',
           title: 'Instalar RGODBEAT',
-          desc: 'Haz clic en ‘Instalar’ para fijar en tu barra de tareas.',
+          desc: 'Haz clic en ‘Instalar’ si el navegador ofrece esa opción.',
         };
       case 3:
       default:
         return {
           num: '03',
           title: 'Listo.',
-          desc: 'Abre RGODBEAT desde tu escritorio o barra de tareas.',
+          desc: activeOs === 'windows' ? 'Abre RGODBEAT desde tu escritorio o barra de tareas.' : 'Abre RGODBEAT desde las aplicaciones de tu equipo.',
         };
     }
   };
@@ -195,7 +174,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-opacity duration-300"
-      onClick={onClose}
+      onClick={handleClose}
     >
       {/* Modal Card */}
       <div
@@ -208,7 +187,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
         {/* Close Button */}
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           className="absolute top-5 right-5 p-1.5 rounded-full text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
           title="Cerrar"
         >
@@ -239,7 +218,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
           {/* Detected Device Only */}
           <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-[11px] text-zinc-300 font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-            <span>{getDeviceLabel()}</span>
+            <span>{device?.label ?? 'Detectando dispositivo…'}</span>
           </div>
         </div>
 
@@ -457,7 +436,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
             </>
           )}
 
-          {activeOs === 'windows' && (
+          {activeOs !== 'ios' && activeOs !== 'android' && (
             <>
               {/* Windows Step 1: URL bar with install icon */}
               {activeStep === 1 && (
@@ -475,7 +454,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
                       </div>
                       <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500 text-black font-bold text-[10px] shadow-[0_0_16px_rgba(245,158,11,0.5)]">
                         <Laptop className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>Instalar</span>
+                        <span>{macSafari ? 'Añadir al Dock' : 'Instalar'}</span>
                       </div>
                     </div>
                   </div>
@@ -493,13 +472,13 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
                         className="w-5 h-5 rounded-md object-contain bg-black p-0.5"
                       />
                       <span className="text-[11px] font-bold text-white font-mono">
-                        ¿Instalar RGODBEAT?
+                        {macSafari ? '¿Añadir RGODBEAT al Dock?' : '¿Instalar RGODBEAT?'}
                       </span>
                     </div>
                     <div className="flex justify-end gap-2 pt-1 border-t border-zinc-800">
                       <span className="text-[10px] text-zinc-500 self-center">Cancelar</span>
                       <span className="px-2.5 py-0.5 rounded-md bg-amber-500 text-black font-bold text-[10px] shadow-sm">
-                        Instalar
+                        {macSafari ? 'Añadir' : 'Instalar'}
                       </span>
                     </div>
                   </div>
@@ -550,7 +529,7 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
               {activeStep === 3
                 ? deferredPrompt
                   ? 'INSTALAR AHORA →'
-                  : 'ABRIR RGODBEAT →'
+                  : 'LISTO →'
                 : 'SIGUIENTE →'}
             </span>
           </button>
@@ -570,4 +549,3 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
     </div>
   );
 };
-

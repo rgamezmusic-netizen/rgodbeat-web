@@ -6,7 +6,7 @@ License ID:       {{LICENSE_ID}}
 ================================================================================
 
 This RGODBEAT Non-Exclusive Beat License Agreement ("Agreement") is entered into
-between RGODBEAT ("Licensor") and the customer identified in the applicable
+between {{LICENSOR_NAME}} ("Licensor") and the customer identified in the applicable
 purchase transaction ("Licensee").
 
 By purchasing a Beat License through the RGODBEAT platform and electronically
@@ -31,7 +31,7 @@ JURISDICTION:        {{JURISDICTION}}
 
 1. PARTIES
 Licensor:
-RGODBEAT
+{{LICENSOR_NAME}}
 
 Licensee:
 The individual or legal entity identified in the applicable purchase transaction.
@@ -319,7 +319,7 @@ record and/or PDF containing the applicable transaction and License information:
 The applicable License ID and Contract Version shall identify the License issued to the Licensee.
 
 ================================================================================
-Licensor: RGODBEAT
+Licensor: {{LICENSOR_NAME}}
 Contact:  rgodbeat@gmail.com
 Status:   OFFICIAL PURCHASE ENTITLEMENT & ELECTRONIC ACCEPTANCE CONFIRMED
 ================================================================================

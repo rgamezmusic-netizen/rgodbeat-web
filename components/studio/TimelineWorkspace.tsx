@@ -167,7 +167,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
   // Base pixels per second (36px provides ample breathing room for bar numbers & beats 1, 2, 3, 4)
   const basePixelsPerSec = 36 * zoomLevel;
-  const timelineWidth = Math.max(500, duration * basePixelsPerSec);
+  // Leave room for the playhead through effect tails beyond the recorded audio.
+  const timelineWidth = Math.max(500, Math.max(duration, currentTime) * basePixelsPerSec);
 
   // Time format helper
   const formatTime = (sec: number) => {
@@ -191,6 +192,23 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
   // State to track if the user is scrubbing the playhead (prevents any accidental channel or clip move)
   const [isScrubbingPlayhead, setIsScrubbingPlayhead] = useState<boolean>(false);
+
+  // Follow the actual playhead while audio runs, without moving clips or seeking.
+  // Leave manual horizontal scrolling alone when playback is paused.
+  useEffect(() => {
+    if ((!isPlaying && !isRecording) || isDraggingClip || isScrubbingPlayhead) return;
+    const viewport = containerRef.current;
+    if (!viewport) return;
+    const playheadX = trackHeaderWidth + TIMELINE_GUTTER + currentTime * basePixelsPerSec;
+    const margin = Math.min(40, Math.max(16, (viewport.clientWidth - trackHeaderWidth) / 4));
+    const visibleLeft = viewport.scrollLeft + trackHeaderWidth + margin;
+    const visibleRight = viewport.scrollLeft + viewport.clientWidth - margin;
+    if (playheadX > visibleRight) {
+      viewport.scrollLeft = playheadX - viewport.clientWidth + margin;
+    } else if (playheadX < visibleLeft) {
+      viewport.scrollLeft = Math.max(0, playheadX - trackHeaderWidth - margin);
+    }
+  }, [currentTime, isPlaying, isRecording, isDraggingClip, isScrubbingPlayhead, basePixelsPerSec, trackHeaderWidth]);
 
   // Unified Playhead Scrubber Handler (Works seamlessly from TOP ruler, BOTTOM bar, or playhead handle)
   const startPlayheadScrub = (clientX: number) => {
@@ -625,7 +643,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       {/* Main Multitrack Canvas Window - Only this section scrolls tracks */}
       <div
         ref={containerRef}
-        className="w-full shrink-0 h-[min(52dvh,480px)] min-h-[280px] bg-[#0d0d12] rounded-2xl border border-zinc-800/90 shadow-2xl overflow-y-auto overflow-x-auto relative select-none scroll-smooth"
+        className="w-full shrink-0 h-[min(52dvh,480px)] min-h-[280px] bg-[#0d0d12] rounded-2xl border border-zinc-800/90 shadow-2xl overflow-y-auto overflow-x-auto relative select-none"
       >
         <div
           ref={timelineContentRef}
@@ -1303,10 +1321,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           </span>
                         </div>
 
-                        {/* Quick Action Buttons: Lock/Hold, Split & Delete without overlapping */}
-                        <div className="absolute right-1 top-1 flex items-center gap-0.5 z-20 shrink-0 flex-nowrap">
-                          {/* Only show Lock button if clip is wide enough */}
-                          {clipWidthPx >= 65 && (
+                        {/* Keep actions inside the visible portion of a long take. */}
+                        <div className="sticky right-1 self-start mt-1 -mr-1 ml-1 flex items-center gap-0.5 z-20 shrink-0 flex-nowrap">
+                          {onToggleLockTake && (
                             <button
                               type="button"
                               onClick={(e) => {

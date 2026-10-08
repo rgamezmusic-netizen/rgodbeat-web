@@ -3,6 +3,7 @@ import { createCommerceAdminClient } from "@/lib/commerce/admin-client";
 import { getCurrentUser } from "@/lib/auth/server";
 import { hasVerifiedEmail, guestPurchaseTokenHash, linkVerifiedCommerceCustomer } from "@/lib/commerce/authorization";
 import { generateLicenseContract } from "@/lib/commerce/contracts";
+import { getLegalName } from '@/lib/account/legal-name';
 
 export const dynamic = "force-dynamic";
 const sameOrigin = (request: NextRequest) => !request.headers.get("origin") || request.headers.get("origin") === request.nextUrl.origin;
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest) {
   if (!line || !beat || !license) return NextResponse.json({ error: "No pudimos cargar los datos de la licencia." }, { status: 409 });
   const allocated = await admin.rpc("rg_allocate_commerce_license_id", { p_tier: license.slug });
   if (allocated.error || typeof allocated.data !== "string") return NextResponse.json({ error: "No pudimos preparar la licencia." }, { status: 503 });
-  const recipientName = typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : user.email.split("@")[0];
+  const recipientName = getLegalName(user) || (typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name : user.email.split("@")[0]);
   const contractVersion = license.slug === "exclusive" ? "EX-v1.0" : "NE-v1.0";
   const contract = generateLicenseContract({
     orderId: gift.order_id, customerName: recipientName, customerEmail: user.email,
