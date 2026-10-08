@@ -62,6 +62,15 @@ test('a permission failure is permanent, never a lost or empty project', async (
   assert.match(data.requestId,/^[a-f0-9-]{36}$/);
 });
 
+test('an invalid R2 credential is permanent and does not enter retry mode', () => {
+  const { projectServiceError } = loadSource('lib/studio/server/projectManifest.ts');
+  const result = projectServiceError(Object.assign(Error('Invalid credential'), {
+    name: 'InvalidArgument', $metadata: { httpStatusCode: 400 },
+  }));
+  assert.equal(result.code, 'STORAGE_CONFIGURATION');
+  assert.equal(result.retryable, false);
+});
+
 test('editing the previous cloud slot preserves the current slot and shared audio', async () => {
   const { storage, seed, objects } = memoryStorage();
   const shared = prefix + 'shared.wav';
