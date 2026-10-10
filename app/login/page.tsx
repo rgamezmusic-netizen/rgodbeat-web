@@ -9,6 +9,7 @@ import { isSiteAdmin } from "@/lib/auth/admin";
 import { requestPasswordRecovery } from "@/lib/auth/recovery";
 import { safeAuthRedirect } from "@/lib/auth/redirect";
 import { Button } from "@/components/ui/Button";
+import { SignupPromotion } from "@/components/auth/SignupPromotion";
 
 function AuthForm() {
   const searchParams = useSearchParams();
@@ -159,6 +160,8 @@ function AuthForm() {
             : "Regístrate para descargar tus beats, guardar favoritos y recibir licencias oficiales."}
         </p>
       </div>
+
+      <SignupPromotion />
 
       {/* Tabs Switcher */}
       <div className="flex p-1 rounded-xl bg-white/[0.03] border border-white/[0.06] text-xs font-mono">
