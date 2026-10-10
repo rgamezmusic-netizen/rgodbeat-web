@@ -50,9 +50,15 @@ try {
   await page.getByRole('heading', { name: 'SERVICIOS / RGODBEAT', exact: true }).waitFor();
   assert.deepEqual(await page.locator('#services article').allInnerTexts(), homeServices, 'Home and Services share the same prices and scope');
   for (const card of await page.locator('#services article').all()) {
-    const href = await card.getByRole('link', { name: 'CONSULTAR SERVICIO →' }).getAttribute('href');
+    await card.getByRole('button', { name: 'CONSULTAR SERVICIO →' }).click();
+    const dialog = page.getByRole('dialog');
+    const href = await dialog.getByRole('link', { name: 'Correo electrónico' }).getAttribute('href');
     assert.ok(href.startsWith('mailto:rgodbeat@gmail.com?subject='));
     assert.match(decodeURIComponent(href), /Referencia publicada:.*USD/);
+    const whatsapp = new URL(await dialog.getByRole('link', { name: 'WhatsApp', exact: true }).getAttribute('href'));
+    assert.equal(whatsapp.origin + whatsapp.pathname, 'https://wa.me/17373067677');
+    assert.equal(whatsapp.searchParams.get('text'), new URL(href).searchParams.get('body'));
+    await dialog.getByRole('button', { name: 'Cerrar contacto' }).click();
   }
   assert.equal(await page.locator('#services a[href="#contact"]').count(), 0);
   await page.screenshot({ path: `${output}/services-1440.png`, fullPage: true });
@@ -89,8 +95,14 @@ try {
       assert.match(await section.innerText(), /Si estás en Austin/);
       assert.match(await section.innerText(), /Si no estás en Austin/);
       assert.match(await section.innerText(), /derechos, registros y documentos/);
-      assert.ok((await section.getByRole('link', { name: 'Consultar sesión en Austin →' }).getAttribute('href')).startsWith('mailto:rgodbeat@gmail.com'));
-      assert.ok((await section.getByRole('link', { name: 'Consultar mix y master →' }).getAttribute('href')).startsWith('mailto:rgodbeat@gmail.com'));
+      for (const name of ['Consultar sesión en Austin →', 'Consultar mix y master →']) {
+        await section.getByRole('button', { name, exact: true }).click();
+        const dialog = park.getByRole('dialog');
+        assert.ok((await dialog.getByRole('link', { name: 'Correo electrónico' }).getAttribute('href')).startsWith('mailto:rgodbeat@gmail.com'));
+        assert.ok((await dialog.getByRole('link', { name: 'WhatsApp', exact: true }).getAttribute('href')).startsWith('https://wa.me/17373067677'));
+        await park.keyboard.press('Escape');
+        await dialog.waitFor({ state: 'hidden' });
+      }
       if (path === '/park') {
         for (const href of ['/park/catalog', '/park/registrations', '/park/documents', '/park/profile']) {
           assert.ok(await park.locator(`header a[href="${href}"]`).count(), `Preserve ${href}`);

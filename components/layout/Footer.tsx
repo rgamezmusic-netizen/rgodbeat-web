@@ -1,6 +1,7 @@
 import React from "react";
 import Link from 'next/link';
 import { SocialLink } from './SocialLink';
+import { ContactButton } from '@/components/contact/ContactProvider';
 
 export function Footer() {
   return (
@@ -23,12 +24,7 @@ export function Footer() {
               <div>Austin, TX • Global Delivery</div>
               <div className="pt-1">
                 <span className="text-zinc-400">Contacto Directo: </span>
-                <a
-                  href="mailto:rgodbeat@gmail.com"
-                  className="text-purple-400 hover:text-purple-300 font-semibold transition-colors"
-                >
-                  rgodbeat@gmail.com
-                </a>
+                <ContactButton subject="Consulta de proyecto" variant="ghost" size="sm" className="px-0 text-purple-400">Correo o WhatsApp</ContactButton>
               </div>
             </div>
           </div>
@@ -63,8 +59,7 @@ export function Footer() {
             <ul className="space-y-2 text-zinc-400">
               <li><Link href="/#services" className="hover:text-white transition-colors">Custom Production</Link></li>
               <li><Link href="/#services" className="hover:text-white transition-colors">Mixing & Mastering</Link></li>
-              <li><Link href="/#services" className="hover:text-white transition-colors">Artist Development</Link></li>
-              <li><Link href="/#the-park" className="hover:text-white transition-colors">The Park Residency</Link></li>
+              <li><Link href="/services#artist-development" className="hover:text-white transition-colors">Desarrollo artístico / The Park</Link></li>
               <li><Link href="/#about" className="hover:text-white transition-colors">Producer Biography</Link></li>
             </ul>
           </div>

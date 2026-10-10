@@ -1,5 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/Button";
+import { ContactButton } from "@/components/contact/ContactProvider";
 
 export function CtaSection() {
   return (
@@ -26,14 +27,14 @@ export function CtaSection() {
             <Button href="/beats" variant="primary" size="lg" className="w-full sm:w-auto">
               EXPLORE BEAT CATALOG
             </Button>
-            <Button
-              href="mailto:rgodbeat@gmail.com"
+            <ContactButton
+              subject="Consulta de producción y licencias"
               variant="outline"
               size="lg"
               className="w-full sm:w-auto"
             >
-              DIRECT INQUIRY
-            </Button>
+              COMUNICARME
+            </ContactButton>
           </div>
         </div>
       </div>

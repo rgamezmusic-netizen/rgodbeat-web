@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useCart } from "@/contexts/CartContext";
 import styles from "./FloatingSocialButtons.module.css";
+import { WHATSAPP_URL } from "@/lib/contact";
+import { isWorkspaceRoute } from "@/lib/site-layout";
 
 // Links and SVG artwork supplied in ../botones-flotantes.html.
 const links = [
@@ -21,8 +23,7 @@ export function FloatingSocialButtons() {
   const pathname = usePathname();
   const { isCartOpen } = useCart();
   const [live, setLive] = useState(false);
-  const workspaceRoute = ["/studio", "/admin", "/checkout", "/rg/wallet/checkout"]
-    .some(route => pathname === route || pathname.startsWith(`${route}/`));
+  const workspaceRoute = isWorkspaceRoute(pathname);
 
   useEffect(() => {
     if (workspaceRoute) return;
@@ -73,7 +74,7 @@ export function FloatingSocialButtons() {
       {links.map(({ service, label, href, path }) => {
         const isLive = service === "twitch" && live;
         return (
-          <a key={service} id={`rg-btn-${service}`} href={href} target="_blank" rel="noopener noreferrer"
+          <a key={service} id={`rg-btn-${service}`} href={service === "whatsapp" ? WHATSAPP_URL : href} target="_blank" rel="noopener noreferrer"
             className={`${styles.button} ${styles[service]} ${isLive ? styles.live : ""}`}
             aria-label={isLive ? "Twitch: EN VIVO" : label} title={isLive ? "Twitch: EN VIVO" : label}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d={path} /></svg>

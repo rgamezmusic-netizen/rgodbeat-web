@@ -6,6 +6,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export async function POST(req: NextRequest) {
   try {
     const { serviceId } = await req.json();
+    // The former standalone Park pack is now the artist-development inquiry.
+    if (serviceId === "the_park") {
+      return NextResponse.json({ error: "The Park Residency y Desarrollo artístico son el mismo programa. Consulta el alcance por correo o WhatsApp en Servicios.", contactUrl: "/services#artist-development" }, { status: 409 });
+    }
     const user = await getCurrentUser();
     
     if (!user) {
@@ -30,10 +34,6 @@ export async function POST(req: NextRequest) {
       price = 10;
       name = "RGODBEAT Studio Pro (30 Días) - 50% OFF";
       type = "studio_pass";
-    } else if (serviceId === "the_park") {
-      price = 199;
-      name = "The Park - 50% OFF";
-      type = "the_park";
     } else {
       return NextResponse.json({ error: "Invalid service ID" }, { status: 400 });
     }

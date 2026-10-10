@@ -42,6 +42,11 @@ body {
   position: relative;
 }
 
+/* Reserve space for desktop social rails outside the page content. */
+@media (min-width: 1280px) {
+  .site-content { margin-inline: 88px; }
+}
+
 /* Subtle analog studio grain overlay (Restrained luxury texture) */
 body::before {
   content: "";

@@ -76,7 +76,8 @@ export const SOCIAL_LINKS = [
 export function SocialSidebar() {
   return (
     <aside
-      className="hidden xl:flex fixed left-5 top-1/2 -translate-y-1/2 z-40 flex-col items-center gap-5 p-3 rounded-2xl bg-[#08080a]/60 backdrop-blur-md border border-white/[0.05] shadow-[0_10px_30px_rgba(0,0,0,0.5)] transition-all duration-300 hover:border-purple-500/30"
+      style={{ top: "calc(50% + 2rem - var(--rg-beat-player-height, 0px) / 2)" }}
+      className="hidden xl:flex fixed left-5 -translate-y-1/2 z-40 max-h-[calc(100dvh-10rem-var(--rg-beat-player-height,0px))] overflow-y-auto flex-col items-center gap-5 p-3 rounded-2xl bg-[#08080a]/60 backdrop-blur-md border border-white/[0.05] shadow-[0_10px_30px_rgba(0,0,0,0.5)] transition-colors duration-300 hover:border-purple-500/30"
       aria-label="Social Media Links"
     >
       <div

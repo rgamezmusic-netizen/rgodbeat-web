@@ -1,8 +1,10 @@
 import React from "react";
-import { Button } from "@/components/ui/Button";
+import { ContactButton } from "@/components/contact/ContactProvider";
 import { StudioOptions } from "@/components/park/StudioOptions";
+import { ARTIST_DEVELOPMENT, formatServicePrice, serviceInquiryMessage } from "@/lib/data/services";
 
 export function TheParkSection() {
+  const service = ARTIST_DEVELOPMENT;
   return (
     <section id="the-park" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 bg-[#0b0b0f]/60 backdrop-blur-md border-y border-white/[0.06] overflow-hidden">
       {/* Background ambient lighting */}
@@ -15,20 +17,18 @@ export function TheParkSection() {
             <div className="flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
               <span className="text-[11px] font-mono tracking-[0.2em] text-purple-400 uppercase">
-                STUDIO CIRCLE // THE PARK
+                DESARROLLO ARTÍSTICO // THE PARK
               </span>
             </div>
 
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-white leading-tight">
-              MORE THAN A STUDIO.
+              MÁS QUE UN ESTUDIO.
               <br />
-              <span className="text-zinc-400 font-light">AN ARTISTIC ECOSYSTEM.</span>
+              <span className="text-zinc-400 font-light">UN ECOSISTEMA ARTÍSTICO.</span>
             </h2>
 
             <p className="text-base sm:text-lg text-zinc-300 font-normal leading-relaxed">
-              <strong>The Park</strong> is RGODBEAT&apos;s private production residency and mentorship collective. 
-              Designed for recording artists and producers dedicated to mastering their craft, unlocking their sonic signature, 
-              and accessing direct studio-level feedback.
+              {service.description}
             </p>
 
             <StudioOptions />
@@ -38,19 +38,19 @@ export function TheParkSection() {
               <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1.5">
                 <div className="text-xs font-mono text-purple-300 flex items-center gap-1.5">
                   <span>01</span>
-                  <span>/ PRIVATE CATALOG</span>
+                  <span>/ CATÁLOGO PRIVADO</span>
                 </div>
-                <div className="text-sm font-semibold text-white">Unreleased Sound Banks</div>
-                <p className="text-xs text-zinc-400">Direct access to custom sample libraries, drum kits & project stems.</p>
+                <div className="text-sm font-semibold text-white">Bancos de sonido</div>
+                <p className="text-xs text-zinc-400">Acceso a bibliotecas de samples, drum kits y stems de proyectos.</p>
               </div>
 
               <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1.5">
                 <div className="text-xs font-mono text-blue-300 flex items-center gap-1.5">
                   <span>02</span>
-                  <span>/ STUDIO ACCESS</span>
+                  <span>/ ESTUDIO</span>
                 </div>
-                <div className="text-sm font-semibold text-white">In-Studio Residencies</div>
-                <p className="text-xs text-zinc-400">Monthly scheduled recording, mixing, and arrangement sessions.</p>
+                <div className="text-sm font-semibold text-white">Sesiones de producción</div>
+                <p className="text-xs text-zinc-400">Grabación, mezcla y arreglos con sesiones coordinadas cada mes.</p>
               </div>
 
               <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1.5">
@@ -58,79 +58,60 @@ export function TheParkSection() {
                   <span>03</span>
                   <span>/ FEEDBACK</span>
                 </div>
-                <div className="text-sm font-semibold text-white">Direct Production Critique</div>
-                <p className="text-xs text-zinc-400">Unfiltered sonic guidance on vocal delivery, pocket, and arrangement.</p>
+                <div className="text-sm font-semibold text-white">Dirección creativa</div>
+                <p className="text-xs text-zinc-400">Revisión de interpretación vocal, ritmo y arreglos.</p>
               </div>
 
               <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1.5">
                 <div className="text-xs font-mono text-blue-300 flex items-center gap-1.5">
                   <span>04</span>
-                  <span>/ COMMUNITY</span>
+                  <span>/ COMUNIDAD</span>
                 </div>
-                <div className="text-sm font-semibold text-white">Curated Artist Network</div>
-                <p className="text-xs text-zinc-400">Private Discord cohort for collaborations, placements, and releases.</p>
+                <div className="text-sm font-semibold text-white">Red de artistas</div>
+                <p className="text-xs text-zinc-400">Comunidad en Discord para colaborar y preparar lanzamientos.</p>
               </div>
             </div>
 
             <div className="pt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <Button href="mailto:rgodbeat@gmail.com" variant="primary" size="md">
-                APPLY FOR RESIDENCY
-              </Button>
+              <ContactButton subject={`Consulta: ${service.title}`} message={serviceInquiryMessage(service)} variant="primary" size="md">
+                CONSULTAR DESARROLLO ARTÍSTICO
+              </ContactButton>
               <span className="text-xs text-zinc-500 font-mono">
-                * Limited cohort to ensure intimate mentorship quality
+                Presencial en Austin y a distancia
               </span>
             </div>
           </div>
 
           {/* Right Column: Visual Brand Card */}
-          <div className="lg:col-span-5">
-            <div className="relative rounded-2xl bg-[#14141a] border border-white/[0.08] p-8 sm:p-10 overflow-hidden shadow-2xl">
+          <div className="lg:col-span-5 min-w-0">
+            <div className="relative rounded-2xl bg-[#14141a] border border-white/[0.08] p-6 sm:p-8 overflow-hidden shadow-2xl">
               <div className="absolute top-0 right-0 w-48 h-48 bg-purple-500/10 blur-3xl rounded-full pointer-events-none" />
 
               <div className="space-y-6">
-                <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
-                  <span className="text-xs font-mono text-zinc-400">MEMBERSHIP PASS</span>
-                  <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                    ADMISSIONS OPEN
-                  </span>
+                <div className="border-b border-white/[0.08] pb-4">
+                  <span className="text-xs font-mono text-purple-300 uppercase">{service.category}</span>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-2xl font-bold text-white tracking-tight">The Park Residency</div>
-                  <div className="text-xs text-zinc-400 font-normal">Austin, TX • Hybrid In-Person & Remote</div>
-                </div>
-
-                <div className="space-y-3 pt-2 text-xs text-zinc-300">
-                  <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                    <span>4 Monthly in-studio private production sessions</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                    <span>Full royalty release on collaborative cohort tracks</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-                    <span>Private sound bank & preset vault updates</span>
+                  <h3 className="text-2xl font-bold text-white tracking-tight">{service.title}</h3>
+                  <div className="text-xs text-zinc-400 font-normal">Austin, TX · Presencial y a distancia</div>
+                  <div className="pt-3 space-y-1 font-mono">
+                    <del className="block text-sm text-zinc-500" aria-label="Precio anterior">{formatServicePrice({ ...service, price: service.regularPrice! })}</del>
+                    <p className="text-xl font-bold text-emerald-300">{formatServicePrice(service)}</p>
+                    <p className="text-xs text-emerald-300">AHORRA ${service.regularPrice! - service.price} USD / MES</p>
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-white/[0.08] flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] font-mono text-zinc-500 uppercase">Residency Inquiries</div>
-                    <a
-                      href="mailto:rgodbeat@gmail.com"
-                      className="text-sm font-semibold text-white hover:text-purple-300 transition-colors"
-                    >
-                      rgodbeat@gmail.com
-                    </a>
-                  </div>
-                  <a
-                    href="mailto:rgodbeat@gmail.com"
-                    className="w-9 h-9 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-300 hover:bg-purple-500/20 transition-colors cursor-pointer"
-                  >
-                    ↗
-                  </a>
+                <ul className="space-y-3 pt-2 text-xs text-zinc-300">
+                  {service.features.map(feature => <li key={feature} className="flex items-start gap-2">
+                    <span className="mt-1 w-1.5 h-1.5 shrink-0 rounded-full bg-purple-400" />
+                    <span>{feature}</span>
+                  </li>)}
+                </ul>
+
+                <div className="pt-6 border-t border-white/[0.08] space-y-3">
+                  <p className="text-xs text-zinc-400">El alcance y las sesiones se confirman antes de contratar.</p>
+                  <ContactButton subject={`Consulta: ${service.title}`} message={serviceInquiryMessage(service)} variant="outline" className="w-full">COMUNICARME →</ContactButton>
                 </div>
               </div>
             </div>

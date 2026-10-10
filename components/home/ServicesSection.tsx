@@ -1,9 +1,9 @@
 import React from "react";
 import Link from "next/link";
-import { STUDIO_SERVICES, formatServicePrice, serviceInquiryHref } from "@/lib/data/services";
+import { STUDIO_SERVICES, formatServicePrice, serviceInquiryMessage } from "@/lib/data/services";
 import { ServiceInfo } from "@/types";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { Button } from "@/components/ui/Button";
+import { ContactButton } from "@/components/contact/ContactProvider";
 
 export function ServicesSection() {
   return (
@@ -13,15 +13,15 @@ export function ServicesSection() {
         title="Servicios para tu música"
         description="Producción, mix y master, desarrollo artístico y proyectos audiovisuales. Consulta el alcance de tu proyecto antes de contratar."
         action={
-          <Button href="mailto:rgodbeat@gmail.com?subject=Consulta%20de%20servicios" variant="outline" size="sm">
+          <ContactButton subject="Consulta de servicios" variant="outline" size="sm">
             CONSULTAR MI PROYECTO
-          </Button>
+          </ContactButton>
         }
       />
 
       <div className="mb-8 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 sm:p-6 space-y-3 text-sm text-zinc-400 leading-relaxed">
         <p>Los precios se expresan en <strong className="text-zinc-200">USD</strong>. “Desde” indica una tarifa inicial por proyecto; desarrollo artístico corresponde a un programa mensual. El alcance, las revisiones, los derechos de uso y la fecha de entrega se confirman en la cotización.</p>
-        <p>Si estás en <strong className="text-zinc-200">Austin</strong>, puedes consultar una sesión de grabación en el estudio. Si estás fuera, podemos trabajar tu <strong className="text-zinc-200">mix y master a distancia</strong>. <a href="mailto:rgodbeat@gmail.com?subject=Grabaci%C3%B3n%20en%20Austin" className="text-cyan-300 hover:text-white underline underline-offset-4">Consultar grabación</a>.</p>
+        <p>Si estás en <strong className="text-zinc-200">Austin</strong>, puedes consultar una sesión de grabación en el estudio. Si estás fuera, podemos trabajar tu <strong className="text-zinc-200">mix y master a distancia</strong>. <ContactButton subject="Grabación en Austin" variant="ghost" size="sm" className="px-0 text-cyan-300 underline underline-offset-4">Consultar grabación</ContactButton>.</p>
         <p>También puedes <Link href="/park" className="text-cyan-300 hover:text-white underline underline-offset-4">organizar tus proyectos en The Park</Link> y <Link href="/studio" className="text-amber-300 hover:text-white underline underline-offset-4">grabar en la app Studio</Link>.</p>
       </div>
 
@@ -29,6 +29,7 @@ export function ServicesSection() {
         {STUDIO_SERVICES.map((service: ServiceInfo) => (
           <article
             key={service.id}
+            id={service.id}
             className="group flex flex-col justify-between p-8 rounded-2xl bg-[#0f0f14] border border-white/[0.08] hover:border-purple-500/30 transition-all duration-300"
           >
             <div>
@@ -72,10 +73,10 @@ export function ServicesSection() {
               </div>
             </div>
 
-            <div className="mt-8 pt-4 border-t border-white/[0.06] flex items-center justify-between">
-              <Button href={serviceInquiryHref(service)} variant="ghost" size="sm" className="text-xs text-zinc-300 hover:text-white px-0 shrink-0">
+            <div className="mt-8 pt-4 border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-3">
+              <ContactButton subject={`Consulta: ${service.title}`} message={serviceInquiryMessage(service)} variant="ghost" size="sm" className="text-xs text-zinc-300 hover:text-white px-0 shrink-0">
                 CONSULTAR SERVICIO →
-              </Button>
+              </ContactButton>
               <span className="text-[11px] text-right text-zinc-500">{service.delivery}</span>
             </div>
           </article>

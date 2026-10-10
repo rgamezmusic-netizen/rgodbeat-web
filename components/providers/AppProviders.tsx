@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
+import { usePathname } from "next/navigation";
+import { ContactProvider } from "@/components/contact/ContactProvider";
+import { isWorkspaceRoute } from "@/lib/site-layout";
 import dynamic from "next/dynamic";
 import { PlayerProvider, usePlayerState } from "@/contexts/PlayerContext";
 import { CartProvider, useCart } from "@/contexts/CartContext";
@@ -28,17 +31,20 @@ function DeferredOverlays() {
 }
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
+  const workspace = isWorkspaceRoute(usePathname());
   return (
     <PlayerProvider>
       <CartProvider>
         <AtmosphereProvider>
-          <RecoveryLinkRedirect />
-          <NavigationPreloader />
-          <PersistentAtmosphere />
-          {children}
-          <SocialSidebar />
-          <FloatingSocialButtons />
-          <DeferredOverlays />
+          <ContactProvider>
+            <RecoveryLinkRedirect />
+            <NavigationPreloader />
+            <PersistentAtmosphere />
+            <div className={workspace ? undefined : "site-content"}>{children}</div>
+            {!workspace && <SocialSidebar />}
+            <FloatingSocialButtons />
+            <DeferredOverlays />
+          </ContactProvider>
         </AtmosphereProvider>
       </CartProvider>
     </PlayerProvider>

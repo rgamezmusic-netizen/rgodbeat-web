@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { BeatSearch, BeatFilters, BeatSort, BeatGrid } from "@/components/beats";
 import { Beat, SortOption } from "@/types";
 import { useBrowsePreferences } from "@/lib/browser/browse-preferences";
+import { ARTIST_DEVELOPMENT, formatServicePrice, serviceInquiryMessage } from "@/lib/data/services";
+import { ContactButton } from "@/components/contact/ContactProvider";
 
 interface CategoryFilterItem {
   id: string;
@@ -115,25 +117,19 @@ export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientPro
             <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-2xl font-black text-white uppercase tracking-tight">The Park</h3>
-                <span className="px-2.5 py-1 text-[10px] font-mono font-bold bg-amber-500 text-black rounded uppercase">50% OFF</span>
+                <h3 className="text-xl font-black text-white tracking-tight">{ARTIST_DEVELOPMENT.title}</h3>
+                <span className="px-2.5 py-1 text-[10px] font-mono font-bold bg-amber-500 text-black rounded uppercase shrink-0">OFERTA</span>
               </div>
               <p className="text-sm text-zinc-400 mb-6 max-w-sm">
-                Acceso total al ecosistema de The Park. Registra y monetiza tu música con total control de tus regalías.
+                {ARTIST_DEVELOPMENT.description}
               </p>
             </div>
-            <div className="relative z-10 flex items-end justify-between mt-auto">
+            <div className="relative z-10 flex flex-wrap gap-4 items-end justify-between mt-auto">
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="text-3xl font-black text-white font-mono">$199<span className="text-lg text-cyan-400">.00</span></span>
-                <span className="text-sm text-zinc-500 line-through font-mono">$398.00</span>
+                <span className="text-xl font-black text-emerald-300 font-mono">{formatServicePrice(ARTIST_DEVELOPMENT)}</span>
+                <del className="text-sm text-zinc-500 font-mono">{formatServicePrice({ ...ARTIST_DEVELOPMENT, price: ARTIST_DEVELOPMENT.regularPrice! })}</del>
               </div>
-              <button
-                onClick={() => handlePurchaseService("the_park")}
-                disabled={isProcessingService === "the_park"}
-                className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-xs uppercase tracking-wider transition-all active:scale-95 disabled:opacity-50"
-              >
-                {isProcessingService === "the_park" ? "Procesando..." : "Comprar Acceso"}
-              </button>
+              <ContactButton subject={`Consulta: ${ARTIST_DEVELOPMENT.title}`} message={serviceInquiryMessage(ARTIST_DEVELOPMENT)} variant="outline" size="sm">CONSULTAR PROGRAMA</ContactButton>
             </div>
           </div>
 
