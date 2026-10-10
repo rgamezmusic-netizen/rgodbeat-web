@@ -56,7 +56,7 @@ El modo demo permite grabar en Lead 1. Grabar en otros canales y exportar audio 
 
 Abrirla como app
 
-**iPhone:** en Safari, Compartir > Agregar a Inicio. **Android:** en Chrome, menú > Instalar aplicación o Agregar a inicio, si aparece. La web también tiene una sección Android APK. En Studio puedes abrir la guía del dispositivo desde Opciones de Proyecto > Instalar App Móvil.
+**iPhone:** en Safari, Compartir > Agregar a Inicio. **Android:** en Chrome, menú > Instalar aplicación o Agregar a inicio, si aparece. RGodbeat Studio se usa desde la web; no hay instalador APK disponible. En Studio puedes abrir la guía del dispositivo desde Opciones de Proyecto > Instalar App Móvil.
 
 Instalar la app no activa por sí solo las funciones de un pase.
 

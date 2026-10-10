@@ -16,7 +16,6 @@ const themes: Record<string, AtmosphereTheme> = {
   "/cart": "beats",
   "/services": "services",
   "/about": "about",
-  "/download": "default",
   "/the-park": "park",
   "/ranking": "default",
   "/ranking/season": "default",

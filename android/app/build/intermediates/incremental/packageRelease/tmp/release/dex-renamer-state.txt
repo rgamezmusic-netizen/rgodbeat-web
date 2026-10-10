@@ -1,4 +1,0 @@
-#Sat Sep 26 20:38:45 CDT 2026
-base.0=/Volumes/RGodbeat XXX/Paginas Web/rgodbeat-v2/android/app/build/intermediates/dex/release/minifyReleaseWithR8/classes.dex
-renamed.0=classes.dex
-path.0=classes.dex

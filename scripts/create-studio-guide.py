@@ -166,7 +166,7 @@ title('Antes de tu primera toma')
 write('Abre la sección <b>Studio (/studio)</b>. Conecta audífonos, busca un lugar silencioso y haz una prueba corta. Para grabar, permite el acceso al micrófono cuando pulses REC. Los audífonos con cable facilitan revisar el tiempo de la toma.')
 note('Modo demo y pase','El modo demo permite grabar en Lead 1. Grabar en otros canales y exportar audio requiere un pase activo. Consulta el estado de tu acceso en la app.')
 title('Abrirla como app')
-write('<b>iPhone:</b> en Safari, Compartir > Agregar a Inicio. <b>Android:</b> en Chrome, menú > Instalar aplicación o Agregar a inicio, si aparece. La web también tiene una sección Android APK. En Studio puedes abrir la guía del dispositivo desde Opciones de Proyecto > Instalar App Móvil.',9.7)
+write('<b>iPhone:</b> en Safari, Compartir > Agregar a Inicio. <b>Android:</b> en Chrome, menú > Instalar aplicación o Agregar a inicio, si aparece. RGodbeat Studio se usa desde la web; no hay instalador APK disponible. En Studio puedes abrir la guía del dispositivo desde Opciones de Proyecto > Instalar App Móvil.',9.7)
 write('Instalar la app no activa por sí solo las funciones de un pase.',9.2,MUTED)
 
 # 03

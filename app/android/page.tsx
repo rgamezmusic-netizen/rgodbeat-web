@@ -1,1 +1,5 @@
-export { default, metadata } from '../download/page';
+import { redirect } from "next/navigation";
+
+export default function AndroidPage() {
+  redirect("/studio");
+}

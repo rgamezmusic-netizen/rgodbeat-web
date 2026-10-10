@@ -314,7 +314,7 @@ export default function App() {
   useEffect(() => {
     if (!isStartupResolved || showStartupModal) return;
     const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone || document.referrer.includes('android-app://');
+      (navigator as Navigator & { standalone?: boolean }).standalone;
     if (standalone || localStorage.getItem('rgodbeat_install_prompt_seen')) return;
     const timer = setTimeout(() => {
       localStorage.setItem('rgodbeat_install_prompt_seen', 'true');

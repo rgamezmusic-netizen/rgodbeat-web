@@ -48,6 +48,18 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  // Protect every route in The Park with the same artist login as /account.
+  if (pathname === "/park" || pathname.startsWith("/park/")) {
+    if (!user) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/login";
+      redirectUrl.searchParams.set("redirect", pathname);
+      const response = NextResponse.redirect(redirectUrl);
+      supabaseResponse.cookies.getAll().forEach(cookie => response.cookies.set(cookie));
+      return response;
+    }
+  }
+
   // Protect /admin routes
   if (pathname.startsWith("/admin")) {
     if (!user) {

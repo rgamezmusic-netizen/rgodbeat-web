@@ -7,8 +7,7 @@ import { syncNavigationClock } from "@/lib/browser/navigation-clock";
 import { canPrefetchInBackground, useBackgroundPrefetch } from "@/lib/browser/prefetch";
 
 const sections = [
-  "/ranking/season", "/beats", "/", "/park", "/studio", "/the-park", "/download", "/services", "/about",
-  "/park/catalog", "/park/registrations", "/park/documents", "/park/profile", "/park/projects",
+  "/ranking/season", "/beats", "/", "/studio", "/the-park", "/services", "/about",
 ];
 const checkIntervalMs = 30_000;
 

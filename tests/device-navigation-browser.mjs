@@ -58,9 +58,9 @@ const cases=[
   {label:'iPhone · Safari', ua:iphone, platform:'iPhone', touch:5, width:390, guide:'Abre Compartir', mobile:true},
   {label:'iPhone · Chrome', ua:iphone.replace('Version/17.6','CriOS/140.0.0.0'), platform:'iPhone', touch:5, width:320, guide:'Abre Compartir', mobile:true},
   {label:'iPad · Safari', ua:mac, platform:'MacIntel', touch:5, width:820, guide:'Abre Compartir', mobile:true},
-  {label:'Android · Chrome', ua:chromeAndroid, platform:'Linux armv8l', touch:5, width:390, guide:'Menú de Opciones', mobile:true, apk:true, intent:true},
-  {label:'Android · Firefox', ua:'Mozilla/5.0 (Android 14; Mobile; rv:140.0) Gecko/140.0 Firefox/140.0', platform:'Linux armv8l', touch:5, width:390, guide:'Menú de Opciones', mobile:true, apk:true},
-  {label:'Android · Navegador integrado', ua:chromeAndroid+' Instagram 400', platform:'Linux armv8l', touch:5, width:390, guide:'Menú de Opciones', mobile:true, apk:true},
+  {label:'Android · Chrome', ua:chromeAndroid, platform:'Linux armv8l', touch:5, width:390, guide:'Menú de Opciones', mobile:true, intent:true},
+  {label:'Android · Firefox', ua:'Mozilla/5.0 (Android 14; Mobile; rv:140.0) Gecko/20100101 Firefox/140.0', platform:'Linux armv8l', touch:5, width:390, guide:'Menú de Opciones', mobile:true},
+  {label:'Android · Navegador integrado', ua:chromeAndroid+' Instagram 400', platform:'Linux armv8l', touch:5, width:390, guide:'Menú de Opciones', mobile:true},
   {label:'Windows · Edge', ua:mac, platform:'MacIntel', width:1280, guide:'Barra de Direcciones', mobile:false, hints:{platform:'Windows',brands:[{brand:'Microsoft Edge',version:'140'}]}},
   {label:'Dispositivo · Navegador', ua:'unknown', platform:'unknown', width:390, guide:'Barra de Direcciones', mobile:false},
 ];
@@ -84,7 +84,7 @@ try {
       try { await page.getByText(device.label,{exact:true}).waitFor(); }
       catch(error) { throw new Error(`${device.label}: ${JSON.stringify(errors)}; ${error.message}`); }
       await page.getByRole('heading',{name:device.guide,exact:true}).waitFor();
-      assert.equal(await page.getByRole('link',{name:'Descargar APK Oficial (Android)'}).count(),device.apk?1:0);
+      assert.equal(await page.getByRole('link',{name:'Descargar APK Oficial (Android)'}).count(),0);
       if(device.label==='iPhone · Chrome') await page.getByText('Abre rgodbeat.com en Safari y toca Compartir.',{exact:true}).waitFor();
       for(const service of ['instagram','youtube']){
         const title=service==='instagram'?'Instagram':'YouTube';

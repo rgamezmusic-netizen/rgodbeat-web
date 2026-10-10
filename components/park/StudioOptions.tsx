@@ -18,6 +18,6 @@ export function StudioOptions() {
         <ContactButton subject="Mix y master a distancia" message={serviceInquiryMessage(STUDIO_SERVICES.find(service => service.id === "mixing-mastering")!)} variant="ghost" className="min-h-11 px-0! text-left text-sm font-semibold text-purple-300!">Consultar mix y master →</ContactButton>
       </div>
     </div>
-    <p className="text-sm text-zinc-400 leading-relaxed">Además de producir tu música, The Park te ayuda a organizar tus proyectos, derechos, registros y documentos para preparar cada lanzamiento. <Link href="/park" className="text-cyan-300 hover:text-white underline underline-offset-4">Abrir el centro de organización</Link>.</p>
+    <p className="text-sm text-zinc-400 leading-relaxed">The Park ofrece una guía privada con pasos para registrar derechos musicales. El avance del checklist se guarda solo en este navegador. <Link href="/park" className="text-cyan-300 hover:text-white underline underline-offset-4">Abrir la guía privada</Link>.</p>
   </section>;
 }

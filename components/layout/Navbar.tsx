@@ -78,25 +78,15 @@ export function Navbar() {
             </span>
           </Link>
           <Link
-            prefetch={prefetch} href="/download"
-            className="hover:text-amber-300 transition-colors py-1 flex items-center gap-1.5 group text-zinc-400"
-            title="Descargar APK oficial para Android (v1.0)"
-          >
-            <span className="group-hover:text-amber-300 font-semibold tracking-wider text-xs">ANDROID APK</span>
-            <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              v1.0
-            </span>
-          </Link>
-          <Link
             prefetch={prefetch} href="/#services"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
           >
             SERVICES
           </Link>
           <Link
-            prefetch={prefetch} href="/park"
+            prefetch={false} href="/park"
             className="hover:text-cyan-300 transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-cyan-400 hover:after:w-full after:transition-all after:duration-200 flex items-center gap-1.5"
-            title="Master Rights & Release Control Center"
+            title="Guía privada de registro de derechos musicales"
           >
             <span>THE PARK</span>
             <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
@@ -246,18 +236,6 @@ export function Navbar() {
               </span>
             </Link>
             <Link
-              prefetch={prefetch} href="/download"
-              onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-amber-300 py-3 transition-colors flex items-center justify-between border-b border-white/[0.06] text-zinc-300"
-            >
-              <span className="font-semibold text-sm flex items-center gap-2">
-                <span>🤖 DESCARGAR APP ANDROID</span>
-              </span>
-              <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                APK v1.0
-              </span>
-            </Link>
-            <Link
               prefetch={prefetch} href="/#services"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
@@ -266,13 +244,13 @@ export function Navbar() {
               <span className="text-zinc-600 text-xs">02</span>
             </Link>
             <Link
-              prefetch={prefetch} href="/park"
+              prefetch={false} href="/park"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-cyan-300 py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
             >
               <span className="font-bold text-white text-base">THE PARK</span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
-                RIGHTS & RELEASES 🛡️
+                RIGHTS 🛡️
               </span>
             </Link>
             <Link
