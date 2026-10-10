@@ -1,0 +1,236 @@
+{
+  "baselineCommit": "a746214b25e868117e563d9b44b82f94e4cfc9bc",
+  "conditions": {
+    "viewport": "390x844",
+    "dpr": 3,
+    "downloadMbps": 1.6,
+    "latencyMs": 150,
+    "cpuSlowdown": 4,
+    "cache": "disabled; server warmed",
+    "observeAfterDomContentLoadedMs": 8000
+  },
+  "beforeMeasuredAt": "2026-10-10T15:01:24.969Z",
+  "afterMeasuredAt": "2026-10-10T15:16:57.282Z",
+  "before": [
+    {
+      "path": "/",
+      "run": 1,
+      "fcp": 1504,
+      "lcp": 2000,
+      "ttfb": 17.900000000023283,
+      "load": 2003.4000000000233,
+      "cls": 0,
+      "transferBytes": 546905,
+      "jsBytes": 317414,
+      "imageBytes": 64620,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/",
+      "run": 2,
+      "fcp": 880,
+      "lcp": 1232,
+      "ttfb": 8.900000000023283,
+      "load": 1947.100000000035,
+      "cls": 0,
+      "transferBytes": 546981,
+      "jsBytes": 317414,
+      "imageBytes": 64616,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/",
+      "run": 3,
+      "fcp": 904,
+      "lcp": 1264,
+      "ttfb": 12.600000000034925,
+      "load": 1950,
+      "cls": 0,
+      "transferBytes": 548257,
+      "jsBytes": 317414,
+      "imageBytes": 64616,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/beats",
+      "run": 1,
+      "fcp": 920,
+      "lcp": 1260,
+      "ttfb": 7.5,
+      "load": 3478.9000000000233,
+      "cls": 0,
+      "transferBytes": 819237,
+      "jsBytes": 310216,
+      "imageBytes": 363573,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/beats",
+      "run": 2,
+      "fcp": 912,
+      "lcp": 1284,
+      "ttfb": 13.900000000023283,
+      "load": 3478.4000000000233,
+      "cls": 0,
+      "transferBytes": 816962,
+      "jsBytes": 310216,
+      "imageBytes": 363561,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/beats",
+      "run": 3,
+      "fcp": 924,
+      "lcp": 1252,
+      "ttfb": 9,
+      "load": 3477.899999999965,
+      "cls": 0,
+      "transferBytes": 816877,
+      "jsBytes": 310216,
+      "imageBytes": 363561,
+      "audioRequests": 0,
+      "errors": []
+    }
+  ],
+  "after": [
+    {
+      "path": "/",
+      "run": 1,
+      "fcp": 884,
+      "lcp": 1252,
+      "ttfb": 15.300000000046566,
+      "load": 1967.6999999999534,
+      "cls": 0,
+      "transferBytes": 452248,
+      "jsBytes": 268679,
+      "imageBytes": 64616,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/",
+      "run": 2,
+      "fcp": 888,
+      "lcp": 1240,
+      "ttfb": 8.199999999953434,
+      "load": 1948.3000000000466,
+      "cls": 0,
+      "transferBytes": 452246,
+      "jsBytes": 268679,
+      "imageBytes": 64616,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/",
+      "run": 3,
+      "fcp": 880,
+      "lcp": 1232,
+      "ttfb": 8,
+      "load": 1947.5999999998603,
+      "cls": 0,
+      "transferBytes": 518835,
+      "jsBytes": 305514,
+      "imageBytes": 64616,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/beats",
+      "run": 1,
+      "fcp": 916,
+      "lcp": 1292,
+      "ttfb": 7.300000000046566,
+      "load": 3343.5,
+      "cls": 0,
+      "transferBytes": 701811,
+      "jsBytes": 258441,
+      "imageBytes": 363561,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/beats",
+      "run": 2,
+      "fcp": 944,
+      "lcp": 1264,
+      "ttfb": 7.800000000046566,
+      "load": 3487.3000000000466,
+      "cls": 0,
+      "transferBytes": 806930,
+      "jsBytes": 305514,
+      "imageBytes": 363561,
+      "audioRequests": 0,
+      "errors": []
+    },
+    {
+      "path": "/beats",
+      "run": 3,
+      "fcp": 924,
+      "lcp": 1260,
+      "ttfb": 8,
+      "load": 3495.6999999999534,
+      "cls": 0,
+      "transferBytes": 806925,
+      "jsBytes": 305514,
+      "imageBytes": 363561,
+      "audioRequests": 0,
+      "errors": []
+    }
+  ],
+  "medians": {
+    "/": {
+      "before": {
+        "fcp": 904,
+        "lcp": 1264,
+        "ttfb": 12.600000000034925,
+        "load": 1950,
+        "cls": 0,
+        "transferBytes": 546981,
+        "jsBytes": 317414,
+        "imageBytes": 64616,
+        "audioRequests": 0
+      },
+      "after": {
+        "fcp": 884,
+        "lcp": 1240,
+        "ttfb": 8.199999999953434,
+        "load": 1948.3000000000466,
+        "cls": 0,
+        "transferBytes": 452248,
+        "jsBytes": 268679,
+        "imageBytes": 64616,
+        "audioRequests": 0
+      }
+    },
+    "/beats": {
+      "before": {
+        "fcp": 920,
+        "lcp": 1260,
+        "ttfb": 9,
+        "load": 3478.4000000000233,
+        "cls": 0,
+        "transferBytes": 816962,
+        "jsBytes": 310216,
+        "imageBytes": 363561,
+        "audioRequests": 0
+      },
+      "after": {
+        "fcp": 924,
+        "lcp": 1264,
+        "ttfb": 7.800000000046566,
+        "load": 3487.3000000000466,
+        "cls": 0,
+        "transferBytes": 806925,
+        "jsBytes": 305514,
+        "imageBytes": 363561,
+        "audioRequests": 0
+      }
+    }
+  }
+}

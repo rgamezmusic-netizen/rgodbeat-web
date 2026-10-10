@@ -4,8 +4,8 @@ import { Navbar, Footer } from "@/components/layout";
 import { ServicesSection } from "@/components/home/ServicesSection";
 
 export const metadata = {
-  title: "Services | RGODBEAT Audio Engineering & Custom Production",
-  description: "Producción musical a medida, mezcla, mastering y licencias exclusivas en Austin, TX.",
+  title: "Servicios | RGODBEAT — Producción, mix y master",
+  description: "Producción musical, mix y master a distancia, desarrollo artístico y proyectos audiovisuales. Consulta grabación presencial en Austin, TX.",
 };
 
 export default function ServicesPage() {
@@ -22,7 +22,7 @@ export default function ServicesPage() {
             </span>
           </div>
           <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight uppercase">
-            SERVICES <span className="text-zinc-500 font-light text-2xl sm:text-4xl">/ RGODBEAT</span>
+            SERVICIOS <span className="text-zinc-500 font-light text-2xl sm:text-4xl">/ RGODBEAT</span>
           </h1>
         </div>
 

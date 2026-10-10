@@ -123,7 +123,10 @@ export interface ServiceInfo {
   category: string;
   description: string;
   turnaround: string;
-  startingPrice: string;
+  price: number;
+  regularPrice?: number;
+  billing: "project" | "monthly";
+  delivery: string;
   features: string[];
 }
 

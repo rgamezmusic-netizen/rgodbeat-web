@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ParkNav } from '@/components/park/ParkNav';
+import { StudioOptions } from '@/components/park/StudioOptions';
 import { MinimalistRegistrationTracker } from '@/components/park/MinimalistRegistrationTracker';
 import { ParkStorage } from '@/lib/park/storage';
 import { ParkProject, MasterProfile } from '@/lib/park/types';
@@ -93,6 +94,8 @@ export default function ParkDashboardPage() {
             </Link>
           </div>
         </div>
+
+        <StudioOptions />
 
         {/* 4 Overview Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

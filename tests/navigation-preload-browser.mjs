@@ -27,6 +27,12 @@ try {
       await route.continue();
     });
     await page.addInitScript(() => {
+      // This suite checks full precaching on a fast connection. Data saver and
+      // slow-network behavior are covered separately in adaptive-load-browser.
+      const connection = new EventTarget();
+      connection.effectiveType = '4g';
+      connection.downlink = 10;
+      Object.defineProperty(navigator, 'connection', { value: connection, configurable: true });
       window.__audioContexts = 0; window.__microphoneRequests = 0;
       const NativeAudioContext = window.AudioContext;
       if (NativeAudioContext) window.AudioContext = class extends NativeAudioContext {
@@ -38,7 +44,7 @@ try {
       };
     });
     await page.goto(base, { waitUntil: 'load' });
-    await page.locator('article').first().waitFor();
+    await page.getByRole('heading', { name: 'YOUR SOUND. YOUR SIGNATURE.' }).waitFor();
     const deadline = Date.now() + 25_000;
     while ((!warmed.has('/ranking/season') || !warmed.has('/beats')) && Date.now() < deadline) await page.waitForTimeout(100);
     assert.ok(warmed.has('/ranking/season'), 'TOP 23 must start its full prefetch before the first click');
@@ -81,12 +87,12 @@ try {
     await navigate('/ranking/season');
     assert.equal(await page.getByRole('tab', { name: 'ARTISTS', exact: true }).getAttribute('aria-selected'), 'true', 'Keep the chosen ranking tab');
     await navigate('/');
-    await page.locator('article').first().waitFor();
+    await page.getByRole('heading', { name: 'YOUR SOUND. YOUR SIGNATURE.' }).waitFor();
     await navigate('/beats');
     assert.equal(await page.getByRole('textbox', { name: 'Search catalog by title, genre, mood, BPM, or key' }).inputValue(), 'wings');
     assert.equal(await page.getByRole('combobox', { name: 'Sort Beats' }).inputValue(), 'price_desc');
     assert.equal(await page.getByRole('group', { name: 'Genre Filters' }).getByRole('button', { name: 'TRAP', exact: true }).getAttribute('aria-pressed'), 'true');
-    assert.deepEqual(runtimeRequests.slice(runtimeBefore), [], 'Warm clicks and revisits cannot refetch their page data');
+    assert.deepEqual(runtimeRequests.slice(runtimeBefore).filter(path => ['/', '/beats', '/ranking/season'].includes(path)), [], 'Warm clicks and revisits cannot refetch their page data; exploration may prepare other sections');
     assert.deepEqual(await page.evaluate(() => window.__loadingFlashes), [], 'No loading screen flashes on warm navigation');
     assert.equal(await page.evaluate(() => window.__navigationMarker), true);
     assert.equal(documents.length, 1, 'Keep the document, global player and cart');

@@ -24,7 +24,7 @@ try {
       };
     });
     await page.goto(base, { waitUntil: 'load' });
-    await page.locator('article').first().waitFor();
+    await page.getByRole('heading', { name: 'YOUR SOUND. YOUR SIGNATURE.' }).waitFor();
     await page.locator('[data-starfield]').waitFor();
     await page.waitForTimeout(500);
     await page.evaluate(() => { window.__canvasDraws = 0; window.__navigationMarker = true; });

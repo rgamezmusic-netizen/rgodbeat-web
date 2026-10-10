@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import dynamic from "next/dynamic";
-import { PlayerProvider, usePlayer } from "@/contexts/PlayerContext";
+import { PlayerProvider, usePlayerState } from "@/contexts/PlayerContext";
 import { CartProvider, useCart } from "@/contexts/CartContext";
 import { SocialSidebar } from "@/components/layout/SocialSidebar";
 import { FloatingSocialButtons } from "@/components/layout/FloatingSocialButtons";
@@ -16,7 +16,7 @@ const BeatPlayer = dynamic(() => import("@/components/player/BeatPlayer").then(m
 const CartDrawer = dynamic(() => import("@/components/cart/CartDrawer").then(mod => mod.CartDrawer), { ssr: false });
 
 function DeferredOverlays() {
-  const { currentBeat } = usePlayer();
+  const { currentBeat } = usePlayerState();
   const { isCartOpen } = useCart();
   const [cartWasOpened, setCartWasOpened] = useState(false);
   // Keep checkout mounted after its first use so closing/reopening preserves it.

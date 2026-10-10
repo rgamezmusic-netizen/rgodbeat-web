@@ -4,10 +4,14 @@ import React, { createContext, useContext, useState, useMemo } from "react";
 import { AtmosphereContextType, AtmosphereHoverEvent, AudioReactivityMetrics } from "./types";
 
 const AtmosphereContext = createContext<AtmosphereContextType | undefined>(undefined);
+type AtmosphereActions = Pick<AtmosphereContextType, "setHoverState" | "setAudioMetrics">;
+const AtmosphereActionsContext = createContext<AtmosphereActions | undefined>(undefined);
+const noopActions: AtmosphereActions = { setHoverState: () => {}, setAudioMetrics: () => {} };
 
 export function AtmosphereProvider({ children }: { children: React.ReactNode }) {
   const [hoverState, setHoverState] = useState<AtmosphereHoverEvent | null>(null);
   const [audioMetrics, setAudioMetrics] = useState<AudioReactivityMetrics>({});
+  const actions = useMemo(() => ({ setHoverState, setAudioMetrics }), []);
 
   const value = useMemo(
     () => ({
@@ -21,9 +25,14 @@ export function AtmosphereProvider({ children }: { children: React.ReactNode }) 
 
   return (
     <AtmosphereContext.Provider value={value}>
-      {children}
+      <AtmosphereActionsContext.Provider value={actions}>{children}</AtmosphereActionsContext.Provider>
     </AtmosphereContext.Provider>
   );
+}
+
+// Interactive cards publish hover changes without subscribing to every move.
+export function useAtmosphereActions(): AtmosphereActions {
+  return useContext(AtmosphereActionsContext) ?? noopActions;
 }
 
 export function useAtmosphere(): AtmosphereContextType {

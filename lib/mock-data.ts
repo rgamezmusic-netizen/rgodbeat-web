@@ -1,4 +1,4 @@
-import { Beat, LicenseOption, CategoryInfo, ServiceInfo } from "@/types";
+import { Beat, LicenseOption, CategoryInfo } from "@/types";
 
 export const LICENSE_OPTIONS: LicenseOption[] = [
   {
@@ -128,61 +128,5 @@ export const FLOW_CATEGORIES: CategoryInfo[] = [
   },
 ];
 
-export const STUDIO_SERVICES: ServiceInfo[] = [
-  {
-    id: "custom-production",
-    title: "Music Production",
-    category: "Full Production",
-    description: "Tailored full-scale record production from scratch designed strictly around your vocal texture, artistic vision, and delivery.",
-    turnaround: "5-7 business days",
-    startingPrice: "$350",
-    features: [
-      "Original melody & drum composition",
-      "Full multitrack stems (WAV)",
-      "Arrangement consulting & revisions",
-      "Commercial release rights",
-    ],
-  },
-  {
-    id: "mixing-mastering",
-    title: "Mixing & Mastering",
-    category: "Post-Production",
-    description: "Industry-grade sonic engineering that provides three-dimensional separation, punch, vocal presence, and streaming platform loudness.",
-    turnaround: "3-5 business days",
-    startingPrice: "$180",
-    features: [
-      "Precision vocal tuning & alignment",
-      "Analog-modeled spatial depth & EQ",
-      "Spotify & Apple Music loudness compliance",
-      "Includes instrumental & acapella passes",
-    ],
-  },
-  {
-    id: "artist-development",
-    title: "Artist Development",
-    category: "Mentorship & Strategy",
-    description: "One-on-one executive creative direction to identify your sonic pocket, curate cohesive EP tracklists, and elevate your market profile.",
-    turnaround: "Monthly program",
-    startingPrice: "$600 / mo",
-    features: [
-      "Weekly private strategic sessions",
-      "Full catalog audit & feedback",
-      "Priority production access",
-      "Direct release readiness roadmap",
-    ],
-  },
-  {
-    id: "custom-sound-design",
-    title: "Custom Production",
-    category: "Exclusive Projects",
-    description: "Specialized scoring, sync licensing beds, and unique sound design for ad campaigns, short films, and high-impact branded media.",
-    turnaround: "Custom timeline",
-    startingPrice: "$500",
-    features: [
-      "Bespoke sound design & Foley",
-      "Direct stem delivery with cue sheets",
-      "Unlimited sync & broadcast rights",
-      "Expedited milestone delivery",
-    ],
-  },
-];
+// Keep compatibility for any existing service imports.
+export { STUDIO_SERVICES } from "./data/services";

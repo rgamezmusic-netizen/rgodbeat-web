@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Heart, Pause, Play, ShoppingBag } from "luci
 import { Beat } from "@/types";
 import { Button } from "@/components/ui/Button";
 import { useCart } from "@/contexts/CartContext";
-import { usePlayer } from "@/contexts/PlayerContext";
+import { usePlayerState } from "@/contexts/PlayerContext";
 import styles from "./BeatGrid.module.css";
 import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
@@ -66,7 +66,7 @@ export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
   const [votedBeatIds, setVotedBeatIds] = useState<Set<string>>(() => new Set());
   const [isVoting, setIsVoting] = useState(false);
   const { addToCart } = useCart();
-  const { currentBeat, isPlaying, togglePlay } = usePlayer();
+  const { currentBeat, isPlaying, togglePlay } = usePlayerState();
   const gestureRef = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
   const suppressClickRef = useRef(false);
   const selectIndex = useCallback((index: number) => setSelection({ beats, index }), [beats]);

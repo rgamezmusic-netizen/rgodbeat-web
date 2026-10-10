@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Heart } from "lucide-react";
 import { Beat } from "@/types";
-import { usePlayer } from "@/contexts/PlayerContext";
+import { usePlayerState } from "@/contexts/PlayerContext";
 import { useCart } from "@/contexts/CartContext";
 
-import { useAtmosphere } from "@/components/atmosphere/AtmosphereContext";
+import { useAtmosphereActions } from "@/components/atmosphere/AtmosphereContext";
 import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
 interface BeatCardProps {
@@ -19,9 +19,9 @@ interface BeatCardProps {
 export function BeatCard({ beat, isLocked = false }: BeatCardProps) {
   const router = useRouter();
   const [isHovered, setIsHovered] = useState(false);
-  const { currentBeat, isPlaying, togglePlay } = usePlayer();
+  const { currentBeat, isPlaying, togglePlay } = usePlayerState();
   const { addToCart } = useCart();
-  const { setHoverState } = useAtmosphere();
+  const { setHoverState } = useAtmosphereActions();
 
   // Weekly Ranking & Like / Vote State
   const [likesCount, setLikesCount] = useState<number>(

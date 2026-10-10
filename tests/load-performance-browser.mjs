@@ -41,9 +41,12 @@ try {
   await page.getByText('TU CARRITO', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Cerrar carrito' }).click();
 
-  const card = page.locator('article').first();
-  await card.hover();
-  await card.getByRole('button', { name: /Play preview of/ }).click();
+  assert.equal(await page.getByRole('heading', { name: 'Latest Releases', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: /Play preview of|Escuchar beat/ }).count(), 0);
+  await page.getByRole('navigation', { name: 'Explorar RGODBEAT' }).getByRole('link', { name: 'CATÁLOGO', exact: true }).click();
+  await page.waitForURL('**/beats');
+  const gallery = page.getByRole('region', { name: 'Galería de beats' });
+  await gallery.getByRole('button', { name: 'Escuchar beat', exact: true }).click();
   await page.getByRole('complementary', { name: 'Global Beat Player' }).waitFor();
   await page.waitForFunction(() => window.__previewAudio[0].currentTime > 0, null, { timeout: 30000 });
   assert.ok(media.length > 0, 'Play starts the actual preview download');
@@ -54,7 +57,7 @@ try {
   await page.getByRole('slider', { name: 'Seek audio preview' }).press('ArrowRight');
   assert.ok(await page.evaluate(() => window.__previewAudio[0].currentTime > 0));
 
-  await card.getByRole('button', { name: /MP3 license to cart/ }).click();
+  await gallery.getByRole('button', { name: /COMPRAR/ }).click();
   await page.getByText('TU CARRITO', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Cerrar carrito' }).click();
   await page.getByRole('button', { name: /CART/ }).click();

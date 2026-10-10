@@ -1,0 +1,9 @@
+RGODBEAT STUDIO - KIT DE PRODUCCIÓN
+
+El PDF incluye manual y storyboard de 60 segundos.
+Guion-y-prompts.md: texto editable para una IA de guion/edición.
+Demo-60s-es.srt: subtítulos con tiempos objetivo; sincronizar tras grabar voz.
+assets/: interfaz local real en modo demo y logo original.
+La toma de la captura 03 usa audio sintético de prueba; sustituir en el anuncio.
+No hay un video final renderizado en este kit.
+No se verificaron pagos, guardados de cuenta ni publicación real.

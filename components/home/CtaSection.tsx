@@ -23,7 +23,7 @@ export function CtaSection() {
           </p>
 
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button href="#beats" variant="primary" size="lg" className="w-full sm:w-auto">
+            <Button href="/beats" variant="primary" size="lg" className="w-full sm:w-auto">
               EXPLORE BEAT CATALOG
             </Button>
             <Button

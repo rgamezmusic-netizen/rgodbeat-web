@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowDown, ArrowRight, ArrowUp, Heart, MessageCircle, Pause, Play, Share2, ShoppingBag } from 'lucide-react';
-import { usePlayer } from '@/contexts/PlayerContext';
+import { usePlayerState } from '@/contexts/PlayerContext';
 import { useCart } from '@/contexts/CartContext';
 import { LICENSE_OPTIONS } from '@/lib/mock-data';
 import { formatCurrency } from '@/lib/utils';
@@ -59,7 +59,7 @@ export function RankingClient({ initialChart, initialVotedIds }: { initialChart:
   const [panel, setPanel] = useState<Panel | null>(null);
   const [notice, setNotice] = useState<{ message: string; login?: boolean } | null>(null);
   const [showCatalog, setShowCatalog] = useState(false);
-  const player = usePlayer();
+  const player = usePlayerState();
   const { addToCart } = useCart();
   const votesInFlight = useRef(new Set<string>());
   const refreshing = useRef(false);

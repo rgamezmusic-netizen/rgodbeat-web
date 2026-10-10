@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Beat } from "@/types";
 
 interface PlayerContextType {
@@ -18,7 +18,11 @@ interface PlayerContextType {
   closePlayer: () => void;
 }
 
-const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
+type PlayerState = Omit<PlayerContextType, "progress" | "currentTime" | "duration">;
+type PlayerTimeline = Pick<PlayerContextType, "progress" | "currentTime" | "duration">;
+const PlayerStateContext = createContext<PlayerState | undefined>(undefined);
+const PlayerTimelineContext = createContext<PlayerTimeline | undefined>(undefined);
+const initialVolume = 0.85;
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return "0:00";
@@ -33,7 +37,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState("0:00");
   const [duration, setDuration] = useState("0:00");
-  const [volume, setVolumeState] = useState(0.85);
+  const [volume, setVolumeState] = useState(initialVolume);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -41,7 +45,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const audio = new Audio();
     audio.preload = "none";
-    audio.volume = volume;
+    audio.volume = initialVolume;
     audioRef.current = audio;
 
     const handleTimeUpdate = () => {
@@ -175,32 +179,32 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setProgress(0);
   }, []);
 
-  return (
-    <PlayerContext.Provider
-      value={{
-        currentBeat,
-        isPlaying,
-        progress,
-        currentTime,
-        duration,
-        volume,
-        playBeat,
-        pauseBeat,
-        togglePlay,
-        seek,
-        setVolume,
-        closePlayer,
-      }}
-    >
-      {children}
-    </PlayerContext.Provider>
-  );
+  // Cards and backgrounds only subscribe to playback changes, not every tick.
+  const state = useMemo(() => ({
+    currentBeat, isPlaying, volume, playBeat, pauseBeat, togglePlay, seek, setVolume, closePlayer,
+  }), [currentBeat, isPlaying, volume, playBeat, pauseBeat, togglePlay, seek, setVolume, closePlayer]);
+  const timeline = useMemo(() => ({ progress, currentTime, duration }), [progress, currentTime, duration]);
+
+  return <PlayerStateContext.Provider value={state}>
+    <PlayerTimelineContext.Provider value={timeline}>{children}</PlayerTimelineContext.Provider>
+  </PlayerStateContext.Provider>;
 }
 
-export function usePlayer() {
-  const context = useContext(PlayerContext);
+export function usePlayerState() {
+  const context = useOptionalPlayerState();
   if (!context) {
     throw new Error("usePlayer must be used within a PlayerProvider");
   }
   return context;
+}
+
+export function useOptionalPlayerState() {
+  return useContext(PlayerStateContext);
+}
+
+export function usePlayer(): PlayerContextType {
+  const state = usePlayerState();
+  const timeline = useContext(PlayerTimelineContext);
+  if (!timeline) throw new Error("usePlayer must be used within a PlayerProvider");
+  return { ...state, ...timeline };
 }

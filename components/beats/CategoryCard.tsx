@@ -4,9 +4,10 @@ import { CategoryInfo } from "@/types";
 
 interface CategoryCardProps {
   category: CategoryInfo;
+  showCount?: boolean;
 }
 
-export function CategoryCard({ category }: CategoryCardProps) {
+export function CategoryCard({ category, showCount = true }: CategoryCardProps) {
   return (
     <Link
       href={`/beats?genre=${category.id}`}
@@ -25,9 +26,9 @@ export function CategoryCard({ category }: CategoryCardProps) {
         <span className="text-[10px] font-mono tracking-widest text-zinc-400 uppercase">
           {category.bpmRange}
         </span>
-        <span className="text-[11px] font-mono text-zinc-400 px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06]">
+        {showCount && <span className="text-[11px] font-mono text-zinc-400 px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.06]">
           {category.count} {category.count === 1 ? "TRACK" : "TRACKS"}
-        </span>
+        </span>}
       </div>
 
       {/* Bottom Information */}

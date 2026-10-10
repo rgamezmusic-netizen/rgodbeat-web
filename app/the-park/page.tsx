@@ -6,7 +6,7 @@ import { SOCIAL_URLS } from '@/lib/social-links';
 
 export const metadata = {
   title: "The Park | RGODBEAT Studio Residency & Producer Collective",
-  description: "Ecosistema artístico, producción musical y residencia de estudio en Austin, TX fundada por Rafael Gámez.",
+  description: "Graba en el estudio en Austin, TX, o trabaja tu mix y master a distancia. Organiza tus proyectos, derechos, registros y lanzamientos con The Park de RGODBEAT.",
 };
 
 export default function TheParkPage() {

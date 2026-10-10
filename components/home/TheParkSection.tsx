@@ -1,5 +1,6 @@
 import React from "react";
 import { Button } from "@/components/ui/Button";
+import { StudioOptions } from "@/components/park/StudioOptions";
 
 export function TheParkSection() {
   return (
@@ -29,6 +30,8 @@ export function TheParkSection() {
               Designed for recording artists and producers dedicated to mastering their craft, unlocking their sonic signature, 
               and accessing direct studio-level feedback.
             </p>
+
+            <StudioOptions />
 
             {/* Benefit Highlights */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -70,7 +73,7 @@ export function TheParkSection() {
             </div>
 
             <div className="pt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <Button href="#contact" variant="primary" size="md">
+              <Button href="mailto:rgodbeat@gmail.com" variant="primary" size="md">
                 APPLY FOR RESIDENCY
               </Button>
               <span className="text-xs text-zinc-500 font-mono">

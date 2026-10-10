@@ -3,7 +3,7 @@
 import Image from "next/image";
 
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { usePlayer } from "@/contexts/PlayerContext";
+import { useOptionalPlayerState } from "@/contexts/PlayerContext";
 import { useAtmosphere } from "./AtmosphereContext";
 import { ProceduralStarfield } from "./ProceduralStarfield";
 import {
@@ -124,14 +124,7 @@ export function AtmosphericBackground({
   const hoverLightRef = useRef<HTMLDivElement>(null);
 
   // Connect to player context gracefully if available
-  let playerContextPlaying = false;
-  try {
-    const player = usePlayer();
-    playerContextPlaying = Boolean(player?.isPlaying);
-  } catch {
-    // Graceful fallback if rendered outside PlayerProvider
-    playerContextPlaying = false;
-  }
+  const playerContextPlaying = Boolean(useOptionalPlayerState()?.isPlaying);
 
   // Active playing state
   const isPlaying = explicitPlaying !== undefined ? explicitPlaying : playerContextPlaying;
@@ -215,7 +208,7 @@ export function AtmosphericBackground({
     }
 
     const isFinePointer = window.matchMedia("(pointer: fine)").matches;
-    if (!isFinePointer) return;
+    if (!isFinePointer) return () => motionQuery.removeEventListener?.("change", handleMotionChange);
 
     let targetX = 0;
     let targetY = 0;
