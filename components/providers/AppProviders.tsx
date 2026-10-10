@@ -6,7 +6,8 @@ import { PlayerProvider, usePlayer } from "@/contexts/PlayerContext";
 import { CartProvider, useCart } from "@/contexts/CartContext";
 import { SocialSidebar } from "@/components/layout/SocialSidebar";
 
-import { AtmosphereProvider } from "@/components/atmosphere";
+import { AtmosphereProvider } from "@/components/atmosphere/AtmosphereContext";
+import { PersistentAtmosphere } from "@/components/atmosphere/PersistentAtmosphere";
 import { RecoveryLinkRedirect } from "@/components/auth/RecoveryLinkRedirect";
 
 const BeatPlayer = dynamic(() => import("@/components/player/BeatPlayer").then(mod => mod.BeatPlayer), { ssr: false });
@@ -30,6 +31,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       <CartProvider>
         <AtmosphereProvider>
           <RecoveryLinkRedirect />
+          <PersistentAtmosphere />
           {children}
           <SocialSidebar />
           <DeferredOverlays />

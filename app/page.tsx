@@ -1,40 +1,36 @@
-import React from "react";
+import React, { Suspense } from "react";
 import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
 import { Hero } from "@/components/home/Hero";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Button } from "@/components/ui/Button";
 import { BeatCard, CategoryCard } from "@/components/beats";
-import { AtmosphericBackground } from "@/components/atmosphere";
 import { TheParkSection } from "@/components/home/TheParkSection";
 import { ServicesSection } from "@/components/home/ServicesSection";
 import { AboutSection } from "@/components/home/AboutSection";
 import { AppDownloadBanner } from "@/components/home/AppDownloadBanner";
 import { CtaSection } from "@/components/home/CtaSection";
 import { FLOW_CATEGORIES } from "@/lib/mock-data";
-import { getFeaturedBeats, getPublishedBeats } from "@/lib/data/beats";
+import { getPublishedBeats } from "@/lib/data/beats";
 import { Beat } from "@/types";
 
-export const revalidate = 60; // Cache on edge CDN for fast initial page load (revalidates every 60s)
+export const dynamic = 'force-dynamic';
 
-export default async function HomePage() {
+async function HomeCatalog() {
   let featuredBeats: Beat[] = [];
   const beatCountsByGenre: Record<string, number> = {};
 
   try {
-    const [featured, allPublished] = await Promise.all([
-      getFeaturedBeats(6),
-      getPublishedBeats(),
-    ]);
-    featuredBeats = featured;
+    const allPublished = await getPublishedBeats();
+    featuredBeats = allPublished.filter(beat => beat.featured).slice(0, 6);
     (allPublished || []).forEach((b) => {
       const g = (b.genre || "").toLowerCase().trim();
       if (g) {
         beatCountsByGenre[g] = (beatCountsByGenre[g] || 0) + 1;
       }
     });
-  } catch (err: any) {
-    console.error("[HomePage] Error loading beats from Supabase:", err.message);
+  } catch (err) {
+    console.error("[HomePage] Error loading beats from Supabase:", err instanceof Error ? err.message : "Error desconocido");
   }
 
   const dynamicCategories = FLOW_CATEGORIES.map((cat) => ({
@@ -43,16 +39,7 @@ export default async function HomePage() {
   }));
 
   return (
-    <div className="relative min-h-screen bg-transparent text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
-      {/* Reusable Cinematic Atmospheric Background with Procedural Stars */}
-      <AtmosphericBackground theme="default" intensity="high" enableStars={true} starDensity="high" animate={true} />
-
-      {/* Top Sticky Navigation */}
-      <Navbar />
-
-      {/* Main Hero Header */}
-      <Hero />
-
+    <>
       {/* 01. Featured Beats Section */}
       <section id="beats" className="py-20 sm:py-28 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
         <SectionHeading
@@ -100,6 +87,19 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+    </>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <div className="relative min-h-screen bg-transparent text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
+      <Navbar />
+      <Hero />
+      <Suspense fallback={<section className="relative z-10 min-h-96 py-20 px-6 text-center text-zinc-400" role="status">Cargando catálogo…</section>}>
+        <HomeCatalog />
+      </Suspense>
 
       {/* 03. The Park (Mentorship & Community) */}
       <TheParkSection />

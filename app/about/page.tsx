@@ -1,7 +1,6 @@
 import React from "react";
 import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
-import { AtmosphericBackground } from "@/components/atmosphere";
 
 export const metadata = {
   title: "About | Rafael Gámez & RGODBEAT",
@@ -11,7 +10,6 @@ export const metadata = {
 export default function AboutPage() {
   return (
     <div className="relative min-h-screen bg-transparent text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
-      <AtmosphericBackground theme="about" intensity="high" enableStars={true} starDensity="high" animate={true} />
       <Navbar />
 
       <main className="relative z-10 flex-1 pt-32 sm:pt-36 pb-24 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full">

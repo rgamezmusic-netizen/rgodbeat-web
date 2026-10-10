@@ -1,4 +1,4 @@
-.page { --gold: #d8bc7c; --paper: #f3f0e9; --muted: #aaa69c; background: #060912; color: var(--paper); min-height: 100vh; position: relative; overflow-x: clip; display: flow-root; }
+.page { --gold: #d8bc7c; --paper: #f3f0e9; --muted: #aaa69c; background: transparent; color: var(--paper); min-height: 100vh; position: relative; overflow-x: clip; display: flow-root; }
 .main { --gold: #d8bc7c; --paper: #f3f0e9; --muted: #aaa69c; position: relative; z-index: 10; width: min(1260px, calc(100% - 96px)); margin: 120px auto 64px; padding: 30px 48px 64px;
   border: 1px solid #ffffff24; border-top-color: #ffffff47; border-radius: 22px;
   background: linear-gradient(145deg, #18202a99, #10131a82 45%, #0e111dcc);

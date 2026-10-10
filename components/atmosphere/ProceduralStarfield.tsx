@@ -50,6 +50,13 @@ export function ProceduralStarfield({
   className = "",
 }: ProceduralStarfieldProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const settingsRef = useRef({ density, tint, animate, playing, opacity });
+  const redrawRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    settingsRef.current = { density, tint, animate, playing, opacity };
+    redrawRef.current?.();
+  }, [density, tint, animate, playing, opacity]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -57,12 +64,17 @@ export function ProceduralStarfield({
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
 
-    let animationFrameId: number;
+    let animationFrameId: number | undefined;
+    let lastFrameTime = 0;
+    let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+    const frameInterval = 1000 / 30;
     let width = 0;
     let height = 0;
+    let pixelRatio = 0;
     let stars: Star[] = [];
     let shootingStar: ShootingStar | null = null;
     let nextShootingStarTime = Date.now() + 4000;
+    const initializedAt = performance.now();
 
     // Mouse parallax tracking
     let targetParallaxX = 0;
@@ -76,14 +88,21 @@ export function ProceduralStarfield({
       high: 280,
     };
 
+    // Create the star map once. Playback, route themes and motion preferences
+    // update the drawing settings without replacing the constellation.
+    const { density, tint } = settingsRef.current;
     const isMobile = window.innerWidth < 768;
     const targetCount = isMobile ? Math.floor(countMap[density] * 0.45) : countMap[density];
 
     const resize = () => {
       if (!canvas) return;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      if (width === window.innerWidth && height === window.innerHeight && pixelRatio === dpr) return;
+      const previousWidth = width;
+      const previousHeight = height;
       width = window.innerWidth;
       height = window.innerHeight;
+      pixelRatio = dpr;
 
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
@@ -91,7 +110,17 @@ export function ProceduralStarfield({
       canvas.style.height = `${height}px`;
 
       ctx.scale(dpr, dpr);
-      generateStars();
+      if (stars.length) {
+        // Mobile address-bar changes and resizes keep the same stars.
+        for (const star of stars) {
+          star.x *= width / previousWidth;
+          star.y *= height / previousHeight;
+        }
+      } else {
+        generateStars();
+      }
+      pause();
+      render();
     };
 
     const generateStars = () => {
@@ -185,6 +214,7 @@ export function ProceduralStarfield({
     };
 
     const onMouseMove = (e: MouseEvent) => {
+      if (!settingsRef.current.animate) return;
       targetParallaxX = (e.clientX / width - 0.5) * 2;
       targetParallaxY = (e.clientY / height - 0.5) * 2;
     };
@@ -205,12 +235,23 @@ export function ProceduralStarfield({
       }
     };
 
-    const render = () => {
+    const render = (time = performance.now()) => {
+      animationFrameId = undefined;
+      if (document.hidden) return;
+      const { animate, playing, opacity } = settingsRef.current;
+      const elapsed = lastFrameTime ? time - lastFrameTime : 1000 / 60;
+      if (animate && lastFrameTime && elapsed < frameInterval) {
+        animationFrameId = requestAnimationFrame(render);
+        return;
+      }
+      const frameScale = Math.min(elapsed, 100) / (1000 / 60);
+      lastFrameTime = time;
       ctx.clearRect(0, 0, width, height);
 
       // Smooth parallax easing
-      currentParallaxX += (targetParallaxX - currentParallaxX) * 0.04;
-      currentParallaxY += (targetParallaxY - currentParallaxY) * 0.04;
+      const easing = 1 - Math.pow(0.96, frameScale);
+      currentParallaxX += (targetParallaxX - currentParallaxX) * easing;
+      currentParallaxY += (targetParallaxY - currentParallaxY) * easing;
 
       // Audio reactive multiplier
       const pulseMultiplier = playing ? 1.2 : 1.0;
@@ -220,7 +261,7 @@ export function ProceduralStarfield({
         const star = stars[i];
 
         if (animate) {
-          star.twinklePhase += star.twinkleSpeed * (playing ? 1.3 : 1);
+          star.twinklePhase += star.twinkleSpeed * (playing ? 1.3 : 1) * frameScale;
         }
 
         // Sinusoidal twinkle formula
@@ -228,7 +269,7 @@ export function ProceduralStarfield({
         const dynamicAlpha = Math.min(
           1,
           star.baseAlpha * (0.6 + 0.4 * twinkleFactor) * pulseMultiplier * opacity
-        );
+        ) * (animate ? Math.min(1, Math.max(0, (time - initializedAt - i * 4) / 600)) : 1);
 
         // Parallax depth multiplier per tier
         const tierParallax = star.tier === 3 ? 16 : star.tier === 2 ? 9 : 4;
@@ -300,9 +341,9 @@ export function ProceduralStarfield({
         ctx.lineTo(x, y);
         ctx.stroke();
 
-        shootingStar.x += Math.cos(angle) * speed;
-        shootingStar.y += Math.sin(angle) * speed;
-        shootingStar.opacity -= 0.018;
+        shootingStar.x += Math.cos(angle) * speed * frameScale;
+        shootingStar.y += Math.sin(angle) * speed * frameScale;
+        shootingStar.opacity -= 0.018 * frameScale;
 
         if (shootingStar.opacity <= 0 || shootingStar.x > width + 50 || shootingStar.y > height + 50) {
           shootingStar = null;
@@ -314,22 +355,47 @@ export function ProceduralStarfield({
       }
     };
 
+    const pause = () => {
+      if (animationFrameId !== undefined) cancelAnimationFrame(animationFrameId);
+      clearTimeout(scrollTimer);
+      animationFrameId = undefined;
+      lastFrameTime = 0;
+    };
+    const onVisibilityChange = () => {
+      pause();
+      if (!document.hidden) render();
+    };
+    // Keep the decorative canvas still while scrolling, leaving time for input
+    // and layout. Resume its original motion when the gesture ends.
+    const onScroll = () => {
+      if (!settingsRef.current.animate) return;
+      pause();
+      scrollTimer = setTimeout(() => { if (!document.hidden) render(); }, 150);
+    };
+
     window.addEventListener("resize", resize);
     window.addEventListener("mousemove", onMouseMove, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
+    redrawRef.current = () => { pause(); render(); };
     resize();
-    render();
 
     return () => {
       window.removeEventListener("resize", resize);
       window.removeEventListener("mousemove", onMouseMove);
-      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearTimeout(scrollTimer);
+      pause();
+      redrawRef.current = null;
     };
-  }, [density, animate, playing, opacity, tint]);
+  }, []);
 
   return (
     <canvas
       ref={canvasRef}
+      data-starfield
       aria-hidden="true"
       className={`absolute inset-0 pointer-events-none select-none z-0 ${className}`}
     />

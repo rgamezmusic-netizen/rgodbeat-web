@@ -1,7 +1,6 @@
 import React from "react";
 import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
-import { AtmosphericBackground } from "@/components/atmosphere";
 import { TheParkSection } from "@/components/home/TheParkSection";
 import { SOCIAL_URLS } from '@/lib/social-links';
 
@@ -13,7 +12,6 @@ export const metadata = {
 export default function TheParkPage() {
   return (
     <div className="relative min-h-screen bg-transparent text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
-      <AtmosphericBackground theme="park" intensity="high" enableStars={true} starDensity="high" animate={true} />
       <Navbar />
 
       <main className="relative z-10 flex-1 pt-32 sm:pt-36 pb-20">

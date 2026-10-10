@@ -1,13 +1,10 @@
 import React from "react";
 import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
-import { AtmosphericBackground } from "@/components/atmosphere";
 
 export default function NotFound() {
   return (
     <div className="relative min-h-screen bg-transparent text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
-      {/* Procedural Starfield & Atmospheric Background */}
-      <AtmosphericBackground theme="beats" intensity="high" enableStars={true} starDensity="high" animate={true} />
 
       <Navbar />
 

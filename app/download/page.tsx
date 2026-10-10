@@ -2,7 +2,6 @@ import Image from "next/image";
 import React from "react";
 import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
-import { AtmosphericBackground } from "@/components/atmosphere";
 import { Download, Smartphone, ShieldCheck, Zap, Music2, Sparkles, CheckCircle2, ArrowRight } from "lucide-react";
 
 export const metadata = {
@@ -13,7 +12,6 @@ export const metadata = {
 export default function DownloadAndroidPage() {
   return (
     <div className="relative min-h-screen bg-[#070709] text-white flex flex-col selection:bg-amber-500/30 selection:text-white">
-      <AtmosphericBackground theme="default" intensity="high" enableStars={true} starDensity="high" animate={true} />
 
       <Navbar />
 

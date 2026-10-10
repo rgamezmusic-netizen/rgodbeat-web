@@ -405,6 +405,7 @@ export function AtmosphericBackground({
             fill
             sizes="100vw"
             loading="lazy"
+            fetchPriority="low"
             className="object-cover object-center"
             style={{
               opacity: backgroundOpacity,

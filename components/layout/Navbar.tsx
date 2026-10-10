@@ -18,7 +18,8 @@ export function Navbar() {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
     };
-    window.addEventListener("scroll", handleScroll);
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
     getBrowserUser().then(setCurrentUser).catch(() => {});
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);

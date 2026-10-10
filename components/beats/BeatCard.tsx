@@ -7,7 +7,7 @@ import { Beat } from "@/types";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useCart } from "@/contexts/CartContext";
 
-import { useAtmosphere } from "@/components/atmosphere";
+import { useAtmosphere } from "@/components/atmosphere/AtmosphereContext";
 import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
 interface BeatCardProps {

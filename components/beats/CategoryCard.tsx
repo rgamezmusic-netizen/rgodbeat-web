@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import { CategoryInfo } from "@/types";
 
 interface CategoryCardProps {
@@ -7,7 +8,7 @@ interface CategoryCardProps {
 
 export function CategoryCard({ category }: CategoryCardProps) {
   return (
-    <a
+    <Link
       href={`/beats?genre=${category.id}`}
       className="group relative flex flex-col justify-between p-6 sm:p-7 rounded-2xl bg-[#0f0f14] border border-white/[0.08] hover:border-purple-500/40 transition-all duration-300 overflow-hidden min-h-[190px] select-none"
     >
@@ -51,6 +52,6 @@ export function CategoryCard({ category }: CategoryCardProps) {
           {category.tagline}
         </p>
       </div>
-    </a>
+    </Link>
   );
 }

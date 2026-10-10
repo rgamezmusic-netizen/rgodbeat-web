@@ -2,7 +2,6 @@ import React from "react";
 import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
 import { BeatsShopClient } from "@/components/beats";
-import { AtmosphericBackground } from "@/components/atmosphere";
 import { getPublicChart } from "@/lib/ranking/server";
 import { getCategories } from "@/lib/data/categories";
 import { Beat } from "@/types";
@@ -35,8 +34,6 @@ export default async function BeatsPage() {
 
   return (
     <div className="relative min-h-screen bg-transparent text-white flex flex-col selection:bg-purple-500/30 selection:text-white">
-      {/* Decoupled Atmospheric Background System */}
-      <AtmosphericBackground theme="beats" intensity="medium" animate={true} />
 
       <Navbar />
 
