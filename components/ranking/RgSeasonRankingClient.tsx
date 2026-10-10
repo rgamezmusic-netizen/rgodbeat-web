@@ -7,17 +7,21 @@ import type { ChartData } from '@/lib/rg/product/types';
 import { emptyRanking, formatRg, seasonCountdown } from '@/lib/rg/product/presentation';
 import { ArtistRewards, ChartRow, HowToCompete, Sponsors } from './RgProductParts';
 import styles from './RgProduct.module.css';
+import { useBrowsePreferences } from '@/lib/browser/browse-preferences';
+import { navigationServerTime } from '@/lib/browser/navigation-clock';
 
 export function RgSeasonRankingClient({ data }: { data: ChartData }) {
-  const [kind, setKind] = useState<'tracks' | 'artists' | 'beats'>('tracks');
-  const [clock, setClock] = useState({ serverTime: data.serverTime, elapsed: 0 });
+  const [{ rankingKind: kind }, updateBrowse] = useBrowsePreferences();
+  const setKind = (rankingKind: 'tracks' | 'artists' | 'beats') => updateBrowse({ rankingKind });
+  const [clock, setClock] = useState(() => ({ serverTime: data.serverTime,
+    elapsed: Math.max(0, (navigationServerTime() ?? Date.parse(data.serverTime)) - Date.parse(data.serverTime)) }));
   const [pending, startTransition] = useTransition();
   const router = useRouter();
   const refreshedSeasonRef = useRef<string | null>(null);
   useEffect(() => {
     const started = performance.now();
     const update = () => {
-      const elapsed = performance.now() - started;
+      const elapsed = Math.max(0, (navigationServerTime() ?? (Date.parse(data.serverTime) + performance.now() - started)) - Date.parse(data.serverTime));
       setClock({ serverTime: data.serverTime, elapsed });
       // Advance an open chart at the real season boundary, once per season.
       // Use server time so a phone with the wrong clock cannot end it early.
@@ -27,6 +31,8 @@ export function RgSeasonRankingClient({ data }: { data: ChartData }) {
         startTransition(() => router.refresh());
       }
     };
+    // A warm page can already belong to an ended season when opened.
+    queueMicrotask(update);
     const timer = setInterval(update, 30_000);
     document.addEventListener('visibilitychange', update);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', update); };

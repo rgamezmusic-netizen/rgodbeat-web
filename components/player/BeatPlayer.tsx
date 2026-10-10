@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePlayer } from "@/contexts/PlayerContext";
@@ -20,10 +20,28 @@ export function BeatPlayer() {
     closePlayer,
   } = usePlayer();
 
+  const playerRef = useRef<HTMLElement>(null);
+  const hasBeat = Boolean(currentBeat);
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+    const updateHeight = () => document.documentElement.style.setProperty(
+      "--rg-beat-player-height", `${player.getBoundingClientRect().height}px`,
+    );
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(player);
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--rg-beat-player-height");
+    };
+  }, [hasBeat]);
+
   if (!currentBeat) return null;
 
   return (
     <aside
+      ref={playerRef}
       aria-label="Global Beat Player"
       className="fixed bottom-0 left-0 right-0 z-40 bg-[#09090e]/95 backdrop-blur-2xl border-t border-white/[0.08] shadow-[0_-8px_30px_rgba(0,0,0,0.8)] transition-all animate-slideUp"
     >

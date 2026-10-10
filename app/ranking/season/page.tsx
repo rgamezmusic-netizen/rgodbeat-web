@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import Link from 'next/link';
+import { RetryRouteButton } from '@/components/ui/RetryRouteButton';
 import { Navbar, Footer } from '@/components/layout';
 import { RgSeasonRankingClient } from '@/components/ranking/RgSeasonRankingClient';
 import { RgMemberCard } from '@/components/ranking/RgMemberCard';
@@ -14,5 +14,5 @@ export default async function RgSeasonRankingPage() {
   let data;
   try { data = await getRgChart(); }
   catch { /* A service outage must not look like an empty competition. */ }
-  return <div className={styles.page} style={{ background: "transparent" }}><Navbar /><main className={styles.main}>{data ? <><RgSeasonRankingClient data={data} /><Suspense fallback={<section className={styles.member} role="status"><p className={styles.muted}>Cargando tu perfil…</p></section>}><RgMemberCard /></Suspense></> : <section className={styles.empty} role="alert"><p className={styles.eyebrow}>RG TOP 23</p><h1>El chart volverá en un momento.</h1><p>No pudimos cargar la temporada. Inténtalo de nuevo.</p><Link className={styles.button} href="/ranking/season">VOLVER A INTENTAR</Link></section>}</main><Footer /></div>;
+  return <div className={styles.page} style={{ background: "transparent" }}><Navbar /><main className={styles.main}>{data ? <><RgSeasonRankingClient data={data} /><Suspense fallback={<section className={styles.member} role="status"><p className={styles.muted}>Cargando tu perfil…</p></section>}><RgMemberCard /></Suspense></> : <section className={styles.empty} role="alert"><p className={styles.eyebrow}>RG TOP 23</p><h1>El chart volverá en un momento.</h1><p>No pudimos cargar la temporada. Inténtalo de nuevo.</p><RetryRouteButton className={styles.button}>VOLVER A INTENTAR</RetryRouteButton></section>}</main><Footer /></div>;
 }

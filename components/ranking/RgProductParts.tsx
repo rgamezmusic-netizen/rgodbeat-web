@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { RetryRouteButton } from '@/components/ui/RetryRouteButton';
 import Image from 'next/image';
 import type { ReactNode } from 'react';
 import { Navbar, Footer } from '@/components/layout';
@@ -15,7 +16,7 @@ export function ChartRow({ entry, kind }: { entry: ChartEntry; kind: 'tracks' | 
   const href = kind === 'tracks' ? `/rg/tracks/${entry.entityId}` : kind === 'artists' ? `/rg/artists/${entry.artist?.slug}` : `/rg/beats/${encodeURIComponent(entry.beat?.slug ?? '')}`;
   const detail = kind === 'tracks' ? entry.artist?.stage_name : kind === 'artists' ? 'RG ARTIST' : `RGodBeat · ${entry.rankedTrackCount ?? 0} tracks en Top 23`;
   if (!title) return null;
-  return <Link href={href} className={`${styles.row} ${entry.rank <= 3 ? styles.top : ''} ${entry.rank === 1 ? styles.champion : ''}`}>
+  return <Link href={href} prefetch={true} className={`${styles.row} ${entry.rank <= 3 ? styles.top : ''} ${entry.rank === 1 ? styles.champion : ''}`}>
     <span className={styles.rank}>#{String(entry.rank).padStart(2, '0')}</span>
     <div className={styles.identity}><strong>{title}</strong><p>{entry.rank === 1 ? 'LIDERA LA TEMPORADA · ' : ''}{detail}</p></div>
     <div className={styles.points}>{formatRg(entry.score)} <small>pts</small><Movement movement={entry.movement} isNew={entry.isNew} /></div>
@@ -48,5 +49,5 @@ export function ProductFrame({ children }: { children: ReactNode }) {
 }
 
 export function ProfileUnavailable({ href }: { href: string }) {
-  return <ProductFrame><section className={`${styles.section} ${styles.empty}`} role="alert"><p className={styles.eyebrow}>RG TOP 23</p><h1>El perfil volverá en un momento.</h1><p>No pudimos cargar sus datos. Inténtalo de nuevo.</p><Link className={styles.button} href={href}>VOLVER A INTENTAR</Link></section></ProductFrame>;
+  return <ProductFrame><section className={`${styles.section} ${styles.empty}`} role="alert"><p className={styles.eyebrow}>RG TOP 23</p><h1>El perfil volverá en un momento.</h1><p>No pudimos cargar sus datos. Inténtalo de nuevo.</p><RetryRouteButton key={href} className={styles.button}>VOLVER A INTENTAR</RetryRouteButton></section></ProductFrame>;
 }

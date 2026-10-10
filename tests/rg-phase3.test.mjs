@@ -29,7 +29,7 @@ function database(tables, errors={}) {
 const replacements={
   './RgProduct.module.css':{__esModule:true,default:new Proxy({},{get:(_,key)=>String(key)})},
   '@/components/ranking/RgProduct.module.css':{__esModule:true,default:new Proxy({},{get:(_,key)=>String(key)})},
-  'next/link':{__esModule:true,default:({children,...props})=>React.createElement('a',props,children)},
+  'next/link':{__esModule:true,default:({children,prefetch,...props})=>React.createElement('a',props,children)},
   'next/image':{__esModule:true,default:(props)=>{const imageProps={...props};delete imageProps.unoptimized;return React.createElement('img',imageProps);}},
   'next/navigation':{useRouter:()=>({refresh(){}}),notFound:()=>{throw Error('NOT_FOUND');},redirect:()=>{throw Error('REDIRECT');}},
   '@/components/layout':{Navbar:()=>null,Footer:()=>null},

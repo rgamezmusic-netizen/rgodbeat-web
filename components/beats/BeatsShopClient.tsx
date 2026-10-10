@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { BeatSearch, BeatFilters, BeatSort, BeatGrid } from "@/components/beats";
 import { Beat, SortOption } from "@/types";
+import { useBrowsePreferences } from "@/lib/browser/browse-preferences";
 
 interface CategoryFilterItem {
   id: string;
@@ -15,9 +17,11 @@ interface BeatsShopClientProps {
 }
 
 export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeGenre, setActiveGenre] = useState("all");
-  const [currentSort, setCurrentSort] = useState<SortOption>("latest");
+  const router = useRouter();
+  const [{ searchQuery, activeGenre, currentSort }, updateBrowse] = useBrowsePreferences();
+  const setSearchQuery = (searchQuery: string) => updateBrowse({ searchQuery });
+  const setActiveGenre = (activeGenre: string) => updateBrowse({ activeGenre });
+  const setCurrentSort = (currentSort: SortOption) => updateBrowse({ currentSort });
   const [isProcessingService, setIsProcessingService] = useState<string | null>(null);
 
   const handlePurchaseService = async (serviceId: string) => {
@@ -32,7 +36,7 @@ export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientPro
       if (res.ok && data.url) {
         window.location.href = data.url;
       } else if (res.status === 401) {
-        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
       } else {
         alert(data.error || "Ocurrió un error al procesar la compra.");
       }
@@ -91,9 +95,7 @@ export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientPro
   }, [initialBeats, searchQuery, activeGenre, currentSort]);
 
   const handleResetFilters = () => {
-    setSearchQuery("");
-    setActiveGenre("all");
-    setCurrentSort("latest");
+    updateBrowse({ searchQuery: "", activeGenre: "all", currentSort: "latest" });
   };
 
   return (

@@ -5,6 +5,8 @@ import dynamic from "next/dynamic";
 import { PlayerProvider, usePlayer } from "@/contexts/PlayerContext";
 import { CartProvider, useCart } from "@/contexts/CartContext";
 import { SocialSidebar } from "@/components/layout/SocialSidebar";
+import { FloatingSocialButtons } from "@/components/layout/FloatingSocialButtons";
+import { NavigationPreloader } from "@/components/providers/NavigationPreloader";
 
 import { AtmosphereProvider } from "@/components/atmosphere/AtmosphereContext";
 import { PersistentAtmosphere } from "@/components/atmosphere/PersistentAtmosphere";
@@ -31,9 +33,11 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       <CartProvider>
         <AtmosphereProvider>
           <RecoveryLinkRedirect />
+          <NavigationPreloader />
           <PersistentAtmosphere />
           {children}
           <SocialSidebar />
+          <FloatingSocialButtons />
           <DeferredOverlays />
         </AtmosphereProvider>
       </CartProvider>

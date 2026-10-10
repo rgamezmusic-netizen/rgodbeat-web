@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
     "/api/studio/youtube/publish": ["./node_modules/ffmpeg-static/ffmpeg", "./public/images/rgodbeat-studio-logo.png"],
   },
   experimental: {
+    // Keep completed page payloads when navigating away and back.
+    staleTimes: { dynamic: 300, static: 300 },
     serverActions: {
       bodySizeLimit: "250mb",
     },

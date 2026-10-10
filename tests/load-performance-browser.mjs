@@ -36,10 +36,9 @@ try {
   assert.ok(await page.locator('img[alt="RGodbeat"]').getAttribute('srcset'), 'Logo has responsive sources');
   assert.equal(await page.locator('img[alt="RGodbeat Studio"]').getAttribute('loading'), 'lazy');
 
-  const initialScripts = scripts.length;
+  assert.equal(await page.getByText('TU CARRITO', { exact: true }).count(), 0, 'Background imports must not open checkout');
   await page.getByRole('button', { name: /CART/ }).click();
   await page.getByText('TU CARRITO', { exact: true }).waitFor();
-  assert.ok(scripts.length > initialScripts, 'Cart JavaScript is loaded on demand');
   await page.getByRole('button', { name: 'Cerrar carrito' }).click();
 
   const card = page.locator('article').first();
@@ -61,7 +60,7 @@ try {
   await page.getByRole('button', { name: /CART/ }).click();
   await page.getByText('1 ARTÍCULO', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
-  console.log('PASS: WebP, responsive/lazy images, asynchronous scripts, on-demand cart, preview only on play, pause/resume/seek and cart reopen');
+  console.log('PASS: WebP, responsive/lazy images, asynchronous scripts, cart open/reopen, preview only on play, pause/resume/seek and cart reopen');
 } finally {
   await browser.close();
 }

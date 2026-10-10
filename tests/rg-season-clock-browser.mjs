@@ -6,15 +6,17 @@ import { pathToFileURL } from 'node:url';
 const { chromium } = await import(pathToFileURL(process.env.RG_TEST_PLAYWRIGHT_MODULE).href);
 const mocks = {
   'next/navigation': 'const router={refresh(){window.seasonRefreshes++}};export const useRouter=()=>router;',
-  'next/link': `import React from 'react';export default function Link({children,...props}){return React.createElement('a',props,children)}`,
+  'next/link': `import React from 'react';export default function Link({children,prefetch,...props}){return React.createElement('a',props,children)}`,
   'next/image': `import React from 'react';export default function Image(props){return React.createElement('img',props)}`,
   '@/components/layout': 'export const Navbar=()=>null,Footer=()=>null;',
 };
 const bundle = await build({stdin:{contents:`
 import React from 'react';import {createRoot} from 'react-dom/client';
 import {RgSeasonRankingClient} from './components/ranking/RgSeasonRankingClient';
+import {syncNavigationClock} from './lib/browser/navigation-clock';
 const root=createRoot(document.getElementById('root'));
 window.seasonRefreshes=0;window.showSeason=data=>root.render(<RgSeasonRankingClient data={data}/>);
+window.syncNavigationClock=syncNavigationClock;
 `,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,platform:'browser',format:'iife',jsx:'automatic',alias:{'@':process.cwd()},plugins:[{
   name:'isolated-navigation',setup(b){
     b.onResolve({filter:/^(next\/navigation|next\/link|next\/image|@\/components\/layout)$/},a=>({path:a.path,namespace:'mock'}));
@@ -50,6 +52,14 @@ try {
   assert.equal(await page.evaluate(()=>window.seasonRefreshes),2,'returning to the chart advances the new boundary once');
   await page.clock.fastForward(120_000);
   assert.equal(await page.evaluate(()=>window.seasonRefreshes),2);
+  // Open an old prefetched payload with a newer server clock and a wrong device clock.
+  await page.evaluate(async()=>{
+    window.fetch=async()=>new Response(JSON.stringify({serverTime:'2026-10-22T00:00:00Z'}),{headers:{'Content-Type':'application/json'}});
+    await window.syncNavigationClock();
+  });
+  await page.evaluate(data=>window.showSeason(data),{...chart,season:{...chart.season,id:'warm-old',ends_at:'2026-10-21T00:00:00Z'},serverTime:'2026-10-20T00:00:00Z'});
+  await page.waitForFunction(()=>window.seasonRefreshes===3);
+  assert.equal(await page.getByText('EN CURSO',{exact:true}).count(),0,'a stale prefetched season cannot become active again');
   assert.deepEqual(errors,[]);
-  console.log('PASS season clock: server time, automatic boundary, no retry loop, next season and tab return');
+  console.log('PASS season clock: server time, automatic boundary, no retry loop, next season, tab return and expired prefetched payload');
 }finally{await browser.close()}

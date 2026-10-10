@@ -1,5 +1,5 @@
 import React from "react";
-import Link from "next/link";
+import { RetryRouteButton } from "@/components/ui/RetryRouteButton";
 import { Navbar, Footer } from "@/components/layout";
 import { BeatsShopClient } from "@/components/beats";
 import { getPublicChart } from "@/lib/ranking/server";
@@ -78,12 +78,11 @@ export default async function BeatsPage() {
             </div>
 
             <div className="pt-2">
-              <Link
-                href="/beats"
+              <RetryRouteButton
                 className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-xs font-mono tracking-wider uppercase text-white transition-all cursor-pointer"
               >
                 <span>↻ RETRY CONNECTION</span>
-              </Link>
+              </RetryRouteButton>
             </div>
           </div>
         ) : (

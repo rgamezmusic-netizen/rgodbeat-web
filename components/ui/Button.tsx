@@ -7,6 +7,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   size?: "sm" | "md" | "lg";
   asChild?: boolean;
   href?: string;
+  prefetch?: boolean;
 }
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
@@ -16,6 +17,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       variant = "primary",
       size = "md",
       href,
+      prefetch = true,
       children,
       ...props
     },
@@ -51,7 +53,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 
     if (href) {
       return (
-        <Link href={href} className={combinedClasses}>
+        <Link href={href} prefetch={prefetch} className={combinedClasses}>
           {children}
         </Link>
       );

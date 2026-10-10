@@ -39,7 +39,7 @@ export function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
         {/* Brand Logo with Graffiti Handstyle & Green Status Indicator */}
-        <Link href="/" className="flex items-center gap-2.5 group">
+        <Link prefetch={true} href="/" className="flex items-center gap-2.5 group">
           <div className="relative h-8 sm:h-9 flex items-center">
             <Image
               src="/images/rgodbeat-logo.png"
@@ -58,15 +58,15 @@ export function Navbar() {
 
         {/* Center Primary Navigation */}
         <div className="hidden xl:flex items-center gap-6 text-[13px] font-medium tracking-[0.14em] text-zinc-300">
-          <Link href={RG_CHART_PATH} className="text-[#d8bc7c] hover:text-[#f0dbab] transition-colors py-1 whitespace-nowrap font-bold">TOP 23</Link>
+          <Link prefetch={true} href={RG_CHART_PATH} className="text-[#d8bc7c] hover:text-[#f0dbab] transition-colors py-1 whitespace-nowrap font-bold">TOP 23</Link>
           <Link
-            href="/beats"
+            prefetch={true} href="/beats"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
           >
             BEATS
           </Link>
           <Link
-            href="/studio"
+            prefetch={true} href="/studio"
             className="hover:text-amber-300 transition-colors py-1 flex items-center gap-1.5 group"
             title="Abre el DAW móvil RGODBEAT Studio con Auto-Tune"
           >
@@ -76,7 +76,7 @@ export function Navbar() {
             </span>
           </Link>
           <Link
-            href="/download"
+            prefetch={true} href="/download"
             className="hover:text-amber-300 transition-colors py-1 flex items-center gap-1.5 group text-zinc-400"
             title="Descargar APK oficial para Android (v1.0)"
           >
@@ -86,13 +86,13 @@ export function Navbar() {
             </span>
           </Link>
           <Link
-            href="/#services"
+            prefetch={true} href="/#services"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
           >
             SERVICES
           </Link>
           <Link
-            href="/park"
+            prefetch={true} href="/park"
             className="hover:text-cyan-300 transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-cyan-400 hover:after:w-full after:transition-all after:duration-200 flex items-center gap-1.5"
             title="Master Rights & Release Control Center"
           >
@@ -102,7 +102,7 @@ export function Navbar() {
             </span>
           </Link>
           <Link
-            href="/#about"
+            prefetch={true} href="/#about"
             className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
           >
             ABOUT
@@ -113,7 +113,7 @@ export function Navbar() {
         <div className="hidden sm:flex items-center gap-3 md:gap-3.5">
           {/* Search Trigger */}
           <Link
-            href="/beats"
+            prefetch={true} href="/beats"
             aria-label="Search Beats"
             className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-colors cursor-pointer"
           >
@@ -222,11 +222,11 @@ export function Navbar() {
       {mobileMenuOpen && (
         <div className="xl:hidden border-b border-white/10 bg-[#08080a]/98 backdrop-blur-2xl px-6 py-6 space-y-6 max-h-[calc(100vh-100px)] overflow-y-auto shadow-2xl">
           <div className="flex flex-col gap-4 text-sm tracking-[0.18em] font-medium text-zinc-300">
-            <Link href={RG_CHART_PATH} onClick={() => setMobileMenuOpen(false)} className="py-3 flex items-center justify-between border-b border-white/[0.06] text-[#d8bc7c]">
+            <Link prefetch={true} href={RG_CHART_PATH} onClick={() => setMobileMenuOpen(false)} className="py-3 flex items-center justify-between border-b border-white/[0.06] text-[#d8bc7c]">
               <span className="font-bold text-base">TOP 23</span><span className="text-xs font-mono">EL RANKING →</span>
             </Link>
             <Link
-              href="/beats"
+              prefetch={true} href="/beats"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
             >
@@ -234,7 +234,7 @@ export function Navbar() {
               <span className="text-purple-400 text-xs font-mono font-bold">SHOP →</span>
             </Link>
             <Link
-              href="/studio"
+              prefetch={true} href="/studio"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-amber-300 py-3 transition-colors flex items-center justify-between border-b border-white/[0.06] text-amber-300 bg-amber-500/10 px-3.5 rounded-xl border border-amber-500/30"
             >
@@ -244,7 +244,7 @@ export function Navbar() {
               </span>
             </Link>
             <Link
-              href="/download"
+              prefetch={true} href="/download"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-amber-300 py-3 transition-colors flex items-center justify-between border-b border-white/[0.06] text-zinc-300"
             >
@@ -256,7 +256,7 @@ export function Navbar() {
               </span>
             </Link>
             <Link
-              href="/#services"
+              prefetch={true} href="/#services"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
             >
@@ -264,7 +264,7 @@ export function Navbar() {
               <span className="text-zinc-600 text-xs">02</span>
             </Link>
             <Link
-              href="/park"
+              prefetch={true} href="/park"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-cyan-300 py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
             >
@@ -274,7 +274,7 @@ export function Navbar() {
               </span>
             </Link>
             <Link
-              href="/#about"
+              prefetch={true} href="/#about"
               onClick={() => setMobileMenuOpen(false)}
               className="hover:text-white py-3 transition-colors flex items-center justify-between pb-3"
             >

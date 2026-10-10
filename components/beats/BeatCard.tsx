@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Heart } from "lucide-react";
 import { Beat } from "@/types";
 import { usePlayer } from "@/contexts/PlayerContext";
@@ -16,6 +17,7 @@ interface BeatCardProps {
 }
 
 export function BeatCard({ beat, isLocked = false }: BeatCardProps) {
+  const router = useRouter();
   const [isHovered, setIsHovered] = useState(false);
   const { currentBeat, isPlaying, togglePlay } = usePlayer();
   const { addToCart } = useCart();
@@ -44,9 +46,9 @@ export function BeatCard({ beat, isLocked = false }: BeatCardProps) {
       } else if (data.alreadyVoted) {
         setHasVoted(true);
       } else if (data.requireLogin) {
-        window.location.href = `/login?redirect=${encodeURIComponent(
+        router.push(`/login?redirect=${encodeURIComponent(
           typeof window !== "undefined" ? window.location.pathname : "/beats"
-        )}`;
+        )}`);
       }
     } catch (err) {
       console.error("[BeatCard Vote Error]:", err);
@@ -81,7 +83,7 @@ export function BeatCard({ beat, isLocked = false }: BeatCardProps) {
       <div className="relative w-full aspect-square overflow-hidden bg-[#101017]">
         {/* Placeholder / Artwork Gradient Canvas */}
         <Link
-          href={`/beats/${beat.slug}`}
+          href={`/beats/${beat.slug}`} prefetch={true}
           aria-label={`View ${beat.title} details`}
           className={`relative block w-full h-full bg-gradient-to-br ${beat.cover} transition-transform duration-500 group-hover:scale-[1.02]`}
         >
@@ -162,7 +164,7 @@ export function BeatCard({ beat, isLocked = false }: BeatCardProps) {
       <div className="p-4 sm:p-4.5 flex flex-col justify-between flex-1 gap-3">
         <div>
           <Link
-            href={`/beats/${beat.slug}`}
+            href={`/beats/${beat.slug}`} prefetch={true}
             className="font-bold text-sm sm:text-base text-white group-hover:text-purple-300 transition-colors tracking-tight line-clamp-1 block"
           >
             {beat.title}
