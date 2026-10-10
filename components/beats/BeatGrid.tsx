@@ -2,6 +2,7 @@
 
 import React, { memo, useCallback, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ChevronLeft, ChevronRight, Heart, Pause, Play, ShoppingBag } from "lucide-react";
 import { Beat } from "@/types";
 import { Button } from "@/components/ui/Button";
@@ -29,7 +30,6 @@ const BeatSleeve = memo(function BeatSleeve({ beat, index, offset, playing, onSe
   onSelect: (index: number) => void;
 }) {
   const imageCover = coverIsImage(beat.cover);
-  const coverStyle = imageCover ? { backgroundImage: `url(${JSON.stringify(beat.cover)})` } : undefined;
   const coverClass = imageCover ? '' : `bg-gradient-to-br ${beat.cover}`;
   return (
     <button
@@ -44,12 +44,14 @@ const BeatSleeve = memo(function BeatSleeve({ beat, index, offset, playing, onSe
     >
       <span className={styles.disc} aria-hidden="true">
         <span className={styles.discSurface}>
-          <span className={`${styles.discLabel} ${coverClass}`} style={coverStyle}>
+          <span className={`${styles.discLabel} ${coverClass}`}>
+            {imageCover && <Image src={beat.cover} alt="" fill sizes="80px" loading="lazy" className="object-cover" />}
             <span className={styles.discSpindle} />
           </span>
         </span>
       </span>
-      <span className={`${styles.artwork} ${coverClass}`} style={coverStyle}>
+      <span className={`${styles.artwork} ${imageCover ? styles.imageArtwork : coverClass}`}>
+        {imageCover && <Image src={beat.cover} alt="" fill sizes="(max-width: 640px) 56vw, (max-width: 795px) 39vw, 290px" loading="lazy" className="object-cover" />}
         <span className={styles.artworkShade} />
         <span className={styles.artworkMark}>RG</span>
         <span className={styles.artworkInfo}><span>{beat.genre}</span><strong>{beat.title}</strong></span>

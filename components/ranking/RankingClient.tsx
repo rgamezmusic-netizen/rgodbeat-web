@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowDown, ArrowRight, ArrowUp, Heart, MessageCircle, Pause, Play, Share2, ShoppingBag } from 'lucide-react';
 import { usePlayer } from '@/contexts/PlayerContext';
 import { useCart } from '@/contexts/CartContext';
@@ -21,8 +22,8 @@ function Artwork({ beat, className = '' }: { beat: Beat; className?: string }) {
   const [failed, setFailed] = useState(false);
   const hasCover = /^(https?:|\/)/.test(beat.cover);
   return <div className={`${styles.artwork} ${className}`}>
-    {hasCover && !failed ? /* eslint-disable-next-line @next/next/no-img-element */
-      <img src={beat.cover} alt={`Portada de ${beat.title}`} onError={() => setFailed(true)} /> : <div className={styles.artworkFallback}><span>RGODBEAT</span><strong>{beat.title}</strong></div>}
+    {hasCover && !failed ?
+      <Image src={beat.cover} alt={`Portada de ${beat.title}`} width={800} height={800} sizes="(max-width: 760px) 100vw, 50vw" loading="lazy" onError={() => setFailed(true)} /> : <div className={styles.artworkFallback}><span>RGODBEAT</span><strong>{beat.title}</strong></div>}
   </div>;
 }
 

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -175,7 +176,11 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
           <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-4">
             <div className="w-16 h-16 rounded-lg bg-zinc-900 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
               {beat?.cover_path ? (
-                <img
+                <Image
+                  width={64}
+                  height={64}
+                  sizes="64px"
+                  loading="lazy"
                   src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/rgodbeat-public/${beat.cover_path}`}
                   alt={beat.title}
                   className="w-full h-full object-cover"

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import React from 'react';
 
 /**
@@ -59,13 +60,17 @@ export const SignatureCollageBackdrop: React.FC = () => {
 
       {/* Scattered RGodbeat signature elements */}
       {collageItems.map((item, idx) => (
-        <img
+        <Image
+          width={979}
+          height={345}
+          sizes={item.width}
           key={`signature-collage-${idx}`}
           src="/images/rgodbeat-logo.png"
           alt=""
           loading="lazy"
           className="absolute object-contain filter brightness-150 drop-shadow-[0_0_12px_rgba(251,191,36,0.15)] transition-opacity"
           style={{
+            aspectRatio: "979 / 345",
             top: item.top,
             left: item.left,
             width: item.width,

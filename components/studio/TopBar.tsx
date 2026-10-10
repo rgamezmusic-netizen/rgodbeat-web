@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from 'next/link';
 import React, { useRef, useState, useEffect } from 'react';
 import type { CloudProjectSlotInfo } from '@/lib/studio/cloudProject';
@@ -161,9 +162,14 @@ export const TopBar: React.FC<TopBarProps> = ({
             className="flex items-center group shrink-0 h-7 sm:h-9 px-0.5 rounded-lg hover:bg-white/[0.06] transition-all cursor-pointer"
             title="Guardar y volver a la tienda principal"
           >
-            <img
+            <Image
+              width={1000}
+              height={467}
+              sizes="(min-width: 640px) 60px, 43px"
+              loading="lazy"
               src="/images/rgodbeat-studio-logo.png"
               alt="RGodbeat Studio"
+              style={{ aspectRatio: "1000 / 467" }}
               className="h-5 sm:h-7 w-auto max-w-[70px] xs:max-w-[85px] sm:max-w-[125px] object-contain filter brightness-125 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-all duration-200"
             />
           </Link>

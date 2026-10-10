@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 import { useCart } from "@/contexts/CartContext";
 import { getBrowserUser } from "@/lib/auth/client";
@@ -39,9 +40,15 @@ export function Navbar() {
         {/* Brand Logo with Graffiti Handstyle & Green Status Indicator */}
         <Link href="/" className="flex items-center gap-2.5 group">
           <div className="relative h-8 sm:h-9 flex items-center">
-            <img
+            <Image
               src="/images/rgodbeat-logo.png"
               alt="RGodbeat"
+              width={979}
+              height={345}
+              sizes="(min-width: 640px) 91px, 80px"
+              loading="eager"
+              fetchPriority="high"
+              style={{ aspectRatio: "979 / 345" }}
               className="h-7 sm:h-8 w-auto object-contain filter brightness-110 group-hover:drop-shadow-[0_0_14px_rgba(255,255,255,0.45)] transition-all"
             />
           </div>

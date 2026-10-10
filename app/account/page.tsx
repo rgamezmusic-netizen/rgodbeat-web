@@ -206,7 +206,7 @@ export default async function AccountPage() {
                             alt={beat.title || "Beat Cover"}
                             fill
                             sizes="64px"
-                            unoptimized
+                            loading="lazy"
                             className="object-cover"
                           />
                         ) : (

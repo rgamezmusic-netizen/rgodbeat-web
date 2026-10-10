@@ -2,6 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { DiscountPrice } from "@/components/commerce/DiscountPrice";
 
@@ -51,9 +52,12 @@ export function BeatPlayer() {
             className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-lg shrink-0 border border-white/10 flex items-center justify-center overflow-hidden group bg-[#151520]"
           >
             {currentBeat.cover && (currentBeat.cover.startsWith("http") || currentBeat.cover.startsWith("/")) ? (
-              <img
+              <Image
                 src={currentBeat.cover}
                 alt={currentBeat.title}
+                fill
+                sizes="(min-width: 640px) 44px, 40px"
+                loading="lazy"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform"
               />
             ) : (

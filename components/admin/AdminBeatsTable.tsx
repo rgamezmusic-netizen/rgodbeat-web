@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import React, { useState, useMemo, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -333,7 +335,11 @@ export function AdminBeatsTable({ initialBeats, categories }: AdminBeatsTablePro
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
                         {beat.cover.startsWith("http") || beat.cover.startsWith("/") ? (
-                          <img
+                          <Image
+                            width={40}
+                            height={40}
+                            sizes="40px"
+                            loading="lazy"
                             src={beat.cover}
                             alt={beat.title}
                             className="w-10 h-10 rounded-lg object-cover shrink-0 border border-white/[0.08] shadow-sm"

@@ -1,3 +1,4 @@
+import Image from "next/image";
 import React from "react";
 import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
@@ -45,7 +46,11 @@ export default function DownloadAndroidPage() {
             <div className="relative mb-6">
               <div className="absolute -inset-2 bg-amber-500/30 rounded-3xl blur-xl animate-pulse" />
               <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-zinc-950 border-2 border-amber-400/80 p-2 shadow-2xl flex items-center justify-center overflow-hidden">
-                <img
+                <Image
+                  width={512}
+                  height={512}
+                  sizes="(min-width: 640px) 92px, 76px"
+                  loading="lazy"
                   src="/icons/icon-512.png"
                   alt="RGodbeat Studio App"
                   className="w-full h-full object-contain filter drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]"

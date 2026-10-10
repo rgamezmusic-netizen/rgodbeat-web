@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useAtmosphere } from "./AtmosphereContext";
@@ -397,10 +399,14 @@ export function AtmosphericBackground({
             transform: "scale(1.04)",
           }}
         >
-          <div
-            className="w-full h-full bg-cover bg-center bg-no-repeat"
+          <Image
+            src={backgroundSource}
+            alt=""
+            fill
+            sizes="100vw"
+            loading="lazy"
+            className="object-cover object-center"
             style={{
-              backgroundImage: `url('${backgroundSource}')`,
               opacity: backgroundOpacity,
               filter: `blur(${typeof backgroundBlur === "number" ? `${backgroundBlur}px` : backgroundBlur}) contrast(1.18) brightness(0.68) saturate(1.25)`,
             }}

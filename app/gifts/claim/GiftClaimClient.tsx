@@ -68,7 +68,7 @@ export default function GiftClaimClient({ token, contextId, gift, alreadyClaimed
     });
   }, [claim, gift]);
 
-  const art = gift?.coverUrl ? <Image src={gift.coverUrl} alt="Portada del beat" width={160} height={160} unoptimized className="h-40 w-40 rounded-xl border border-white/10 object-cover" />
+  const art = gift?.coverUrl ? <Image src={gift.coverUrl} alt="Portada del beat" width={160} height={160} loading="lazy" className="h-40 w-40 rounded-xl border border-white/10 object-cover" />
     : <div className="flex h-40 w-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-4xl">♫</div>;
   return <main className="min-h-[100dvh] bg-[#08080a] px-4 py-10 text-white" style={{ paddingTop: "max(40px, env(safe-area-inset-top))" }}>
     <section className="mx-auto w-full max-w-md space-y-6 rounded-2xl border border-white/10 bg-[#101014] p-5 shadow-2xl sm:p-7">

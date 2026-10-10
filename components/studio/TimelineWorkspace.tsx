@@ -1,3 +1,4 @@
+import Image from "next/image";
 import React, { useRef, useState, useEffect } from 'react';
 import {
   Sliders,
@@ -420,9 +421,14 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       {/* Workspace Header & Action Bar - Anchored at the top */}
       <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 p-2.5 sm:p-3 bg-zinc-900/95 rounded-2xl border border-zinc-800 shadow-xl mb-2 backdrop-blur-md sm:sticky sm:top-0 z-50">
         <div className="flex items-center gap-2">
-          <img
+          <Image
+            width={979}
+            height={345}
+            sizes="(min-width: 640px) 80px, 68px"
+            loading="lazy"
             src="/images/rgodbeat-logo.png"
             alt="RGodbeat"
+            style={{ aspectRatio: "979 / 345" }}
             className="h-6 sm:h-7 w-auto object-contain filter brightness-125 drop-shadow-[0_0_8px_rgba(251,191,36,0.35)] shrink-0"
           />
           <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />

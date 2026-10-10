@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import React, { useRef } from 'react';
 import { Play, Sparkles, Music, Mic, Clock, ShieldCheck, X, FolderOpen, Smartphone } from 'lucide-react';
 
@@ -81,7 +83,11 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <img
+                <Image
+                  width={44}
+                  height={44}
+                  sizes="44px"
+                  loading="lazy"
                   src="/images/rg-project-vinyl.jpg"
                   alt="RG Project Vinyl"
                   className="w-11 h-11 rounded-xl object-cover border border-amber-500/50 shadow-md group-hover:scale-105 transition-transform shrink-0"
@@ -122,7 +128,11 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="relative shrink-0">
-                    <img
+                    <Image
+                      width={44}
+                      height={44}
+                      sizes="44px"
+                      loading="lazy"
                       src="/images/rg-project-vinyl.jpg"
                       alt="RG Vinyl"
                       className="w-11 h-11 rounded-xl object-cover border border-purple-500/40 shadow-md group-hover:scale-105 transition-transform"

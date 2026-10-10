@@ -40,7 +40,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // Initialize persistent HTML5 Audio element once on mount
   useEffect(() => {
     const audio = new Audio();
-    audio.preload = "auto";
+    audio.preload = "none";
     audio.volume = volume;
     audioRef.current = audio;
 

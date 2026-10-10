@@ -29,7 +29,7 @@ export function ArtistRewards({ rewards, tail }: { rewards: ChartData['rewards']
 export function Sponsors({ sponsors }: { sponsors: ChartData['sponsors'] }) {
   if (!sponsors.length) return null;
   return <section className={styles.section}><p className={styles.eyebrow}>PRESENTADO POR</p><div className={styles.sponsors}>{sponsors.map((sponsor, index) => {
-    const content = <>{sponsor.logoUrl && <Image src={sponsor.logoUrl} alt="" width={56} height={40} unoptimized />}<div><strong>{sponsor.name}</strong><small>{sponsor.tier.replaceAll('_', ' ')}</small></div></>;
+    const content = <>{sponsor.logoUrl && <Image src={sponsor.logoUrl} alt="" width={56} height={40} sizes="56px" loading="lazy" />}<div><strong>{sponsor.name}</strong><small>{sponsor.tier.replaceAll('_', ' ')}</small></div></>;
     return sponsor.websiteUrl ? <a className={styles.sponsor} key={`${sponsor.name}-${index}`} href={sponsor.websiteUrl} target="_blank" rel="noopener noreferrer">{content}</a> : <div className={styles.sponsor} key={`${sponsor.name}-${index}`}>{content}</div>;
   })}</div></section>;
 }

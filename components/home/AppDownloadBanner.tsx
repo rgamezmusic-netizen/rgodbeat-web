@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Download, Smartphone, Zap, Music2, ShieldCheck, ArrowRight } from "lucide-react";
 
 export function AppDownloadBanner() {
@@ -68,9 +69,13 @@ export function AppDownloadBanner() {
             <div className="relative group">
               <div className="absolute -inset-2 bg-gradient-to-r from-amber-500/30 to-purple-600/30 rounded-3xl blur-xl group-hover:blur-2xl transition-all" />
               <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-3xl bg-[#09090d] border-2 border-amber-400/70 p-4 shadow-2xl flex flex-col items-center justify-center text-center">
-                <img
+                <Image
                   src="/icons/icon-512.png"
                   alt="RGodbeat Studio"
+                  width={512}
+                  height={512}
+                  sizes="(min-width: 640px) 96px, 80px"
+                  loading="lazy"
                   className="w-20 h-20 sm:w-24 sm:h-24 object-contain filter drop-shadow-[0_0_12px_rgba(245,158,11,0.5)] mb-2 group-hover:scale-105 transition-transform"
                 />
                 <span className="text-xs font-bold font-mono text-amber-300 tracking-tight">

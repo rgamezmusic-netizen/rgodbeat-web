@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -562,7 +564,11 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
 
               {beat.cover_url && (
                 <div className="flex items-center gap-3">
-                  <img
+                  <Image
+                    width={48}
+                    height={48}
+                    sizes="48px"
+                    loading="lazy"
                     src={beat.cover_url}
                     alt={beat.title}
                     className="w-12 h-12 rounded-lg object-cover border border-white/[0.08]"
@@ -614,7 +620,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
                   <span className="text-[11px] font-mono text-zinc-400 block truncate">
                     {beat.preview_path}
                   </span>
-                  <audio controls src={beat.preview_url} className="h-8 w-full max-w-md" />
+                  <audio controls preload="none" src={beat.preview_url} className="h-8 w-full max-w-md" />
                 </div>
               )}
 

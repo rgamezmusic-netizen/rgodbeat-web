@@ -1,0 +1,114 @@
+[
+  {
+    "page": "home",
+    "width": 390,
+    "sameText": true,
+    "elementCountBefore": 73,
+    "elementCountAfter": 73,
+    "diffs": [],
+    "logoBefore": {
+      "x": 16,
+      "y": 27,
+      "width": 79.453125,
+      "height": 28,
+      "top": 27,
+      "right": 95.453125,
+      "bottom": 55,
+      "left": 16
+    },
+    "logoAfter": {
+      "x": 16,
+      "y": 27,
+      "width": 79.453125,
+      "height": 28,
+      "top": 27,
+      "right": 95.453125,
+      "bottom": 55,
+      "left": 16
+    }
+  },
+  {
+    "page": "home",
+    "width": 1440,
+    "sameText": true,
+    "elementCountBefore": 73,
+    "elementCountAfter": 73,
+    "diffs": [],
+    "logoBefore": {
+      "x": 112,
+      "y": 20,
+      "width": 90.796875,
+      "height": 32,
+      "top": 20,
+      "right": 202.796875,
+      "bottom": 52,
+      "left": 112
+    },
+    "logoAfter": {
+      "x": 112,
+      "y": 20,
+      "width": 90.796875,
+      "height": 32,
+      "top": 20,
+      "right": 202.796875,
+      "bottom": 52,
+      "left": 112
+    }
+  },
+  {
+    "page": "beats",
+    "width": 390,
+    "sameText": true,
+    "elementCountBefore": 22,
+    "elementCountAfter": 22,
+    "diffs": [],
+    "logoBefore": {
+      "x": 16,
+      "y": 27,
+      "width": 79.453125,
+      "height": 28,
+      "top": 27,
+      "right": 95.453125,
+      "bottom": 55,
+      "left": 16
+    },
+    "logoAfter": {
+      "x": 16,
+      "y": 27,
+      "width": 79.453125,
+      "height": 28,
+      "top": 27,
+      "right": 95.453125,
+      "bottom": 55,
+      "left": 16
+    }
+  },
+  {
+    "page": "beats",
+    "width": 1440,
+    "sameText": true,
+    "elementCountBefore": 22,
+    "elementCountAfter": 22,
+    "diffs": [],
+    "logoBefore": {
+      "x": 112,
+      "y": 20,
+      "width": 90.796875,
+      "height": 32,
+      "top": 20,
+      "right": 202.796875,
+      "bottom": 52,
+      "left": 112
+    },
+    "logoAfter": {
+      "x": 112,
+      "y": 20,
+      "width": 90.796875,
+      "height": 32,
+      "top": 20,
+      "right": 202.796875,
+      "bottom": 52,
+      "left": 112
+    }
+  }
+]

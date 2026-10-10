@@ -1,3 +1,4 @@
+import Image from "next/image";
 import React, { useState, useEffect, useCallback } from 'react';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import {
@@ -198,7 +199,11 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
         <div className="flex flex-col items-center text-center">
           {/* Small RGODBEAT Icon */}
           <div className="w-10 h-10 rounded-xl bg-black border border-white/[0.08] shadow-inner p-1.5 flex items-center justify-center mb-3">
-            <img
+            <Image
+              width={1000}
+              height={467}
+              sizes="44px"
+              loading="lazy"
               src="/images/rgodbeat-studio-logo.png"
               alt="RGODBEAT"
               className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(245,158,11,0.4)]"
@@ -333,7 +338,11 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
                     <div className="flex flex-col items-center gap-1 relative scale-105">
                       <div className="absolute -inset-1.5 bg-amber-500/30 rounded-2xl blur-md animate-pulse" />
                       <div className="relative w-11 h-11 rounded-xl bg-black border-2 border-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center justify-center overflow-hidden p-1.5">
-                        <img
+                        <Image
+                          width={1000}
+                          height={467}
+                          sizes="44px"
+                          loading="lazy"
                           src="/images/rgodbeat-studio-logo.png"
                           alt="RGODBEAT"
                           className="w-full h-full object-contain filter drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]"
@@ -416,7 +425,11 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
                     <div className="flex flex-col items-center gap-1 relative scale-105">
                       <div className="absolute -inset-1.5 bg-amber-500/30 rounded-2xl blur-md animate-pulse" />
                       <div className="relative w-11 h-11 rounded-xl bg-black border-2 border-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center justify-center overflow-hidden p-1.5">
-                        <img
+                        <Image
+                          width={1000}
+                          height={467}
+                          sizes="44px"
+                          loading="lazy"
                           src="/images/rgodbeat-studio-logo.png"
                           alt="RGODBEAT"
                           className="w-full h-full object-contain filter drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]"
@@ -466,7 +479,11 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
                 <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-3 flex flex-col justify-center items-center relative overflow-hidden">
                   <div className="w-full max-w-[270px] p-2.5 rounded-xl bg-zinc-900 border border-white/[0.08] space-y-2 shadow-lg">
                     <div className="flex items-center gap-2">
-                      <img
+                      <Image
+                        width={1000}
+                        height={467}
+                        sizes="44px"
+                        loading="lazy"
                         src="/images/rgodbeat-studio-logo.png"
                         alt="Logo"
                         className="w-5 h-5 rounded-md object-contain bg-black p-0.5"
@@ -491,7 +508,11 @@ export const InstallAppModal: React.FC<InstallAppModalProps> = ({
                   <div className="flex flex-col items-center gap-1 relative scale-105">
                     <div className="absolute -inset-1.5 bg-amber-500/30 rounded-2xl blur-md animate-pulse" />
                     <div className="relative w-11 h-11 rounded-xl bg-black border-2 border-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center justify-center overflow-hidden p-1.5">
-                      <img
+                      <Image
+                        width={1000}
+                        height={467}
+                        sizes="44px"
+                        loading="lazy"
                         src="/images/rgodbeat-studio-logo.png"
                         alt="RGODBEAT"
                         className="w-full h-full object-contain filter drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]"

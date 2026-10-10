@@ -1,3 +1,4 @@
+import Image from "next/image";
 import React, { useRef, useState, useEffect } from 'react';
 import {
   X,
@@ -538,7 +539,11 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
 
                           {/* Cover artwork */}
                           {beat.coverUrl ? (
-                            <img
+                            <Image
+                              width={40}
+                              height={40}
+                              sizes="40px"
+                              loading="lazy"
                               src={beat.coverUrl}
                               alt={beat.title}
                               className="w-10 h-10 rounded-lg object-cover border border-zinc-700/60 shrink-0"
