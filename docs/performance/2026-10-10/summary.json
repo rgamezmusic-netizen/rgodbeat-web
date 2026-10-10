@@ -1,0 +1,66 @@
+{
+  "/": {
+    "fcp": {
+      "before": 1108,
+      "after": 1016,
+      "reductionPercent": 8.303249097472925
+    },
+    "lcp": {
+      "before": 1108,
+      "after": 1016,
+      "reductionPercent": 8.303249097472925
+    },
+    "load": {
+      "before": 3301.7000000011176,
+      "after": 2159.9000000003725,
+      "reductionPercent": 34.58218493504433
+    },
+    "transferBytes": {
+      "before": 632131,
+      "after": 415773,
+      "reductionPercent": 34.22676628736765
+    },
+    "imageBytes": {
+      "before": 270813,
+      "after": 64616,
+      "reductionPercent": 76.13999327949544
+    },
+    "jsBytes": {
+      "before": 260448,
+      "after": 249387,
+      "reductionPercent": 4.246913011426465
+    }
+  },
+  "/beats": {
+    "fcp": {
+      "before": 1064,
+      "after": 1064,
+      "reductionPercent": 0.0
+    },
+    "lcp": {
+      "before": 1064,
+      "after": 1064,
+      "reductionPercent": 0.0
+    },
+    "load": {
+      "before": 0,
+      "after": 3656.0999999996275,
+      "reductionPercent": null
+    },
+    "transferBytes": {
+      "before": 1733839,
+      "after": 691040,
+      "reductionPercent": 60.143934932828245
+    },
+    "imageBytes": {
+      "before": 1423720,
+      "after": 363561,
+      "reductionPercent": 74.46400977720339
+    },
+    "jsBytes": {
+      "before": 260206,
+      "after": 249725,
+      "reductionPercent": 4.027962460512056
+    }
+  }
+}
