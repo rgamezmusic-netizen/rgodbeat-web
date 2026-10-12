@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
+import { ClipWaveform } from './ClipWaveform';
+import { resampleWaveformPeaks } from '@/lib/studio/audio/waveform';
 
 const BASE_TRACK_HEADER_WIDTH = 120; // px (clean compact default with ample breathing room)
 const EXPANDED_TRACK_HEADER_WIDTH = 192; // px (full mixer with faders and pan)
@@ -32,25 +34,8 @@ const TIMELINE_GUTTER = 20; // px (lead-in margin so Bar 1 & waveforms never tou
 export { getTrackClips } from '@/lib/studio/audio/clipEditing';
 import { getProjectDuration, getTrackClips } from '@/lib/studio/audio/clipEditing';
 
-/**
- * Resamples waveform peak data across the exact width of a clip
- * so the waveform spans 100% of the recorded take from start to finish.
- */
-export const getInterpolatedWaveform = (peaks: number[] | undefined, targetBars: number): number[] => {
-  const source = peaks && peaks.length > 0 ? peaks : Array(36).fill(0);
-  const count = Math.max(16, targetBars);
-  const result: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const progress = i / (count - 1 || 1);
-    const sourceIdx = progress * (source.length - 1);
-    const i0 = Math.floor(sourceIdx);
-    const i1 = Math.min(source.length - 1, Math.ceil(sourceIdx));
-    const frac = sourceIdx - i0;
-    const v = (source[i0] ?? 0) * (1 - frac) + (source[i1] ?? 0) * frac;
-    result.push(Number(v.toFixed(3)));
-  }
-  return result;
-};
+// Retain the public helper for existing consumers; use PCM for timeline takes.
+export const getInterpolatedWaveform = resampleWaveformPeaks;
 
 interface TimelineWorkspaceProps {
   beat: BeatData | null;
@@ -981,20 +966,12 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
               {beat && (
                 <div
-                  className={`absolute top-2 bottom-2 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/10 border border-amber-500/40 flex items-center px-2 overflow-hidden pointer-events-none z-10 transition-opacity ${
+                  className={`absolute top-2 bottom-2 rounded-lg bg-gradient-to-r from-amber-500/20 to-amber-600/10 outline outline-1 -outline-offset-1 outline-amber-500/40 overflow-hidden pointer-events-none z-10 transition-opacity ${
                     isBeatMuted ? 'opacity-30 grayscale' : ''
                   }`}
                   style={{ left: `${TIMELINE_GUTTER}px`, width: `${beat.duration * basePixelsPerSec}px` }}
                 >
-                  <div className="w-full h-8 flex items-center gap-0.5 opacity-75">
-                    {(beat.waveformSample || []).map((val, idx) => (
-                      <div
-                        key={idx}
-                        className="flex-1 bg-amber-400 rounded-full"
-                        style={{ height: `${Math.max(2, val * 32)}px` }}
-                      />
-                    ))}
-                  </div>
+                  <ClipWaveform buffer={beat.buffer} width={beat.buffer.duration * basePixelsPerSec} locked />
                   <span className="absolute left-2.5 bottom-1 text-[9px] font-mono text-amber-300 font-semibold drop-shadow">
                     BEAT · {Math.round(beat.duration)}s {isBeatMuted && '(SILENCIADO)'}
                   </span>
@@ -1243,12 +1220,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       activeSelectedClip?.id === clip.id;
                     const isTargetOfDrag = isDraggingClip && dragClipId === clip.id;
                     const clipStartPx = clip.startBeatOffset * basePixelsPerSec;
-                    const clipWidthPx = Math.max(30, (clip.duration || 1) * basePixelsPerSec);
-                    const waveformBarCount = Math.max(16, Math.min(300, Math.floor(clipWidthPx / 4)));
-                    const interpolatedPeaks = getInterpolatedWaveform(
-                      clip.waveformSample || track.waveformSample,
-                      waveformBarCount
-                    );
+                    const clipWidthPx = clip.buffer.duration * basePixelsPerSec;
 
                     return (
                       <div
@@ -1262,15 +1234,15 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           if (isScrubbingPlayhead) return;
                           handleClipMouseDown(e, track, clip);
                         }}
-                        className={`absolute top-2 bottom-2 rounded-xl border flex items-center px-2 transition-shadow select-none shadow-lg z-10 ${
+                        className={`absolute top-2 bottom-2 rounded-sm outline outline-1 -outline-offset-1 flex items-center transition-shadow select-none shadow-lg z-10 ${
                           clip.isLocked
                             ? 'cursor-pointer'
                             : 'cursor-grab active:cursor-grabbing'
                         } ${
                           isClipSelected
-                            ? 'bg-gradient-to-r from-emerald-600/50 to-teal-500/40 border-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
-                            : 'bg-gradient-to-r from-emerald-700/25 to-teal-800/20 border-emerald-500/50 hover:border-emerald-400'
-                        } ${isTargetOfDrag ? 'shadow-[0_0_20px_rgba(16,185,129,0.6)] scale-[1.01]' : ''}`}
+                            ? 'bg-gradient-to-r from-emerald-600/50 to-teal-500/40 outline-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
+                            : 'bg-gradient-to-r from-emerald-700/25 to-teal-800/20 outline-emerald-500/50 hover:outline-emerald-400'
+                        } ${isTargetOfDrag ? 'shadow-[0_0_20px_rgba(16,185,129,0.6)]' : ''}`}
                         style={{
                           left: `${TIMELINE_GUTTER + clipStartPx}px`,
                           width: `${clipWidthPx}px`,
@@ -1278,7 +1250,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       >
                         {/* Left Drag or Lock Indicator */}
                         <div
-                          className="mr-1.5 flex flex-col gap-0.5 shrink-0"
+                          className="ml-2 mr-1.5 flex flex-col gap-0.5 shrink-0"
                           title={clip.isLocked ? 'Toma con Seguro (Hold) activado' : 'Arrastrar para desplazar en el tiempo'}
                         >
                           {clip.isLocked ? (
@@ -1288,27 +1260,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           )}
                         </div>
 
-                        {/* Continuous Waveform: Clean 2px flatline during silence, dynamic peaks when singing */}
-                        <div className="flex-1 h-8 flex items-center gap-[2px] overflow-hidden w-full px-1">
-                          {interpolatedPeaks.map((val, idx) => {
-                            const isSilent = val <= 0.005;
-                            return (
-                              <div
-                                key={idx}
-                                className={`flex-1 min-w-[2px] max-w-[4px] rounded-full shrink-0 transition-all ${
-                                  isSilent
-                                    ? 'bg-zinc-700/50'
-                                    : clip.isLocked
-                                    ? 'bg-amber-400'
-                                    : 'bg-emerald-400'
-                                }`}
-                                style={{
-                                  height: isSilent ? '2px' : `${Math.max(4, Math.min(100, val * 100))}%`,
-                                }}
-                              />
-                            );
-                          })}
-                        </div>
+                        <ClipWaveform buffer={clip.buffer} width={clipWidthPx} locked={clip.isLocked} />
+                        <div className="flex-1 min-w-0" />
 
                         {/* Clip Meta Tag: Truncated to avoid overlapping action buttons */}
                         <div className="absolute left-2.5 bottom-1 max-w-[calc(100%-64px)] overflow-hidden pointer-events-none drop-shadow flex items-center gap-1.5">

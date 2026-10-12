@@ -80,6 +80,7 @@ export class AudioEngine {
   private currentPlaybackPosition = 0; // seconds into the beat
   private playbackStartCtxTime = 0;
   private playbackScheduledCtxTime = 0;
+  private playbackDisplayOrigin = 0;
   private animationFrameId: number | null = null;
   private playbackRequestId = 0;
   private playbackLoop: { start: number; end: number; nextStart: number } | null = null;
@@ -104,8 +105,11 @@ export class AudioEngine {
   private recorderSilentGain: GainNode | null = null;
   private captureStartFrame = Infinity;
   private capturedFirstFrame: number | null = null;
+  private captureNextFrame: number | null = null;
+  private captureEndFrame = Infinity;
   private recorderCommandId = 0;
   private recorderAcks = new Map<number, (frame: number) => void>();
+  private compatibilityStopAck: (() => void) | null = null;
   private recordingRequestId = 0;
   private startingRecording = false;
   private switchingRecording = false;
@@ -165,7 +169,7 @@ export class AudioEngine {
       // Listen for mobile OS hardware interruptions (incoming phone calls, Siri, alarms)
       this.ctx.onstatechange = () => {
         if (!this.ctx) return;
-        if (this.ctx.state === 'interrupted') {
+        if ((this.ctx.state as string) === 'interrupted' || this.ctx.state === 'suspended') {
           if (this.isRecording) {
             this.stopRecording();
           } else if (this.isPlaying) {
@@ -671,6 +675,7 @@ export class AudioEngine {
     const startTime = this.ctx.currentTime + scheduleLeadTime;
     this.playbackScheduledCtxTime = startTime;
     this.playbackStartCtxTime = startTime - startPos;
+    this.playbackDisplayOrigin = this.playbackStartCtxTime;
     const loopEnd = Math.min(this.loopSettings.endSec, this.beatData.buffer.duration);
     const looping = this.loopSettings.enabled && loopEnd > this.loopSettings.startSec;
     if (looping && !this.isRecording) {
@@ -790,6 +795,25 @@ export class AudioEngine {
       ? this.currentPlaybackPosition : Math.max(0, position);
   }
 
+  /** UI follows samples reaching the output device, rather than the render-ahead clock. */
+  private readAudiblePlaybackPosition(): number {
+    if (!this.ctx || !this.isPlaying) return this.currentPlaybackPosition;
+    let now = this.ctx.currentTime;
+    if (this.ctx.state === 'running') {
+      const stamp = this.ctx.getOutputTimestamp?.();
+      if (stamp && typeof stamp.contextTime === 'number' && Number.isFinite(stamp.contextTime) && stamp.contextTime > 0
+        && typeof stamp.performanceTime === 'number' && Number.isFinite(stamp.performanceTime) && stamp.performanceTime > 0) {
+        now = Math.min(now, stamp.contextTime + Math.max(0, performance.now() - stamp.performanceTime) / 1000);
+      }
+    }
+    let position = Math.max(this.playbackScheduledCtxTime, now) - this.playbackDisplayOrigin;
+    if (this.playbackLoop && position >= this.playbackLoop.end) {
+      const { start, end } = this.playbackLoop;
+      position = start + (position - start) % (end - start);
+    }
+    return Math.max(0, position);
+  }
+
   private isFinalizingRecording = false;
 
   public pause() {
@@ -894,7 +918,7 @@ export class AudioEngine {
       this.currentPlaybackPosition = elapsed;
       if (timestamp - lastUpdate >= 1000 / 30) {
         lastUpdate = timestamp;
-        this.callbacks.onTimeUpdate(elapsed);
+        this.callbacks.onTimeUpdate(this.readAudiblePlaybackPosition());
       }
 
       if (this.loopSettings.enabled && !this.playbackLoop && elapsed >= this.loopSettings.endSec) {
@@ -1020,6 +1044,13 @@ export class AudioEngine {
       throw new DOMException('Grabación cancelada.', 'AbortError');
     }
     this.micStream = stream;
+    for (const track of stream.getAudioTracks()) {
+      track.onended = () => {
+        if (this.micStream !== stream || !this.isRecording) return;
+        this.callbacks.onError('El micrófono se desconectó. Se conservará la voz recibida.');
+        void this.stopRecording();
+      };
+    }
     return stream;
   }
 
@@ -1079,6 +1110,7 @@ export class AudioEngine {
     if (this.micStream) {
       try {
         this.micStream.getTracks().forEach((track) => {
+          track.onended = null;
           track.stop();
         });
       } catch (err) {
@@ -1100,16 +1132,28 @@ export class AudioEngine {
   }
 
   private collectPCM(samples: Float32Array, frame: number) {
-    if (!this.ctx) return;
+    if (!this.ctx || !Number.isFinite(this.captureStartFrame) || !Number.isFinite(frame)) return;
+    const earliest = Math.max(this.captureStartFrame,
+      Math.ceil((this.recordingTimelineOrigin - this.takeLatencyCompensation) * this.ctx.sampleRate));
+    const from = Math.max(frame, earliest, this.captureNextFrame ?? earliest);
+    const to = Math.min(frame + samples.length, this.captureEndFrame);
+    if (to <= from) return;
+    samples = samples.slice(from - frame, to - frame);
     // Keep the capture clock fixed for the whole recording, including late worklet messages.
-    const start = frame / this.ctx.sampleRate - this.recordingTimelineOrigin + this.takeLatencyCompensation;
-    const skip = Math.min(samples.length, Math.max(0, Math.round(-start * this.ctx.sampleRate)));
-    if (skip === samples.length) return;
-    if (skip) samples = samples.slice(skip);
     if (this.capturedFirstFrame === null) {
-      this.capturedFirstFrame = frame + skip;
-      this.recordingStartBeatTime = Math.max(0, start + skip / this.ctx.sampleRate);
+      this.capturedFirstFrame = from;
+      this.recordingStartBeatTime = Math.max(0, from / this.ctx.sampleRate - this.recordingTimelineOrigin + this.takeLatencyCompensation);
+    } else if (this.captureNextFrame !== null && from > this.captureNextFrame) {
+      // A missing compatibility-capture block must not pull every later phrase
+      // earlier on the timeline. Keep its duration as silence, including recovery.
+      let remaining = from - this.captureNextFrame;
+      while (remaining > 0) {
+        const length = Math.min(4096, remaining);
+        this.appendPCMChunk(new Float32Array(length));
+        remaining -= length;
+      }
     }
+    this.captureNextFrame = to;
     let peak = 0;
     for (const value of samples) peak = Math.max(peak, Math.abs(value));
     if (peak >= 0.88) {
@@ -1122,6 +1166,11 @@ export class AudioEngine {
       this.micIsClipping = false;
     }
     // Store the captured PCM unchanged; hardware clipping cannot be repaired by a soft clipper.
+    this.appendPCMChunk(samples);
+  }
+
+  private appendPCMChunk(samples: Float32Array) {
+    if (!this.ctx) return;
     this.recordedPCMChunks.push(samples);
     if (this.recordingTrackId) this.callbacks.onRecordingCheckpoint?.({
       takeId: this.recordingTakeId, trackId: this.recordingTrackId,
@@ -1165,11 +1214,12 @@ export class AudioEngine {
     }
     this.scriptProcessor = ctx.createScriptProcessor(4096, 1, 1);
     this.scriptProcessor.onaudioprocess = (event) => {
-      if (!this.isRecording) return;
+      if (!this.isRecording && !this.isFinalizingRecording) return;
       const input = event.inputBuffer.getChannelData(0);
       const frame = Math.round((event.playbackTime - input.length / ctx.sampleRate) * ctx.sampleRate);
       const skip = Math.max(0, this.captureStartFrame - frame);
       if (skip < input.length) this.collectPCM(input.slice(skip), frame + skip);
+      if (frame + input.length >= this.captureEndFrame) this.compatibilityStopAck?.();
     };
     this.micInputGain.connect(this.scriptProcessor);
     this.scriptProcessor.connect(this.recorderSilentGain);
@@ -1178,7 +1228,17 @@ export class AudioEngine {
   private async flushRecorder(type: 'boundary' | 'stop'): Promise<number> {
     if (!this.ctx) return 0;
     const frame = Math.round(this.ctx.currentTime * this.ctx.sampleRate);
-    if (!this.pcmRecorder) return frame;
+    if (!this.pcmRecorder) {
+      if (type === 'stop' && this.scriptProcessor && this.ctx.state === 'running') {
+        // Preserve the final input block, cropped at the STOP gesture.
+        await new Promise<void>((resolve) => {
+          const done = () => { clearTimeout(timer); this.compatibilityStopAck = null; resolve(); };
+          const timer = setTimeout(done, 250);
+          this.compatibilityStopAck = done;
+        });
+      }
+      return frame;
+    }
     const node = this.pcmRecorder;
     const id = ++this.recorderCommandId;
     return new Promise<number>((resolve) => {
@@ -1192,14 +1252,19 @@ export class AudioEngine {
     });
   }
 
-  private commitRecordedPCM(trackId: VocalTrackId, start: number, chunks: Float32Array[], takeId = this.recordingTakeId) {
+  private commitRecordedPCM(trackId: VocalTrackId, start: number, chunks: Float32Array[], takeId = this.recordingTakeId, maximumLength = Infinity) {
     if (!this.ctx) return;
-    const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const length = Math.min(maximumLength, chunks.reduce((sum, chunk) => sum + chunk.length, 0));
     if (!length) return;
     const buffer = this.ctx.createBuffer(1, length, this.ctx.sampleRate);
     const output = buffer.getChannelData(0);
     let offset = 0;
-    for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.length; }
+    for (const chunk of chunks) {
+      const retained = chunk.subarray(0, Math.max(0, length - offset));
+      output.set(retained, offset);
+      offset += retained.length;
+      if (offset === length) break;
+    }
     this.callbacks.onRecordingFinished(trackId, buffer, extractWaveformPeaks(buffer, WAVEFORM_SAMPLE_COUNT), start, takeId);
   }
 
@@ -1239,6 +1304,7 @@ export class AudioEngine {
         if (this.loopScheduler !== null) clearTimeout(this.loopScheduler);
         this.loopScheduler = null;
         this.playbackLoop = null;
+        this.playbackDisplayOrigin = this.playbackStartCtxTime;
         if (this.beatSource) {
           this.beatSource.loop = false;
         }
@@ -1249,6 +1315,8 @@ export class AudioEngine {
       this.isRecording = true;
       this.recordedPCMChunks = [];
       this.capturedFirstFrame = null;
+      this.captureNextFrame = null;
+      this.captureEndFrame = Infinity;
       this.captureStartFrame = Infinity;
       this.micInputGainValue = 1;
       this.micIsClipping = false;
@@ -1324,6 +1392,7 @@ export class AudioEngine {
       const takeId = this.recordingTakeId;
       this.recordedPCMChunks = [];
       this.capturedFirstFrame = null;
+      this.captureNextFrame = null;
       this.recordingTrackId = newTrackId;
       this.recordingTakeId = `take-${crypto.randomUUID()}`;
       this.recordingStartBeatTime = Math.max(0, boundary / this.ctx.sampleRate - this.recordingTimelineOrigin + this.takeLatencyCompensation);
@@ -1347,6 +1416,13 @@ export class AudioEngine {
   public stopRecording(): Promise<void> {
     ++this.recordingRequestId;
     if (this.finalizingRecording) return this.finalizingRecording;
+    // Freeze the stop at the gesture/interruption, not the later worklet ACK.
+    if (this.ctx) {
+      const end = this.loopSettings.enabled ? this.loopSettings.endSec
+        : getProjectDuration(this.beatData?.duration ?? 0, this.latestVocalTracks);
+      this.captureEndFrame = Math.round(Math.min(this.ctx.currentTime,
+        this.recordingTimelineOrigin + end - this.takeLatencyCompensation) * this.ctx.sampleRate);
+    }
     this.isFinalizingRecording = true;
     this.finalizingRecording = this.finishRecording().finally(() => {
       this.finalizingRecording = null;
@@ -1365,7 +1441,8 @@ export class AudioEngine {
       const chunks = this.recordedPCMChunks;
       this.recordedPCMChunks = [];
       if (trackId && chunks.some(chunk => chunk.length > 0)) {
-        this.commitRecordedPCM(trackId, this.recordingStartBeatTime, chunks);
+        this.commitRecordedPCM(trackId, this.recordingStartBeatTime, chunks, this.recordingTakeId,
+          this.capturedFirstFrame === null ? 0 : Math.max(0, this.captureEndFrame - this.capturedFirstFrame));
       } else {
         this.callbacks.onRecordingAborted();
       }

@@ -18,10 +18,14 @@ const bundle = await build({
       const [time, setTime] = useState(0);
       const [playing, setPlaying] = useState(false);
       const [recording, setRecording] = useState(false);
-      const [clips, setClips] = useState([{id:'long', name:'Long take', buffer:new AudioBuffer({length:960000, sampleRate:8000}), duration:120, startBeatOffset:0, isLocked:true, waveformSample:[.1,.8,.2,.7]}]);
+      const [clips, setClips] = useState(() => {
+        const buffer = new AudioBuffer({length:960000, sampleRate:8000});
+        buffer.getChannelData(0)[240000] = 1; buffer.getChannelData(0)[720000] = .5;
+        return [{id:'long', name:'Long take', buffer, duration:120, startBeatOffset:0, isLocked:true, waveformSample:[.1,.8,.2,.7]}];
+      });
       const record = (action, id) => window.actions.push({action, id});
       window.actions ??= [];
-      window.timelineTest = {setTime, setPlaying, setRecording, clips, shortTake: () => setClips([{id:'short', name:'Short take', startBeatOffset:0, isLocked:true, waveformSample:[.1,.8], duration:1, buffer:new AudioBuffer({length:8000, sampleRate:8000})}])};
+      window.timelineTest = {setTime, setPlaying, setRecording, clips, tinyTake: () => setClips([{id:'tiny', startBeatOffset:5, isLocked:true, duration:.1, buffer:new AudioBuffer({length:800, sampleRate:8000})}]), shortTake: () => setClips([{id:'short', name:'Short take', startBeatOffset:0, isLocked:true, waveformSample:[.1,.8], duration:1, buffer:new AudioBuffer({length:8000, sampleRate:8000})}])};
       return <TimelineWorkspace beat={null} tracks={[{id:'lead1', name:'Lead 1', clips, buffer:null, duration:120, startBeatOffset:0, volume:1, pan:0, isMuted:false, isSolo:false, fx:{}}]}
         currentTime={time} isPlaying={playing} isRecording={recording} selectedTrackId='lead1'
         onPlayPause={() => setPlaying(v => !v)} onSeek={t => {record('seek',t); setTime(t)}}
@@ -71,7 +75,26 @@ try {
             await button.click({ trial: true });
           }
         };
+        const verifyWaveform = async () => {
+          const result = await clip.evaluate(el => {
+            const svg = el.querySelector('[data-audio-waveform]');
+            const c = el.getBoundingClientRect(), w = svg.getBoundingClientRect();
+            const path = svg.querySelectorAll('path')[1].getAttribute('d');
+            const peaks = [...path.matchAll(/M([\d.]+),([\d.]+)V([\d.]+)/g)]
+              .filter(match => Number(match[2]) < 15).map(match => Number(match[1]));
+            return {left:c.left, width:c.width, waveLeft:w.left, waveWidth:w.width, peaks};
+          });
+          assert.ok(Math.abs(result.left - result.waveLeft) < .1, 'waveform starts at the actual audio boundary');
+          assert.ok(Math.abs(result.width - result.waveWidth) < .1, 'controls cannot compress waveform time');
+          assert.equal(result.peaks.length, 2, 'PCM transients replace stale stored peak data');
+          assert.ok(Math.abs(result.peaks[0] - result.width * .25) <= 2, 'phrase at 30s appears at 30s');
+          assert.ok(Math.abs(result.peaks[1] - result.width * .75) <= 2, 'phrase at 90s appears at 90s');
+        };
         await visibleActions();
+        await verifyWaveform();
+        await page.getByTitle('Aumentar zoom', {exact:true}).click();
+        await verifyWaveform();
+        await page.getByTitle('Reducir zoom', {exact:true}).click();
         for (const scroll of [900, 2100, 0]) {
           await viewport.evaluate((el, x) => { el.scrollLeft = x; }, scroll);
           await visibleActions();
@@ -134,10 +157,15 @@ try {
         await visibleActions();
         await press(clip.getByTitle(/Seguro ACTIVADO/));
         assert.deepEqual(await page.evaluate(() => window.actions.at(-1)), {action:'lock',id:'short'});
+        const oneSecondWidth = await clip.evaluate(el => el.getBoundingClientRect().width);
         await press(remove);
         assert.equal(await page.locator('[data-clip-item]').count(), 0);
+        await page.evaluate(() => window.timelineTest.tinyTake());
+        await clip.waitFor();
+        const tinyWidth = await clip.evaluate(el => el.getBoundingClientRect().width);
+        assert.ok(Math.abs(tinyWidth - oneSecondWidth / 10) < .1, `100ms clip keeps its exact duration, without a visual minimum width: ${tinyWidth}`);
         assert.deepEqual(errors, []);
-        console.log(`PASS ${name} ${width}: visible clip actions, playback/recording follow, loop return, paused scrolling, exact delete`);
+        console.log(`PASS ${name} ${width}: PCM waveform timing across zoom, exact short-clip width, visible actions, playback/recording follow, loop return, paused scrolling, exact delete`);
         await page.close();
       }
     } finally { await browser.close(); }
