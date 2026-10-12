@@ -1,6 +1,6 @@
 # RGodbeat Studio - Guía de uso
 
-Edición 02 - 10 octubre 2026.
+Edición 03 - 11 octubre 2026.
 
 GUÍA DE USO
 
@@ -56,7 +56,7 @@ El modo demo permite grabar en Lead 1. Grabar en otros canales y exportar audio 
 
 Abrirla como app
 
-**iPhone:** en Safari, Compartir > Agregar a Inicio. **Android:** en Chrome, menú > Instalar aplicación o Agregar a inicio, si aparece. RGodbeat Studio se usa desde la web; no hay instalador APK disponible. En Studio puedes abrir la guía del dispositivo desde Opciones de Proyecto > Instalar App Móvil.
+Al entrar, Studio muestra una guía adaptada al sistema y navegador detectados, después de elegir el proyecto o el beat. En iPhone, Chrome tiene sus propios pasos de Compartir; Safari muestra los suyos. Android y los navegadores de escritorio tienen instrucciones separadas. Si la detección no coincide, selecciona el sistema y navegador dentro de la guía. Puedes ocultar el aviso automático y volver a abrirlo desde Opciones de Proyecto > Instalar App Móvil. La disponibilidad de instalación depende del navegador y su versión; la guía enlaza su ayuda oficial.
 
 Instalar la app no activa por sí solo las funciones de un pase.
 
@@ -199,6 +199,7 @@ Un archivo de proyecto sirve para volver a editar. Un WAV sirve para escuchar o 
 
 | SALIDA | CONTENIDO Y USO |
 | --- | --- |
+| Galería en la nube | Opciones de Proyecto > Mis proyectos en la nube. Consulta los dos espacios reales de tu cuenta, su nombre, fecha y tomas, y abre el que necesites. Actualizar galería vuelve a consultar la nube. |
 | Archivo .rgodbeat | Opciones de Proyecto > Descargar archivo (.rgodbeat). Conserva el proyecto para reabrirlo con Abrir archivo (.rgodbeat). Verifica la descarga. |
 | Nube | Inicia sesión. Guardar en la Nube permite nombrar el proyecto y elegir entre 2 espacios. Reemplazar otro proyecto requiere confirmación. Espera el mensaje de guardado. |
 | Master Mezclado Completo | Mezcla en WAV de 24 bits. Requiere pase activo. La frecuencia de muestreo se indica en el panel. |

@@ -99,7 +99,7 @@ export function resolveBeatDirectory(baseDir: string, beat: { id?: string; slug:
   if (!matches.length && names.has("diamonds")) matches = available.filter(name => name === "DAIMOND");
   if (matches.length > 1) throw new Error(`Más de una carpeta coincide con ${beat.title}. Usa beat.json para identificarla.`);
   if (matches.length === 1) return path.join(baseDir, matches[0]);
-  const target = path.join(baseDir, safeName(beat.slug));
+  const target = path.join(baseDir, safeName(beat.slug.toUpperCase()));
   if (fs.existsSync(target)) throw new Error(`La carpeta ${target} pertenece a otro beat o es un enlace.`);
   return target;
 }

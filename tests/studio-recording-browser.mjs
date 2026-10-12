@@ -10,7 +10,7 @@ const { chromium, webkit, firefox } = await import(pathToFileURL(process.env.STU
 const bundle = await build({ stdin: { contents: `export {restoreLastStudioSession} from './lib/studio/audio/sessionStorage';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife', globalName: 'StudioMediaTest', platform: 'browser' });
 
 function instrument() {
-  localStorage.setItem('rgodbeat_install_prompt_seen', 'true');
+  localStorage.setItem('rgodbeat_install_guide_hidden_v2', 'true');
   const Native = window.AudioContext || window.webkitAudioContext;
   const state = window.__mediaTest = { contexts: [], analysers: [], microphoneCalls: 0, modes: [], streams: [] };
   let mode = 'playback';
@@ -55,7 +55,7 @@ for (const [name, launcher] of [['chromium', chromium], ['webkit', webkit], ['fi
       });
       await page.goto(base + '/studio');
       await page.getByText('Midnight 808', { exact: true }).first().waitFor();
-      await page.getByText('Reintentar conexión', { exact: true }).waitFor();
+      await page.getByRole('button', { name: 'Conectar', exact: true }).waitFor();
       // REC is the first interaction. Native Web Audio still needs that gesture.
       await page.getByTitle('Grabar en Lead 1', { exact: true }).click();
       try { await page.getByTitle('Pausar (Espacio)', { exact: true }).waitFor({timeout:10000}); }

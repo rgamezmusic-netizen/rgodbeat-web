@@ -33,7 +33,7 @@ const bundle = await build({
     }
     createRoot(document.getElementById('root')).render(<App/>);
   ` },
-  bundle: true, write: false, platform: 'browser', format: 'iife',
+  bundle: true, write: false, platform: 'browser', format: 'iife', define: { 'process.env': '{}' },
 });
 const styles = await postcss([tailwind()]).process(await readFile('app/globals.css', 'utf8'), { from: `${process.cwd()}/app/globals.css` });
 const server = createServer((req, res) => {
@@ -57,7 +57,8 @@ try {
         page.on('pageerror', e => errors.push(e.message));
         await page.goto(url);
         const clip = page.locator('[data-clip-item]').first();
-        await clip.waitFor();
+        try { await clip.waitFor(); }
+        catch (error) { throw new Error(`${name} ${width}: ${JSON.stringify(errors)}; ${error.message}`); }
         const viewport = page.locator('div.overflow-x-auto.overflow-y-auto');
         const lock = clip.getByTitle(/Seguro ACTIVADO/);
         const remove = clip.getByTitle(/Borrar solo/);

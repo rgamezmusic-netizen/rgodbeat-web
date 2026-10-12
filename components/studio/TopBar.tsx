@@ -58,6 +58,7 @@ interface TopBarProps {
   onOpenInstallModal?: () => void;
   onSaveCloudProject?: () => void;
   onLoadCloudProject?: () => void;
+  onOpenCloudGallery?: () => void;
   onLoadPreviousCloudProject?: () => void;
   onNewProject?: () => void;
   onSaveDeviceProject?: () => void;
@@ -94,6 +95,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenInstallModal,
   onSaveCloudProject,
   onLoadCloudProject,
+  onOpenCloudGallery,
   onLoadPreviousCloudProject,
   onNewProject,
   onSaveDeviceProject,
@@ -193,6 +195,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => onChangeView('studio')}
+              aria-label="Grabador"
               className={`flex-1 h-full px-1 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer min-w-0 ${
                 activeView === 'studio'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 font-black scale-[1.02]'
@@ -200,14 +203,15 @@ export const TopBar: React.FC<TopBarProps> = ({
               }`}
               title="Ventana Principal: Grabador & Reproductor"
             >
-              <Disc3 className="hidden sm:block w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
-              <span className="font-bold whitespace-nowrap text-[11px] sm:text-xs">Grabador</span>
+              <Disc3 className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
+              <span className="hidden min-[480px]:inline font-bold whitespace-nowrap text-[11px] sm:text-xs">Grabador</span>
             </button>
 
             {/* Button 3: Ventana de Edición (Multitrack) */}
             <button
               type="button"
               onClick={() => onChangeView('editor')}
+              aria-label="Edición"
               className={`flex-1 h-full px-1 sm:px-4 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all cursor-pointer relative min-w-0 ${
                 activeView === 'editor'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-500/25 font-black scale-[1.02]'
@@ -215,8 +219,8 @@ export const TopBar: React.FC<TopBarProps> = ({
               }`}
               title="Ventana de Edición: Multitrack & Tomas"
             >
-              <Layers className="hidden sm:block w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
-              <span className="font-bold whitespace-nowrap text-[11px] sm:text-xs">Edición</span>
+              <Layers className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
+              <span className="hidden min-[480px]:inline font-bold whitespace-nowrap text-[11px] sm:text-xs">Edición</span>
               {hasRecordings && (
                 <span className="hidden sm:block w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               )}
@@ -236,7 +240,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
             {/* Dropdown Menu Box */}
             {showProjectMenu && (
-              <div className="absolute left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-auto sm:right-0 mt-2 w-56 rounded-2xl bg-[#0e0e14] border border-zinc-700/80 shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-auto sm:right-0 mt-2 w-56 max-h-[calc(100dvh-6rem)] overflow-y-auto overscroll-contain rounded-2xl bg-[#0e0e14] border border-zinc-700/80 shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
                 {/* Save Cloud */}
                 {onSaveCloudProject && (
                   <button
@@ -255,6 +259,13 @@ export const TopBar: React.FC<TopBarProps> = ({
                     <span>{isSavingCloud ? 'Guardando...' : 'Guardar en la Nube'}</span>
                   </button>
                 )}
+
+                {onOpenCloudGallery && <button
+                  type="button"
+                  onClick={() => { setShowProjectMenu(false); onOpenCloudGallery(); }}
+                  disabled={isRecording || isLoadingCloud}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-emerald-300 hover:bg-emerald-500/15 transition-all text-left cursor-pointer disabled:opacity-40"
+                ><FolderOpen className="w-4 h-4 shrink-0" /><span>Mis proyectos en la nube</span></button>}
 
                 {/* Load Cloud */}
                 {hasCloudProject && onLoadCloudProject && (
@@ -411,7 +422,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
           {/* Recording Badge */}
           {isRecording && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-red-950/70 border border-red-500/50 text-red-400 text-xs font-mono animate-pulse shrink-0">
+            <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full bg-red-950/70 border border-red-500/50 text-red-400 text-xs font-mono animate-pulse shrink-0">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
               <span className="font-bold text-[10px]">REC</span>
             </div>

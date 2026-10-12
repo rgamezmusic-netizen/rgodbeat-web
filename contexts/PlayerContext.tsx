@@ -40,6 +40,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [volume, setVolumeState] = useState(initialVolume);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const selectedBeatId = useRef<string | null>(null);
+  const playRequestId = useRef(0);
 
   // Initialize persistent HTML5 Audio element once on mount
   useEffect(() => {
@@ -95,6 +97,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  const startAudio = useCallback((audio: HTMLAudioElement) => {
+    const requestId = ++playRequestId.current;
+    // Request buffering only after the user chooses audio. Keep the same media
+    // element and let its native buffer survive navigation and pause/resume.
+    audio.preload = "auto";
+    audio.play().catch((err) => {
+      if (requestId !== playRequestId.current || audioRef.current !== audio) return;
+      setIsPlaying(false);
+      console.warn("[BeatPlayer] Play error:", err);
+    });
+  }, []);
+
   const playBeat = useCallback((beat: Beat) => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -104,25 +118,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       beat.previewAudioUrl ||
       `https://wrcdapajrsuqgpbfadff.supabase.co/storage/v1/object/public/rgodbeat-public/previews/${beat.id}/preview.mp3`;
 
-    if (currentBeat?.id === beat.id && audio.src) {
-      audio.play().catch((err) => console.warn("[BeatPlayer] Play error:", err));
-      setIsPlaying(true);
+    if (selectedBeatId.current === beat.id && audio.getAttribute("src")) {
+      startAudio(audio);
     } else {
+      selectedBeatId.current = beat.id;
       setCurrentBeat(beat);
       setProgress(0);
       setCurrentTime("0:00");
       setDuration(beat.duration || "0:00");
 
       audio.src = resolvedUrl;
-      audio.load();
-      audio.play().catch((err) => {
-        console.warn("[BeatPlayer] Autoplay was prevented by browser policy:", err);
-      });
-      setIsPlaying(true);
+      startAudio(audio);
     }
-  }, [currentBeat]);
+  }, [startAudio]);
 
   const pauseBeat = useCallback(() => {
+    ++playRequestId.current;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
@@ -134,18 +145,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const audio = audioRef.current;
     if (!audio) return;
 
-    if (beat && (!currentBeat || currentBeat.id !== beat.id)) {
+    if (beat && selectedBeatId.current !== beat.id) {
       playBeat(beat);
     } else {
       if (audio.paused) {
-        audio.play().catch((err) => console.warn("[BeatPlayer] Play error:", err));
-        setIsPlaying(true);
+        if (selectedBeatId.current) startAudio(audio);
       } else {
+        ++playRequestId.current;
         audio.pause();
         setIsPlaying(false);
       }
     }
-  }, [currentBeat, playBeat]);
+  }, [playBeat, startAudio]);
 
   const seek = useCallback((percent: number) => {
     const audio = audioRef.current;
@@ -169,14 +180,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const closePlayer = useCallback(() => {
+    ++playRequestId.current;
+    selectedBeatId.current = null;
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
-      audio.src = "";
+      audio.removeAttribute("src");
+      audio.load();
     }
     setIsPlaying(false);
     setCurrentBeat(null);
     setProgress(0);
+    setCurrentTime("0:00");
+    setDuration("0:00");
   }, []);
 
   // Cards and backgrounds only subscribe to playback changes, not every tick.

@@ -52,17 +52,24 @@ const iphone='Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit
 const chromeAndroid='Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36';
 const cases=[
   {label:'Mac · Safari', ua:mac, platform:'MacIntel', width:1280, guide:'Añadir al Dock', mobile:false},
-  {label:'Mac · Chrome', ua:mac.replace('Version/17.6','Chrome/140.0.0.0'), platform:'MacIntel', width:1280, guide:'Barra de Direcciones', mobile:false},
-  {label:'Windows · Edge', ua:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0', platform:'Win32', width:1280, guide:'Barra de Direcciones', mobile:false},
-  {label:'Linux · Firefox', ua:'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0', platform:'Linux x86_64', width:1280, guide:'Barra de Direcciones', mobile:false},
-  {label:'iPhone · Safari', ua:iphone, platform:'iPhone', touch:5, width:390, guide:'Abre Compartir', mobile:true},
-  {label:'iPhone · Chrome', ua:iphone.replace('Version/17.6','CriOS/140.0.0.0'), platform:'iPhone', touch:5, width:320, guide:'Abre Compartir', mobile:true},
-  {label:'iPad · Safari', ua:mac, platform:'MacIntel', touch:5, width:820, guide:'Abre Compartir', mobile:true},
-  {label:'Android · Chrome', ua:chromeAndroid, platform:'Linux armv8l', touch:5, width:390, guide:'Menú de Opciones', mobile:true, intent:true},
-  {label:'Android · Firefox', ua:'Mozilla/5.0 (Android 14; Mobile; rv:140.0) Gecko/20100101 Firefox/140.0', platform:'Linux armv8l', touch:5, width:390, guide:'Menú de Opciones', mobile:true},
-  {label:'Android · Navegador integrado', ua:chromeAndroid+' Instagram 400', platform:'Linux armv8l', touch:5, width:390, guide:'Menú de Opciones', mobile:true},
-  {label:'Windows · Edge', ua:mac, platform:'MacIntel', width:1280, guide:'Barra de Direcciones', mobile:false, hints:{platform:'Windows',brands:[{brand:'Microsoft Edge',version:'140'}]}},
-  {label:'Dispositivo · Navegador', ua:'unknown', platform:'unknown', width:390, guide:'Barra de Direcciones', mobile:false},
+  {label:'Mac · Chrome', ua:mac.replace('Version/17.6','Chrome/140.0.0.0'), platform:'MacIntel', width:1280, guide:'Instala desde Chrome', mobile:false},
+  {label:'Windows · Edge', ua:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0', platform:'Win32', width:1280, guide:'Instala desde Edge', mobile:false},
+  {label:'Linux · Firefox', ua:'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0', platform:'Linux x86_64', width:1280, guide:'Firefox en este sistema', mobile:false},
+  {label:'iPhone · Safari', ua:iphone, platform:'iPhone', touch:5, width:390, guide:'Abre Compartir en Safari', mobile:true},
+  {label:'iPhone · Chrome', ua:iphone.replace('Version/17.6','CriOS/140.0.0.0'), platform:'iPhone', touch:5, width:320, guide:'Abre Compartir en Chrome', mobile:true},
+  {label:'iPad · Safari', ua:mac, platform:'MacIntel', touch:5, width:820, guide:'Abre Compartir en Safari', mobile:true},
+  {label:'Android · Chrome', ua:chromeAndroid, platform:'Linux armv8l', touch:5, width:390, guide:'Abre el menú de Chrome', mobile:true, intent:true},
+  {label:'Android · Firefox', ua:'Mozilla/5.0 (Android 14; Mobile; rv:140.0) Gecko/20100101 Firefox/140.0', platform:'Linux armv8l', touch:5, width:390, guide:'Abre el menú de Firefox', mobile:true},
+  {label:'Android · Navegador integrado', ua:chromeAndroid+' Instagram 400', platform:'Linux armv8l', touch:5, width:390, guide:'Sal del navegador integrado', mobile:true},
+  {label:'Windows · Edge', ua:mac, platform:'MacIntel', width:1280, guide:'Instala desde Edge', mobile:false, hints:{platform:'Windows',brands:[{brand:'Microsoft Edge',version:'140'}]}},
+  {label:'Windows · Firefox', ua:'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:153.0) Gecko/20100101 Firefox/153.0', platform:'Win32', width:1280, guide:'Instala desde Firefox en Windows', mobile:false},
+  {label:'ChromeOS · Chrome', ua:'Mozilla/5.0 (X11; CrOS x86_64 16000.0.0) AppleWebKit/537.36 Chrome/149.0.0.0 Safari/537.36', platform:'Linux x86_64', width:1280, guide:'Instala desde Chrome', mobile:false},
+  {label:'Android · Samsung Internet', ua:chromeAndroid+' SamsungBrowser/29.0', platform:'Linux armv8l', touch:5, width:320, guide:'Abre Samsung Internet', mobile:true},
+  {label:'Android · Opera', ua:chromeAndroid+' OPR/100.0', platform:'Linux armv8l', touch:5, width:390, guide:'Abre el menú de la página en Opera', mobile:true},
+  {label:'iPhone · Firefox', ua:iphone.replace('Version/17.6','FxiOS/153.0'), platform:'iPhone', touch:5, width:390, guide:'Abre Compartir en Firefox', mobile:true},
+  {label:'Mac · Brave', ua:mac.replace('Version/17.6','Chrome/149.0.0.0'), platform:'MacIntel', width:1280, guide:'Instala desde Brave', mobile:false, brave:true},
+  {label:'Windows · Vivaldi', ua:'Mozilla/5.0 (Windows NT 10.0) Chrome/149.0 Safari/537.36 Vivaldi/7.6', platform:'Win32', width:1280, guide:'Instala desde Vivaldi', mobile:false},
+  {label:'Dispositivo · Navegador', ua:'unknown', platform:'unknown', width:390, guide:'Revisa las opciones de Navegador', mobile:false},
 ];
 
 try {
@@ -75,6 +82,9 @@ try {
         Object.defineProperty(navigator,'platform',{value:d.platform,configurable:true});
         Object.defineProperty(navigator,'maxTouchPoints',{value:d.touch??0,configurable:true});
         Object.defineProperty(navigator,'userAgentData',{value:d.hints,configurable:true});
+        if(d.brave) Object.defineProperty(navigator,'brave',{value:{isBrave:async()=>true},configurable:true});
+        window.studioShortcutCalls=0;
+        window.addEventListener('keydown',e=>{if(e.ctrlKey && e.key==='z') window.studioShortcutCalls++});
         window.linkClicks=[];
         document.addEventListener('click',e=>{const a=e.target.closest('a');if(a && /^(intent:|https:)/.test(a.getAttribute('href'))){e.preventDefault();window.linkClicks.push({href:a.getAttribute('href'),target:a.target});}},true);
       },device);
@@ -85,7 +95,7 @@ try {
       catch(error) { throw new Error(`${device.label}: ${JSON.stringify(errors)}; ${error.message}`); }
       await page.getByRole('heading',{name:device.guide,exact:true}).waitFor();
       assert.equal(await page.getByRole('link',{name:'Descargar APK Oficial (Android)'}).count(),0);
-      if(device.label==='iPhone · Chrome') await page.getByText('Abre rgodbeat.com en Safari y toca Compartir.',{exact:true}).waitFor();
+      if(device.label==='iPhone · Chrome') assert(!/Safari/.test(await page.locator('[aria-live=polite]').innerText()));
       for(const service of ['instagram','youtube']){
         const title=service==='instagram'?'Instagram':'YouTube';
         for(const link of await page.getByRole('link',{name:title,exact:true,includeHidden:true}).all()){
@@ -119,7 +129,26 @@ try {
         assert.equal(await page.evaluate(()=>window.installCalls),1);
         await page.locator('#reopen').click();
       }
-      await page.getByTitle('Cerrar',{exact:true}).click();
+      // Manual choice corrects privacy-masked identity, then automatic detection returns.
+      const guideDialog=page.getByRole('dialog');
+      await page.keyboard.press('Control+z');
+      assert.equal(await page.evaluate(()=>window.studioShortcutCalls),0,'modal blocks background editing shortcuts');
+      await guideDialog.getByRole('button',{name:'SIGUIENTE →',exact:true}).click();
+      await guideDialog.locator('summary').click();
+      await guideDialog.getByLabel('Sistema operativo',{exact:true}).selectOption('android');
+      await guideDialog.getByLabel('Navegador',{exact:true}).selectOption('firefox');
+      await guideDialog.getByRole('heading',{name:'Abre el menú de Firefox',exact:true}).waitFor();
+      await guideDialog.getByRole('button',{name:'Detectar automáticamente',exact:true}).click();
+      await guideDialog.getByRole('heading',{name:device.guide,exact:true}).waitFor();
+      await guideDialog.getByRole('checkbox').check();
+      assert.equal(await page.evaluate(()=>localStorage.getItem('rgodbeat_install_guide_hidden_v2')),'true');
+      await guideDialog.getByRole('checkbox').uncheck();
+      assert.equal(await page.evaluate(()=>localStorage.getItem('rgodbeat_install_guide_hidden_v2')),null);
+      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+      await page.setViewportSize({width:320,height:568});
+      await page.screenshot({path:`/private/tmp/rgodbeat-install-${name}.png`});
+      await page.keyboard.press('Escape');
+      assert.equal(await page.getByRole('dialog').count(),0);
       const youtube=page.locator('footer').getByRole('link',{name:'YouTube',exact:true});
       await youtube.click();
       assert.equal(await page.evaluate(()=>window.linkClicks.at(-1).href),await youtube.getAttribute('href'));

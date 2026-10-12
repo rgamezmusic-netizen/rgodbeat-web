@@ -70,6 +70,29 @@ try {
     assert.equal(actual, expected);
   }
   assert.equal(await page.evaluate(() => window.preview.getAttribute('src')), null);
+  // A denied Play must settle; an obsolete rejection cannot pause the next beat.
+  await page.evaluate(() => {
+    window.playFailures = [];
+    window.loadCalls = 0;
+    window.preview.load = () => { window.loadCalls++; };
+    window.preview.play = () => new Promise((_, reject) => window.playFailures.push(reject));
+    window.player.playBeat({ id: 'first', previewAudioUrl: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA' });
+    window.playFailures[0](new DOMException('Gesture required', 'NotAllowedError'));
+  });
+  await page.waitForFunction(() => window.player.currentBeat?.id === 'first');
+  assert.equal(await page.evaluate(() => window.player.isPlaying), false);
+  assert.equal(await page.evaluate(() => window.preview.preload), 'auto');
+  assert.equal(await page.evaluate(() => window.loadCalls), 0, 'selection must not force a redundant media load');
+  await page.evaluate(() => {
+    window.player.playBeat({ id: 'old', previewAudioUrl: window.preview.src });
+    window.player.playBeat({ id: 'new', previewAudioUrl: window.preview.src });
+    window.preview.dispatchEvent(new Event('play'));
+    window.playFailures[1](new DOMException('Source replaced', 'AbortError'));
+  });
+  await page.waitForFunction(() => window.player.currentBeat?.id === 'new' && window.player.isPlaying);
+  await page.evaluate(() => window.player.closePlayer());
+  await page.waitForFunction(() => window.player.currentBeat === null && !window.player.isPlaying);
+  assert.equal(await page.evaluate(() => window.preview.getAttribute('src')), null);
   assert.deepEqual(errors, []);
-  console.log('PASS: audio ticks isolated from cards/background, volume preserved, hover publishers isolated, slow/offline/data-saver network policies');
+  console.log('PASS: isolated audio ticks, volume/hover, network policies, denied/stale Play handling, selected-only buffering, clean close');
 } finally { await browser.close(); }

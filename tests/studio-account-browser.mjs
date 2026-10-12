@@ -9,9 +9,12 @@ const bundle = await build({ stdin: { contents: `export * from './lib/studio/aud
   bundle: true, write: false, platform: 'browser', format: 'iife', globalName: 'StudioRegression' });
 const owner = 'browser-studio@example.invalid';
 
-async function fixture(browser, { local = true, failure = false, missingVoice = false, previous = false, confirmed = true } = {}) {
+async function fixture(browser, { local = true, failure = false, missingVoice = false, previous = false, confirmed = true, showGuide = false, standalone = false } = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
-  await context.addInitScript(() => localStorage.setItem('rgodbeat_install_prompt_seen', 'true'));
+  await context.addInitScript(({showGuide,standalone}) => {
+    localStorage.setItem(showGuide ? 'rgodbeat_install_prompt_seen' : 'rgodbeat_install_guide_hidden_v2', 'true');
+    if (standalone) Object.defineProperty(navigator,'standalone',{value:true,configurable:true});
+  },{showGuide,standalone});
   const page = await context.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await context.route('**/api/studio/access', route => route.fulfill({ json: {
@@ -52,17 +55,19 @@ async function fixture(browser, { local = true, failure = false, missingVoice = 
         error: state.failure === 'permanent' ? 'Configuración de nube no disponible.' : 'Nube temporalmente no disponible.',
         code: state.failure === 'permanent' ? 'STORAGE_CONFIGURATION' : 'SERVICE_UNAVAILABLE', retryable: state.failure !== 'permanent',
       } });
+      if (state.getGate) await state.getGate;
       const selected = state[slot];
       const project = selected ? structuredClone(selected.project) : null;
       if (project?.beat) project.beat.downloadUrl = `/api/studio/project/audio?key=${project.beat.customBeatKey}`;
       for (const track of project?.tracks || []) for (const clip of track.clips) clip.downloadUrl = `/api/studio/project/audio?key=${clip.storageKey}`;
-      return route.fulfill({ json: {isLoggedIn:true,ownerEmail:owner,hasProject:Boolean(project),hasActiveProject:Boolean(state.active),hasPreviousProject:Boolean(state.previous),revision:selected?.revision || null,project,slots:['active','previous'].map(id=>({slot:id,hasProject:Boolean(state[id]),revision:state[id]?.revision || null,projectId:state[id]?.project.projectId,name:state[id]?.project.projectName || state[id]?.project.beat?.title}))} });
+      return route.fulfill({ json: {isLoggedIn:true,ownerEmail:owner,hasProject:Boolean(project),hasActiveProject:Boolean(state.active),hasPreviousProject:Boolean(state.previous),revision:selected?.revision || null,project,slots:['active','previous'].map(id=>({slot:id,hasProject:Boolean(state[id]),revision:state[id]?.revision || null,projectId:state[id]?.project.projectId,name:state[id]?.project.projectName || state[id]?.project.beat?.title,savedAt:state[id]?.project.savedAt,takesCount:state[id]?.project.tracks.flatMap(track=>track.clips).length}))} });
     }
     if (request.method() === 'POST') {
       if (state.sessionMissing) return route.fulfill({status:401,json:{code:'SESSION_REQUIRED',retryable:false,error:'Inicia sesión para conectar la nube.'}});
       if (state.failure) return route.fulfill({status:503,json:{code:'SERVICE_UNAVAILABLE',retryable:true,error:'Nube temporalmente no disponible.'}});
       const form = await new Response(request.postDataBuffer(), {headers:{'content-type':request.headers()['content-type']}}).formData();
       const metadata = JSON.parse(form.get('metadata'));
+      metadata.savedAt=Date.now(); // The production repository timestamps successful commits.
       if (form.get('baseRevision') !== (state[slot]?.revision || '')) return route.fulfill({status:409,json:{error:'Revision changed',conflict:true}});
       if (metadata.beat) metadata.beat.customBeatKey = `saved-beat-${state.sequence}.wav`;
       for (const track of metadata.tracks) for (const clip of track.clips) clip.storageKey = `${clip.id}.wav`;
@@ -194,12 +199,13 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
 
     const recovered = await fixture(browser,{failure:'temporary'});
     await recovered.page.getByRole('button',{name:/Continuar Sesión/}).click();
-    await recovered.page.getByRole('button',{name:'Reintentar conexión',exact:true}).waitFor();
+    await recovered.page.getByRole('button',{name:'Conectar',exact:true}).waitFor();
     recovered.state.failure=false;
-    await recovered.page.getByRole('button',{name:'Reintentar conexión',exact:true}).click();
+    await recovered.page.getByRole('button',{name:'Conectar',exact:true}).click();
     await waitUntil(()=>recovered.state.posts.length>0,'same project must resume saving after reconnect');
     assert.equal(recovered.state.posts.at(-1).projectId,'current-project');
     assert.equal(recovered.state.posts.at(-1).clips[0],'current-voice');
+    await recovered.page.getByText('Estado y opciones',{exact:true}).click();
     const downloaded = recovered.page.waitForEvent('download');
     await recovered.page.getByRole('button',{name:'Guardar en dispositivo',exact:true}).click();
     const download = await downloaded;
@@ -213,10 +219,10 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     // Expired account session is an explicit sign-in action, not an endless retry.
     recovered.state.failure='temporary';
     await recovered.page.getByRole('button',{name:'SOLO',exact:true}).first().click();
-    await recovered.page.getByRole('button',{name:'Reintentar conexión',exact:true}).waitFor();
+    await recovered.page.getByRole('button',{name:'Conectar',exact:true}).waitFor();
     recovered.state.failure=false;
     recovered.state.sessionMissing=true;
-    await recovered.page.getByRole('button',{name:'Reintentar conexión',exact:true}).click();
+    await recovered.page.getByRole('button',{name:'Conectar',exact:true}).click();
     await recovered.page.getByRole('button',{name:'Iniciar sesión',exact:true}).waitFor();
     assert.equal(await recovered.page.locator('[data-clip-item]').count(),1);
     await recovered.page.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
@@ -228,7 +234,28 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await two.page.getByRole('button',{name:/Continuar Sesión/}).click();
     await waitUntil(()=>two.state.posts.length>0,'current project initial backup');
     await two.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
-    await acceptClick(two.page,two.page.getByRole('button',{name:/Abrir espacio 2/}));
+    await two.page.getByRole('button',{name:'Mis proyectos en la nube',exact:true}).click();
+    const gallery = two.page.getByRole('dialog',{name:'Mis proyectos en la nube'});
+    await gallery.getByRole('heading',{name:'Previous cloud project',exact:true}).waitFor();
+    assert.equal(await gallery.getByRole('article').count(),2);
+    assert.equal(await gallery.getByText('1 toma',{exact:true}).count(),2);
+    assert.equal(await gallery.locator('time').count(),2);
+    await gallery.getByText('Proyecto abierto',{exact:true}).waitFor();
+    const unchanged = structuredClone(two.state.previous);
+    two.page.once('dialog',dialog=>dialog.dismiss());
+    await gallery.getByRole('button',{name:'Abrir Previous cloud project, espacio 2',exact:true}).click();
+    assert(await gallery.isVisible());
+    assert.deepEqual(two.state.previous,unchanged,'cancel in gallery preserves the remote project');
+    await gallery.getByRole('button',{name:'Cerrar galería'}).click();
+    await two.page.getByRole('button',{name:'SOLO',exact:true}).first().click();
+    await waitUntil(()=>two.state.posts.length>=2,'autosave after viewing gallery');
+    assert.equal(two.state.posts.at(-1).slot,'active','listing never changes autosave destination');
+    await two.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
+    await two.page.getByRole('button',{name:'Mis proyectos en la nube',exact:true}).click();
+    await gallery.getByRole('heading',{name:'Previous cloud project',exact:true}).waitFor();
+    assert(await two.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await two.page.screenshot({path:`/private/tmp/rgodbeat-cloud-gallery-${engineName}.png`});
+    await acceptClick(two.page,gallery.getByRole('button',{name:'Abrir Previous cloud project, espacio 2',exact:true}));
     await two.page.getByText('Proyecto recuperado.',{exact:true}).waitFor();
     await two.page.getByRole('button',{name:'SOLO',exact:true}).first().click();
     await waitUntil(()=>two.state.posts.some(post=>post.slot==='previous'),'previous project must save into previous slot');
@@ -238,8 +265,69 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     assert.deepEqual(two.errors,[]); await two.context.close();
     console.log(`PASS ${engineName}: previous and current cloud slots stay independent`);
 
+    const galleryErrors = await fixture(browser,{failure:'permanent',confirmed:false});
+    await galleryErrors.page.getByRole('button',{name:/Continuar Sesión/}).click();
+    await galleryErrors.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
+    await galleryErrors.page.getByRole('button',{name:'Mis proyectos en la nube',exact:true}).click();
+    const errorGallery = galleryErrors.page.getByRole('dialog',{name:'Mis proyectos en la nube'});
+    await errorGallery.getByText('Configuración de nube no disponible.',{exact:true}).waitFor();
+    assert.equal(await errorGallery.getByText('Espacio vacío',{exact:true}).count(),0);
+    galleryErrors.state.failure=false;
+    await errorGallery.getByRole('button',{name:'Reintentar conexión',exact:true}).click();
+    await errorGallery.getByRole('heading',{name:'Current cloud project',exact:true}).waitFor();
+    assert.equal(await errorGallery.getByText('Espacio vacío',{exact:true}).count(),1);
+    galleryErrors.state.active=null;
+    await errorGallery.getByRole('button',{name:'Actualizar galería',exact:true}).click();
+    await errorGallery.getByText(/Todavía no tienes proyectos/).waitFor();
+    assert.equal(await errorGallery.getByRole('button',{name:/Abrir .*espacio/}).count(),0);
+    let release;
+    galleryErrors.state.getGate=new Promise(resolve=>{release=resolve});
+    await errorGallery.getByRole('button',{name:'Actualizar galería',exact:true}).click();
+    await errorGallery.getByRole('button',{name:'Cerrar galería'}).click();
+    release(); galleryErrors.state.getGate=null;
+    await galleryErrors.page.waitForTimeout(200);
+    assert.equal(await errorGallery.count(),0,'late response cannot reopen closed gallery');
+    galleryErrors.state.sessionMissing=true;
+    await galleryErrors.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
+    await galleryErrors.page.getByRole('button',{name:'Mis proyectos en la nube',exact:true}).click();
+    await errorGallery.getByRole('button',{name:'Iniciar sesión',exact:true}).click();
+    await galleryErrors.page.getByText('INICIA SESIÓN EN TU CUENTA',{exact:true}).waitFor();
+    assert.equal(await galleryErrors.page.locator('[data-clip-item]').count(),1);
+    assert.deepEqual(galleryErrors.errors,[]); await galleryErrors.context.close();
+    console.log(`PASS ${engineName}: gallery errors, retry, empty slots, canceled request and sign-in`);
+
+    const guideEntry = await fixture(browser,{showGuide:true});
+    await guideEntry.page.waitForTimeout(650);
+    const installGuide=guideEntry.page.getByRole('dialog',{name:'Instala RGodbeat Studio'});
+    assert.equal(await installGuide.count(),0,'guide waits for project selection');
+    await guideEntry.page.getByRole('button',{name:/Continuar Sesión/}).click();
+    await installGuide.waitFor();
+    await installGuide.getByRole('button',{name:'Cerrar tutorial'}).click();
+    await guideEntry.page.waitForTimeout(650);
+    assert.equal(await installGuide.count(),0,'guide appears once per entry');
+    await guideEntry.page.reload();
+    await guideEntry.page.getByRole('button',{name:/Continuar Sesión/}).click();
+    await installGuide.waitFor();
+    await installGuide.getByRole('checkbox').check();
+    await installGuide.getByRole('button',{name:'Cerrar tutorial'}).click();
+    await guideEntry.page.reload();
+    await guideEntry.page.getByRole('button',{name:/Continuar Sesión/}).click();
+    await guideEntry.page.waitForTimeout(650);
+    assert.equal(await installGuide.count(),0,'explicit preference hides subsequent automatic guide');
+    await guideEntry.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
+    await guideEntry.page.getByRole('button',{name:'Instalar App Móvil',exact:true}).click();
+    await installGuide.waitFor();
+    assert.deepEqual(guideEntry.errors,[]); await guideEntry.context.close();
+    const appEntry=await fixture(browser,{showGuide:true,standalone:true});
+    await appEntry.page.getByRole('button',{name:/Continuar Sesión/}).click();
+    await appEntry.page.waitForTimeout(650);
+    assert.equal(await appEntry.page.getByRole('dialog',{name:'Instala RGodbeat Studio'}).count(),0,'installed app is not prompted again');
+    assert.deepEqual(appEntry.errors,[]); await appEntry.context.close();
+    console.log(`PASS ${engineName}: automatic guide waits, repeats on entry, opt-out, manual reopening and standalone`);
+
     const partial = await fixture(browser,{local:false,missingVoice:true});
     await partial.page.getByRole('button',{name:/Continuar Sesión/}).click();
+    await partial.page.getByText('Estado y opciones',{exact:true}).click();
     await partial.page.getByText(/Se perdió audio de la nube/).waitFor();
     await partial.page.getByRole('button',{name:'Edición',exact:true}).click();
     assert.equal(await partial.page.locator('[data-clip-item]').count(),1);
@@ -251,6 +339,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
 
     const offline = await fixture(browser,{failure:'permanent'});
     await offline.page.getByRole('button',{name:/Continuar Sesión/}).click();
+    await offline.page.getByText('Estado y opciones',{exact:true}).click();
     await offline.page.getByText('Configuración de nube no disponible.',{exact:true}).waitFor();
     await offline.page.clock.install();
     const initialGets = offline.state.gets;
@@ -271,13 +360,13 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
 
     const transient = await fixture(browser,{failure:'temporary'});
     await transient.page.getByRole('button',{name:/Continuar Sesión/}).click();
-    await transient.page.getByRole('button',{name:'Reintentar conexión',exact:true}).waitFor();
+    await transient.page.getByRole('button',{name:'Conectar',exact:true}).waitFor();
     await transient.page.clock.install();
     for (let attempt=0;attempt<3;attempt++) {
       const before = transient.state.gets;
       await transient.page.evaluate(() => window.dispatchEvent(new Event('online')));
       await waitUntil(()=>transient.state.gets>before,'automatic reconnect must run before consuming its retry budget');
-      await transient.page.waitForFunction(() => [...document.querySelectorAll('button')].some(button=>button.textContent==='Reintentar conexión' && !button.disabled));
+      await transient.page.waitForFunction(() => [...document.querySelectorAll('button')].some(button=>button.textContent==='Conectar' && !button.disabled));
     }
     const limitedGets=transient.state.gets;
     await transient.page.clock.fastForward(120000);
@@ -287,28 +376,29 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await transient.page.waitForTimeout(1000);
     assert.equal(transient.state.gets,limitedGets,'editing after failed retries must not bypass the retry budget');
     assert.equal(await transient.page.locator('[data-clip-item]').count(),1);
-    assert.equal(await transient.page.getByRole('button',{name:'Reintentar conexión',exact:true}).isEnabled(),true);
+    assert.equal(await transient.page.getByRole('button',{name:'Conectar',exact:true}).isEnabled(),true);
     assert.deepEqual(transient.errors,[]); await transient.context.close();
     console.log(`PASS ${engineName}: transient retry budget stops without losing open audio`);
 
     const device = await fixture(browser,{failure:'temporary'});
     await device.page.getByRole('button',{name:/Continuar Sesión/}).click();
-    await device.page.getByRole('button',{name:'Reintentar conexión',exact:true}).waitFor();
+    await device.page.getByRole('button',{name:'Conectar',exact:true}).waitFor();
     const failedGets = device.state.gets;
     await device.page.getByRole('button',{name:'SOLO',exact:true}).first().click();
     await device.page.waitForTimeout(1000);
     assert.equal(device.state.gets,failedGets,'local edits cannot start extra cloud reconnections');
+    await device.page.getByText('Estado y opciones',{exact:true}).click();
     const deviceDownload = device.page.waitForEvent('download');
     await device.page.getByRole('button',{name:'Guardar en dispositivo',exact:true}).click();
     assert((await deviceDownload).suggestedFilename().endsWith('.rgodbeat'));
-    await device.page.getByText('En dispositivo · Nube pausada',{exact:true}).waitFor();
-    assert.equal(await device.page.getByRole('button',{name:'Reintentar conexión',exact:true}).count(),0);
+    await device.page.getByText('Nube pausada',{exact:true}).waitFor();
+    assert.equal(await device.page.getByRole('button',{name:'Conectar',exact:true}).isEnabled(),true);
     await device.page.clock.install();
     await device.page.clock.fastForward(90000);
     assert.equal(device.state.gets,failedGets,'device work stops all automatic cloud requests');
     await device.page.reload();
     await device.page.getByRole('button',{name:/Continuar Sesión/}).click();
-    await device.page.getByText('En dispositivo · Nube pausada',{exact:true}).waitFor();
+    await device.page.getByText('Nube pausada',{exact:true}).waitFor();
     assert.equal(device.state.gets,failedGets,'the same project remembers device work after reopening');
     assert.equal(await device.page.locator('[data-clip-item]').count(),1);
     assert.equal(device.state.posts.length,0);
@@ -317,6 +407,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await device.page.getByText('ESPACIO FÍSICO DE BEATS',{exact:true}).waitFor();
     await device.page.getByRole('button',{name:'Demo',exact:true}).click();
     await device.page.getByText('Midnight 808',{exact:true}).click();
+    await device.page.getByText('Estado y opciones',{exact:true}).click();
     await acceptClick(device.page,device.page.getByRole('button',{name:'Recuperar anterior local',exact:true}));
     await device.page.getByText('Copia local anterior recuperada.',{exact:true}).waitFor();
     await device.page.getByRole('button',{name:'Edición',exact:true}).click();
@@ -324,7 +415,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     assert.equal(device.state.gets,failedGets,'new project and local recovery must honor the paused cloud choice');
     await device.page.screenshot({path:`/private/tmp/rgodbeat-device-work-${engineName}.png`,fullPage:true});
     device.state.failure=false;
-    await device.page.getByRole('button',{name:'Conectar nube',exact:true}).click();
+    await device.page.getByRole('button',{name:'Conectar',exact:true}).click();
     await waitUntil(()=>device.state.posts.length>0,'an explicit cloud connection resumes backup');
     assert.equal(device.state.posts.at(-1).projectId,'current-project');
     assert.equal(device.state.posts.at(-1).clips[0],'current-voice');

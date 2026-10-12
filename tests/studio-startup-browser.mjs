@@ -10,7 +10,7 @@ const bundle = await build({ stdin: { contents: `export * from './lib/studio/aud
 const owner = 'local-studio@example.invalid';
 const catalogId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 function instrumentAudio() {
-  localStorage.setItem('rgodbeat_install_prompt_seen', 'true');
+  localStorage.setItem('rgodbeat_install_guide_hidden_v2', 'true');
   window.__studioAudio = { contexts: [], resumes: 0, premature: 0, gesture: false };
   const noteGesture = event => { if (event.isTrusted) window.__studioAudio.gesture = true; };
   window.addEventListener('pointerdown', noteGesture, true);

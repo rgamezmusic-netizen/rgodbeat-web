@@ -51,6 +51,7 @@ export class AudioEngine {
 
   // Vocal Track Source Nodes (keyed by `${trackId}-${clipId}`)
   private vocalSources: Map<string, AudioBufferSourceNode> = new Map();
+  private vocalSourceId = 0;
   private vocalNodes: Map<
     VocalTrackId,
     {
@@ -78,7 +79,12 @@ export class AudioEngine {
   private recordingTrackId: VocalTrackId | null = null;
   private currentPlaybackPosition = 0; // seconds into the beat
   private playbackStartCtxTime = 0;
+  private playbackScheduledCtxTime = 0;
   private animationFrameId: number | null = null;
+  private playbackRequestId = 0;
+  private playbackLoop: { start: number; end: number; nextStart: number } | null = null;
+  private loopScheduler: ReturnType<typeof setTimeout> | null = null;
+  private recordingVocalEnd = Infinity;
 
   // Recording
   private micStream: MediaStream | null = null;
@@ -295,11 +301,6 @@ export class AudioEngine {
     this.beatHighPassNode.connect(this.beatLowPassNode);
     this.beatLowPassNode.connect(this.beatGainNode);
     this.beatGainNode.connect(this.masterGainNode);
-
-    // Pre-cache reverb impulse responses
-    this.getReverbImpulse('ROOM');
-    this.getReverbImpulse('PLATE');
-    this.getReverbImpulse('HALL');
   }
 
   private getReverbImpulse(preset: 'ROOM' | 'PLATE' | 'HALL'): AudioBuffer | null {
@@ -325,9 +326,17 @@ export class AudioEngine {
 
   public updateBeatBpm(bpm: number) {
     if (!this.beatData) return;
+    const position = this.readPlaybackPosition();
+    const previousStart = this.loopSettings.startSec;
+    const previousEnd = this.loopSettings.endSec;
     this.beatData = { ...this.beatData, bpm };
     for (const track of this.latestVocalTracks) this.updateVocalFX(track, this.latestVocalTracks);
     this.updateLoopBounds();
+    this.extendRecordingVocals();
+    if (this.isPlaying && !this.isRecording && this.loopSettings.enabled
+      && (previousStart !== this.loopSettings.startSec || previousEnd !== this.loopSettings.endSec)) {
+      this.seek(position, this.latestVocalTracks);
+    }
   }
 
   public getBeat(): BeatData | null {
@@ -335,8 +344,24 @@ export class AudioEngine {
   }
 
   public setLoopSettings(loop: LoopSettings) {
+    const previous = { ...this.loopSettings };
+    const position = this.readPlaybackPosition();
     this.loopSettings = { ...loop };
     this.updateLoopBounds();
+    this.extendRecordingVocals();
+    if (this.isPlaying && !this.isRecording && (previous.enabled !== this.loopSettings.enabled
+      || previous.startSec !== this.loopSettings.startSec || previous.endSec !== this.loopSettings.endSec)) {
+      this.seek(position, this.latestVocalTracks);
+    }
+  }
+
+  private extendRecordingVocals() {
+    if (!this.ctx || !this.isPlaying || !this.isRecording || !Number.isFinite(this.recordingVocalEnd)) return;
+    const end = this.loopSettings.enabled ? this.loopSettings.endSec : Infinity;
+    if (end <= this.recordingVocalEnd) return;
+    this.scheduleVocalRange(Math.max(this.recordingVocalEnd, this.ctx.currentTime - this.playbackStartCtxTime),
+      end, this.playbackStartCtxTime, this.latestVocalTracks);
+    this.recordingVocalEnd = end;
   }
 
   private updateLoopBounds() {
@@ -414,6 +439,8 @@ export class AudioEngine {
       const t = this.ctx.currentTime;
 
       let nodes = this.vocalNodes.get(track.id);
+      // Empty channels need no DSP graph or convolution buffers on mobile.
+      if (!nodes && !getTrackClips(track).length) return;
       if (!nodes) {
         const lowCut = this.ctx.createBiquadFilter();
         lowCut.type = 'highpass';
@@ -583,6 +610,7 @@ export class AudioEngine {
   }
 
   public async play(vocalTracks: VocalTrack[] = this.latestVocalTracks) {
+    const requestId = ++this.playbackRequestId;
     this.latestVocalTracks = vocalTracks;
     if (!this.beatData) {
       console.warn('AudioEngine: cannot play, no beatData loaded');
@@ -592,15 +620,21 @@ export class AudioEngine {
     try {
       await this.unlockAudio();
     } catch (error) {
+      if (requestId !== this.playbackRequestId || this.disposed) return;
       this.pause();
       this.callbacks.onError(error instanceof Error ? error.message : 'No se pudo activar el audio.');
       return;
     }
-    if (!this.ctx || this.disposed) return;
+    if (!this.ctx || this.disposed || requestId !== this.playbackRequestId) return;
 
     if (this.isPlaying) {
+      this.currentPlaybackPosition = this.readPlaybackPosition();
       this.stopSources();
     }
+
+    // Build effects before choosing the common start time. Convolver setup can
+    // exceed the scheduling lead on slower phones and otherwise stagger tracks.
+    for (const track of vocalTracks) this.updateVocalFX(track, vocalTracks);
 
     // Ensure beat gain and master gain nodes are configured and audible
     if (this.beatGainNode) {
@@ -632,15 +666,30 @@ export class AudioEngine {
       this.currentPlaybackPosition = this.loopSettings.startSec;
     }
     const startPos = this.currentPlaybackPosition;
-    // 45ms lookahead ensures all tracks/clips on mobile WebAudio are tightly synchronized without stutter
+    // Give the audio renderer a common start time for the prepared tracks.
     const scheduleLeadTime = 0.045;
     const startTime = this.ctx.currentTime + scheduleLeadTime;
+    this.playbackScheduledCtxTime = startTime;
     this.playbackStartCtxTime = startTime - startPos;
+    const loopEnd = Math.min(this.loopSettings.endSec, this.beatData.buffer.duration);
+    const looping = this.loopSettings.enabled && loopEnd > this.loopSettings.startSec;
+    if (looping && !this.isRecording) {
+      this.playbackLoop = {
+        start: this.loopSettings.startSec, end: loopEnd,
+        nextStart: this.playbackStartCtxTime + loopEnd,
+      };
+    }
 
     // 1. Start Beat Source (with multi-stage routing fallback)
     if (this.beatData.buffer && startPos < this.beatData.buffer.duration) {
       this.beatSource = this.ctx.createBufferSource();
       this.beatSource.buffer = this.beatData.buffer;
+      if (this.playbackLoop) {
+        // Repeat on the audio rendering clock, even when screen animation stalls.
+        this.beatSource.loop = true;
+        this.beatSource.loopStart = this.playbackLoop.start;
+        this.beatSource.loopEnd = this.playbackLoop.end;
+      }
       if (this.beatHighPassNode) {
         this.beatSource.connect(this.beatHighPassNode);
       } else if (this.beatGainNode) {
@@ -655,7 +704,14 @@ export class AudioEngine {
       console.warn('AudioEngine: beatData exists but has no AudioBuffer');
     }
 
-    // 2. Start all active vocal tracks that have takes/clips
+    this.scheduleVocalRange(startPos, this.playbackLoop ? loopEnd : Infinity, this.playbackStartCtxTime, vocalTracks);
+    this.isPlaying = true;
+    this.scheduleLoopVocals();
+    this.startPositionTracker(vocalTracks);
+  }
+
+  private scheduleVocalRange(from: number, to: number, origin: number, vocalTracks: VocalTrack[]) {
+    if (!this.ctx) return;
     for (const track of vocalTracks) {
       try {
         // In professional DAWs (Pro Tools, Logic Pro, Ableton, FL Studio):
@@ -665,7 +721,6 @@ export class AudioEngine {
           continue;
         }
 
-        this.updateVocalFX(track, vocalTracks);
         const trackNodes = this.vocalNodes.get(track.id);
         if (!trackNodes) continue;
 
@@ -683,42 +738,68 @@ export class AudioEngine {
           // Decoded samples are authoritative; old project metadata can be stale.
           const trackDur = playBuffer.duration;
 
-          const sourceKey = `${track.id}-${clip.id}`;
-
-          if (startPos < trackOffset) {
-            const source = this.ctx.createBufferSource();
-            source.buffer = playBuffer;
-            source.connect(trackNodes.lowCut);
-            const when = Math.max(startTime, this.playbackStartCtxTime + trackOffset);
-            source.start(when, 0);
-            this.vocalSources.set(sourceKey, source);
-          } else if (startPos >= trackOffset && startPos < trackOffset + trackDur) {
-            const offsetInTake = Math.max(0, startPos - trackOffset);
-            if (offsetInTake < playBuffer.duration - 0.01) {
-              const source = this.ctx.createBufferSource();
-              source.buffer = playBuffer;
-              source.connect(trackNodes.lowCut);
-              source.start(startTime, offsetInTake);
-              this.vocalSources.set(sourceKey, source);
-            }
-          }
+          const begin = Math.max(from, trackOffset);
+          const end = Math.min(to, trackOffset + trackDur);
+          if (end <= begin) continue;
+          const sourceKey = `${track.id}-${clip.id}-${++this.vocalSourceId}`;
+          const source = this.ctx.createBufferSource();
+          source.buffer = playBuffer;
+          source.connect(trackNodes.lowCut);
+          source.onended = () => {
+            source.disconnect();
+            if (this.vocalSources.get(sourceKey) === source) this.vocalSources.delete(sourceKey);
+          };
+          source.start(origin + begin, begin - trackOffset, end - begin);
+          this.vocalSources.set(sourceKey, source);
         }
       } catch (trackPlayErr) {
         console.warn(`Error playing vocal track ${track.id}, skipping clip to keep beat playing:`, trackPlayErr);
       }
     }
+  }
 
-    this.isPlaying = true;
-    this.startPositionTracker(vocalTracks);
+  private scheduleLoopVocals() {
+    if (!this.isPlaying || !this.ctx || !this.playbackLoop) return;
+    const loop = this.playbackLoop;
+    const duration = loop.end - loop.start;
+    const now = this.ctx.currentTime;
+    // Keep at least one full cycle (and two seconds) scheduled in advance.
+    // Reuse decoded clips and FX nodes instead of copying long silent buffers.
+    if (loop.nextStart + duration <= now) {
+      loop.nextStart += Math.floor((now - loop.nextStart) / duration) * duration;
+    }
+    while (loop.nextStart < now + Math.max(2, duration)) {
+      const origin = loop.nextStart - loop.start;
+      this.scheduleVocalRange(Math.max(loop.start, now - origin), loop.end, origin, this.latestVocalTracks);
+      loop.nextStart += duration;
+    }
+    this.loopScheduler = setTimeout(() => this.scheduleLoopVocals(), 100);
+  }
+
+  private readPlaybackPosition(): number {
+    if (!this.isPlaying || !this.ctx) return this.currentPlaybackPosition;
+    const now = this.ctx.currentTime;
+    let position = now - this.playbackStartCtxTime;
+    if (this.playbackLoop && position >= this.playbackLoop.end) {
+      const duration = this.playbackLoop.end - this.playbackLoop.start;
+      const cycles = Math.floor((position - this.playbackLoop.start) / duration);
+      this.playbackStartCtxTime += cycles * duration;
+      position -= cycles * duration;
+    }
+    return now < this.playbackScheduledCtxTime
+      ? this.currentPlaybackPosition : Math.max(0, position);
   }
 
   private isFinalizingRecording = false;
 
   public pause() {
+    ++this.playbackRequestId;
     if (this.isRecording && !this.isFinalizingRecording) {
       this.stopRecording();
     }
     if (!this.isPlaying) return;
+    this.currentPlaybackPosition = this.readPlaybackPosition();
+    this.callbacks.onTimeUpdate(this.currentPlaybackPosition);
     this.stopSources();
     this.isPlaying = false;
     if (this.animationFrameId !== null) {
@@ -756,6 +837,9 @@ export class AudioEngine {
   }
 
   private stopSources() {
+    if (this.loopScheduler !== null) clearTimeout(this.loopScheduler);
+    this.loopScheduler = null;
+    this.playbackLoop = null;
     if (this.beatSource) {
       try {
         this.beatSource.stop();
@@ -803,14 +887,17 @@ export class AudioEngine {
 
   private startPositionTracker(vocalTracks: VocalTrack[]) {
     this.latestVocalTracks = vocalTracks;
-    const trackLoop = () => {
+    let lastUpdate = -Infinity;
+    const trackLoop = (timestamp: number) => {
       if (!this.isPlaying || !this.ctx || !this.beatData) return;
-
-      const elapsed = Math.max(this.currentPlaybackPosition, this.ctx.currentTime - this.playbackStartCtxTime);
+      const elapsed = this.readPlaybackPosition();
       this.currentPlaybackPosition = elapsed;
-      this.callbacks.onTimeUpdate(elapsed);
+      if (timestamp - lastUpdate >= 1000 / 30) {
+        lastUpdate = timestamp;
+        this.callbacks.onTimeUpdate(elapsed);
+      }
 
-      if (this.loopSettings.enabled && elapsed >= this.loopSettings.endSec) {
+      if (this.loopSettings.enabled && !this.playbackLoop && elapsed >= this.loopSettings.endSec) {
         if (this.isRecording) {
           void this.stopRecording();
           this.callbacks.onPlaybackEnded();
@@ -1142,6 +1229,21 @@ export class AudioEngine {
       if (requestId !== this.recordingRequestId || this.disposed) { this.releaseMicrophone(); return false; }
       if (!this.ctx || requestId !== this.recordingRequestId) return false;
       const wasPlaying = this.isPlaying;
+      this.recordingVocalEnd = Infinity;
+      if (wasPlaying && this.playbackLoop) {
+        this.currentPlaybackPosition = this.readPlaybackPosition();
+        const endTime = this.playbackStartCtxTime + this.playbackLoop.end;
+        this.recordingVocalEnd = this.playbackLoop.end;
+        // Punch-in keeps the current cycle, then stops at its original boundary.
+        // Future loop voices must not play into the new recording.
+        if (this.loopScheduler !== null) clearTimeout(this.loopScheduler);
+        this.loopScheduler = null;
+        this.playbackLoop = null;
+        if (this.beatSource) {
+          this.beatSource.loop = false;
+        }
+        for (const source of this.vocalSources.values()) source.stop(endTime);
+      }
       this.recordingTrackId = trackId;
       this.recordingTakeId = `take-${crypto.randomUUID()}`;
       this.isRecording = true;
@@ -1276,6 +1378,7 @@ export class AudioEngine {
 
   public dispose() {
     this.disposed = true;
+    ++this.playbackRequestId;
     ++this.recordingRequestId;
     this.isRecording = false;
     this.stopSources();
@@ -1396,7 +1499,7 @@ export class AudioEngine {
   }
 
   public getCurrentPlaybackPosition(): number {
-    return this.currentPlaybackPosition;
+    return this.readPlaybackPosition();
   }
 
   /** Use the recorded audio's actual rate instead of forcing an export upgrade. */

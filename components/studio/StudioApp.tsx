@@ -59,6 +59,8 @@ import { getCatalogBeatId } from '@/lib/studio/audio/catalogBeat';
 import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
 import { InstallAppModal } from './InstallAppModal';
+import { INSTALL_GUIDE_HIDDEN_KEY } from '@/lib/browser/install-guide';
+import { CloudProjectGalleryModal } from './CloudProjectGalleryModal';
 import { StartupProjectModal } from './StartupProjectModal';
 import { CloudProjectSaveModal } from './CloudProjectSaveModal';
 import { SignatureCollageBackdrop } from './SignatureCollageBackdrop';
@@ -310,18 +312,7 @@ export default function App() {
   const [bluetoothOffsetMs] = useState<number>(185);
   const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
 
-  // Offer installation once, after project selection, without covering another modal.
-  useEffect(() => {
-    if (!isStartupResolved || showStartupModal) return;
-    const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone;
-    if (standalone || localStorage.getItem('rgodbeat_install_prompt_seen')) return;
-    const timer = setTimeout(() => {
-      localStorage.setItem('rgodbeat_install_prompt_seen', 'true');
-      setShowInstallModal(true);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [isStartupResolved, showStartupModal]);
+  const installGuideOfferedRef = useRef(false);
 
   const handleToggleBluetoothSync = () => {
     if (isRecordingRef.current) return;
@@ -785,6 +776,15 @@ export default function App() {
         isDemo: data.isDemo, isLoggedIn: Boolean(data.isLoggedIn || email), hasActivePass: data.hasActivePass,
         daysRemaining: data.daysRemaining || 0, expiresAt: data.expiresAt, email, name: data.name || 'Artista',
       };
+      if (next.email !== accessStatusRef.current.email) {
+        // Invalidate the gallery before committing another account's identity.
+        ++cloudGalleryRequestRef.current;
+        cloudGalleryOpenRef.current = false;
+        setShowCloudGallery(false);
+        setCloudGallerySlots(null);
+        setCloudGalleryError('');
+        setCloudGalleryLoading(false);
+      }
       accessStatusRef.current = next;
       setAccessStatus(next);
       return email;
@@ -836,6 +836,13 @@ export default function App() {
   const [cloudProjectInfo, setCloudProjectInfo] = useState<CloudProjectCheckResult | null>(null);
   const [isSavingCloud, setIsSavingCloud] = useState<boolean>(false);
   const [showCloudSaveDialog, setShowCloudSaveDialog] = useState(false);
+  const [showCloudGallery, setShowCloudGallery] = useState(false);
+  const [cloudGallerySlots, setCloudGallerySlots] = useState<CloudProjectSlotInfo[] | null>(null);
+  const [cloudGalleryLoading, setCloudGalleryLoading] = useState(false);
+  const [cloudGalleryError, setCloudGalleryError] = useState('');
+  const [cloudGalleryRequiresSignIn, setCloudGalleryRequiresSignIn] = useState(false);
+  const cloudGalleryOpenRef = useRef(false);
+  const cloudGalleryRequestRef = useRef(0);
   const [cloudSaveSlots, setCloudSaveSlots] = useState<CloudProjectSlotInfo[] | null>(null);
   const [cloudSaveSlotsLoading, setCloudSaveSlotsLoading] = useState(false);
   const [cloudSaveError, setCloudSaveError] = useState('');
@@ -888,6 +895,24 @@ export default function App() {
   const [showLoopModal, setShowLoopModal] = useState<boolean>(false);
   const [showLoadBeatModal, setShowLoadBeatModal] = useState<boolean>(false);
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
+
+  // Offer the matching guide on entry unless the user explicitly hides it.
+  useEffect(() => {
+    if (!isStartupResolved || showStartupModal || showLoadBeatModal || isUnlockModalOpen
+      || showCloudSaveDialog || showCloudGallery || showExportModal || showBeatFXModal
+      || showLoopModal || activeFXTrackId || isRecording || isLoadingCloud || showInstallModal
+      || installGuideOfferedRef.current) return;
+    const standalone = window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as Navigator & { standalone?: boolean }).standalone;
+    if (standalone) return;
+    try { if (localStorage.getItem(INSTALL_GUIDE_HIDDEN_KEY) === 'true') return; } catch { /* Guide works without storage. */ }
+    const timer = setTimeout(() => {
+      installGuideOfferedRef.current = true;
+      setShowInstallModal(true);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [isStartupResolved, showStartupModal, showLoadBeatModal, isUnlockModalOpen, showCloudSaveDialog,
+    showCloudGallery, showExportModal, showBeatFXModal, showLoopModal, activeFXTrackId, isRecording, isLoadingCloud, showInstallModal]);
 
   // Initialize AudioEngine
   const sessionSettingsRef = useRef({ loopSettings, currentTime, beatVolume: beatFX.volume });
@@ -1309,18 +1334,20 @@ export default function App() {
   useEffect(() => {
     if (!engine) return;
     const handleFirstGesture = () => {
+      removeGestureListeners();
       void engine.unlockAudio().catch(() => { /* Play/REC reports activation failures. */ });
     };
-    window.addEventListener('touchstart', handleFirstGesture, { passive: true, once: true });
-    window.addEventListener('touchend', handleFirstGesture, { passive: true, once: true });
-    window.addEventListener('pointerdown', handleFirstGesture, { passive: true, once: true });
-    window.addEventListener('click', handleFirstGesture, { passive: true, once: true });
-    return () => {
+    const removeGestureListeners = () => {
       window.removeEventListener('touchstart', handleFirstGesture);
       window.removeEventListener('touchend', handleFirstGesture);
       window.removeEventListener('pointerdown', handleFirstGesture);
       window.removeEventListener('click', handleFirstGesture);
     };
+    window.addEventListener('touchstart', handleFirstGesture, { passive: true, once: true });
+    window.addEventListener('touchend', handleFirstGesture, { passive: true, once: true });
+    window.addEventListener('pointerdown', handleFirstGesture, { passive: true, once: true });
+    window.addEventListener('click', handleFirstGesture, { passive: true, once: true });
+    return removeGestureListeners;
   }, [engine]);
 
   // Remember the selected library beat; the workspace autosave below owns backups.
@@ -2562,36 +2589,72 @@ export default function App() {
   };
 
   // Load Saved Project from User Account Cloud
+  const closeCloudGallery = () => {
+    if (replacingProjectRef.current) return;
+    ++cloudGalleryRequestRef.current;
+    cloudGalleryOpenRef.current = false;
+    setShowCloudGallery(false);
+  };
+
+  const loadCloudGallery = async () => {
+    const request = ++cloudGalleryRequestRef.current;
+    const owner = accessStatusRef.current.email;
+    setCloudGallerySlots(null);
+    setCloudGalleryLoading(true);
+    setCloudGalleryError('');
+    setCloudGalleryRequiresSignIn(false);
+    try {
+      if (!owner) throw new CloudConnectionError('Inicia sesión para ver los proyectos de tu cuenta.', 'SESSION_REQUIRED', false);
+      await cloudCheckRequestRef.current;
+      await verifyStudioAccount(owner);
+      const slots = await listCloudProjectSlots();
+      if (request !== cloudGalleryRequestRef.current || !cloudGalleryOpenRef.current || owner !== accessStatusRef.current.email) return;
+      setCloudGallerySlots(slots);
+    } catch (error) {
+      if (request !== cloudGalleryRequestRef.current || !cloudGalleryOpenRef.current || owner !== accessStatusRef.current.email) return;
+      setCloudGalleryError(error instanceof Error ? error.message : 'No se pudo consultar la nube. Reintenta la conexión.');
+      setCloudGalleryRequiresSignIn(error instanceof CloudConnectionError && error.code === 'SESSION_REQUIRED');
+    } finally { if (request === cloudGalleryRequestRef.current) setCloudGalleryLoading(false); }
+  };
+
+  const openCloudGallery = () => {
+    if (isRecordingRef.current || replacingProjectRef.current) return;
+    cloudGalleryOpenRef.current = true;
+    setShowCloudGallery(true);
+    void loadCloudGallery();
+  };
+
   const handleLoadCloudProject = async (slot: 'active' | 'previous' = 'active') => {
     if (isRecordingRef.current || replacingProjectRef.current) return;
     const expectedOwner = accessStatusRef.current.email;
     if (tracksRef.current.some(track => getTrackClips(track).length) && !window.confirm('¿Abrir el respaldo? El proyecto actual se conservará en este dispositivo.')) return;
     if (!engine) return;
-    if (startupResolvedRef.current) {
-      const settings = sessionSettingsRef.current;
-      if (!await saveStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings, settings.currentTime, settings.beatVolume, activeViewRef.current)) {
-        showToast('No se pudo proteger el proyecto local. Descarga una copia.', 'error'); return;
-      }
-      let archived = await archiveSavedStudioSession(sessionOwnerRef.current);
-      if (archived.requiresConfirmation) {
-        if (!window.confirm('Se reemplazará la copia local anterior. ¿Continuar?')) return;
-        archived = await archiveSavedStudioSession(sessionOwnerRef.current, true);
-      }
-      if (!archived.success) { showToast('No se pudo proteger la copia local anterior.', 'error'); return; }
-      setHasLocalPrevious(Boolean(archived.hasPrevious));
-    }
     replacingProjectRef.current = true;
-    engine.stop();
-    setIsPlaying(false);
     setIsLoadingCloud(true);
-    showToast('Descargando tu proyecto desde la nube...', 'info');
-
     try {
+      if (startupResolvedRef.current) {
+        const settings = sessionSettingsRef.current;
+        if (!await persistStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings, settings.currentTime,
+          settings.beatVolume, activeViewRef.current, sessionOwnerRef.current, beatMixRef.current, activeProjectIdRef.current)) {
+          showToast('No se pudo proteger el proyecto local. Descarga una copia.', 'error'); return;
+        }
+        let archived = await archiveSavedStudioSession(sessionOwnerRef.current);
+        if (archived.requiresConfirmation) {
+          if (!window.confirm('Se reemplazará la copia local anterior. ¿Continuar?')) return;
+          archived = await archiveSavedStudioSession(sessionOwnerRef.current, true);
+        }
+        if (!archived.success) { showToast('No se pudo proteger la copia local anterior.', 'error'); return; }
+        setHasLocalPrevious(Boolean(archived.hasPrevious));
+      }
+      engine.stop();
+      setIsPlaying(false);
+      showToast('Descargando tu proyecto desde la nube...', 'info');
       const audioCtx = await engine.ensureAudioContext();
       const cloudData = await loadProjectFromCloud(audioCtx, slot);
       if (expectedOwner !== accessStatusRef.current.email) throw new Error('La cuenta cambió durante la recuperación. El proyecto abierto se conserva.');
 
       if (!cloudData) {
+        if (cloudGalleryOpenRef.current) void loadCloudGallery();
         cloudVerificationPendingRef.current = false;
         setCloudNeedsCheck(false);
         setCloudBackupNotice('');
@@ -2661,11 +2724,18 @@ export default function App() {
       cloudDirtyRef.current = false;
       setCloudBackupStatus(slot === 'previous' ? 'Proyecto guardado anterior cargado' : 'Respaldo de cuenta cargado');
       setLocalBackupStatus('Copia local guardada');
+      ++cloudGalleryRequestRef.current;
+      cloudGalleryOpenRef.current = false;
+      setShowCloudGallery(false);
       await retireRecordingCheckpoints(getSessionStorageKey(sessionOwnerRef.current));
       setIsStartupResolved(true);
       showToast(cloudData.losses.length ? 'Respaldo recuperado con audio faltante.' : 'Proyecto recuperado.', cloudData.losses.length ? 'info' : 'success');
     } catch (err: unknown) {
       console.error('Error loading cloud project:', err);
+      if (cloudGalleryOpenRef.current) {
+        setCloudGalleryError(err instanceof Error ? err.message : 'No se pudo abrir este proyecto.');
+        setCloudGalleryRequiresSignIn(err instanceof CloudConnectionError && err.code === 'SESSION_REQUIRED');
+      }
       showToast(err instanceof Error ? err.message : 'Error al procesar proyecto de la nube.', 'error');
     } finally {
       replacingProjectRef.current = false;
@@ -2886,7 +2956,7 @@ export default function App() {
         redoCount={redoStack.length}
         currentBeatTitle={currentBeat?.title}
         currentBeatBpm={currentBeat?.bpm}
-        onOpenInstallModal={() => setShowInstallModal(true)}
+        onOpenInstallModal={() => { installGuideOfferedRef.current = true; setShowInstallModal(true); }}
         accessStatus={accessStatus}
         onOpenUnlockModal={() => {
           setUnlockModalReason('general');
@@ -2895,6 +2965,7 @@ export default function App() {
         onLogout={handleLogout}
         onSaveCloudProject={handleSaveCloudProject}
         onLoadCloudProject={() => void handleLoadCloudProject()}
+        onOpenCloudGallery={openCloudGallery}
         onLoadPreviousCloudProject={() => void handleLoadCloudProject('previous')}
         onNewProject={handleNewProject}
         onSaveDeviceProject={handleExportDeviceProject}
@@ -2996,11 +3067,11 @@ export default function App() {
             </span>
           </div>
           <button
-            onClick={() => void handleLoadCloudProject()}
+            onClick={openCloudGallery}
             disabled={isLoadingCloud}
             className="px-3 py-1 rounded-lg bg-emerald-500 text-black font-bold hover:bg-emerald-400 active:scale-95 text-xs transition-all shrink-0 ml-3 cursor-pointer"
           >
-            {isLoadingCloud ? 'Cargando...' : 'Cargar Proyecto'}
+            {isLoadingCloud ? 'Cargando...' : 'Ver proyectos'}
           </button>
         </div>
       )}
@@ -3225,6 +3296,20 @@ export default function App() {
           audioCtx={engine ? engine.getAudioContext() : null}
         />
       )}
+
+      {showCloudGallery && <CloudProjectGalleryModal
+        slots={cloudGallerySlots}
+        loading={cloudGalleryLoading}
+        opening={isLoadingCloud}
+        error={cloudGalleryError}
+        requiresSignIn={cloudGalleryRequiresSignIn}
+        owner={accessStatus.email}
+        projectId={activeProjectIdRef.current}
+        onClose={closeCloudGallery}
+        onRefresh={() => void loadCloudGallery()}
+        onSignIn={() => { closeCloudGallery(); setCloudRequiresSignIn(true); setUnlockModalReason('general'); setIsUnlockModalOpen(true); }}
+        onOpen={(slot) => void handleLoadCloudProject(slot)}
+      />}
 
       {/* Professional Export Modal (Master Mix with 3dB Sidechain & Raw Vocal Stems) */}
       {showCloudSaveDialog && <CloudProjectSaveModal

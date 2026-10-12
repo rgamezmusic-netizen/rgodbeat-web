@@ -1,561 +1,105 @@
-import Image from "next/image";
-import React, { useState, useEffect, useCallback } from 'react';
+"use client";
+
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { ArrowLeft, Download, Smartphone, X } from 'lucide-react';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
-import {
-  X,
-  Share,
-  PlusSquare,
-  MoreVertical,
-  Download,
-  Laptop,
-} from 'lucide-react';
+import { useModalFocus } from '@/hooks/useModalFocus';
+import { BROWSER_LABELS, OS_LABELS, type BrowserName, type DeviceOS } from '@/lib/browser/device';
+import { getInstallGuide, INSTALL_GUIDE_HIDDEN_KEY } from '@/lib/browser/install-guide';
 
-interface InstallAppModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  isFirstVisitWelcome?: boolean;
-}
-
+interface InstallAppModalProps { isOpen: boolean; onClose: () => void; isFirstVisitWelcome?: boolean }
 interface InstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
-export const InstallAppModal: React.FC<InstallAppModalProps> = ({
-  isOpen,
-  onClose,
-}) => {
+const readHiddenPreference = () => {
+  try { return localStorage.getItem(INSTALL_GUIDE_HIDDEN_KEY) === 'true'; } catch { return false; }
+};
+const subscribePreference = (listener: () => void) => {
+  window.addEventListener('storage', listener);
+  window.addEventListener('rgodbeat:install-preference', listener);
+  return () => { window.removeEventListener('storage', listener); window.removeEventListener('rgodbeat:install-preference', listener); };
+};
+
+export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
   const device = useDeviceProfile();
-  const activeOs = device?.os ?? 'unknown';
-  const macSafari = activeOs === 'macos' && device?.browser === 'safari';
-  const [activeStep, setActiveStep] = useState<number>(1);
+  const [osOverride, setOsOverride] = useState<DeviceOS | null>(null);
+  const [browserOverride, setBrowserOverride] = useState<BrowserName | null>(null);
+  const os = osOverride ?? device?.os ?? 'unknown';
+  const browser = browserOverride ?? device?.browser ?? 'unknown';
+  const guideKey = `${os}:${browser}`;
+  const [stepState, setStepState] = useState({ key: guideKey, step: 0 });
+  const activeStep = stepState.key === guideKey ? stepState.step : 0;
+  const setActiveStep = (step: number) => setStepState({ key: guideKey, step });
+  const hidden = useSyncExternalStore(subscribePreference, readHiddenPreference, () => false);
   const [deferredPrompt, setDeferredPrompt] = useState<InstallPromptEvent | null>(null);
-  const handleClose = useCallback(() => {
-    setActiveStep(1);
-    onClose();
-  }, [onClose]);
+  const installing = useRef(false);
+  const dialog = useRef<HTMLElement>(null);
+  const handleClose = useCallback(() => { setStepState({ key: '', step: 0 }); onClose(); }, [onClose]);
+  useModalFocus(isOpen, dialog, handleClose);
 
-  // Capture PWA installation prompt if available (Android Chrome / Edge / Windows)
   useEffect(() => {
-    const handleBeforeInstall = (e: Event) => {
-      if (!('prompt' in e) || !('userChoice' in e)) return;
-      e.preventDefault();
-      setDeferredPrompt(e as InstallPromptEvent);
+    const beforeInstall = (event: Event) => {
+      if (!('prompt' in event) || typeof event.prompt !== 'function' || !('userChoice' in event)) return;
+      event.preventDefault(); setDeferredPrompt(event as InstallPromptEvent);
     };
-    const installed = () => setDeferredPrompt(null);
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    const installed = () => { setDeferredPrompt(null); handleClose(); };
+    window.addEventListener('beforeinstallprompt', beforeInstall);
     window.addEventListener('appinstalled', installed);
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-      window.removeEventListener('appinstalled', installed);
-    };
-  }, []);
-
-  // Handle ESC key to dismiss modal
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        handleClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, handleClose]);
+    return () => { window.removeEventListener('beforeinstallprompt', beforeInstall); window.removeEventListener('appinstalled', installed); };
+  }, [handleClose]);
 
   if (!isOpen) return null;
-
-  const handleNext = async () => {
-    if (activeStep < 3) {
-      setActiveStep((prev) => prev + 1);
-    } else {
-      // Step 3 final CTA
-      if (deferredPrompt) {
-        // A real browser installation prompt can only be used once.
-        const install = deferredPrompt;
-        setDeferredPrompt(null);
-        try {
-          await install.prompt();
-          await install.userChoice;
-          handleClose();
-        } catch {
-          handleClose();
-        }
-      } else {
-        handleClose();
-      }
-    }
+  const guide = getInstallGuide(os, browser);
+  const step = guide.steps[activeStep];
+  const manual = osOverride !== null || browserOverride !== null;
+  const canPrompt = deferredPrompt && !manual;
+  const next = async () => {
+    if (activeStep < 2) { setActiveStep(activeStep + 1); return; }
+    if (!canPrompt) { handleClose(); return; }
+    if (installing.current) return;
+    installing.current = true;
+    const event = deferredPrompt;
+    setDeferredPrompt(null);
+    try { await event.prompt(); await event.userChoice; } catch { /* The browser may dismiss or invalidate the prompt. */ }
+    finally { installing.current = false; handleClose(); }
   };
-
-  // Content configuration for each platform
-  const getStepContent = () => {
-    if (activeOs === 'ios') {
-      switch (activeStep) {
-        case 1:
-          return {
-            num: '01',
-            title: 'Abre Compartir',
-            desc: device?.browser === 'safari' ? 'Toca el botón Compartir de Safari.' : 'Abre rgodbeat.com en Safari y toca Compartir.',
-          };
-        case 2:
-          return {
-            num: '02',
-            title: 'Agregar a Inicio',
-            desc: 'Selecciona ‘Agregar a Inicio’.',
-          };
-        case 3:
-        default:
-          return {
-            num: '03',
-            title: 'Listo.',
-            desc: 'Abre RGODBEAT desde tu pantalla de inicio.',
-          };
-      }
-    }
-
-    if (activeOs === 'android') {
-      switch (activeStep) {
-        case 1:
-          return {
-            num: '01',
-            title: 'Menú de Opciones',
-            desc: device?.browser === 'chrome' ? 'Toca los tres puntos (⋮) en la esquina de Chrome.' : 'Para instalar la web app, abre rgodbeat.com en Chrome y toca los tres puntos (⋮).',
-          };
-        case 2:
-          return {
-            num: '02',
-            title: 'Instalar Aplicación',
-            desc: 'Selecciona ‘Instalar aplicación’ o ‘Agregar a inicio’.',
-          };
-        case 3:
-        default:
-          return {
-            num: '03',
-            title: 'Listo.',
-            desc: 'Abre RGODBEAT desde tu pantalla de inicio.',
-          };
-      }
-    }
-
-    if (macSafari) {
-      return [
-        { num: '01', title: 'Añadir al Dock', desc: 'En Safari 17 o posterior, abre Archivo → Añadir al Dock (macOS Sonoma o posterior).' },
-        { num: '02', title: 'Confirma el nombre', desc: 'Usa RGODBEAT Studio y pulsa Añadir.' },
-        { num: '03', title: 'Listo.', desc: 'Abre RGODBEAT desde el Dock de tu Mac.' },
-      ][activeStep - 1];
-    }
-
-    // Desktop installation is offered only by an actual browser prompt.
-    switch (activeStep) {
-      case 1:
-        return {
-          num: '01',
-          title: 'Barra de Direcciones',
-          desc: device?.browser === 'chrome' || device?.browser === 'edge'
-            ? 'Busca el icono de instalar (⊕) en la barra de Chrome o Edge.'
-            : 'Para instalar, abre rgodbeat.com en Chrome o Edge.',
-        };
-      case 2:
-        return {
-          num: '02',
-          title: 'Instalar RGODBEAT',
-          desc: 'Haz clic en ‘Instalar’ si el navegador ofrece esa opción.',
-        };
-      case 3:
-      default:
-        return {
-          num: '03',
-          title: 'Listo.',
-          desc: activeOs === 'windows' ? 'Abre RGODBEAT desde tu escritorio o barra de tareas.' : 'Abre RGODBEAT desde las aplicaciones de tu equipo.',
-        };
-    }
-  };
-
-  const currentStep = getStepContent();
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-opacity duration-300"
-      onClick={handleClose}
-    >
-      {/* Modal Card */}
-      <div
-        className="relative w-full max-w-[390px] bg-[#0c0d12] border border-white/[0.08] rounded-3xl p-6 sm:p-7 shadow-[0_0_50px_-15px_rgba(245,158,11,0.15)] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Subtle orange ambient glow in background */}
-        <div className="absolute -top-16 left-1/2 -translate-x-1/2 w-48 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
-
-        {/* Close Button */}
-        <button
-          type="button"
-          onClick={handleClose}
-          className="absolute top-5 right-5 p-1.5 rounded-full text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
-          title="Cerrar"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        {/* Header */}
-        <div className="flex flex-col items-center text-center">
-          {/* Small RGODBEAT Icon */}
-          <div className="w-10 h-10 rounded-xl bg-black border border-white/[0.08] shadow-inner p-1.5 flex items-center justify-center mb-3">
-            <Image
-              width={1000}
-              height={467}
-              sizes="44px"
-              loading="lazy"
-              src="/images/rgodbeat-studio-logo.png"
-              alt="RGODBEAT"
-              className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(245,158,11,0.4)]"
-            />
-          </div>
-
-          {/* Title */}
-          <h2 className="text-base font-bold text-white tracking-wider uppercase font-mono">
-            INSTALA RGODBEAT
-          </h2>
-
-          {/* Subtitle */}
-          <p className="text-xs text-zinc-400 mt-0.5">
-            Tu estudio, como una app.
-          </p>
-
-          {/* Detected Device Only */}
-          <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.04] border border-white/[0.08] text-[11px] text-zinc-300 font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-            <span>{device?.label ?? 'Detectando dispositivo…'}</span>
-          </div>
-        </div>
-
-        {/* Step Progress Indicators */}
-        <div className="flex items-center justify-center gap-1.5 my-5">
-          {[1, 2, 3].map((stepNum) => (
-            <div
-              key={stepNum}
-              className={`h-1 rounded-full transition-all duration-300 ${
-                stepNum === activeStep
-                  ? 'w-7 bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)]'
-                  : stepNum < activeStep
-                  ? 'w-3.5 bg-amber-500/40'
-                  : 'w-3.5 bg-zinc-800'
-              }`}
-            />
-          ))}
-        </div>
-
-        {/* Step Info */}
-        <div className="text-center space-y-1 mb-4">
-          <div className="text-[11px] font-mono font-bold text-amber-400 tracking-wider">
-            {currentStep.num}
-          </div>
-          <h3 className="text-base font-bold text-white">
-            {currentStep.title}
-          </h3>
-          <p className="text-xs text-zinc-400">
-            {currentStep.desc}
-          </p>
-        </div>
-
-        {/* Visual Illustration per Step */}
-        <div className="mb-6">
-          {activeOs === 'ios' && (
-            <>
-              {/* iOS Step 1: Safari Toolbar with Highlighted Share Button */}
-              {activeStep === 1 && (
-                <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-3 flex flex-col justify-center items-center relative overflow-hidden">
-                  <div className="w-full max-w-[270px] h-12 rounded-xl bg-zinc-900/90 border border-white/[0.08] px-4 flex items-center justify-between shadow-lg relative">
-                    {/* Safari Left Controls */}
-                    <div className="flex items-center gap-3 text-zinc-600">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
-                      </svg>
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-
-                    {/* Safari Share Button (Highlighted) */}
-                    <div className="relative flex flex-col items-center">
-                      <div className="absolute -top-5 animate-bounce text-amber-400">
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                        </svg>
-                      </div>
-                      <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-amber-500 text-black shadow-[0_0_18px_rgba(245,158,11,0.5)]">
-                        <Share className="w-4 h-4 stroke-[2.4]" />
-                      </div>
-                    </div>
-
-                    {/* Safari Right Controls */}
-                    <div className="flex items-center gap-3 text-zinc-600">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                      </svg>
-                      <div className="w-3.5 h-3.5 rounded-sm border-2 border-zinc-600" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* iOS Step 2: Share Sheet with Highlighted 'Agregar a Inicio' */}
-              {activeStep === 2 && (
-                <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-2.5 flex flex-col justify-center items-center relative overflow-hidden">
-                  <div className="w-full max-w-[270px] space-y-1.5">
-                    <div className="h-6 rounded-lg bg-zinc-900/40 border border-white/[0.04] px-3 flex items-center justify-between opacity-30">
-                      <span className="text-[10px] text-zinc-400">Copiar enlace</span>
-                    </div>
-
-                    <div className="h-10 rounded-xl bg-amber-500/15 border border-amber-500/50 px-3 flex items-center justify-between shadow-[0_0_20px_rgba(245,158,11,0.2)]">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-md bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-                          <PlusSquare className="w-3.5 h-3.5 stroke-[2.2]" />
-                        </div>
-                        <span className="text-xs font-semibold text-amber-300">
-                          Agregar a Inicio
-                        </span>
-                      </div>
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-black shadow-sm">
-                        Tocar
-                      </span>
-                    </div>
-
-                    <div className="h-6 rounded-lg bg-zinc-900/40 border border-white/[0.04] px-3 flex items-center justify-between opacity-30">
-                      <span className="text-[10px] text-zinc-400">Guardar en marcadores</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* iOS Step 3: iPhone Home Screen with RGODBEAT Icon Glowing */}
-              {activeStep === 3 && (
-                <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-3 flex flex-col justify-center items-center relative overflow-hidden">
-                  <div className="flex items-center justify-center gap-5">
-                    <div className="flex flex-col items-center gap-1 opacity-25">
-                      <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700" />
-                      <span className="text-[9px] text-zinc-500">Música</span>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-1 relative scale-105">
-                      <div className="absolute -inset-1.5 bg-amber-500/30 rounded-2xl blur-md animate-pulse" />
-                      <div className="relative w-11 h-11 rounded-xl bg-black border-2 border-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center justify-center overflow-hidden p-1.5">
-                        <Image
-                          width={1000}
-                          height={467}
-                          sizes="44px"
-                          loading="lazy"
-                          src="/images/rgodbeat-studio-logo.png"
-                          alt="RGODBEAT"
-                          className="w-full h-full object-contain filter drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]"
-                        />
-                      </div>
-                      <span className="text-[10px] font-bold text-amber-300 tracking-tight">
-                        RGODBEAT
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-1 opacity-25">
-                      <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700" />
-                      <span className="text-[9px] text-zinc-500">Safari</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {activeOs === 'android' && (
-            <>
-              {/* Android Step 1: Chrome Address Bar with 3 dots */}
-              {activeStep === 1 && (
-                <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-3 flex flex-col justify-center items-center relative overflow-hidden">
-                  <div className="w-full max-w-[270px] h-11 rounded-xl bg-zinc-900 border border-white/[0.08] px-3 flex items-center justify-between shadow-lg">
-                    <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 bg-zinc-950 px-2 py-1 rounded-md flex-1 mr-2 truncate font-mono">
-                      <span className="text-emerald-400">🔒</span>
-                      <span>rgodbeat.com</span>
-                    </div>
-                    <div className="relative flex items-center justify-center">
-                      <div className="absolute -top-5 animate-bounce text-amber-400">
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                        </svg>
-                      </div>
-                      <div className="p-1.5 rounded-lg bg-amber-500 text-black shadow-[0_0_16px_rgba(245,158,11,0.5)]">
-                        <MoreVertical className="w-4 h-4 stroke-[2.5]" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Android Step 2: Chrome Menu with Install Option */}
-              {activeStep === 2 && (
-                <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-2.5 flex flex-col justify-center items-center relative overflow-hidden">
-                  <div className="w-full max-w-[270px] space-y-1.5">
-                    <div className="h-6 rounded-lg bg-zinc-900/40 border border-white/[0.04] px-3 flex items-center opacity-30">
-                      <span className="text-[10px] text-zinc-400">Nueva pestaña</span>
-                    </div>
-                    <div className="h-10 rounded-xl bg-amber-500/15 border border-amber-500/50 px-3 flex items-center justify-between shadow-[0_0_20px_rgba(245,158,11,0.2)]">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-md bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-                          <Download className="w-3.5 h-3.5 stroke-[2.2]" />
-                        </div>
-                        <span className="text-xs font-semibold text-amber-300">
-                          Instalar aplicación
-                        </span>
-                      </div>
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-black shadow-sm">
-                        Tocar
-                      </span>
-                    </div>
-                    <div className="h-6 rounded-lg bg-zinc-900/40 border border-white/[0.04] px-3 flex items-center opacity-30">
-                      <span className="text-[10px] text-zinc-400">Sitio para computadoras</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Android Step 3: Home Screen */}
-              {activeStep === 3 && (
-                <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-3 flex flex-col justify-center items-center relative overflow-hidden">
-                  <div className="flex items-center justify-center gap-5">
-                    <div className="flex flex-col items-center gap-1 opacity-25">
-                      <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700" />
-                      <span className="text-[9px] text-zinc-500">Play Store</span>
-                    </div>
-                    <div className="flex flex-col items-center gap-1 relative scale-105">
-                      <div className="absolute -inset-1.5 bg-amber-500/30 rounded-2xl blur-md animate-pulse" />
-                      <div className="relative w-11 h-11 rounded-xl bg-black border-2 border-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center justify-center overflow-hidden p-1.5">
-                        <Image
-                          width={1000}
-                          height={467}
-                          sizes="44px"
-                          loading="lazy"
-                          src="/images/rgodbeat-studio-logo.png"
-                          alt="RGODBEAT"
-                          className="w-full h-full object-contain filter drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]"
-                        />
-                      </div>
-                      <span className="text-[10px] font-bold text-amber-300 tracking-tight">
-                        RGODBEAT
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-center gap-1 opacity-25">
-                      <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700" />
-                      <span className="text-[9px] text-zinc-500">Chrome</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {activeOs !== 'ios' && activeOs !== 'android' && (
-            <>
-              {/* Windows Step 1: URL bar with install icon */}
-              {activeStep === 1 && (
-                <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-3 flex flex-col justify-center items-center relative overflow-hidden">
-                  <div className="w-full max-w-[290px] h-11 rounded-xl bg-zinc-900 border border-white/[0.08] px-3 flex items-center justify-between shadow-lg">
-                    <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 bg-zinc-950 px-2 py-1 rounded-md flex-1 mr-2 truncate font-mono">
-                      <span className="text-emerald-400">🔒</span>
-                      <span>https://rgodbeat.com</span>
-                    </div>
-                    <div className="relative flex items-center justify-center">
-                      <div className="absolute -top-5 animate-bounce text-amber-400">
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                        </svg>
-                      </div>
-                      <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500 text-black font-bold text-[10px] shadow-[0_0_16px_rgba(245,158,11,0.5)]">
-                        <Laptop className="w-3.5 h-3.5 stroke-[2.5]" />
-                        <span>{macSafari ? 'Añadir al Dock' : 'Instalar'}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Windows Step 2: Confirm Dialog */}
-              {activeStep === 2 && (
-                <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-3 flex flex-col justify-center items-center relative overflow-hidden">
-                  <div className="w-full max-w-[270px] p-2.5 rounded-xl bg-zinc-900 border border-white/[0.08] space-y-2 shadow-lg">
-                    <div className="flex items-center gap-2">
-                      <Image
-                        width={1000}
-                        height={467}
-                        sizes="44px"
-                        loading="lazy"
-                        src="/images/rgodbeat-studio-logo.png"
-                        alt="Logo"
-                        className="w-5 h-5 rounded-md object-contain bg-black p-0.5"
-                      />
-                      <span className="text-[11px] font-bold text-white font-mono">
-                        {macSafari ? '¿Añadir RGODBEAT al Dock?' : '¿Instalar RGODBEAT?'}
-                      </span>
-                    </div>
-                    <div className="flex justify-end gap-2 pt-1 border-t border-zinc-800">
-                      <span className="text-[10px] text-zinc-500 self-center">Cancelar</span>
-                      <span className="px-2.5 py-0.5 rounded-md bg-amber-500 text-black font-bold text-[10px] shadow-sm">
-                        {macSafari ? 'Añadir' : 'Instalar'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Windows Step 3: Desktop Standalone */}
-              {activeStep === 3 && (
-                <div className="h-28 rounded-2xl bg-zinc-950/70 border border-white/[0.06] p-3 flex flex-col justify-center items-center relative overflow-hidden">
-                  <div className="flex flex-col items-center gap-1 relative scale-105">
-                    <div className="absolute -inset-1.5 bg-amber-500/30 rounded-2xl blur-md animate-pulse" />
-                    <div className="relative w-11 h-11 rounded-xl bg-black border-2 border-amber-400/80 shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center justify-center overflow-hidden p-1.5">
-                      <Image
-                        width={1000}
-                        height={467}
-                        sizes="44px"
-                        loading="lazy"
-                        src="/images/rgodbeat-studio-logo.png"
-                        alt="RGODBEAT"
-                        className="w-full h-full object-contain filter drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]"
-                      />
-                    </div>
-                    <span className="text-[10px] font-bold text-amber-300 tracking-tight">
-                      RGODBEAT Studio
-                    </span>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Action Controls: Primary CTA Button */}
-        <div className="space-y-2 mt-auto">
-          <button
-            type="button"
-            onClick={handleNext}
-            className="w-full py-3 px-5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-mono font-bold text-xs uppercase tracking-wider shadow-[0_0_25px_-5px_rgba(245,158,11,0.4)] transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
-          >
-            <span>
-              {activeStep === 3
-                ? deferredPrompt
-                  ? 'INSTALAR AHORA →'
-                  : 'LISTO →'
-                : 'SIGUIENTE →'}
-            </span>
-          </button>
-
-          {/* Discreet Back Navigation (If Step > 1) */}
-          {activeStep > 1 && (
-            <button
-              type="button"
-              onClick={() => setActiveStep((prev) => Math.max(1, prev - 1))}
-              className="w-full py-1 text-center text-[11px] font-mono text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
-            >
-              ← Paso anterior
-            </button>
-          )}
-        </div>
+  return <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm" onClick={handleClose}>
+    <section ref={dialog} role="dialog" aria-modal="true" aria-labelledby="install-title" tabIndex={-1} onClick={event => event.stopPropagation()} className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl border border-white/15 bg-[#101014] p-5 text-white shadow-2xl sm:p-7">
+      <div className="flex items-start justify-between gap-3">
+        <div><Smartphone className="mb-3 text-amber-400" size={28} /><h2 id="install-title" className="text-xl font-bold">Instala RGodbeat Studio</h2></div>
+        <button type="button" title="Cerrar" aria-label="Cerrar tutorial" onClick={handleClose} className="rounded-xl p-2 hover:bg-white/10"><X size={22} /></button>
       </div>
-    </div>
-  );
-};
+      <p className="mt-2 text-sm text-amber-300">{manual ? `${OS_LABELS[os]} · ${BROWSER_LABELS[browser]}` : device?.label || 'Detectando dispositivo…'}</p>
+      <p className="mt-2 text-sm text-zinc-400">Añade el Studio a tus aplicaciones para abrirlo desde su icono.</p>
+      <div className="my-5 flex gap-2" aria-label={`Paso ${activeStep + 1} de 3`}>
+        {guide.steps.map((_, index) => <span key={index} className={`h-1.5 flex-1 rounded-full ${index <= activeStep ? 'bg-amber-400' : 'bg-white/10'}`} />)}
+      </div>
+      <div aria-live="polite" className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4">
+        <span className="text-xs font-bold text-amber-400">PASO {activeStep + 1} / 3</span>
+        <h3 className="mt-2 text-lg font-bold">{step.title}</h3>
+        <p className="mt-2 text-sm leading-relaxed text-zinc-200">{step.text}</p>
+      </div>
+      {guide.note && <p className="mt-3 text-xs leading-relaxed text-zinc-400">{guide.note}</p>}
+      <details className="mt-4 text-sm text-zinc-300">
+        <summary className="cursor-pointer py-2">¿No coincide con tu dispositivo?</summary>
+        <p className="mb-3 text-xs text-zinc-400">Algunos navegadores ocultan su identidad. Elige los que utilizas para ver sus pasos.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="min-w-0 text-xs">Sistema operativo<select aria-label="Sistema operativo" value={os} onChange={event => { setStepState({ key: '', step: 0 }); setOsOverride(event.target.value as DeviceOS); }} className="mt-1 w-full rounded-lg border border-white/20 bg-zinc-900 p-2 text-sm">{Object.entries(OS_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+          <label className="min-w-0 text-xs">Navegador<select aria-label="Navegador" value={browser} onChange={event => { setStepState({ key: '', step: 0 }); setBrowserOverride(event.target.value as BrowserName); }} className="mt-1 w-full rounded-lg border border-white/20 bg-zinc-900 p-2 text-sm">{Object.entries(BROWSER_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+        </div>
+        {manual && <button type="button" onClick={() => { setStepState({ key: '', step: 0 }); setOsOverride(null); setBrowserOverride(null); }} className="mt-2 py-2 text-amber-300 underline">Detectar automáticamente</button>}
+      </details>
+      {guide.source && <a href={guide.source} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block py-2 text-xs text-zinc-400 underline">Ayuda oficial del navegador</a>}
+      <label className="mt-3 flex items-start gap-2 text-xs text-zinc-400"><input type="checkbox" checked={hidden} onChange={event => {
+        try { if (event.target.checked) localStorage.setItem(INSTALL_GUIDE_HIDDEN_KEY, 'true'); else localStorage.removeItem(INSTALL_GUIDE_HIDDEN_KEY); } catch { /* Storage may be restricted. */ }
+        window.dispatchEvent(new Event('rgodbeat:install-preference'));
+      }} className="mt-0.5 accent-amber-400" /><span>No mostrar automáticamente al entrar. Puedes volver desde Proyecto → Instalar App.</span></label>
+      <div className="mt-5 flex gap-2">
+        {activeStep > 0 && <button type="button" aria-label="Paso anterior" onClick={() => setActiveStep(activeStep - 1)} className="rounded-xl bg-white/10 px-3 hover:bg-white/15"><ArrowLeft size={20} /></button>}
+        <button type="button" onClick={() => void next()} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-400 px-3 py-3 text-sm font-bold text-black hover:bg-amber-300">{activeStep < 2 ? 'SIGUIENTE →' : canPrompt ? <><Download size={18} />INSTALAR AHORA →</> : 'LISTO →'}</button>
+      </div>
+    </section>
+  </div>;
+}
