@@ -1,0 +1,9 @@
+# Generated media/manuals are not application source.
+/output/
+
+# Local companion state, reports and agent tooling are not deployment inputs.
+/.local-sync/
+/coverage/
+/.agents/
+/.codex/
+/scripts/create-studio-guide.py

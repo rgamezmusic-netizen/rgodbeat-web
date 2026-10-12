@@ -5,6 +5,7 @@ separately from the local anonymous demo with synthetic browser audio.
 """
 from pathlib import Path
 from html import escape
+import os
 import shutil
 import zipfile
 
@@ -18,7 +19,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'output'
+OUT = Path(os.environ.get('RGODBEAT_CONTENT_DIR', str(ROOT.parent / 'RGODBEAT-Contenido'))).expanduser().resolve()
+if OUT == ROOT or ROOT in OUT.parents:
+    raise ValueError('El contenido de producción debe guardarse fuera del proyecto web.')
 PACK = OUT / 'studio-demo'
 ASSETS = PACK / 'assets'
 PDF = OUT / 'pdf' / 'RGodbeat-Studio-Guia-de-Uso.pdf'

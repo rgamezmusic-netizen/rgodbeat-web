@@ -42,3 +42,11 @@ next-env.d.ts
 
 # Local companion logs, state and process lock
 /.local-sync/
+
+# Generated documents, promotional media and editing assets stay outside the app.
+# Also ignore the old output location if a local tool recreates it.
+/output/
+
+# Local Python generation caches
+__pycache__/
+*.py[cod]
