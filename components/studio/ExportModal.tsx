@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { X, Download, Mic, Sliders, Music, Sparkles, Check, Activity, Lock, Video, ImagePlus, Loader2, ExternalLink } from 'lucide-react';
 import { BeatData, VocalTrack } from '@/lib/studio/types/audio';
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
+import { StemDeliveryForm } from './StemDeliveryForm';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -73,6 +74,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [isExportingRawStems, setIsExportingRawStems] = useState(false);
   const [isExportingWetStems, setIsExportingWetStems] = useState(false);
   const [isExportingBeatStem, setIsExportingBeatStem] = useState(false);
+  const [isSendingStems, setIsSendingStems] = useState(false);
   const exportLock = useRef(false);
   const [sidechainEnabled, setSidechainEnabled] = useState<boolean>(true);
   const [downloadingStemId, setDownloadingStemId] = useState<string | null>(null);
@@ -95,7 +97,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [rgLoading, setRgLoading] = useState(false);
   const [rgError, setRgError] = useState('');
 
-  const isBusy = isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null || youtubeLoading || rgLoading;
+  const isBusy = isSendingStems || isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null || youtubeLoading || rgLoading;
   const youtubeDescriptionBytes = new TextEncoder().encode(youtubeDescription).byteLength;
   const youtubeUploadPercent = youtubeProgress?.totalBytes
     ? Math.min(100, Math.floor(((youtubeProgress.transferredBytes || 0) / youtubeProgress.totalBytes) * 100))
@@ -523,8 +525,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            disabled={youtubeLoading}
-            aria-label={youtubeLoading ? 'Espera a que termine la publicación' : 'Cerrar exportación'}
+            disabled={youtubeLoading || isSendingStems}
+            aria-label={isSendingStems ? 'Espera a que termine el envío de voces' : youtubeLoading ? 'Espera a que termine la publicación' : 'Cerrar exportación'}
             className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           >
             <X className="w-5 h-5" />
@@ -807,6 +809,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             )}
           </div>
 
+          {beat && hasRecordings && <StemDeliveryForm key={beat.id} engine={engine} beat={beat} tracks={tracks} disabled={isBusy} onBusyChange={setIsSendingStems} />}
+
           {/* OPTION 3: Additional Stems (Wet Stems & Beat Stem) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             {/* Processed Wet Stems */}
@@ -854,7 +858,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           </span>
           <button
             onClick={onClose}
-            disabled={youtubeLoading}
+            disabled={youtubeLoading || isSendingStems}
             className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cerrar

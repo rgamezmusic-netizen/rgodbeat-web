@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/admin/licenses", label: "Licenses", exact: false },
   { href: "/admin/orders", label: "Orders", exact: false },
   { href: "/admin/stem-requests", label: "Stem Requests", exact: false },
+  { href: "/admin/studio-deliveries", label: "Voces Studio", exact: false },
   { href: "/admin/studio-passes", label: "Studio Passes", exact: false },
   { href: "/admin/youtube", label: "YouTube", exact: false },
 ];
