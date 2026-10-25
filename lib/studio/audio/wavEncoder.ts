@@ -3,9 +3,9 @@ import { VocalClip } from '../types/audio';
 /**
  * Encodes an AudioBuffer into WAV format.
  * Supports 16-bit and 24-bit PCM plus 32-bit IEEE float for final Studio exports.
- * Defaults to 24-bit; original vocal clips explicitly use float to retain their samples.
+ * Defaults to 16-bit for optimal performance, mobile stability and memory footprint.
  */
-export function audioBufferToWav(buffer: AudioBuffer, bitDepth: 16 | 24 | 32 = 24): Blob {
+export function audioBufferToWav(buffer: AudioBuffer, bitDepth: 16 | 24 | 32 = 16): Blob {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const format = bitDepth === 32 ? 3 : 1; // IEEE float or PCM

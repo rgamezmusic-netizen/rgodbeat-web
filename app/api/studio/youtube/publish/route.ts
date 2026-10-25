@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
     await runFfmpeg([
       "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", "2", "-i", coverPath,
       "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0", "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-      "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", videoPath,
+      "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", "-shortest", videoPath,
     ], directory);
     const video = await readFile(videoPath);
     stage = 'upload'; fallback = 'uploadFailed';

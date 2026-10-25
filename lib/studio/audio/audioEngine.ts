@@ -1579,11 +1579,9 @@ export class AudioEngine {
     return this.readPlaybackPosition();
   }
 
-  /** Use the recorded audio's actual rate instead of forcing an export upgrade. */
+  /** Target 48 kHz standard for video, YouTube and mobile broadcast performance. */
   public getExportSampleRate(vocalTracks: VocalTrack[] = []): number {
-    const recordedRate = vocalTracks.reduce((rate, track) =>
-      getTrackClips(track).reduce((maxRate, clip) => Math.max(maxRate, clip.buffer?.sampleRate ?? 0), rate), 0);
-    return recordedRate || this.beatData?.buffer.sampleRate || this.ctx?.sampleRate || 44100;
+    return 48000;
   }
 
   public async exportMix(
@@ -1594,8 +1592,8 @@ export class AudioEngine {
       throw new Error('No hay beat cargado para exportar');
     }
 
-    // Compact 24-bit master at the actual recorded sample rate.
-    const TARGET_SAMPLE_RATE = this.getExportSampleRate(vocalTracks);
+    // Standard 48 kHz / 16-bit PCM master for maximum performance, mobile stability and headroom
+    const TARGET_SAMPLE_RATE = 48000;
     const duration = getRenderDuration(this.beatData.duration, vocalTracks, this.beatData.bpm);
     const length = Math.max(1, Math.ceil(TARGET_SAMPLE_RATE * duration));
 
@@ -1885,7 +1883,7 @@ export class AudioEngine {
         for (let i = 0; i < data.length; i++) data[i] *= gain;
       }
     }
-    return audioBufferToWav(renderedBuffer, 24);
+    return audioBufferToWav(renderedBuffer, 16);
   }
 
   /**

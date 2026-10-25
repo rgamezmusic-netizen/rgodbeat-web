@@ -24,8 +24,8 @@ export function ChartRow({ entry, kind }: { entry: ChartEntry; kind: 'tracks' | 
 }
 export function ArtistRewards({ rewards, tail }: { rewards: ChartData['rewards']; tail?: ChartData['rewardTail'] }) {
   return <section aria-label="Premios del Top 3 de artistas"><p className={styles.eyebrow}>TOP 3 ARTISTS · PREMIOS DE TEMPORADA</p><div className={styles.rewardGrid}>
-    {rewards.map(reward => <article key={reward.place} className={styles.reward}><span className={styles.eyebrow}>#{reward.place}</span><strong>{reward.premiumDays} DÍAS PREMIUM</strong><small>+ {reward.poolSharePercent}% DEL REWARD POOL</small></article>)}
-  </div>{tail && <p className={styles.muted}>#{tail.firstPlace}–#{tail.lastPlace} comparten el {tail.poolSharePercent}% restante, con peso descendente por posición. El pool real varía por temporada.</p>}</section>;
+    {rewards.map(reward => <article key={reward.place} className={styles.reward}><span className={styles.eyebrow}>#{reward.place}</span><strong>{reward.premiumDays} DÍAS PREMIUM</strong><small>+ REWARD POOL</small></article>)}
+  </div>{tail && <p className={styles.muted}>#{tail.firstPlace}–#{tail.lastPlace} comparten el reward pool restante, con peso descendente por posición. El pool real varía por temporada.</p>}</section>;
 }
 export function Sponsors({ sponsors }: { sponsors: ChartData['sponsors'] }) {
   if (!sponsors.length) return null;
@@ -35,10 +35,10 @@ export function Sponsors({ sponsors }: { sponsors: ChartData['sponsors'] }) {
   })}</div></section>;
 }
 export function HowToCompete() {
-  return <section className={styles.section}><p className={styles.eyebrow}>TU MÚSICA. TU TEMPORADA.</p><h2>MANTANTE EN EL TOP</h2><div className={styles.learnGrid}>
-    <div><span className={styles.eyebrow}>01 / PUBLICA</span><h3>Empieza en Studio.</h3><p>Crea tu perfil de artista y publica tu track con RGodBeat. Una publicación verificada te abre el camino al chart.</p></div>
-    <div><span className={styles.eyebrow}>02 / CRECE</span><h3>Llega más lejos.</h3><p>El rendimiento verificado de tus publicaciones y sus hitos ayudan a mover el ranking. Cada temporada dura 14 días.</p></div>
-    <div><span className={styles.eyebrow}>03 / GANA</span><h3>Compite por el Top 3.</h3><p>Los tres primeros artistas ganan Premium y una parte del premio RG disponible. Una nueva temporada trae una nueva oportunidad.</p></div>
+  return <section className={styles.section}><p className={styles.eyebrow}>TU MÚSICA. TU TEMPORADA.</p><h2>GRABA. PUBLICA. GANA.</h2><div className={styles.learnGrid}>
+    <div><span className={styles.eyebrow}>01 / GRABA</span><h3>Empieza en Studio.</h3><p>Elige tu beat favorito del catálogo de RGodbeat y graba tus voces directamente en Studio.</p></div>
+    <div><span className={styles.eyebrow}>02 / PUBLICA</span><h3>Llega a YouTube y suma puntos.</h3><p>Publica tu video en el canal oficial. Ganas 23 puntos en tu primera subida (luego 7 y 4 cada 12 horas) para mover el ranking.</p></div>
+    <div><span className={styles.eyebrow}>03 / GANA</span><h3>Compite por el Top 3.</h3><p>Los tres primeros artistas ganan días Premium y parte del Reward Pool. Cada 14 días, una nueva oportunidad.</p></div>
   </div><div className={styles.links}><Link className={styles.button} href="/studio">PUBLICAR EN RGODBEAT STUDIO</Link></div></section>;
 }
 export function Performance({ data, seasonNumber }: { data: SeasonPerformance; seasonNumber: number }) {
