@@ -35,6 +35,7 @@ import {
 import {
   saveStudioSession as persistStudioSession,
   restoreLastStudioSession,
+  restoreRecoverableStudioSession,
   clearSavedStudioSession,
   exportProjectToDeviceFile,
   importProjectFromDeviceFile,
@@ -92,7 +93,7 @@ import {
 import { verifyStudioAccount, shouldRetryCloud } from '@/lib/studio/accountConnection';
 import { prefersDeviceWork, rememberDeviceWork } from '@/lib/studio/deviceWorkingMode';
 
-import { appendRecordingCheckpoint, recoverRecordingCheckpoints, retireRecordingCheckpoints } from '@/lib/studio/audio/recordingRecovery';
+import { appendRecordingCheckpoint } from '@/lib/studio/audio/recordingRecovery';
 
 const defaultVocalFX = (): VocalFX => ({
   tune: {
@@ -917,7 +918,7 @@ export default function App() {
         void appendRecordingCheckpoint(key, { ...checkpoint, projectId }).then(saved => {
           if (isRecordingRef.current && key === getSessionStorageKey(sessionOwnerRef.current)
             && projectId === activeProjectIdRef.current) {
-            setLocalBackupStatus(saved ? 'Voz en curso protegida en este dispositivo' : 'No hay espacio para proteger la voz. Detén y descarga tu proyecto.');
+            setLocalBackupStatus(saved ? 'Voz en curso protegida en este dispositivo' : 'No se pudo proteger la voz. Detén y descarga tu proyecto.');
           }
         });
       },
@@ -992,7 +993,8 @@ export default function App() {
         let hasPreviousSession = false;
         let cloudCheck: CloudProjectCheckResult | null = null;
 
-        let lastSession = await restoreLastStudioSession(audioCtx, owner);
+        const recoveredSession = await restoreRecoverableStudioSession(audioCtx, owner, initialTracks);
+        const lastSession = recoveredSession.session;
         if (lastSession?.projectId) activeProjectIdRef.current = lastSession.projectId;
         if (lastSession) alignCloudProjectSelection(activeProjectIdRef.current);
         const deviceWork = Boolean(lastSession && prefersDeviceWork(owner, activeProjectIdRef.current));
@@ -1000,12 +1002,11 @@ export default function App() {
         setCloudWorkPaused(deviceWork);
         setHasLocalPrevious(await hasPreviousStudioSession(owner));
         if (lastSession?.losses.length) setRecoveryNotice(`Se perdió audio local (${lastSession.losses.length}). Se recuperó lo disponible.`);
-        const recovery = lastSession ? await recoverRecordingCheckpoints(getSessionStorageKey(owner), audioCtx, lastSession.tracks, activeProjectIdRef.current)
-          : { tracks: initialTracks, recovered: 0 };
-        if (recovery.recovered) {
-          lastSession = { ...(lastSession || {}), timestamp: Date.now(), tracks: recovery.tracks, losses: lastSession?.losses || [] };
+        if (recoveredSession.recovered) {
           setLocalBackupStatus('Se rescató una grabación interrumpida');
         }
+        if (recoveredSession.pending) setRecoveryNotice(previous => [previous,
+          'Hay fragmentos pendientes conservados en este dispositivo. No se han eliminado.'].filter(Boolean).join(' '));
 
         if (owner && !deviceWork) {
           const projectId = activeProjectIdRef.current;
@@ -2442,7 +2443,9 @@ export default function App() {
   // Delete saved beat from IndexedDB
   const handleDeleteSavedBeat = async (beatId: string) => {
     const targetSlot = savedCustomBeats.findIndex((b) => b.id === beatId) + 1;
-    await deleteSavedBeat(beatId);
+    if (!await deleteSavedBeat(beatId)) {
+      showToast('No se pudo liberar el slot. El beat se conserva.', 'error'); return;
+    }
     const nextSaved = savedCustomBeats.filter((b) => b.id !== beatId);
     setSavedCustomBeats(nextSaved);
 
@@ -2699,7 +2702,7 @@ export default function App() {
       ++cloudGalleryRequestRef.current;
       cloudGalleryOpenRef.current = false;
       setShowCloudGallery(false);
-      await retireRecordingCheckpoints(getSessionStorageKey(sessionOwnerRef.current));
+      // The committed local save retires only matching audio from this project.
       setIsStartupResolved(true);
       showToast(cloudData.losses.length ? 'Respaldo recuperado con audio faltante.' : 'Proyecto recuperado.', cloudData.losses.length ? 'info' : 'success');
     } catch (err: unknown) {

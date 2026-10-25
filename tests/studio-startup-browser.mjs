@@ -6,7 +6,7 @@ const base = process.env.STUDIO_TEST_URL ?? 'http://127.0.0.1:3104';
 assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(new URL(base).hostname), 'Run only against a local build.');
 assert.ok(process.env.STUDIO_PLAYWRIGHT_PATH, 'Set STUDIO_PLAYWRIGHT_PATH to an external installation.');
 const { chromium, webkit } = await import(pathToFileURL(process.env.STUDIO_PLAYWRIGHT_PATH).href);
-const bundle = await build({ stdin: { contents: `export * from './lib/studio/audio/sessionStorage'; export {AudioEngine} from './lib/studio/audio/audioEngine';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife', globalName: 'StudioRegression', platform: 'browser' });
+const bundle = await build({ stdin: { contents: `export * from './lib/studio/audio/sessionStorage'; export {appendRecordingCheckpoint} from './lib/studio/audio/recordingRecovery'; export {AudioEngine} from './lib/studio/audio/audioEngine';`, resolveDir: process.cwd() }, bundle: true, write: false, format: 'iife', globalName: 'StudioRegression', platform: 'browser' });
 const owner = 'local-studio@example.invalid';
 const catalogId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 function instrumentAudio() {
@@ -54,6 +54,7 @@ async function seed(page, account, external = false) {
   }, {account, catalogId, external});
 }
 for (const name of ['chromium', 'webkit']) {
+  if (process.env.STUDIO_TEST_BROWSER && process.env.STUDIO_TEST_BROWSER !== name) continue;
   const browser = await (name === 'chromium' ? chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true}) : webkit.launch({headless:true}));
   try {
     for (const width of [360,390,1280]) {
@@ -123,6 +124,32 @@ for (const name of ['chromium', 'webkit']) {
     assert.deepEqual(data,{title:'Local saved project',catalog:null,custom:true,clips:1});
     console.log(`PASS ${name}: external beat/voices restored without invented catalog identity`);
     await external.close();
+    const interrupted = await browser.newPage();
+    await interrupted.addInitScript(instrumentAudio);
+    await interrupted.route('**/api/studio/access', r => r.fulfill({ json: { isDemo: true, isLoggedIn: false, hasActivePass: false, email: null } }));
+    await interrupted.goto(base + '/login');
+    await interrupted.addScriptTag({ content: bundle.outputFiles[0].text });
+    await interrupted.evaluate(async () => {
+      const samples = new Float32Array(4800); samples.fill(0.25);
+      const saved = await StudioRegression.appendRecordingCheckpoint('latest_active_session', {
+        projectId: 'interrupted-first-project', takeId: 'interrupted-first-take', trackId: 'lead1', start: 0,
+        sampleRate: 48000, index: 0, samples });
+      if (!saved) throw Error('Checkpoint seed failed');
+    });
+    await interrupted.goto(base + '/studio');
+    await interrupted.getByRole('button', { name: /Continuar Sesión/ }).waitFor();
+    assert.equal((await audioStats(interrupted)).premature, 0);
+    await interrupted.getByRole('button', { name: /Continuar Sesión/ }).click();
+    await interrupted.getByText('Copia local guardada', { exact: false }).first().waitFor();
+    await interrupted.addScriptTag({ content: bundle.outputFiles[0].text });
+    const recoveredFirst = await interrupted.evaluate(async () => {
+      const engine = new StudioRegression.AudioEngine({}); const ctx = await engine.ensureAudioContext({ resume: false });
+      const session = await StudioRegression.restoreLastStudioSession(ctx, null); engine.dispose();
+      return { id: session.projectId, clip: session.tracks[0].clips[0].id, frames: session.tracks[0].clips[0].buffer.length };
+    });
+    assert.deepEqual(recoveredFirst, { id: 'interrupted-first-project', clip: 'interrupted-first-take', frames: 4800 });
+    console.log(`PASS ${name}: first interrupted take offered in startup UI and committed only after continuing`);
+    await interrupted.close();
     const authPage = await browser.newPage(), authErrors = [];
     authPage.on('pageerror', error => authErrors.push(error.message));
     await authPage.route('**/auth/v1/**', route => route.fulfill({

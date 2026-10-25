@@ -1,6 +1,6 @@
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalFX, BeatFX, BeatMixSettings } from '../types/audio';
 import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from './wavEncoder';
-import { retireRecordingCheckpoints } from './recordingRecovery';
+import { recoverRecordingCheckpoints, retireRecordingCheckpoints } from './recordingRecovery';
 import { getCatalogBeatId } from './catalogBeat';
 import { restoredVocalFX } from './restoredFX';
 
@@ -155,6 +155,9 @@ async function getDB(): Promise<IDBDatabase> {
 
     request.onsuccess = (event) => {
       dbInstance = (event.target as IDBOpenDBRequest).result;
+      const database = dbInstance;
+      database.onversionchange = () => { database.close(); if (dbInstance === database) dbInstance = null; };
+      database.onclose = () => { if (dbInstance === database) dbInstance = null; };
       resolve(dbInstance);
     };
 
@@ -162,6 +165,16 @@ async function getDB(): Promise<IDBDatabase> {
       console.error('IndexedDB open error in sessionStorage:', (event.target as IDBOpenDBRequest).error);
       reject((event.target as IDBOpenDBRequest).error);
     };
+  });
+}
+
+// A read failure must not look like an absent session and enable its replacement.
+function readSession(database: IDBDatabase, key: string): Promise<StoredStudioSession | null> {
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(SESSIONS_STORE, 'readonly');
+    const request = tx.objectStore(SESSIONS_STORE).get(key);
+    tx.oncomplete = () => resolve(request.result ?? null);
+    tx.onabort = () => reject(tx.error ?? new DOMException('No se pudo leer el proyecto local.', 'AbortError'));
   });
 }
 
@@ -205,17 +218,7 @@ async function persistStudioSession(
     if (saveVersions.get(sessionKey) !== version) return newerSave();
 
     // Check existing session to preserve beatData if not explicitly provided
-    let existingSession: StoredStudioSession | null = null;
-    try {
-      existingSession = await new Promise((res) => {
-        const tx = db.transaction([SESSIONS_STORE], 'readonly');
-        const req = tx.objectStore(SESSIONS_STORE).get(sessionKey);
-        req.onsuccess = () => res(req.result || null);
-        req.onerror = () => res(null);
-      });
-    } catch {
-      // ignore
-    }
+    const existingSession = await readSession(db, sessionKey);
 
     let storedBeatData: StoredBeatData | null = null;
     let resolvedBeatId: string | null = null;
@@ -338,13 +341,9 @@ async function persistStudioSession(
     const committed = await new Promise<boolean>((resolve) => {
       const tx = db.transaction([SESSIONS_STORE], 'readwrite');
       const store = tx.objectStore(SESSIONS_STORE);
-      const req = store.put(sessionPayload);
+      store.put(sessionPayload);
       tx.oncomplete = () => resolve(true);
       tx.onabort = () => resolve(false);
-      req.onerror = (e) => {
-        console.warn('Error saving studio session:', e);
-        resolve(false);
-      };
     });
     if (committed) await retireRecordingCheckpoints(sessionKey, tracks, sessionPayload.projectId);
     return committed;
@@ -367,17 +366,7 @@ export async function saveLastProjectBeat(
   try {
     const db = await getDB();
     const sessionKey = getSessionStorageKey(userIdentifier);
-    let existingSession: StoredStudioSession | null = null;
-    try {
-      existingSession = await new Promise((res) => {
-        const tx = db.transaction([SESSIONS_STORE], 'readonly');
-        const req = tx.objectStore(SESSIONS_STORE).get(sessionKey);
-        req.onsuccess = () => res(req.result || null);
-        req.onerror = () => res(null);
-      });
-    } catch {
-      // ignore
-    }
+    const existingSession = await readSession(db, sessionKey);
 
     let audioWavData: ArrayBuffer | undefined = undefined;
     if (beat.buffer) {
@@ -423,12 +412,12 @@ export async function saveLastProjectBeat(
       tracks: existingSession?.tracks || [],
     };
 
-    return new Promise((resolve) => {
+    return await new Promise<boolean>((resolve) => {
       const tx = db.transaction([SESSIONS_STORE], 'readwrite');
       const store = tx.objectStore(SESSIONS_STORE);
-      const req = store.put(sessionPayload);
-      req.onsuccess = () => resolve(true);
-      req.onerror = () => resolve(false);
+      store.put(sessionPayload);
+      tx.oncomplete = () => resolve(true);
+      tx.onabort = () => resolve(false);
     });
   } catch (err) {
     console.warn('saveLastProjectBeat failure:', err);
@@ -462,13 +451,7 @@ export async function restoreLastStudioSession(
     const db = await getDB();
     const sessionKey = getSessionStorageKey(userIdentifier) + (slot === 'previous' ? ':previous' : '');
 
-    const session: StoredStudioSession | null = await new Promise((resolve) => {
-      const tx = db.transaction([SESSIONS_STORE], 'readonly');
-      const store = tx.objectStore(SESSIONS_STORE);
-      const req = store.get(sessionKey);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-    });
+    const session = await readSession(db, sessionKey);
 
     // Never automatically copy an anonymous user's voices into a different account.
 
@@ -592,8 +575,23 @@ export async function restoreLastStudioSession(
   }
 }
 
+/** Restore interrupted first takes without writing over an existing workspace. */
+export async function restoreRecoverableStudioSession(
+  audioCtx: AudioContext, userIdentifier: string | null, initialTracks: VocalTrack[]
+) {
+  const session = await restoreLastStudioSession(audioCtx, userIdentifier);
+  const recovery = await recoverRecordingCheckpoints(getSessionStorageKey(userIdentifier), audioCtx,
+    session?.tracks ?? initialTracks, session ? session.projectId ?? null : undefined, initialTracks[0]);
+  if (!recovery.recovered) return { session, recovered: 0, pending: recovery.pending };
+  return {
+    session: { ...session, projectId: session?.projectId ?? recovery.projectId ?? crypto.randomUUID(),
+      timestamp: Date.now(), tracks: recovery.tracks, losses: session?.losses ?? ['beat'] },
+    recovered: recovery.recovered, pending: recovery.pending,
+  };
+}
+
 /**
- * Clears the stored studio session (e.g. when starting a new project)
+ * Archives the current local workspace before starting a new project.
  */
 export async function archiveSavedStudioSession(userIdentifier?: string | null, replacePrevious = false): Promise<{
   success: boolean; hasPrevious?: boolean; requiresConfirmation?: boolean;
@@ -653,7 +651,8 @@ export async function clearSavedStudioSession(userIdentifier?: string | null): P
       tx.oncomplete = () => resolve(true);
       tx.onabort = () => resolve(false);
     });
-    if (committed) await retireRecordingCheckpoints(key);
+    // Starting a new workspace does not discard interrupted takes, including
+    // takes whose base session was never committed.
     return committed;
   } catch {
     return false;
@@ -976,7 +975,7 @@ export async function importProjectFromDeviceFile(
     // 3. Immediately persist imported project as current active session in device memory
     const saved = await saveStudioSession(restoredTracks, restoredBeat, s.loopSettings, s.currentTime, s.beatVolume, undefined, userIdentifier, { beatFX: s.beatFX, isBeatMuted: s.isBeatMuted }, projectId);
     if (!saved) throw new Error('No se pudo proteger el proyecto importado. El proyecto abierto se conserva.');
-    await retireRecordingCheckpoints(getSessionStorageKey(userIdentifier));
+    // saveStudioSession already retires only this project's verified PCM.
 
     return {
       projectId,

@@ -52,6 +52,10 @@ async function getDB(): Promise<IDBDatabase> {
 
     request.onsuccess = (event) => {
       dbInstance = (event.target as IDBOpenDBRequest).result;
+      const database = dbInstance;
+      const reset = () => { if (dbInstance === database) dbInstance = null; };
+      database.onversionchange = () => { database.close(); reset(); };
+      database.onclose = reset;
       resolve(dbInstance);
     };
 
@@ -73,28 +77,6 @@ export async function saveBeatToDatabase(
   try {
     const db = await getDB();
     
-    // Check current count and whether this beat is already in storage
-    const countReq = await new Promise<number>((resolve) => {
-      const tx = db.transaction([BEATS_STORE], 'readonly');
-      const store = tx.objectStore(BEATS_STORE);
-      const req = store.count();
-      req.onsuccess = () => resolve(req.result || 0);
-      req.onerror = () => resolve(0);
-    });
-
-    const alreadyStored = await new Promise<boolean>((resolve) => {
-      const tx = db.transaction([BEATS_STORE], 'readonly');
-      const store = tx.objectStore(BEATS_STORE);
-      const req = store.get(beat.id);
-      req.onsuccess = () => resolve(!!req.result);
-      req.onerror = () => resolve(false);
-    });
-
-    if (!alreadyStored && countReq >= MAX_SAVED_BEATS) {
-      console.warn(`Límite máximo de ${MAX_SAVED_BEATS} beats alcanzado.`);
-      return false;
-    }
-
     let audioData: ArrayBuffer;
 
     if (rawAudioBuffer && rawAudioBuffer.byteLength > 0) {
@@ -128,17 +110,26 @@ export async function saveBeatToDatabase(
       isLocked: isLocked ?? beat.isLocked ?? true, // Default to locked so it stays
     };
 
-    await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction([BEATS_STORE], 'readwrite');
+    const saved = await new Promise<boolean>((resolve, reject) => {
+      // Capacity check, audio and selection are atomic, also across tabs.
+      const transaction = db.transaction([BEATS_STORE, SETTINGS_STORE], 'readwrite');
       const store = transaction.objectStore(BEATS_STORE);
-      const req = store.put(item);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      let written = false;
+      const count = store.count();
+      const existing = store.get(beat.id);
+      existing.onsuccess = () => {
+        if (!existing.result && count.result >= MAX_SAVED_BEATS) return;
+        store.put(item);
+        const settings = transaction.objectStore(SETTINGS_STORE);
+        settings.put({ key: 'active_beat_id', value: beat.id });
+        settings.put({ key: 'beat_locked', value: item.isLocked });
+        written = true;
+      };
+      transaction.oncomplete = () => resolve(written);
+      transaction.onabort = () => reject(transaction.error ?? new DOMException('No se guardó el beat.', 'AbortError'));
     });
-
-    // Save as active beat
-    await saveActiveBeatId(beat.id, item.isLocked);
-    return true;
+    if (saved) rememberActiveBeat(beat.id, Boolean(item.isLocked));
+    return saved;
   } catch (err) {
     console.error('Failed to save beat to IndexedDB:', err);
     return false;
@@ -201,42 +192,56 @@ export async function getAllSavedBeats(audioCtx: AudioContext): Promise<BeatData
 /**
  * Removes a saved beat from IndexedDB
  */
-export async function deleteSavedBeat(beatId: string): Promise<void> {
+export async function deleteSavedBeat(beatId: string): Promise<boolean> {
   try {
     const db = await getDB();
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction([BEATS_STORE], 'readwrite');
       const store = transaction.objectStore(BEATS_STORE);
-      const req = store.delete(beatId);
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
+      store.delete(beatId);
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error ?? new DOMException('No se eliminó el beat.', 'AbortError'));
     });
+    return true;
   } catch (err) {
     console.error('Failed to delete beat from IndexedDB:', err);
+    return false;
   }
 }
 
 /**
  * Persists the active beat selection and lock state (dual layer: localStorage + IndexedDB)
  */
-export async function saveActiveBeatId(beatId: string | null, isLocked: boolean = false): Promise<void> {
+function rememberActiveBeat(beatId: string | null, isLocked: boolean) {
   try {
     if (beatId) {
       localStorage.setItem('rgodbeat_active_beat_id', beatId);
       localStorage.setItem('rgodbeat_is_locked', isLocked ? '1' : '0');
+    } else {
+      localStorage.removeItem('rgodbeat_active_beat_id');
+      localStorage.removeItem('rgodbeat_is_locked');
     }
   } catch {
     // ignore
   }
+}
 
+export async function saveActiveBeatId(beatId: string | null, isLocked: boolean = false): Promise<boolean> {
   try {
     const db = await getDB();
-    const transaction = db.transaction([SETTINGS_STORE], 'readwrite');
-    const store = transaction.objectStore(SETTINGS_STORE);
-    store.put({ key: 'active_beat_id', value: beatId });
-    store.put({ key: 'beat_locked', value: isLocked });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction([SETTINGS_STORE], 'readwrite');
+      const store = transaction.objectStore(SETTINGS_STORE);
+      store.put({ key: 'active_beat_id', value: beatId });
+      store.put({ key: 'beat_locked', value: isLocked });
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error ?? new DOMException('No se guardó la selección.', 'AbortError'));
+    });
+    rememberActiveBeat(beatId, isLocked);
+    return true;
   } catch (e) {
     console.warn('Could not save active beat settings to IndexedDB:', e);
+    return false;
   }
 }
 
