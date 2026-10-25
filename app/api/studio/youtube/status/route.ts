@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthorizedStudioExporter } from "@/lib/youtube/access";
 import { getYouTubeChannelSettings, getVerifiedYouTubeAccessToken } from "@/lib/youtube/channel";
 import { youtubeFailure } from "@/lib/youtube/errors";
-import { youtubeConfig } from "@/lib/youtube/config";
+import { isYouTubeChannelAdmin, youtubeConfig } from "@/lib/youtube/config";
 import { isYouTubeFfmpegReady } from "@/lib/youtube/ffmpeg";
 import { isYouTubeR2Configured } from "@/lib/youtube/storage";
 
@@ -38,6 +38,7 @@ export async function GET() {
   }
   return NextResponse.json({
     available: authorizationVerified,
+    canReconnect: isYouTubeChannelAdmin(access.user.email),
     connected: channelMatchesTarget, channelName: channelMatchesTarget ? channel?.channel_title || null : null,
     authorizationVerified, rendererReady, storageReady, error, code, maxMasterBytes: 256_000_000, maxCoverBytes: 4_000_000,
   }, { headers: { "Cache-Control": "private, no-store" } });

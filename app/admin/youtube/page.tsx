@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth/server";
 import { isYouTubeChannelAdmin, youtubeConfig } from "@/lib/youtube/config";
-import { getYouTubeChannelSettings } from "@/lib/youtube/channel";
+import { getYouTubeChannelSettings, getVerifiedYouTubeAccessToken } from "@/lib/youtube/channel";
+import { youtubeFailure } from "@/lib/youtube/errors";
 import { isYouTubeFfmpegReady } from "@/lib/youtube/ffmpeg";
 import { getYouTubeR2Bucket, isYouTubeR2Configured } from "@/lib/youtube/storage";
 import R2ConnectionCheck from "./R2ConnectionCheck";
@@ -20,12 +21,23 @@ export default async function YouTubeSetupPage({ searchParams }: { searchParams:
     databaseReady = true;
   } catch { /* Show the migration as pending until the private table is available. */ }
   const channelMatchesTarget = Boolean(channel && channel.channel_id === config.channelId);
+  let authorizationVerified = false;
+  let authorizationError: string | null = null;
+  let needsReauthorization = false;
+  if (channelMatchesTarget && config.configured && config.validKey) {
+    try { await getVerifiedYouTubeAccessToken(); authorizationVerified = true; }
+    catch (error) {
+      const failure = youtubeFailure(error, 'channelAuthorization');
+      authorizationError = failure.message;
+      needsReauthorization = ['channelAuthorization', 'insufficientPermissions', 'channelMismatch'].includes(failure.code);
+    }
+  }
   const setupChecks = [
     { label: "Google OAuth y clave de cifrado", ready: config.configured && config.validKey },
     { label: "Migración privada de Supabase", ready: databaseReady },
     { label: "Bucket temporal privado de R2", ready: isYouTubeR2Configured() && getYouTubeR2Bucket() === "rgodbeat-youtube-temp" },
     { label: "Conversor WAV a vídeo disponible", ready: isYouTubeFfmpegReady() },
-    { label: "Canal RGODBEAT autorizado", ready: channelMatchesTarget },
+    { label: "Canal RGODBEAT autorizado", ready: authorizationVerified },
   ];
   return <section className="mx-auto max-w-3xl space-y-6 text-white">
     <Link className="text-xs uppercase tracking-wider text-zinc-400 hover:text-white" href="/admin">← Administración</Link>
@@ -33,7 +45,8 @@ export default async function YouTubeSetupPage({ searchParams }: { searchParams:
     {query.connected && <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">Canal conectado correctamente.</p>}
     {query.error && <p className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">Google no completó la conexión. Revisa las credenciales OAuth, la migración y vuelve a intentarlo.</p>}
     <div className="rounded-2xl border border-white/10 bg-[#101014] p-6 space-y-4">
-      <div className="flex items-center justify-between gap-4"><div><h2 className="font-semibold">Cuenta del canal</h2><p className="mt-1 text-sm text-zinc-400">{channelMatchesTarget ? `${channel?.channel_title} • ${channel?.channel_id}` : channel ? `El canal guardado no coincide con el ID configurado: ${channel.channel_title} • ${channel.channel_id}` : "Todavía no está conectado"}</p></div><span className={`rounded-full px-3 py-1 text-xs ${channelMatchesTarget ? "bg-emerald-500/15 text-emerald-300" : "bg-zinc-700/60 text-zinc-300"}`}>{channelMatchesTarget ? "Conectado" : "Pendiente"}</span></div>
+      <div className="flex items-center justify-between gap-4"><div><h2 className="font-semibold">Cuenta del canal</h2><p className="mt-1 text-sm text-zinc-400">{channelMatchesTarget ? `${channel?.channel_title} • ${channel?.channel_id}` : channel ? `El canal guardado no coincide con el ID configurado: ${channel.channel_title} • ${channel.channel_id}` : "Todavía no está conectado"}</p></div><span className={`rounded-full px-3 py-1 text-xs ${authorizationVerified ? "bg-emerald-500/15 text-emerald-300" : "bg-zinc-700/60 text-zinc-300"}`}>{authorizationVerified ? "Autorizado" : "Pendiente"}</span></div>
+      {authorizationError && <p role="alert" className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3 text-sm text-amber-100">{authorizationError} {needsReauthorization ? 'Pulsa «Volver a autorizar canal» y entra con la cuenta propietaria de RGODBEAT. Es una conexión del administrador; los artistas no necesitan autorizar el canal.' : 'Vuelve a cargar esta página para comprobar la conexión.'}</p>}
       <ul aria-label="Requisitos de publicación" className="grid gap-2 sm:grid-cols-2">
         {setupChecks.map((item) => <li key={item.label} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${item.ready ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-200" : "border-amber-500/20 bg-amber-500/5 text-amber-100"}`}>
           <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${item.ready ? "bg-emerald-400" : "bg-amber-400"}`} />{item.label}: {item.ready ? "Listo" : "Pendiente"}

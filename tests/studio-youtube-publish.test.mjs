@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadSource } from './helpers/rg-fixtures.mjs';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 function wavFixture() {
   const rate=44100, length=rate/4, data=Buffer.alloc(44+length*2);
@@ -14,17 +16,17 @@ function wavFixture() {
 const ids={user:'11111111-1111-4111-8111-111111111111',upload:'22222222-2222-4222-8222-222222222222',artist:'33333333-3333-4333-8333-333333333333',track:'44444444-4444-4444-8444-444444444444'};
 const input={uploadId:ids.upload,artistName:'Artista de prueba local',videoTitle:'Prueba local',beatTitle:'Beat local',hasRights:true,madeForKids:false,privacy:'unlisted',rgLink:{artistId:ids.artist,trackId:ids.track,beatId:null}};
 const {YouTubeError}=loadSource('lib/youtube/errors.ts');
-function fixture({authorizationFailure,googleFailure,cover,persistenceFailure=false}={}) {
-  const calls={reservations:0,reads:0,google:0,verified:0,links:[],updates:[],videoBytes:0};
+function fixture({authorizationFailure,googleFailure,cover,persistenceFailure=false,owner=false}={}) {
+  const calls={reservations:0,reads:0,google:0,verified:0,links:[],updates:[],videoBytes:0,metadata:null};
   const wav=wavFixture();
   const config={configured:true,validKey:true,channelId:'channel-fixture'};
   const db={rpc:async()=>{calls.reservations++;return {data:true,error:null}},from:()=>({update(values){calls.updates.push(values);const q={eq:()=>q,select:()=>q,
     maybeSingle:async()=>({data:persistenceFailure?null:{id:ids.upload},error:persistenceFailure?{code:'FIXTURE_PERSISTENCE_FAILED'}:null}),
     then:fn=>Promise.resolve({data:null,error:null}).then(fn)};return q}})};
   const replacement={
-    '@/lib/youtube/access':{getAuthorizedStudioExporter:async()=>({user:{id:ids.user},status:200})},
+    '@/lib/youtube/access':{getAuthorizedStudioExporter:async()=>({user:{id:ids.user,email:owner?'owner@fixture.invalid':'artist@fixture.invalid'},status:200})},
     '@/lib/youtube/channel':{getYouTubeChannelSettings:async()=>({channel_id:config.channelId}),getVerifiedYouTubeAccessToken:async()=>{calls.verified++;if(authorizationFailure)throw new YouTubeError(authorizationFailure);return 'local-access-token'}},
-    '@/lib/youtube/config':{youtubeConfig:()=>config},
+    '@/lib/youtube/config':{youtubeConfig:()=>config,isYouTubeChannelAdmin:email=>email==='owner@fixture.invalid'},
     '@/lib/youtube/storage':{isYouTubeR2Configured:()=>true,getYouTubeR2Bucket:()=> 'fixture-private',headYouTubeR2:async()=>wav.length,
       getYouTubeR2Client:()=>({send:async()=>{calls.reads++;return {Body:{transformToWebStream:()=>new ReadableStream({start(controller){controller.enqueue(wav);controller.close()}})}}}}),
       readYouTubeR2:async()=>cover||null,clearYouTubeR2:async()=>{}},
@@ -36,6 +38,7 @@ function fixture({authorizationFailure,googleFailure,cover,persistenceFailure=fa
   globalThis.fetch=async(url,options)=>{
     calls.google++;
     if(String(url).includes('uploadType=resumable')) {
+      calls.metadata=JSON.parse(options.body);
       if(googleFailure)return Response.json({error:{errors:[{reason:googleFailure}]}},{status:googleFailure==='invalidTitle'?400:403});
       return new Response('',{headers:{location:'https://www.googleapis.com/upload/local-fixture-session'}});
     }
@@ -85,6 +88,29 @@ test('status requires live Google verification and keeps personalized data uncac
   const f=fixture();try {
     const response=await f.status(),result=await response.json();assert.equal(result.available,true);assert.equal(result.authorizationVerified,true);assert.equal(f.calls.verified,1);assert.equal(f.calls.google,0);
     assert.equal(response.headers.get('cache-control'),'private, no-store');
+    assert.equal(result.canReconnect,false);
+  } finally {f.restore()}
+});
+
+test('automatic metadata reaches YouTube when no manual title or description is supplied',async()=>{
+  const f=fixture();try {
+    const response=await f.publish(f.request({videoTitle:'',videoDescription:'',artistName:'LARY',beatTitle:'WINGS',beatGenre:'Trap',beatBpm:126,beatKey:'Fm'}));
+    assert.equal(response.status,200);
+    assert.equal(f.calls.metadata.snippet.title,'WINGS x LARY | TOP 23 Prod RGodbeat');
+    assert.match(f.calls.metadata.snippet.description,/Artista: LARY/);
+    assert.match(f.calls.metadata.snippet.description,/14 días/);
+    assert.match(f.calls.metadata.snippet.description,/#RGodbeat #RGodbeatStudio #Top23 #RGCoins/);
+    assert.match(f.calls.metadata.snippet.description,/https:\/\/www\.rgodbeat\.com\/ranking\/season/);
+  } finally {f.restore()}
+});
+
+test('custom metadata is preserved and only the channel owner gets the reconnect shortcut',async()=>{
+  const f=fixture({owner:true});try {
+    const response=await f.publish(f.request({videoTitle:'Mi título',videoDescription:'Mi descripción personalizada'}));
+    assert.equal(response.status,200);
+    assert.equal(f.calls.metadata.snippet.title,'Mi título');
+    assert.equal(f.calls.metadata.snippet.description,'Mi descripción personalizada');
+    assert.equal((await (await f.status()).json()).canReconnect,true);
   } finally {f.restore()}
 });
 
@@ -105,4 +131,34 @@ test('channel probe detects revoked refresh credentials and verifies the authori
     globalThis.fetch=async url=>String(url).includes('oauth2')?Response.json({access_token:'fixture-access-token',scope:'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly'}):Response.json({items:[{id:'wrong-channel'}]});
     await assert.rejects(channelModule.getVerifiedYouTubeAccessToken(),{message:'channelMismatch'});
   } finally {globalThis.fetch=originalFetch;if(priorId===undefined)delete process.env.YOUTUBE_CLIENT_ID;else process.env.YOUTUBE_CLIENT_ID=priorId;if(priorSecret===undefined)delete process.env.YOUTUBE_CLIENT_SECRET;else process.env.YOUTUBE_CLIENT_SECRET=priorSecret}
+});
+
+async function adminPageFixture(failure) {
+  const { default: Page } = loadSource('app/admin/youtube/page.tsx', {
+    'next/link': { __esModule: true, default: ({ children, ...props }) => React.createElement('a', props, children) },
+    '@/lib/auth/server': { getCurrentUser: async () => ({ email: 'owner@fixture.invalid' }) },
+    '@/lib/youtube/config': { isYouTubeChannelAdmin: () => true, youtubeConfig: () => ({ configured: true, validKey: true, channelId: 'fixture-channel' }) },
+    '@/lib/youtube/channel': { getYouTubeChannelSettings: async () => ({ channel_id: 'fixture-channel', channel_title: 'RGODBEAT' }),
+      getVerifiedYouTubeAccessToken: async () => { if (failure) throw new Error(failure); return 'fixture-token'; } },
+    '@/lib/youtube/ffmpeg': { isYouTubeFfmpegReady: () => true },
+    '@/lib/youtube/storage': { getYouTubeR2Bucket: () => 'rgodbeat-youtube-temp', isYouTubeR2Configured: () => true },
+    './R2ConnectionCheck': { __esModule: true, default: () => null },
+  });
+  return renderToStaticMarkup(await Page({ searchParams: Promise.resolve({}) }));
+}
+
+test('admin page verifies live permission instead of reporting a saved revoked channel as authorized', async () => {
+  const ready = await adminPageFixture();
+  assert.match(ready, />Autorizado</);
+  const revoked = await adminPageFixture('channelAuthorization');
+  assert.doesNotMatch(revoked, />Autorizado</);
+  assert.match(revoked, /cuenta propietaria/);
+  assert.match(revoked, /los artistas no necesitan autorizar/);
+});
+
+test('admin page keeps temporary network failure distinct from a permission renewal', async () => {
+  const html = await adminPageFixture('requestTimeout');
+  assert.doesNotMatch(html, />Autorizado</);
+  assert.match(html, /Vuelve a cargar esta página/);
+  assert.doesNotMatch(html, /Pulsa «Volver a autorizar canal»/);
 });

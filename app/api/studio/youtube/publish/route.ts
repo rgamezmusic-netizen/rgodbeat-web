@@ -14,6 +14,7 @@ import { getAuthorizedStudioExporter } from "@/lib/youtube/access";
 import { getVerifiedYouTubeAccessToken } from "@/lib/youtube/channel";
 import { googleYouTubeError, youtubeFailure, type YouTubeFailureCode } from "@/lib/youtube/errors";
 import { youtubeConfig } from "@/lib/youtube/config";
+import { studioVideoMetadata } from "@/lib/youtube/metadata";
 import { getYouTubeFfmpegPath, isYouTubeFfmpegReady } from "@/lib/youtube/ffmpeg";
 import { clearYouTubeR2, getYouTubeR2Bucket, getYouTubeR2Client, headYouTubeR2, isYouTubeR2Configured, readYouTubeR2 } from "@/lib/youtube/storage";
 
@@ -32,19 +33,9 @@ function cleanMetadataText(value: string, maxLength: number) {
 }
 
 function buildVideoMetadata(input: { artistName: string; videoTitle: string; videoDescription: string; beatTitle: string; beatGenre: string; beatBpm: number; beatKey: string }) {
-  const title = cleanMetadataText(input.videoTitle, 100) || cleanMetadataText(`${input.artistName} - ${input.beatTitle} | RGODBEAT`, 100);
-  const description = input.videoDescription || [
-    `Artista: ${input.artistName}`,
-    `Beat: ${input.beatTitle}`,
-    input.beatGenre ? `Género: ${input.beatGenre}` : "",
-    input.beatBpm ? `Tempo: ${input.beatBpm} BPM` : "",
-    input.beatKey ? `Tonalidad: ${input.beatKey}` : "",
-  ].filter(Boolean).join("\n");
-  const tags = [...new Set([
-    "RGODBEAT", input.beatGenre, input.artistName, input.beatTitle,
-    input.beatBpm ? `${input.beatBpm} BPM` : "", input.beatKey,
-  ].map((tag) => cleanMetadataText(tag, 60)).filter(Boolean))];
-  return { title, description, tags, categoryId: "10", defaultLanguage: "es" };
+  const automatic = studioVideoMetadata(input);
+  return { ...automatic, title: cleanMetadataText(input.videoTitle, 100) || automatic.title,
+    description: input.videoDescription || automatic.description };
 }
 
 async function downloadR2File(key: string, destination: string) {

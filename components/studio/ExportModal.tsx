@@ -4,6 +4,7 @@ import { BeatData, VocalTrack } from '@/lib/studio/types/audio';
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 import { StemDeliveryForm } from './StemDeliveryForm';
 import { useModalFocus } from '@/hooks/useModalFocus';
+import { studioVideoMetadata } from '@/lib/youtube/metadata';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface ExportModalProps {
   onShowToast: (message: string, type?: 'info' | 'success' | 'error') => void;
   isDemo?: boolean;
   onOpenUnlockModal?: () => void;
+  accountArtistName?: string;
 }
 
 type YouTubeProgressState = {
@@ -64,6 +66,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
   onShowToast,
   isDemo = false,
   onOpenUnlockModal,
+  accountArtistName = '',
 }) => {
   const [isExportingMaster, setIsExportingMaster] = useState(false);
   const [isExportingRawStems, setIsExportingRawStems] = useState(false);
@@ -73,12 +76,12 @@ const ExportDialog: React.FC<ExportModalProps> = ({
   const exportLock = useRef(false);
   const [view, setView] = useState<'choose' | 'youtube' | 'advanced' | 'delivery'>('choose');
   const [downloadingStemId, setDownloadingStemId] = useState<string | null>(null);
-  const [youtubeStatus, setYoutubeStatus] = useState<{ available: boolean; connected: boolean; channelName?: string; error?: string; code?: string; maxMasterBytes?: number; maxCoverBytes?: number } | null>(null);
+  const [youtubeStatus, setYoutubeStatus] = useState<{ available: boolean; connected: boolean; channelName?: string; error?: string; code?: string; canReconnect?: boolean; maxMasterBytes?: number; maxCoverBytes?: number } | null>(null);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
   const [youtubeProgress, setYoutubeProgress] = useState<YouTubeProgressState | null>(null);
-  const [artistName, setArtistName] = useState('');
-  const [youtubeTitle, setYoutubeTitle] = useState('');
-  const [youtubeDescription, setYoutubeDescription] = useState('');
+  const [artistNameOverride, setArtistName] = useState<string | null>(null);
+  const [youtubeTitleOverride, setYoutubeTitle] = useState<string | null>(null);
+  const [youtubeDescriptionOverride, setYoutubeDescription] = useState<string | null>(null);
   const [youtubePrivacy, setYoutubePrivacy] = useState<'unlisted' | 'public'>('unlisted');
   const [madeForKids, setMadeForKids] = useState(false);
   const [hasRights, setHasRights] = useState(false);
@@ -94,6 +97,10 @@ const ExportDialog: React.FC<ExportModalProps> = ({
   const [publishError, setPublishError] = useState('');
   const dialog = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
+  const artistName = artistNameOverride ?? rgArtist?.stage_name ?? accountArtistName;
+  const automaticMetadata = studioVideoMetadata({ artistName, beatTitle: beat?.title || '', beatGenre: beat?.genre, beatBpm: beat?.bpm, beatKey: beat?.key });
+  const youtubeTitle = youtubeTitleOverride ?? automaticMetadata.title;
+  const youtubeDescription = youtubeDescriptionOverride ?? automaticMetadata.description;
 
   const isBusy = isSendingStems || isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null || youtubeLoading || rgLoading;
   const handleClose = useCallback(() => { if (!isBusy) onClose(); }, [isBusy, onClose]);
@@ -136,7 +143,6 @@ const ExportDialog: React.FC<ExportModalProps> = ({
           return;
         }
         setRgArtist(data.artist || null);
-        if (data.artist?.stage_name) setArtistName(current => current || data.artist.stage_name);
         if (data.artist?.id) {
           const tracksResponse = await fetch(`/api/rg/tracks?artistId=${encodeURIComponent(data.artist.id)}`, { cache: 'no-store' });
           const tracksData = await tracksResponse.json();
@@ -317,10 +323,11 @@ const ExportDialog: React.FC<ExportModalProps> = ({
       setYoutubeResult({ videoId: result.videoId, videoUrl: result.videoUrl, privacy: result.privacy, uploadId,
         rgLink,
         rgPublicationLinked: result.rgPublicationLinked, rgPublicationError: result.rgPublicationError });
-      setYoutubeProgress({ stage: 'publish', label: 'Publicado y confirmado por YouTube', transferredBytes: 1, totalBytes: 1 });
+      setYoutubeProgress({ stage: 'publish', label: 'Vídeo cargado y confirmado por YouTube', transferredBytes: 1, totalBytes: 1 });
+      content.current?.scrollTo(0, 0);
       onShowToast(result.rgPublicationLinked === true
-        ? 'Vídeo publicado y participación vinculada al Top 23.'
-        : 'Vídeo publicado. La participación en el Top quedó pendiente.',
+        ? '¡Tu vídeo ya se cargó en YouTube! Participación vinculada al Top 23.'
+        : '¡Tu vídeo ya se cargó en YouTube! La participación en el Top quedó pendiente.',
       result.rgPublicationLinked === true ? 'success' : 'info');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo publicar en YouTube.';
@@ -505,6 +512,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
           </div> : view === 'youtube' ? youtubeResult ? <div className="space-y-5 py-3 text-center" role="status" aria-live="polite">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-300"><Check size={30} /></div>
             <h3 tabIndex={-1} className="text-xl font-bold outline-none">Tu vídeo está en YouTube</h3>
+            <p className="text-sm text-emerald-200">Carga completada y confirmada por YouTube.</p>
             <p className="text-sm text-zinc-400">{youtubeResult.privacy === 'private' ? 'Privado' : youtubeResult.privacy === 'public' ? 'Público' : 'No listado'}</p>
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-relaxed text-amber-100">
               <Trophy size={22} className="mx-auto mb-2 text-amber-300" />
@@ -541,9 +549,10 @@ const ExportDialog: React.FC<ExportModalProps> = ({
                   }} />
                 </label>
                 {coverImage && <button type="button" disabled={isBusy} onClick={() => setCoverImage(null)} className="min-h-11 text-xs text-zinc-400 underline">Usar portada original</button>}
-                <label className="block text-sm text-zinc-300">Descripción opcional
-                  <textarea value={youtubeDescription} maxLength={5000} rows={3} onChange={event => setYoutubeDescription(event.target.value)} disabled={isBusy} placeholder="Cuéntanos sobre tu canción" className={`${inputClass} resize-y`} />
+                <label className="block text-sm text-zinc-300">Descripción del vídeo
+                  <textarea aria-label="Descripción del vídeo" value={youtubeDescription} maxLength={5000} rows={5} onChange={event => setYoutubeDescription(event.target.value)} disabled={isBusy} className={`${inputClass} resize-y`} />
                 </label>
+                <button type="button" disabled={isBusy} onClick={() => { setYoutubeTitle(null); setYoutubeDescription(null); }} className="min-h-11 text-xs text-zinc-400 underline">Restaurar título y descripción automáticos</button>
                 {youtubeDescriptionBytes > 5000 && <p role="alert" className="text-xs text-red-300">La descripción es demasiado larga. Acórtala para publicar.</p>}
                 {compatibleTracks.length > 0 && <label className="block text-sm text-zinc-300">Canción en el Top
                   <select value={rgTrackId} onChange={event => setRgTrackId(event.target.value)} disabled={isBusy} className={`${inputClass} bg-[#17171c]`}><option value="">Registrar como nueva canción</option>{compatibleTracks.map(track => <option key={track.id} value={track.id}>{track.title}</option>)}</select>
@@ -579,6 +588,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
             </div>}
             {!youtubeLoading && (youtubeStatus && !youtubeStatus.available || participationBlocked) && <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-100" role="alert">
               <p>{rgError || (rgArtist && rgArtist.status !== 'active' ? 'Tu perfil de artista no está activo para participar.' : youtubeStatus?.code && youtubeStatus.error || 'YouTube no está disponible ahora. Puedes descargar tu canción y volver a intentarlo.')}</p>
+              {youtubeStatus?.canReconnect && ['channelAuthorization', 'insufficientPermissions', 'channelMismatch'].includes(youtubeStatus.code || '') && <a href="/admin/youtube" target="_blank" rel="noreferrer" className="mt-2 flex min-h-11 items-center gap-2 font-semibold underline">Volver a autorizar canal <ExternalLink size={14} /></a>}
               <button type="button" disabled={isBusy} onClick={retryConnection} className="mt-1 min-h-11 font-semibold underline">Volver a comprobar</button>
             </div>}
             {publishError && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-sm text-red-200">{publishError}</p>}

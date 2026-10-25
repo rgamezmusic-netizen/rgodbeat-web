@@ -60,6 +60,7 @@ import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
 import { InstallAppModal } from './InstallAppModal';
 import { INSTALL_GUIDE_HIDDEN_KEY } from '@/lib/browser/install-guide';
+import { maintainScreenWakeLock } from '@/lib/browser/screen-wake-lock';
 import { CloudProjectGalleryModal } from './CloudProjectGalleryModal';
 import { StartupProjectModal } from './StartupProjectModal';
 import { CloudProjectSaveModal } from './CloudProjectSaveModal';
@@ -275,37 +276,8 @@ export default function App() {
     missingBeat?: boolean;
   } | null>(null);
 
-  // Screen Wake Lock API: Keeps the screen awake while using Studio
-  useEffect(() => {
-    let wakeLockSentinel: WakeLockSentinel | null = null;
-
-    const requestWakeLock = async () => {
-      try {
-        if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && navigator.wakeLock?.request) {
-          wakeLockSentinel = await navigator.wakeLock.request('screen');
-        }
-      } catch (err) {
-        console.debug('Screen WakeLock active/prevented:', err);
-      }
-    };
-
-    requestWakeLock();
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        requestWakeLock();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (wakeLockSentinel) {
-        wakeLockSentinel.release().catch(() => {});
-      }
-    };
-  }, []);
+  // Covers the whole visible session, including the export/upload modal.
+  useEffect(() => maintainScreenWakeLock({ document, window, navigator }), []);
 
   // Fixed latency presets; actual Bluetooth delay depends on the device.
   const [bluetoothSyncEnabled, setBluetoothSyncEnabled] = useState<boolean>(false);
@@ -3334,6 +3306,7 @@ export default function App() {
         beat={currentBeat}
         tracks={tracks}
         onShowToast={showToast}
+        accountArtistName={accessStatus.isLoggedIn && accessStatus.name !== 'Artista' ? accessStatus.name : ''}
         isDemo={accessStatus.isDemo}
         onOpenUnlockModal={() => {
           setShowExportModal(false);

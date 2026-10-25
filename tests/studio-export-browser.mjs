@@ -28,7 +28,7 @@ const bundle = await build({ stdin: { resolveDir: process.cwd(), loader: 'tsx', 
   const tracks=[{id:'lead1',name:'Lead 1',buffer:{},duration:1,clips:[]}];
   function Fixture(){const [open,setOpen]=useState(true),[toast,setToast]=useState('');return <>
     <button onClick={()=>setOpen(true)}>Abrir exportación</button><output>{toast}</output>
-    <ExportModal isOpen={open} onClose={()=>{window.__exportFixture.closed++;setOpen(false)}} isDemo={new URLSearchParams(location.search).has('demo')} onOpenUnlockModal={()=>setToast('Activar pase')} beat={beat} tracks={tracks} engine={engine} onShowToast={setToast}/>
+    <ExportModal isOpen={open} onClose={()=>{window.__exportFixture.closed++;setOpen(false)}} accountArtistName="Nombre de la web" isDemo={new URLSearchParams(location.search).has('demo')} onOpenUnlockModal={()=>setToast('Activar pase')} beat={beat} tracks={tracks} engine={engine} onShowToast={setToast}/>
   </>};
   createRoot(document.getElementById('root')).render(<Fixture/>);
 ` }, bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' } });
@@ -45,7 +45,7 @@ const artist = { id: '11111111-1111-4111-8111-111111111111', stage_name: 'LARY',
 const track = { id: '22222222-2222-4222-8222-222222222222', title: 'Mi canción', beat_id: '33333333-3333-4333-8333-333333333333', status: 'draft' };
 const browsers = process.env.STUDIO_BROWSER === 'webkit' ? [['webkit', webkit]] : [['chromium', chromium]];
 
-async function fixture(browser, { width = 390, height = 844, noArtist = false, unavailable = false, authorizationExpired = false, identityError = false, failedTrack = false, failedPublish = false, pendingLink = false, demo = false } = {}) {
+async function fixture(browser, { width = 390, height = 844, noArtist = false, unavailable = false, authorizationExpired = false, owner = false, identityError = false, failedTrack = false, failedPublish = false, pendingLink = false, demo = false } = {}) {
   const page = await browser.newPage({ viewport: { width, height }, hasTouch: true, isMobile: width < 600 });
   const errors = [], requests = [], posts = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -53,7 +53,7 @@ async function fixture(browser, { width = 390, height = 844, noArtist = false, u
     const request = route.request(), url = new URL(request.url()), path = url.pathname, method = request.method();
     requests.push({path, method});
     if (method === 'POST' && !url.search) posts.push({path, body: request.postDataJSON()});
-    if (path === '/api/studio/youtube/status') return route.fulfill({json:{available:!unavailable&&!authorizationExpired,connected:!unavailable,code:authorizationExpired?'channelAuthorization':null,error:authorizationExpired?'YouTube necesita que se vuelva a autorizar el canal RGODBEAT.':unavailable?'Fixture configuration unavailable':null}});
+    if (path === '/api/studio/youtube/status') return route.fulfill({json:{available:!unavailable&&!authorizationExpired,connected:!unavailable,canReconnect:owner,code:authorizationExpired?'channelAuthorization':null,error:authorizationExpired?'YouTube necesita que se vuelva a autorizar el canal RGODBEAT.':unavailable?'Fixture configuration unavailable':null}});
     if (path === '/api/rg/artists') {
       if (identityError) return route.fulfill({status:503,json:{error:'No se pudo cargar tu participación.'}});
       return route.fulfill({json:{artist:method==='GET'&&noArtist?null:artist}});
@@ -117,6 +117,37 @@ try {
         assert.deepEqual(f.errors,[]);await f.page.close();
         console.log(`PASS ${name} ${width}x${height}: minimal home, rewards, download, more options, reopen, no overflow/runtime errors`);
       }
+      const automatic=await fixture(browser,{noArtist:true});
+      await automatic.page.getByRole('button',{name:'Publicar en YouTube',exact:true}).click();
+      const automaticArtist=automatic.page.getByLabel('Nombre artístico',{exact:true});
+      const automaticTitle=automatic.page.getByLabel('Título de la canción',{exact:true});
+      assert.equal(await automaticArtist.inputValue(),'Nombre de la web','prefill the existing website name without requiring an RG artist');
+      assert.equal(await automaticTitle.inputValue(),'WINGS x Nombre de la web | TOP 23 Prod RGodbeat');
+      await automaticArtist.fill('LARY');
+      assert.equal(await automaticTitle.inputValue(),'WINGS x LARY | TOP 23 Prod RGodbeat','automatic title follows the artist');
+      await automatic.page.getByText('Portada y más opciones',{exact:true}).click();
+      const description=automatic.page.getByLabel('Descripción del vídeo',{exact:true});
+      assert.match(await description.inputValue(),/Artista: LARY/);
+      assert.match(await description.inputValue(),/#RGodbeat #RGodbeatStudio #Top23 #RGCoins/);
+      assert.match(await description.inputValue(),/https:\/\/www\.rgodbeat\.com\/ranking\/season/);
+      await automaticTitle.fill('Título personalizado'); await description.fill('Descripción personalizada');
+      await automaticArtist.fill('LARY 2');
+      assert.equal(await automaticTitle.inputValue(),'Título personalizado','preserve manual edits');
+      assert.equal(await description.inputValue(),'Descripción personalizada');
+      await automatic.page.getByRole('button',{name:'Restaurar título y descripción automáticos'}).click();
+      assert.equal(await automaticTitle.inputValue(),'WINGS x LARY 2 | TOP 23 Prod RGodbeat');
+      assert.match(await description.inputValue(),/Artista: LARY 2/);
+      await automatic.page.getByRole('checkbox').check();
+      await automatic.page.getByRole('button',{name:'Publicar y participar',exact:true}).click();
+      await automatic.page.getByRole('heading',{name:'Tu vídeo está en YouTube'}).waitFor();
+      assert.ok(await automatic.page.getByText('Carga completada y confirmada por YouTube.',{exact:true}).isVisible());
+      const automaticPublished=automatic.posts.find(item=>item.path.endsWith('/publish')).body;
+      assert.equal(automaticPublished.artistName,'LARY 2');
+      assert.equal(automaticPublished.videoTitle,'WINGS x LARY 2 | TOP 23 Prod RGodbeat');
+      assert.match(automaticPublished.videoDescription,/14 días/);
+      assert.deepEqual(automatic.errors,[]);await automatic.page.close();
+      console.log(`PASS ${name}: website-name fallback, automatic metadata, editable overrides, restore defaults, confirmed completion`);
+
       const fresh=await fixture(browser,{noArtist:true,pendingLink:true});
       await publishForm(fresh.page,{noArtist:true});
       assert.equal(fresh.posts.length,0,'filling form must not create identities');
@@ -166,6 +197,11 @@ try {
         assert.deepEqual(f.errors,[]);await f.page.close();
       }
       console.log(`PASS ${name}: unavailable connection, identity failure and track failure never falsely publish or reward`);
+      const owner=await fixture(browser,{authorizationExpired:true,owner:true});await publishForm(owner.page);
+      assert.ok(await owner.page.getByRole('link',{name:'Volver a autorizar canal'}).isVisible());
+      assert.equal(await owner.page.getByRole('link',{name:'Volver a autorizar canal'}).getAttribute('href'),'/admin/youtube');
+      assert.equal(owner.posts.length,0,'reconnect guidance does not create records or change credentials');
+      await owner.page.close();
       const demo=await fixture(browser,{demo:true});
       assert.ok(await demo.page.getByRole('button',{name:'Activar Studio'}).isVisible());
       assert.equal(await demo.page.getByRole('button',{name:'Publicar en YouTube',exact:true}).count(),0);
