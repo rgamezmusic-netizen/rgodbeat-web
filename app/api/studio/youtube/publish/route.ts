@@ -11,7 +11,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { RG_UUID, serializeIdentityError, validateOwnedTrackForPublication } from "@/lib/rg/identity";
 import { recordConfirmedPublication } from "@/lib/rg/publications";
 import { getAuthorizedStudioExporter } from "@/lib/youtube/access";
-import { getYouTubeChannelSettings, refreshYouTubeAccessToken } from "@/lib/youtube/channel";
+import { getVerifiedYouTubeAccessToken } from "@/lib/youtube/channel";
+import { googleYouTubeError, youtubeFailure, type YouTubeFailureCode } from "@/lib/youtube/errors";
 import { youtubeConfig } from "@/lib/youtube/config";
 import { getYouTubeFfmpegPath, isYouTubeFfmpegReady } from "@/lib/youtube/ffmpeg";
 import { clearYouTubeR2, getYouTubeR2Bucket, getYouTubeR2Client, headYouTubeR2, isYouTubeR2Configured, readYouTubeR2 } from "@/lib/youtube/storage";
@@ -26,11 +27,6 @@ type YouTubeInsertResponse = { id?: string; status?: { privacyStatus?: "private"
 
 function jobsTable() { return createAdminClient().from("youtube_export_jobs"); }
 function stagingPrefix(userId: string, uploadId: string) { return `youtube/exports/${userId}/${uploadId}/`; }
-function failCode(value: string | undefined) {
-  const accepted = new Set(["quotaExceeded", "dailyLimitExceeded", "forbidden", "uploadLimitExceeded", "invalidVideoMetadata", "processingFailed", "renderFailed", "uploadFailed", "channelAuthorization"]);
-  return value && accepted.has(value) ? value : "uploadFailed";
-}
-
 function cleanMetadataText(value: string, maxLength: number) {
   return value.replace(/[<>]/g, "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
@@ -162,10 +158,23 @@ export async function POST(request: NextRequest) {
   if (!metadata.title) return NextResponse.json({ error: "El título del vídeo está vacío." }, { status: 400 });
   const config = youtubeConfig();
   if (!config.configured || !config.validKey || !isYouTubeFfmpegReady() || !isYouTubeR2Configured()) return NextResponse.json({ error: "La publicación de YouTube todavía no está configurada." }, { status: 503 });
-  const settings = await getYouTubeChannelSettings().catch(() => null);
-  if (!settings) return NextResponse.json({ error: "El canal RGODBEAT todavía no está conectado." }, { status: 503 });
+  // Verify the live authorization before rendering or reserving an upload.
+  // A connected row can contain a revoked/expired Google refresh token.
+  let accessToken: string;
+  try { accessToken = await getVerifiedYouTubeAccessToken(); }
+  catch (error) {
+    const failure = youtubeFailure(error, 'channelAuthorization');
+    console.error('[YouTube publish]', { stage: 'authorize', code: failure.code });
+    return NextResponse.json({ error: failure.message, code: failure.code }, { status: failure.status });
+  }
   const prefix = stagingPrefix(access.user.id, uploadId);
-  const stagedBytes = await headYouTubeR2(`${prefix}master.wav`);
+  let stagedBytes: number | null;
+  try { stagedBytes = await headYouTubeR2(`${prefix}master.wav`); }
+  catch (error) {
+    const failure = youtubeFailure(error, 'storageUnavailable');
+    console.error('[YouTube publish]', { stage: 'audio', code: failure.code });
+    return NextResponse.json({ error: failure.message, code: failure.code }, { status: failure.status });
+  }
   if (!stagedBytes || stagedBytes > 256_000_000) return NextResponse.json({ error: "No se encontró un master válido para subir." }, { status: 404 });
 
   const jobId = uploadId;
@@ -176,11 +185,14 @@ export async function POST(request: NextRequest) {
   if (!reserved) return NextResponse.json({ error: "El canal alcanzó el límite de publicaciones automatizadas de hoy. Inténtalo mañana." }, { status: 429 });
 
   let directory = "";
+  let stage = 'audio';
+  let fallback: YouTubeFailureCode = 'storageUnavailable';
   try {
     directory = await mkdtemp(join(tmpdir(), "rgodbeat-youtube-"));
     const audioPath = join(directory, "master.wav");
     const videoPath = join(directory, "export.mp4");
     await downloadR2File(`${prefix}master.wav`, audioPath);
+    stage = 'cover'; fallback = 'coverUnavailable';
     const customCover = await readYouTubeR2(`${prefix}cover`);
     const cover = customCover?.length ? customCover : await loadDefaultCover(input.coverUrl || null);
     if (cover.length > 4_000_000) throw new Error("coverTooLarge");
@@ -188,13 +200,14 @@ export async function POST(request: NextRequest) {
     if (!extension) throw new Error("coverUnavailable");
     const coverPath = join(directory, `cover.${extension}`);
     await writeFile(coverPath, cover, { mode: 0o600, flag: "wx" });
+    stage = 'render'; fallback = 'renderFailed';
     await runFfmpeg([
       "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", "2", "-i", coverPath,
       "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0", "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
       "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-crf", "23", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-shortest", videoPath,
     ], directory);
     const video = await readFile(videoPath);
-    const accessToken = await refreshYouTubeAccessToken();
+    stage = 'upload'; fallback = 'uploadFailed';
     const start = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status&notifySubscribers=false", {
       method: "POST", cache: "no-store",
       headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json; charset=UTF-8", "x-upload-content-type": "video/mp4", "x-upload-content-length": String(video.length) },
@@ -204,22 +217,20 @@ export async function POST(request: NextRequest) {
     const uploadUrl = start.headers.get("location");
     if (!start.ok || !uploadUrl) {
       const errorBody = await start.json().catch(() => ({})) as YouTubeInsertResponse;
-      throw new Error(failCode(errorBody.error?.errors?.[0]?.reason));
+      throw googleYouTubeError(errorBody, start.status);
     }
     const uploaded = await fetch(uploadUrl, {
       method: "PUT", cache: "no-store", headers: { "content-type": "video/mp4", "content-length": String(video.length) }, body: video,
       signal: AbortSignal.timeout(240_000),
     });
     const result = await uploaded.json().catch(() => ({})) as YouTubeInsertResponse;
-    if (!uploaded.ok || !result.id) throw new Error(failCode(result.error?.errors?.[0]?.reason));
+    if (!uploaded.ok || !result.id) throw googleYouTubeError(result, uploaded.status);
     const videoUrl = `https://www.youtube.com/watch?v=${result.id}`;
     const actualPrivacy = result.status?.privacyStatus || privacy;
     const uploadedValues = { status: "uploaded" as const, privacy: actualPrivacy, youtube_video_id: result.id, youtube_url: videoUrl, finished_at: new Date().toISOString() };
-    if (!rgLink) {
-      // Preserve the existing unlinked publication behavior and response shape.
-      await jobsTable().update(uploadedValues).eq("id", jobId).eq("user_id", access.user.id);
-      return NextResponse.json({ success: true, videoId: result.id, videoUrl, privacy: actualPrivacy });
-    }
+    // Once YouTube returns its video ID, persistence failures must not claim the
+    // upload failed or invite another upload of the same video.
+    stage = 'confirm';
     let jobConfirmed = false;
     try {
       const savedJob = await jobsTable().update(uploadedValues).eq("id", jobId).eq("user_id", access.user.id).select("id").maybeSingle();
@@ -244,11 +255,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, videoId: result.id, videoUrl, privacy: actualPrivacy,
       ...(rgPublication ? { rgPublicationLinked: rgPublication.linked, rgPublicationId: rgPublication.publicationId, rgPublicationError: rgPublication.error, rgPublicationCode: rgPublication.code } : {}) });
   } catch (error) {
-    const code = failCode(error instanceof Error ? error.message : undefined);
-    await jobsTable().update({ status: "failed", error_code: code, finished_at: new Date().toISOString() }).eq("id", jobId).eq("user_id", access.user.id);
-    console.error("[YouTube publish]", code);
-    const status = code === "quotaExceeded" || code === "dailyLimitExceeded" ? 429 : 502;
-    return NextResponse.json({ error: code === "renderFailed" || code === "invalidMaster" ? "No se pudo convertir el master. Conserva el WAV e inténtalo de nuevo." : "YouTube no terminó la publicación. Conserva el WAV e inténtalo de nuevo.", code }, { status });
+    const failure = youtubeFailure(error, fallback);
+    try {
+      await jobsTable().update({ status: "failed", error_code: failure.code, finished_at: new Date().toISOString() }).eq("id", jobId).eq("user_id", access.user.id);
+    } catch { /* Preserve the useful failure response if the database is unavailable. */ }
+    console.error("[YouTube publish]", { stage, code: failure.code, uploadId: jobId });
+    return NextResponse.json({ error: failure.message, code: failure.code }, { status: failure.status });
   } finally {
     if (directory) await rm(directory, { recursive: true, force: true }).catch(() => undefined);
     await clearYouTubeR2(prefix).catch(() => undefined);

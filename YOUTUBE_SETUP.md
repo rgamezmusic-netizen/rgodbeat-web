@@ -55,3 +55,30 @@ Publica la pantalla de consentimiento OAuth de Google como **Producción**: en e
 5. Mantén Safari abierto hasta que el Studio confirme la subida y muestre el enlace del vídeo.
 
 Las credenciales y el canal OAuth no se pueden completar desde el código: los crea el propietario en Google Cloud y Cloudflare, luego se guardan como variables privadas de Vercel. No subas un vídeo durante el chequeo del panel; usa Exportar cuando quieras probar una publicación real.
+
+## Diagnóstico de publicación (25 de octubre de 2026)
+
+La consulta de solo lectura encontró cuatro intentos fallidos de hoy con el código
+genérico `uploadFailed`, una publicación confirmada del 4 de octubre y una conexión
+de canal guardada. Estos datos no permiten identificar la causa de los fallos ni
+demuestran que la autorización de Google siga vigente.
+
+El código actualizado comprueba la autorización con Google y el canal real al abrir
+YouTube en Exportar y vuelve a comprobarla antes de convertir el audio en vídeo.
+Una conexión guardada ya no basta para declarar disponible la publicación. Los
+errores de autorización, permisos, cuota, portada, conversión y almacenamiento
+conservan códigos específicos; los registros del servidor incluyen la fase y el
+ID del intento, sin tokens ni respuestas privadas del proveedor.
+
+En la interfaz, YouTube y Descargar canción son acciones separadas. Las opciones
+de pistas están en Más opciones. La participación RG se prepara al confirmar la
+publicación usando las APIs existentes; la vinculación al ranking solo se confirma
+cuando YouTube y el servidor responden con éxito.
+
+Verificación local: `node --test tests/studio-youtube-publish.test.mjs` ejecuta una
+conversión WAV → MP4 con FFmpeg real, con Google, R2 y la base de datos simulados.
+`tests/studio-export-browser.mjs` comprueba la interfaz y los errores en Chrome.
+Ninguna de estas pruebas sube un vídeo real. Después del push/despliegue hay que
+comprobar la autorización en producción y realizar una publicación voluntaria
+desde Studio para confirmar el flujo completo. Si aparece `channelAuthorization`,
+la cuenta propietaria debe volver a autorizar desde `/admin/youtube`.

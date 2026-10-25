@@ -3220,10 +3220,10 @@ export default function App() {
           onClick={handleExport}
           disabled={isRecording}
           className="flex items-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-black font-mono font-bold text-xs sm:text-sm tracking-wide shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer shrink-0"
-          title="Exportar mezcla final y pistas de voz (WAV / Stems)"
+          title="Publicar en YouTube o descargar tu canción"
         >
           <Download className="w-4 h-4 stroke-[2.5]" />
-          <span>EXPORTAR PROYECTO</span>
+          <span>EXPORTAR</span>
         </button>
       </footer>
 
@@ -3311,7 +3311,7 @@ export default function App() {
         onOpen={(slot) => void handleLoadCloudProject(slot)}
       />}
 
-      {/* Professional Export Modal (Master Mix with 3dB Sidechain & Raw Vocal Stems) */}
+      {/* Export and YouTube publication */}
       {showCloudSaveDialog && <CloudProjectSaveModal
         initialName={getCloudProjectName(activeProjectIdRef.current) || currentBeat?.title || 'Mi Proyecto'}
         projectId={activeProjectIdRef.current}

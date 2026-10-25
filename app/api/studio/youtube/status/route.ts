@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthorizedStudioExporter } from "@/lib/youtube/access";
-import { getYouTubeChannelSettings } from "@/lib/youtube/channel";
+import { getYouTubeChannelSettings, getVerifiedYouTubeAccessToken } from "@/lib/youtube/channel";
+import { youtubeFailure } from "@/lib/youtube/errors";
 import { youtubeConfig } from "@/lib/youtube/config";
 import { isYouTubeFfmpegReady } from "@/lib/youtube/ffmpeg";
 import { isYouTubeR2Configured } from "@/lib/youtube/storage";
@@ -16,7 +17,7 @@ export async function GET() {
   const rendererReady = isYouTubeFfmpegReady();
   const channelMatchesTarget = Boolean(channel && channel.channel_id === config.channelId);
   const storageReady = isYouTubeR2Configured();
-  const error = !config.configured || !config.validKey
+  let error = !config.configured || !config.validKey
     ? "Falta configurar Google OAuth en el servidor."
     : !channelMatchesTarget
       ? "La cuenta propietaria debe conectar el canal RGODBEAT en Administración → YouTube."
@@ -25,9 +26,19 @@ export async function GET() {
         : !rendererReady
           ? "Vercel todavía no incluye el conversor de vídeo."
           : null;
+  let authorizationVerified = false;
+  let code: string | null = null;
+  if (!error) {
+    try { await getVerifiedYouTubeAccessToken(); authorizationVerified = true; }
+    catch (failure) {
+      const result = youtubeFailure(failure, 'channelAuthorization');
+      error = result.message; code = result.code;
+      console.error('[YouTube authorization check]', result.code);
+    }
+  }
   return NextResponse.json({
-    available: Boolean(config.configured && config.validKey && channelMatchesTarget && rendererReady && storageReady),
+    available: authorizationVerified,
     connected: channelMatchesTarget, channelName: channelMatchesTarget ? channel?.channel_title || null : null,
-    rendererReady, storageReady, error, maxMasterBytes: 256_000_000, maxCoverBytes: 4_000_000,
+    authorizationVerified, rendererReady, storageReady, error, code, maxMasterBytes: 256_000_000, maxCoverBytes: 4_000_000,
   }, { headers: { "Cache-Control": "private, no-store" } });
 }

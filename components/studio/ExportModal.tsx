@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { X, Download, Mic, Sliders, Music, Sparkles, Check, Activity, Lock, Video, ImagePlus, Loader2, ExternalLink } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { X, Download, Mic, Sliders, Music, Sparkles, Check, Lock, Video, ImagePlus, Loader2, ExternalLink, ArrowLeft, ArrowRight, Trophy, Coins, Send } from 'lucide-react';
 import { BeatData, VocalTrack } from '@/lib/studio/types/audio';
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 import { StemDeliveryForm } from './StemDeliveryForm';
+import { useModalFocus } from '@/hooks/useModalFocus';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -17,7 +17,7 @@ interface ExportModalProps {
 }
 
 type YouTubeProgressState = {
-  stage: 'render' | 'cover' | 'audio' | 'prepare' | 'publish';
+  stage: 'participation' | 'render' | 'cover' | 'audio' | 'prepare' | 'publish';
   label: string;
   transferredBytes?: number;
   totalBytes?: number;
@@ -26,11 +26,6 @@ type YouTubeProgressState = {
 type RgArtist = { id: string; stage_name: string; slug: string; bio: string | null; status: 'active' | 'suspended' | 'retired' };
 type RgTrack = { id: string; title: string; beat_id: string | null; status: 'draft' | 'published' | 'archived' };
 const RG_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function formatUploadBytes(bytes: number): string {
-  if (bytes < 1_000_000) return `${Math.max(1, Math.round(bytes / 1_000))} KB`;
-  return `${(bytes / 1_000_000).toFixed(1)} MB`;
-}
 
 function uploadWithProgress(url: string, body: Blob, method: 'PUT' | 'POST', onProgress: (bytes: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -60,7 +55,7 @@ function uploadWithProgress(url: string, body: Blob, method: 'PUT' | 'POST', onP
   });
 }
 
-export const ExportModal: React.FC<ExportModalProps> = ({
+const ExportDialog: React.FC<ExportModalProps> = ({
   isOpen,
   onClose,
   engine,
@@ -76,9 +71,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [isExportingBeatStem, setIsExportingBeatStem] = useState(false);
   const [isSendingStems, setIsSendingStems] = useState(false);
   const exportLock = useRef(false);
-  const [sidechainEnabled, setSidechainEnabled] = useState<boolean>(true);
+  const [view, setView] = useState<'choose' | 'youtube' | 'advanced' | 'delivery'>('choose');
   const [downloadingStemId, setDownloadingStemId] = useState<string | null>(null);
-  const [youtubeStatus, setYoutubeStatus] = useState<{ available: boolean; connected: boolean; channelName?: string; error?: string; maxMasterBytes?: number; maxCoverBytes?: number } | null>(null);
+  const [youtubeStatus, setYoutubeStatus] = useState<{ available: boolean; connected: boolean; channelName?: string; error?: string; code?: string; maxMasterBytes?: number; maxCoverBytes?: number } | null>(null);
   const [youtubeLoading, setYoutubeLoading] = useState(false);
   const [youtubeProgress, setYoutubeProgress] = useState<YouTubeProgressState | null>(null);
   const [artistName, setArtistName] = useState('');
@@ -90,157 +85,124 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [coverImage, setCoverImage] = useState<File | null>(null);
   const [youtubeResult, setYoutubeResult] = useState<{ videoId: string; videoUrl: string; privacy: string; uploadId: string; rgLink?: { artistId: string; trackId: string; beatId: string | null }; rgPublicationLinked?: boolean; rgPublicationError?: string } | null>(null);
   const [rgArtist, setRgArtist] = useState<RgArtist | null>(null);
-  const [rgArtistName, setRgArtistName] = useState('');
   const [rgTracks, setRgTracks] = useState<RgTrack[]>([]);
   const [rgTrackId, setRgTrackId] = useState('');
-  const [rgNewTrackTitle, setRgNewTrackTitle] = useState('');
   const [rgLoading, setRgLoading] = useState(false);
   const [rgError, setRgError] = useState('');
+  const [rgIdentityReady, setRgIdentityReady] = useState(false);
+  const [connectionCheck, setConnectionCheck] = useState(0);
+  const [publishError, setPublishError] = useState('');
+  const dialog = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
 
   const isBusy = isSendingStems || isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null || youtubeLoading || rgLoading;
+  const handleClose = useCallback(() => { if (!isBusy) onClose(); }, [isBusy, onClose]);
+  useModalFocus(isOpen, dialog, handleClose);
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, []);
+
+  useEffect(() => {
+    content.current?.scrollTo(0, 0);
+    if (view !== 'choose') content.current?.querySelector<HTMLElement>('h3')?.focus({ preventScroll: true });
+  }, [view]);
   const youtubeDescriptionBytes = new TextEncoder().encode(youtubeDescription).byteLength;
   const youtubeUploadPercent = youtubeProgress?.totalBytes
     ? Math.min(100, Math.floor(((youtubeProgress.transferredBytes || 0) / youtubeProgress.totalBytes) * 100))
     : null;
 
   useEffect(() => {
-    if (!isOpen || isDemo) return;
+    if (!isOpen || isDemo || view !== 'youtube') return;
     let active = true;
     fetch('/api/studio/youtube/status', { cache: 'no-store' })
       .then(async (res) => ({ res, data: await res.json() }))
       .then(({ data }) => { if (active) setYoutubeStatus(data); })
       .catch(() => { if (active) setYoutubeStatus({ available: false, connected: false }); });
     return () => { active = false; };
-  }, [isOpen, isDemo]);
+  }, [isOpen, isDemo, view, connectionCheck]);
 
   useEffect(() => {
-    if (!isOpen || isDemo) return;
+    if (!isOpen || isDemo || view !== 'youtube') return;
     let active = true;
     fetch('/api/rg/artists', { cache: 'no-store' })
       .then(async response => ({ response, data: await response.json() }))
       .then(async ({ response, data }) => {
         if (!active) return;
         if (!response.ok) {
-          if (response.status !== 401) setRgError(data.error || 'No se pudo consultar el RG Artist.');
+          setRgError(data.error || 'No se pudo cargar tu participación.');
           return;
         }
         setRgArtist(data.artist || null);
-        if (data.artist?.stage_name) setRgArtistName(data.artist.stage_name);
+        if (data.artist?.stage_name) setArtistName(current => current || data.artist.stage_name);
         if (data.artist?.id) {
           const tracksResponse = await fetch(`/api/rg/tracks?artistId=${encodeURIComponent(data.artist.id)}`, { cache: 'no-store' });
           const tracksData = await tracksResponse.json();
           if (!active) return;
-          if (tracksResponse.ok) setRgTracks(tracksData.tracks || []);
-          else setRgError(tracksData.error || 'No se pudieron cargar tus RG Tracks.');
+          if (!tracksResponse.ok) { setRgError(tracksData.error || 'No se pudieron cargar tus canciones.'); return; }
+          setRgTracks(tracksData.tracks || []);
         }
+        setRgIdentityReady(true);
       })
       .catch(() => { if (active) setRgError('No se pudo consultar la identidad RG.'); });
     return () => { active = false; };
-  }, [isOpen, isDemo]);
+  }, [isOpen, isDemo, view, connectionCheck]);
 
   if (!isOpen) return null;
 
-  if (isDemo) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-        <div className="relative w-full max-w-lg bg-[#0e0d14] border border-amber-500/40 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6 text-center">
-          <div className="w-14 h-14 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center mx-auto text-amber-400">
-            <Lock className="w-7 h-7" />
-          </div>
-          <div className="space-y-2">
-            <span className="text-[10px] font-mono tracking-[0.2em] text-amber-400 uppercase font-bold">
-              MODO DEMO ACTIVO
-            </span>
-            <h3 className="text-xl sm:text-2xl font-bold font-sans text-white uppercase">
-              EXPORTACIÓN EN MASTER WAV BLOQUEADA
-            </h3>
-            <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed max-w-md mx-auto">
-              Has grabado tu maqueta en el estudio. Para descargar el Master WAV 24-bit y los stems vocales separados, activa tu Pase de 30 Días por $10 USD o compra cualquier beat en la tienda (incluye 30 días gratis).
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <button
-              onClick={() => {
-                onClose();
-                if (onOpenUnlockModal) onOpenUnlockModal();
-              }}
-              className="flex-1 py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-mono font-bold text-xs uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)] active:scale-95 cursor-pointer"
-            >
-              Activar Pase ($10 USD)
-            </button>
-            <Link
-              href="/beats"
-              className="flex-1 py-3 px-4 rounded-xl bg-white/[0.08] hover:bg-purple-600 hover:text-white border border-white/10 text-white font-mono font-bold text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center active:scale-95"
-            >
-              Comprar Beat (+30d)
-            </Link>
-          </div>
-
-          <div>
-            <button
-              onClick={onClose}
-              className="text-xs text-zinc-500 hover:text-zinc-300 font-mono transition-colors cursor-pointer"
-            >
-              ← Volver al estudio de grabación
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-
   const recordedTracks = tracks.filter((t) => t.buffer !== null || (t.clips && t.clips.length > 0));
   const hasRecordings = recordedTracks.length > 0;
-  const exportSampleRate = engine?.getExportSampleRate(tracks) ?? 44100;
-  const exportRateLabel = `${exportSampleRate / 1000} kHz`;
   const cleanBeatTitle = beat ? beat.title.replace(/[^a-zA-Z0-9]/g, '_') : 'Project';
-  const selectedRgTrack = rgTracks.find(track => track.id === rgTrackId) || null;
   const currentCatalogBeatId = beat?.catalogBeatId && RG_UUID.test(beat.catalogBeatId) ? beat.catalogBeatId : null;
-  const linkedBeatId = currentCatalogBeatId;
-  const rgTrackMatchesCurrentBeat = Boolean(selectedRgTrack && selectedRgTrack.beat_id === linkedBeatId);
-  const rgParticipationReady = Boolean(rgArtist?.status === 'active' && selectedRgTrack && rgTrackMatchesCurrentBeat);
+  const compatibleTracks = rgTracks.filter(track => track.status !== 'archived' && track.beat_id === currentCatalogBeatId);
 
-  const refreshRgTracks = async (artistId: string) => {
-    const response = await fetch(`/api/rg/tracks?artistId=${encodeURIComponent(artistId)}`, { cache: 'no-store' });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'No se pudieron cargar tus RG Tracks.');
-    const nextTracks = (data.tracks || []) as RgTrack[];
-    setRgTracks(nextTracks);
-    return nextTracks;
+  // Reuse the existing identity APIs at the final publish click. Opening the
+  // form never creates records, and an upload cannot silently lose its RG link.
+  const prepareParticipation = async () => {
+    if (!rgIdentityReady || rgError) throw new Error(rgError || 'Espera a que cargue tu participación.');
+    let artist = rgArtist;
+    if (!artist) {
+      const response = await fetch('/api/rg/artists', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ stageName: artistName.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.artist?.id) throw new Error(data.error || 'No se pudo preparar tu perfil de artista.');
+      artist = data.artist as RgArtist;
+      setRgArtist(artist);
+    }
+    if (artist.status !== 'active') throw new Error('Tu perfil de artista no está activo para participar.');
+    let track = compatibleTracks.find(item => item.id === rgTrackId);
+    if (rgTrackId && !track) throw new Error('Selecciona una canción compatible con este beat.');
+    if (!track) {
+      const response = await fetch('/api/rg/tracks', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ artistId: artist.id, title: youtubeTitle.trim() || beat?.title, beatId: currentCatalogBeatId }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.track?.id) throw new Error(data.error || 'No se pudo preparar tu canción para el Top.');
+      track = data.track as RgTrack;
+      const preparedTrack = track;
+      setRgTracks(previous => [...previous.filter(item => item.id !== preparedTrack.id), preparedTrack]);
+      setRgTrackId(track.id);
+    }
+    return { artistId: artist.id, trackId: track.id, beatId: currentCatalogBeatId };
   };
 
-  const handleCreateRgArtist = async () => {
-    setRgLoading(true); setRgError('');
-    try {
-      const response = await fetch('/api/rg/artists', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ stageName: rgArtistName }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'No se pudo crear tu RG Artist.');
-      setRgArtist(data.artist); setRgArtistName(data.artist.stage_name);
-      onShowToast('RG Artist creado.', 'success');
-    } catch (error) {
-      setRgError(error instanceof Error ? error.message : 'No se pudo crear tu RG Artist.');
-    } finally { setRgLoading(false); }
+  const openYouTube = () => {
+    setYoutubeStatus(null);
+    setRgIdentityReady(false);
+    setRgError('');
+    setView('youtube');
   };
 
-  const handleCreateRgTrack = async () => {
-    if (!rgArtist) return;
-    setRgLoading(true); setRgError('');
-    try {
-      const beatId = currentCatalogBeatId;
-      const response = await fetch('/api/rg/tracks', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ artistId: rgArtist.id, title: rgNewTrackTitle, beatId }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'No se pudo crear el RG Track.');
-      const nextTracks = await refreshRgTracks(rgArtist.id);
-      const created = nextTracks.find(track => track.id === data.track?.id);
-      if (created) setRgTrackId(created.id);
-      setRgNewTrackTitle('');
-      onShowToast('RG Track creado como borrador.', 'success');
-    } catch (error) {
-      setRgError(error instanceof Error ? error.message : 'No se pudo crear el RG Track.');
-    } finally { setRgLoading(false); }
+  const retryConnection = () => {
+    setYoutubeStatus(null);
+    setRgIdentityReady(false);
+    setRgError('');
+    setConnectionCheck(previous => previous + 1);
   };
 
   const triggerDownload = (blob: Blob, filename: string) => {
@@ -265,24 +227,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     exportLock.current = true;
     try {
       setIsExportingMaster(true);
-      onShowToast(
-        sidechainEnabled
-          ? 'Renderizando Master WAV 24-bit con Sidechain...'
-          : 'Renderizando Master WAV 24-bit...',
-        'info'
-      );
+      onShowToast('Preparando tu canción…', 'info');
 
       const blob = await engine.exportMix(tracks, {
-        enableSidechain: sidechainEnabled,
+        enableSidechain: true,
       });
 
-      const filename = `RGODBEAT_${cleanBeatTitle}_MASTER_24bit_${exportSampleRate}Hz${sidechainEnabled ? '_Sidechain' : ''}.wav`;
+      const filename = `RGODBEAT_${cleanBeatTitle}.wav`;
       triggerDownload(blob, filename);
 
-      onShowToast(`¡Master descargado: ${filename}!`, 'success');
+      onShowToast('Canción lista. Se inició la descarga.', 'success');
     } catch (err) {
       console.error(err);
-      onShowToast('Error al procesar el master mezclado.', 'error');
+      onShowToast('No se pudo preparar la canción. Inténtalo de nuevo.', 'error');
     } finally {
       exportLock.current = false;
       setIsExportingMaster(false);
@@ -302,29 +259,30 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       onShowToast('Escribe el nombre artístico y confirma los derechos del audio y la imagen.', 'error');
       return;
     }
-    if (exportLock.current) return;
+    if (exportLock.current || youtubeResult) return;
     exportLock.current = true;
     const uploadId = window.crypto.randomUUID();
     try {
       setYoutubeLoading(true);
-      setYoutubeResult(null);
-      setYoutubeProgress({ stage: 'render', label: 'Renderizando el master WAV…' });
-      onShowToast('Preparando el master para el canal RGODBEAT…', 'info');
-      const blob = await engine.exportMix(tracks, { enableSidechain: sidechainEnabled });
+      setPublishError('');
+      setYoutubeProgress({ stage: 'participation', label: 'Preparando tu participación…' });
+      const rgLink = await prepareParticipation();
+      setYoutubeProgress({ stage: 'render', label: 'Preparando tu canción…' });
+      const blob = await engine.exportMix(tracks, { enableSidechain: true });
       if (blob.size > (youtubeStatus.maxMasterBytes || 256_000_000)) throw new Error('El master supera el tamaño máximo permitido para publicarlo.');
 
       if (coverImage) {
         if (coverImage.size > (youtubeStatus.maxCoverBytes || 4_000_000)) throw new Error('La imagen debe pesar menos de 4 MB.');
-        setYoutubeProgress({ stage: 'cover', label: 'Subiendo la portada a R2…', transferredBytes: 0, totalBytes: coverImage.size });
+        setYoutubeProgress({ stage: 'cover', label: 'Subiendo tu portada…', transferredBytes: 0, totalBytes: coverImage.size });
         await uploadWithProgress(
           `/api/studio/youtube/upload?uploadId=${uploadId}`,
           coverImage,
           'PUT',
-          (transferredBytes) => setYoutubeProgress({ stage: 'cover', label: 'Subiendo la portada a R2…', transferredBytes, totalBytes: coverImage.size }),
+          (transferredBytes) => setYoutubeProgress({ stage: 'cover', label: 'Subiendo tu portada…', transferredBytes, totalBytes: coverImage.size }),
         ).catch((error: unknown) => { throw error instanceof Error ? error : new Error('No se pudo subir la imagen.'); });
       }
 
-      setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a almacenamiento seguro…', transferredBytes: 0, totalBytes: blob.size });
+      setYoutubeProgress({ stage: 'audio', label: 'Subiendo tu canción…', transferredBytes: 0, totalBytes: blob.size });
       const chunkBytes = 2_000_000;
       const totalParts = Math.ceil(blob.size / chunkBytes);
       if (totalParts < 1 || totalParts > 128) throw new Error('El master supera el tamaño máximo permitido.');
@@ -335,43 +293,39 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           `/api/studio/youtube/upload?uploadId=${uploadId}&action=chunk&index=${index}`,
           part,
           'POST',
-          (partBytes) => setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a almacenamiento seguro…', transferredBytes: start + partBytes, totalBytes: blob.size }),
+          (partBytes) => setYoutubeProgress({ stage: 'audio', label: 'Subiendo tu canción…', transferredBytes: start + partBytes, totalBytes: blob.size }),
         ).catch((error: unknown) => { throw error instanceof Error ? error : new Error(`Falló la subida del fragmento ${index + 1}.`); });
-        setYoutubeProgress({ stage: 'audio', label: 'Subiendo el master a almacenamiento seguro…', transferredBytes: Math.min(start + part.size, blob.size), totalBytes: blob.size });
+        setYoutubeProgress({ stage: 'audio', label: 'Subiendo tu canción…', transferredBytes: Math.min(start + part.size, blob.size), totalBytes: blob.size });
       }
-      setYoutubeProgress({ stage: 'prepare', label: 'Verificando y preparando el master…' });
+      setYoutubeProgress({ stage: 'prepare', label: 'Preparando el vídeo…' });
       const finish = await fetch(`/api/studio/youtube/upload?uploadId=${uploadId}&action=finish`, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ parts: totalParts }),
       });
       const finishResult = await finish.json();
       if (!finish.ok) throw new Error(finishResult.error || 'No se pudo completar el master en R2.');
 
-      setYoutubeProgress({ stage: 'publish', label: 'Convirtiendo el vídeo y enviándolo a YouTube…' });
+      setYoutubeProgress({ stage: 'publish', label: 'Publicando en YouTube…' });
       const response = await fetch('/api/studio/youtube/publish', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ uploadId, artistName: artistName.trim(), videoTitle: youtubeTitle.trim(), videoDescription: youtubeDescription.trim(), beatTitle: beat.title, beatGenre: beat.genre, beatBpm: beat.bpm, beatKey: beat.key, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null,
-          ...(rgParticipationReady && rgArtist && selectedRgTrack ? { rgLink: { artistId: rgArtist.id, trackId: selectedRgTrack.id, beatId: linkedBeatId } } : {}) }),
+          rgLink }),
       });
       const result = await response.json();
       if (!response.ok || result.success !== true || !result.videoId || !result.videoUrl) {
         throw new Error(result.error || 'YouTube no confirmó la publicación.');
       }
-      const publishedRgLink = rgParticipationReady && rgArtist && selectedRgTrack
-        ? { artistId: rgArtist.id, trackId: selectedRgTrack.id, beatId: linkedBeatId }
-        : undefined;
       setYoutubeResult({ videoId: result.videoId, videoUrl: result.videoUrl, privacy: result.privacy, uploadId,
-        rgLink: publishedRgLink,
+        rgLink,
         rgPublicationLinked: result.rgPublicationLinked, rgPublicationError: result.rgPublicationError });
       setYoutubeProgress({ stage: 'publish', label: 'Publicado y confirmado por YouTube', transferredBytes: 1, totalBytes: 1 });
-      onShowToast(result.rgPublicationLinked === false
-        ? 'YouTube confirmó el vídeo. El vínculo RG quedó pendiente y puede reintentarse.'
-        : publishedRgLink
-          ? 'YouTube confirmó el vídeo y su vínculo automático con RG.'
-          : 'YouTube confirmó el vídeo. Se publicó sin vínculo RG; el flujo estándar sigue disponible.',
-      result.rgPublicationLinked === false || !publishedRgLink ? 'info' : 'success');
+      onShowToast(result.rgPublicationLinked === true
+        ? 'Vídeo publicado y participación vinculada al Top 23.'
+        : 'Vídeo publicado. La participación en el Top quedó pendiente.',
+      result.rgPublicationLinked === true ? 'success' : 'info');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo publicar en YouTube.';
       setYoutubeProgress(null);
+      setPublishError(message);
       onShowToast(message, 'error');
     } finally {
       // Cleanup is independent of publication. A slow cleanup response must
@@ -505,366 +459,141 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
+  const title = isDemo ? 'Exportar' : view === 'youtube' ? 'YouTube' : view === 'advanced' ? 'Más opciones' : view === 'delivery' ? 'Enviar voces' : 'Exportar';
+  const connectionPending = !youtubeStatus || (!rgIdentityReady && !rgError);
+  const participationBlocked = Boolean(rgError || (rgArtist && rgArtist.status !== 'active'));
+  const buttonClass = 'flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45';
+  const inputClass = 'mt-1.5 min-h-12 w-full rounded-xl border border-white/15 bg-black/25 px-3 py-2.5 text-base text-white outline-none focus:border-amber-400 disabled:opacity-50';
+
   return (
-    <div role="dialog" aria-modal="true" aria-label="Exportar audio" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-2xl bg-[#121216] border border-zinc-750 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-[#0d0d10]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Download className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-white font-display">
-                Centro de Exportación de Audio
-              </h2>
-              <p className="text-xs text-zinc-400 font-mono">
-                {beat ? `${beat.title} • ${beat.bpm} BPM` : 'Proyecto'}
-              </p>
-            </div>
+    <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/85 p-3 backdrop-blur-md sm:p-5">
+      <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="export-title" tabIndex={-1} className="flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-white/15 bg-[#101014] text-white shadow-2xl">
+        <header className="flex shrink-0 items-center gap-3 border-b border-white/[0.07] px-5 py-4">
+          {view !== 'choose' && !isDemo && <button type="button" aria-label="Volver a exportar" disabled={isBusy} onClick={() => setView('choose')} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-40"><ArrowLeft size={20} /></button>}
+          <div className="min-w-0 flex-1">
+            <h2 id="export-title" className="text-lg font-bold">{title}</h2>
+            <p className="truncate text-xs text-zinc-400">{view === 'youtube' ? 'Canal RGODBEAT' : beat?.title || 'Tu canción'}</p>
           </div>
-          <button
-            onClick={onClose}
-            disabled={youtubeLoading || isSendingStems}
-            aria-label={isSendingStems ? 'Espera a que termine el envío de voces' : youtubeLoading ? 'Espera a que termine la publicación' : 'Cerrar exportación'}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+          <button type="button" aria-label="Cerrar exportación" disabled={isBusy} onClick={handleClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-40"><X size={22} /></button>
+        </header>
 
-        {/* Content Body */}
-        <div className="p-5 overflow-y-auto space-y-4 text-sm">
-          {/* OPTION 1: Master Mezclado WAV con Sidechain */}
-          <div className="p-4 rounded-xl bg-gradient-to-b from-amber-500/10 via-zinc-900/60 to-zinc-900/90 border border-amber-500/30 shadow-lg space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" /> Recomendado
-                  </span>
-                  {sidechainEnabled && (
-                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-semibold">
-                      Sidechain Activo
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-base font-bold text-white mt-0.5">
-                  Master Mezclado Completo (WAV)
-                </h3>
+        <div ref={content} className="min-h-0 overflow-y-auto overscroll-contain p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          {isDemo ? <div className="space-y-5 py-3 text-center">
+            <Lock className="mx-auto text-amber-400" size={32} />
+            <h3 className="text-xl font-bold">Tu canción está lista para salir</h3>
+            <p className="text-sm leading-relaxed text-zinc-400">Activa tu pase de Studio para publicar en YouTube o descargar tu canción.</p>
+            <button type="button" onClick={() => { onClose(); onOpenUnlockModal?.(); }} className={`${buttonClass} bg-amber-400 text-black hover:bg-amber-300`}>Activar Studio <ArrowRight size={18} /></button>
+          </div> : view === 'choose' ? <div className="space-y-3">
+            <section className="relative isolate overflow-hidden rounded-2xl border border-amber-400/25 bg-gradient-to-b from-amber-400/[0.12] to-amber-400/[0.03] p-5">
+              <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 bg-contain bg-center bg-no-repeat opacity-[0.08]" style={{ backgroundImage: "url('/images/rgodbeat-studio-logo.png')" }} />
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.16em] text-amber-300"><Sparkles size={14} /> RG REWARDS</span>
+                <Trophy className="text-amber-400" size={24} />
               </div>
-            </div>
-
-            {/* Sidechain Toggle Button */}
-            <div className="p-2.5 rounded-lg bg-black/40 border border-zinc-800 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Activity className={`w-4 h-4 ${sidechainEnabled ? 'text-emerald-400' : 'text-zinc-500'}`} />
-                <span className="text-xs text-zinc-300 font-medium">
-                  {sidechainEnabled
-                    ? 'Sidechain Activo (Voz limpia sobre el beat)'
-                    : 'Sidechain Desactivado (Plano)'}
-                </span>
+              <h3 className="text-2xl font-bold leading-tight tracking-tight">Lleva tu canción al Top.</h3>
+              <div className="my-5 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-amber-200">
+                <span className="flex items-center gap-1.5"><Trophy size={15} /> Puntos para el Top 23</span>
+                <span className="flex items-center gap-1.5"><Coins size={15} /> Premios en RG Coins</span>
               </div>
-
-              {/* Dedicated Green Sidechain Toggle Button */}
-              <button
-                type="button"
-                disabled={isBusy}
-                onClick={() => setSidechainEnabled(!sidechainEnabled)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all active:scale-95 shadow-sm select-none ${
-                  sidechainEnabled
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-black border border-emerald-400 shadow-emerald-500/25'
-                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white border border-zinc-700'
-                }`}
-                title="Activar o desactivar el sidechain profesional"
-              >
-                {sidechainEnabled && <Check className="w-3 h-3 stroke-[3]" />}
-                <span>Sidechain {sidechainEnabled ? 'ON' : 'OFF'}</span>
-              </button>
-            </div>
-
-            <button
-              onClick={handleExportMaster}
-              disabled={!beat || isBusy}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold font-display shadow-lg shadow-amber-500/20 transition-all active:scale-[0.99] disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              <span>{isExportingMaster ? 'Renderizando el master...' : 'Descargar Master Mezclado (WAV)'}</span>
+              <button type="button" onClick={openYouTube} disabled={!beat || !engine || isBusy} className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}><Video size={19} /> Publicar en YouTube <ArrowRight className="ml-auto" size={18} /></button>
+            </section>
+            <button type="button" onClick={() => void handleExportMaster()} disabled={!beat || !engine || isBusy} className={`${buttonClass} justify-start border border-white/15 bg-white/[0.04] text-white hover:bg-white/[0.08]`}>
+              {isExportingMaster ? <Loader2 size={19} className="animate-spin" /> : <Download size={19} className="text-zinc-300" />}
+              {isExportingMaster ? 'Preparando canción…' : 'Descargar canción'}
             </button>
-
-            <div className="rounded-xl border border-white/10 bg-black/30 p-3.5 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Video className="w-4 h-4 text-red-400 shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-white">Publicar en RGODBEAT YouTube</p>
-                    <p className="text-[11px] text-zinc-400">Se crea un vídeo con la carátula y el master mezclado.</p>
-                  </div>
-                </div>
-                {youtubeStatus?.connected && <span className="text-[10px] text-emerald-300">Canal conectado</span>}
-              </div>
-
-              <div className="space-y-2">
-                <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.04] p-3 space-y-2">
-                  <div className="space-y-1 text-[11px]">
-                    <p className={rgParticipationReady ? 'font-semibold text-emerald-200' : 'font-semibold text-amber-200'}>
-                      {rgParticipationReady ? 'RG Rewards activo — vínculo automático' : 'RG Rewards pendiente'}
-                    </p>
-                    <p className="text-zinc-400">
-                      {rgParticipationReady
-                        ? 'Esta publicación se vinculará con el RG Track cuando YouTube confirme la subida.'
-                        : !rgArtist
-                          ? 'Crea tu RG Artist para preparar la participación automática.'
-                          : rgArtist.status !== 'active'
-                            ? 'Tu RG Artist no está activo. La publicación estándar de YouTube seguirá disponible sin vínculo RG.'
-                          : selectedRgTrack && !rgTrackMatchesCurrentBeat
-                            ? 'El RG Track seleccionado no coincide con el beat cargado. Elige uno compatible o crea un borrador.'
-                            : 'Selecciona o crea un RG Track para preparar la participación automática.'}
-                    </p>
-                    <p className="text-[10px] text-zinc-500">La contabilidad de RG Score y RG Coin aún no está activa.</p>
-                  </div>
-                  <div className="space-y-2 border-t border-white/[0.06] pt-2">
-                      {!rgArtist ? <>
-                        <label className="block space-y-1 text-[11px] text-zinc-400">Nombre del RG Artist
-                          <input value={rgArtistName} maxLength={80} onChange={(event) => setRgArtistName(event.target.value)} disabled={isBusy || rgLoading} placeholder="Nombre artístico canónico" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
-                        </label>
-                        <button type="button" onClick={() => void handleCreateRgArtist()} disabled={isBusy || rgLoading || !rgArtistName.trim()} className="rounded-lg border border-amber-500/30 px-3 py-2 text-[11px] font-semibold text-amber-200 hover:border-amber-400 disabled:opacity-50">
-                          {rgLoading ? 'Guardando…' : 'Crear mi RG Artist'}
-                        </button>
-                        <p className="text-[10px] text-zinc-500">La identidad se asocia a tu cuenta autenticada; el nombre libre de YouTube no se usa para verificarla.</p>
-                      </> : <>
-                        <p className="text-[11px] text-zinc-300">RG Artist: <strong className="text-white">{rgArtist.stage_name}</strong></p>
-                        <label className="block space-y-1 text-[11px] text-zinc-400">RG Track
-                          <select value={rgTrackId} onChange={(event) => setRgTrackId(event.target.value)} disabled={isBusy || rgLoading} className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400">
-                            <option value="">Selecciona un track</option>
-                            {rgTracks.filter(track => track.status !== 'archived').map(track => <option key={track.id} value={track.id}>{track.title} · {track.beat_id ? 'beat de catálogo' : 'sin beat de catálogo'}{track.status === 'published' ? ' · publicado' : ' · borrador'}</option>)}
-                          </select>
-                        </label>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                          <input value={rgNewTrackTitle} maxLength={120} onChange={(event) => setRgNewTrackTitle(event.target.value)} disabled={isBusy || rgLoading} placeholder="Título para un nuevo borrador" className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
-                          <button type="button" onClick={() => void handleCreateRgTrack()} disabled={isBusy || rgLoading || !rgNewTrackTitle.trim()} className="rounded-lg border border-amber-500/30 px-3 py-2 text-[11px] font-semibold text-amber-200 hover:border-amber-400 disabled:opacity-50">Crear borrador</button>
-                        </div>
-                        <p className="text-[10px] text-zinc-500">{currentCatalogBeatId
-                          ? 'El ID canónico del beat cargado desde el catálogo se asociará automáticamente al nuevo RG Track.'
-                          : 'Este beat es custom o externo; el nuevo RG Track se creará sin beat de catálogo.'}</p>
-                      </>}
-                      {rgError && <p className="text-[10px] text-red-300" role="alert">{rgError}</p>}
-                  </div>
-                </div>
-                <label className="block space-y-1 text-[11px] text-zinc-400">Nombre artístico
-                  <input value={artistName} maxLength={80} onChange={(event) => setArtistName(event.target.value)} disabled={isBusy} placeholder="El nombre que aparecerá en el video" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
-                </label>
-                <label className="block space-y-1 text-[11px] text-zinc-400">Título del vídeo (opcional)
-                  <input value={youtubeTitle} maxLength={100} onChange={(event) => setYoutubeTitle(event.target.value)} disabled={isBusy} placeholder={`${artistName.trim() || 'Artista'} - ${beat?.title || 'Beat'} | RGODBEAT`} className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
-                </label>
-                <label className="block space-y-1 text-[11px] text-zinc-400">Descripción (opcional)
-                  <textarea value={youtubeDescription} maxLength={5000} rows={3} onChange={(event) => setYoutubeDescription(event.target.value)} disabled={isBusy} placeholder="Si la dejas vacía, se añaden el artista, el beat y sus datos disponibles." className="w-full resize-y rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-amber-400" />
-                </label>
-                <p className={`text-right text-[10px] ${youtubeDescriptionBytes > 5000 ? 'text-red-300' : 'text-zinc-500'}`}>{youtubeDescriptionBytes}/5000 bytes</p>
-                <p className="text-[11px] text-zinc-500">Sugerencia de título: {artistName.trim() || 'Artista'} - {beat?.title || 'Beat'} | RGODBEAT. Puedes cambiarla antes de publicar.</p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                <p className="text-[11px] text-zinc-400">Imagen: {coverImage?.name || (beat?.coverUrl ? 'carátula del beat' : 'carátula de RGODBEAT')}</p>
-                <label className="inline-flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:border-amber-400">
-                  <ImagePlus className="h-3.5 w-3.5" /> Elegir otra imagen
-                  <input type="file" accept="image/jpeg,image/png,image/webp" disabled={isBusy} className="sr-only" onChange={(event) => {
+            <button type="button" onClick={() => setView('advanced')} disabled={isBusy} className={`${buttonClass} min-h-11 text-zinc-400 hover:bg-white/5 hover:text-white`}>Más opciones</button>
+          </div> : view === 'youtube' ? youtubeResult ? <div className="space-y-5 py-3 text-center" role="status" aria-live="polite">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-300"><Check size={30} /></div>
+            <h3 tabIndex={-1} className="text-xl font-bold outline-none">Tu vídeo está en YouTube</h3>
+            <p className="text-sm text-zinc-400">{youtubeResult.privacy === 'private' ? 'Privado' : youtubeResult.privacy === 'public' ? 'Público' : 'No listado'}</p>
+            <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-relaxed text-amber-100">
+              <Trophy size={22} className="mx-auto mb-2 text-amber-300" />
+              {youtubeResult.rgPublicationLinked === true ? 'Tu publicación quedó vinculada al Top 23.' : 'Tu vídeo se publicó. Falta vincular tu participación al Top 23.'}
+              {youtubeResult.rgPublicationLinked !== true && youtubeResult.rgLink && <button type="button" onClick={() => void handleRetryRgLink()} disabled={rgLoading} className={`${buttonClass} mt-3 bg-amber-400 text-black hover:bg-amber-300`}>{rgLoading ? 'Vinculando…' : 'Reintentar participación'}</button>}
+            </div>
+            <a href={youtubeResult.videoUrl} target="_blank" rel="noreferrer" className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}>Ver en YouTube <ExternalLink size={17} /></a>
+            <button type="button" onClick={handleClose} disabled={isBusy} className={`${buttonClass} bg-white/5 hover:bg-white/10`}>Volver al Studio</button>
+          </div> : <form id="youtube-publish-form" className="space-y-4" onSubmit={event => { event.preventDefault(); void handlePublishToYouTube(); }}>
+            <h3 tabIndex={-1} className="sr-only outline-none">Publica y entra al Top</h3>
+            <div className="flex items-start gap-2.5 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-200"><Trophy size={18} className="mt-0.5 shrink-0" /><p>Suma puntos para el Top 23 y compite por premios en RG Coins.</p></div>
+            <label className="block text-sm text-zinc-300">Nombre artístico
+              <input value={artistName} maxLength={80} required autoComplete="nickname" onChange={event => setArtistName(event.target.value)} disabled={isBusy} placeholder="Tu nombre de artista" className={inputClass} />
+            </label>
+            <label className="block text-sm text-zinc-300">Título de la canción
+              <input value={youtubeTitle} maxLength={100} onChange={event => setYoutubeTitle(event.target.value)} disabled={isBusy} placeholder={beat?.title || 'Tu canción'} className={inputClass} />
+            </label>
+            <label className="block text-sm text-zinc-300">Visibilidad
+              <select aria-label="Visibilidad" value={youtubePrivacy} onChange={event => setYoutubePrivacy(event.target.value as 'unlisted' | 'public')} disabled={isBusy} className={`${inputClass} bg-[#17171c]`}><option value="unlisted">No listado · solo con enlace</option><option value="public">Público · visible para todos</option></select>
+            </label>
+            <details className="rounded-xl border border-white/10 bg-white/[0.02]">
+              <summary className="cursor-pointer px-3 py-3 text-sm text-zinc-400">Portada y más opciones</summary>
+              <div className="space-y-4 border-t border-white/[0.07] p-3">
+                <p className="text-xs text-zinc-400">{coverImage ? coverImage.name : 'Usaremos la portada del beat o de RGODBEAT.'}</p>
+                <label className={`${buttonClass} cursor-pointer border border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10`}><ImagePlus size={18} /> Cambiar portada
+                  <input aria-label="Cambiar portada" type="file" accept="image/jpeg,image/png,image/webp" disabled={isBusy} className="sr-only" onChange={event => {
                     const file = event.target.files?.[0];
                     if (!file) return;
-                    if (file.size > 4_000_000) {
-                      onShowToast('La imagen debe pesar menos de 4 MB.', 'error');
-                      event.target.value = '';
-                      return;
+                    if (file.size > 4_000_000 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+                      onShowToast('Elige una imagen JPG, PNG o WebP de menos de 4 MB.', 'error');
+                      event.target.value = ''; return;
                     }
                     setCoverImage(file);
                   }} />
                 </label>
-                {coverImage && <button type="button" disabled={isBusy} onClick={() => setCoverImage(null)} className="w-fit text-[11px] text-zinc-500 hover:text-white">Usar carátula del beat</button>}
+                {coverImage && <button type="button" disabled={isBusy} onClick={() => setCoverImage(null)} className="min-h-11 text-xs text-zinc-400 underline">Usar portada original</button>}
+                <label className="block text-sm text-zinc-300">Descripción opcional
+                  <textarea value={youtubeDescription} maxLength={5000} rows={3} onChange={event => setYoutubeDescription(event.target.value)} disabled={isBusy} placeholder="Cuéntanos sobre tu canción" className={`${inputClass} resize-y`} />
+                </label>
+                {youtubeDescriptionBytes > 5000 && <p role="alert" className="text-xs text-red-300">La descripción es demasiado larga. Acórtala para publicar.</p>}
+                {compatibleTracks.length > 0 && <label className="block text-sm text-zinc-300">Canción en el Top
+                  <select value={rgTrackId} onChange={event => setRgTrackId(event.target.value)} disabled={isBusy} className={`${inputClass} bg-[#17171c]`}><option value="">Registrar como nueva canción</option>{compatibleTracks.map(track => <option key={track.id} value={track.id}>{track.title}</option>)}</select>
+                </label>}
               </div>
-
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-zinc-300">
-                <label className="inline-flex items-center gap-2"><input type="radio" name="youtubePrivacy" checked={youtubePrivacy === 'unlisted'} onChange={() => setYoutubePrivacy('unlisted')} disabled={isBusy} /> No listado</label>
-                <label className="inline-flex items-center gap-2"><input type="radio" name="youtubePrivacy" checked={youtubePrivacy === 'public'} onChange={() => setYoutubePrivacy('public')} disabled={isBusy} /> Público</label>
+            </details>
+            <fieldset disabled={isBusy} className="text-xs text-zinc-300">
+              <legend>¿El vídeo está hecho para niños?</legend>
+              <div className="mt-1 flex gap-5">
+                <label className="flex min-h-11 items-center gap-2"><input type="radio" name="youtubeKids" checked={!madeForKids} onChange={() => setMadeForKids(false)} className="h-4 w-4 accent-amber-400" /> No</label>
+                <label className="flex min-h-11 items-center gap-2"><input type="radio" name="youtubeKids" checked={madeForKids} onChange={() => setMadeForKids(true)} className="h-4 w-4 accent-amber-400" /> Sí</label>
               </div>
-              <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-zinc-400">
-                <legend className="mb-1">¿Este vídeo está hecho para niños?</legend>
-                <label className="inline-flex items-center gap-2"><input type="radio" name="youtubeKids" checked={!madeForKids} onChange={() => setMadeForKids(false)} disabled={isBusy} /> No</label>
-                <label className="inline-flex items-center gap-2"><input type="radio" name="youtubeKids" checked={madeForKids} onChange={() => setMadeForKids(true)} disabled={isBusy} /> Sí</label>
-              </fieldset>
-              <label className="flex items-start gap-2 text-[10px] leading-4 text-zinc-400">
-                <input type="checkbox" checked={hasRights} onChange={(event) => setHasRights(event.target.checked)} disabled={isBusy} className="mt-0.5 accent-amber-400" />
-                Confirmo que tengo derechos para publicar esta grabación y la imagen, y que cumple las reglas de YouTube.
-              </label>
-
-              {youtubeLoading && youtubeProgress && (
-                <div className="space-y-2 rounded-lg border border-amber-400/20 bg-amber-400/[0.06] p-3" role="status" aria-live="polite">
-                  <div className="flex items-center justify-between gap-3 text-[11px]">
-                    <span className="font-medium text-zinc-100">{youtubeProgress.label}</span>
-                    {youtubeUploadPercent !== null && <span className="shrink-0 font-mono text-amber-300">{youtubeUploadPercent}%</span>}
-                  </div>
-                  <div
-                    className="h-2 overflow-hidden rounded-full bg-zinc-800"
-                    role="progressbar"
-                    aria-label={youtubeProgress.label.replace(/…$/, '')}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={youtubeUploadPercent ?? undefined}
-                    aria-valuetext={youtubeUploadPercent === null ? youtubeProgress.label : `${youtubeUploadPercent}%`}
-                  >
-                    {youtubeUploadPercent !== null ? (
-                      <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-[width] duration-150" style={{ width: `${youtubeUploadPercent}%` }} />
-                    ) : (
-                      <div className="youtube-progress-indeterminate h-full w-1/3 rounded-full bg-gradient-to-r from-amber-500 to-amber-300" />
-                    )}
-                  </div>
-                  {youtubeProgress.transferredBytes !== undefined && youtubeProgress.totalBytes !== undefined && (
-                    <p className="text-right font-mono text-[10px] text-zinc-400">
-                      {formatUploadBytes(youtubeProgress.transferredBytes)} / {formatUploadBytes(youtubeProgress.totalBytes)}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {youtubeStatus?.available ? (
-                <button type="button" onClick={handlePublishToYouTube} disabled={isBusy || !artistName.trim() || !hasRights || youtubeDescriptionBytes > 5000} className="flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-2.5 text-xs font-bold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45">
-                  {youtubeLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
-                  {youtubeLoading ? (youtubeProgress?.label || 'Publicando…') : 'Publicar vídeo en YouTube'}
-                </button>
-              ) : (
-                <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-100/80">{youtubeStatus?.error || (youtubeStatus ? 'El canal RGODBEAT aún no está conectado o falta terminar su configuración.' : 'Revisando la conexión del canal…')}</p>
-              )}
-              {youtubeResult && (
-                <div className="space-y-2 rounded-lg border border-emerald-500/35 bg-emerald-500/[0.08] p-3" role="status" aria-live="polite">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-200"><Check className="h-4 w-4" /> Publicación confirmada por YouTube</p>
-                  <p className="text-[11px] text-zinc-300">ID del vídeo: <span className="font-mono text-white">{youtubeResult.videoId}</span> · {youtubeResult.privacy === 'private' ? 'Privado' : youtubeResult.privacy === 'unlisted' ? 'No listado' : 'Público'}</p>
-                  {youtubeResult.rgPublicationLinked === false && <div className="space-y-2">
-                    <p className="text-[11px] text-amber-200">{youtubeResult.rgPublicationError || 'El vídeo se publicó correctamente; el vínculo RG quedó pendiente.'}</p>
-                    {youtubeResult.rgLink && <button type="button" onClick={() => void handleRetryRgLink()} disabled={rgLoading} className="rounded-lg border border-amber-500/35 px-3 py-1.5 text-[11px] font-semibold text-amber-100 hover:border-amber-400 disabled:opacity-50">{rgLoading ? 'Reintentando vínculo…' : 'Reintentar vínculo RG'}</button>}
-                  </div>}
-                  <a href={youtubeResult.videoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-medium text-emerald-300 hover:text-emerald-200">Abrir vídeo en YouTube <ExternalLink className="h-3 w-3" /></a>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* OPTION 2: Voces RAW como Stems (Dry / Sin Efectos) */}
-          <div className="p-4 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
-                  <Mic className="w-3 h-3" /> Pistas para Mezcla Externa
-                </span>
-                <h3 className="text-base font-bold text-white mt-0.5">
-                  Stems de Voces RAW (Dry / Limpias)
-                </h3>
-              </div>
-            </div>
-
-            {hasRecordings ? (
-              <div className="space-y-2 pt-1">
-                {/* Batch Button */}
-                <button
-                  onClick={handleExportAllRawStems}
-                  disabled={!beat || isBusy}
-                  className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md transition-all active:scale-[0.99] disabled:opacity-50"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>
-                    {isExportingRawStems
-                      ? 'Exportando voces RAW...'
-                      : `Descargar Todos los Stems RAW (${recordedTracks.length} pistas)`}
-                  </span>
-                </button>
-
-                {/* Individual Track List */}
-                <div className="divide-y divide-zinc-800/80 rounded-lg border border-zinc-800 bg-black/30 overflow-hidden mt-2">
-                  {recordedTracks.map((tr) => (
-                    <div
-                      key={tr.id}
-                      className="flex items-center justify-between px-3 py-2 text-xs"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-                        <span className="text-zinc-200 font-medium truncate">{tr.name}</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">
-                          {tr.clips?.length || 1} toma(s)
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => handleExportSingleRawStem(tr)}
-                        disabled={!beat || isBusy}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white transition-colors text-[11px] font-mono shrink-0"
-                      >
-                        <Download className="w-3 h-3 text-blue-400" />
-                        <span>{downloadingStemId === `raw-${tr.id}` ? '...' : 'Descargar RAW'}</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-zinc-500 italic p-2 bg-black/20 rounded-lg border border-zinc-850">
-                No hay pistas de voz grabadas aún. Graba tomas para habilitar los stems.
-              </p>
-            )}
-          </div>
-
-          {beat && hasRecordings && <StemDeliveryForm key={beat.id} engine={engine} beat={beat} tracks={tracks} disabled={isBusy} onBusyChange={setIsSendingStems} />}
-
-          {/* OPTION 3: Additional Stems (Wet Stems & Beat Stem) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            {/* Processed Wet Stems */}
-            <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800 flex flex-col justify-between space-y-2">
-              <div>
-                <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-purple-400" />
-                  Stems Vocales Wet (Con FX)
-                </h4>
-              </div>
-              <button
-                onClick={handleExportAllWetStems}
-                disabled={!beat || !hasRecordings || isBusy}
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-200 font-medium text-xs transition-colors disabled:opacity-40"
-              >
-                <Download className="w-3 h-3 text-purple-400" />
-                <span>{isExportingWetStems ? 'Procesando...' : 'Descargar Stems Wet'}</span>
-              </button>
-            </div>
-
-            {/* Beat Stem */}
-            <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-zinc-800 flex flex-col justify-between space-y-2">
-              <div>
-                <h4 className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                  <Music className="w-3.5 h-3.5 text-amber-400" />
-                  Beat Instrumental (WAV)
-                </h4>
-              </div>
-              <button
-                onClick={handleExportBeatStem}
-                disabled={!beat || isBusy}
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-zinc-200 font-medium text-xs transition-colors disabled:opacity-40"
-              >
-                <Download className="w-3 h-3 text-amber-400" />
-                <span>{isExportingBeatStem ? 'Exportando Beat...' : 'Descargar Beat WAV'}</span>
-              </button>
-            </div>
-          </div>
+            </fieldset>
+            <label className="flex min-h-11 items-start gap-2.5 text-xs leading-relaxed text-zinc-300"><input type="checkbox" checked={hasRights} onChange={event => setHasRights(event.target.checked)} disabled={isBusy} required className="mt-0.5 h-4 w-4 shrink-0 accent-amber-400" />Tengo los derechos del audio y la imagen para publicar en YouTube.</label>
+          </form> : view === 'advanced' ? <div className="space-y-3">
+            <h3 tabIndex={-1} className="mb-4 text-sm text-zinc-400 outline-none">Descarga tus pistas o envíalas a mezclar.</h3>
+            <button type="button" onClick={() => void handleExportAllRawStems()} disabled={!beat || !hasRecordings || isBusy} className={`${buttonClass} justify-start border border-white/10 bg-white/5 hover:bg-white/10`}><Mic size={18} className="text-blue-300" />{isExportingRawStems ? 'Preparando voces…' : 'Voces sin efectos'}</button>
+            <button type="button" onClick={() => void handleExportAllWetStems()} disabled={!beat || !hasRecordings || isBusy} className={`${buttonClass} justify-start border border-white/10 bg-white/5 hover:bg-white/10`}><Sliders size={18} className="text-purple-300" />{isExportingWetStems ? 'Preparando voces…' : 'Voces con efectos'}</button>
+            <button type="button" onClick={() => void handleExportBeatStem()} disabled={!beat || isBusy} className={`${buttonClass} justify-start border border-white/10 bg-white/5 hover:bg-white/10`}><Music size={18} className="text-amber-300" />{isExportingBeatStem ? 'Preparando instrumental…' : 'Solo instrumental'}</button>
+            {hasRecordings ? <>
+              <details className="rounded-xl border border-white/10 text-sm">
+                <summary className="cursor-pointer p-3 text-zinc-400">Elegir una pista de voz</summary>
+                <div className="space-y-1 px-3 pb-3">{recordedTracks.map(track => <button key={track.id} type="button" disabled={isBusy} onClick={() => void handleExportSingleRawStem(track)} className={`${buttonClass} justify-between bg-white/5 text-left hover:bg-white/10`}><span className="min-w-0 truncate">{track.name}</span>{downloadingStemId === `raw-${track.id}` ? <Loader2 size={17} className="shrink-0 animate-spin" /> : <Download size={17} className="shrink-0 text-zinc-400" />}</button>)}</div>
+              </details>
+              <button type="button" disabled={isBusy} onClick={() => setView('delivery')} className={`${buttonClass} justify-start border border-amber-400/20 bg-amber-400/5 text-amber-200 hover:bg-amber-400/10`}><Send size={18} /> Enviar voces a RGODBEAT <ArrowRight size={17} className="ml-auto" /></button>
+            </> : <p className="py-2 text-xs text-zinc-500">Graba voces para descargar o enviar tus pistas.</p>}
+          </div> : beat && hasRecordings ? <div><h3 tabIndex={-1} className="sr-only outline-none">Enviar voces a RGODBEAT</h3><StemDeliveryForm key={beat.id} engine={engine} beat={beat} tracks={tracks} disabled={isBusy} onBusyChange={setIsSendingStems} /></div> : null}
         </div>
-
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-zinc-800 bg-[#0d0d10] flex items-center justify-between text-xs text-zinc-400">
-          <span className="font-mono text-[11px] text-zinc-400">
-            WAV · <strong className="text-zinc-200">Master 24-bit · Stems 32-bit float · {exportRateLabel}</strong>
-          </span>
-          <button
-            onClick={onClose}
-            disabled={youtubeLoading || isSendingStems}
-            className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Cerrar
-          </button>
-        </div>
+        {!isDemo && view === 'youtube' && !youtubeResult && <footer className="shrink-0 space-y-3 border-t border-white/[0.07] bg-[#101014] px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {youtubeLoading && youtubeProgress && <div role="status" aria-live="polite" className="space-y-2 rounded-xl bg-white/5 p-3">
+              <p className="flex items-center justify-between gap-2 text-xs text-zinc-300"><span>{youtubeProgress.label}</span>{youtubeUploadPercent !== null && <span>{youtubeUploadPercent}%</span>}</p>
+              <div role="progressbar" aria-label={youtubeProgress.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={youtubeUploadPercent ?? undefined} aria-valuetext={youtubeProgress.label} className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className={`h-full rounded-full bg-amber-400 ${youtubeUploadPercent === null ? 'animate-pulse' : ''}`} style={{ width: youtubeUploadPercent === null ? '35%' : `${youtubeUploadPercent}%` }} /></div>
+            </div>}
+            {!youtubeLoading && (youtubeStatus && !youtubeStatus.available || participationBlocked) && <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-100" role="alert">
+              <p>{rgError || (rgArtist && rgArtist.status !== 'active' ? 'Tu perfil de artista no está activo para participar.' : youtubeStatus?.code && youtubeStatus.error || 'YouTube no está disponible ahora. Puedes descargar tu canción y volver a intentarlo.')}</p>
+              <button type="button" disabled={isBusy} onClick={retryConnection} className="mt-1 min-h-11 font-semibold underline">Volver a comprobar</button>
+            </div>}
+            {publishError && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-sm text-red-200">{publishError}</p>}
+            <button type="submit" form="youtube-publish-form" disabled={isBusy || !youtubeStatus?.available || !rgIdentityReady || participationBlocked || !artistName.trim() || !hasRights || youtubeDescriptionBytes > 5000} className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}>
+              {youtubeLoading || connectionPending ? <Loader2 size={18} className="animate-spin" /> : <Video size={18} />}
+              {youtubeLoading ? 'Publicando…' : connectionPending ? 'Comprobando conexión…' : 'Publicar y participar'}
+            </button>
+        </footer>}
       </div>
     </div>
   );
 };
+
+// A fresh dialog on each open keeps the first screen short and drops stale
+// publication results/form state when the user switches projects or closes it.
+export function ExportModal(props: ExportModalProps) {
+  return props.isOpen ? <ExportDialog key={props.beat?.id || 'empty'} {...props} /> : null;
+}
