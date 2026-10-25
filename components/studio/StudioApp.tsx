@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useInstalledApp } from '@/hooks/useAppInstallation';
 import {
   BeatAnalysisResult,
   BeatData,
@@ -256,6 +257,7 @@ export default function App() {
   // Vocal Tracks with 2 Leads (Applying user's saved channel FX templates)
   const [tracks, setTracks] = useState<VocalTrack[]>(() => applyUserFXTemplatesToTracks(initialTracks, null));
   const tracksRef = useRef<VocalTrack[]>(tracks);
+  const isInstalledApp = useInstalledApp();
 
   // Startup Project Prompt state (Continuar Último Proyecto vs Iniciar Proyecto Nuevo)
   const [showStartupModal, setShowStartupModal] = useState<boolean>(false);
@@ -873,11 +875,8 @@ export default function App() {
   useEffect(() => {
     if (!isStartupResolved || showStartupModal || showLoadBeatModal || isUnlockModalOpen
       || showCloudSaveDialog || showCloudGallery || showExportModal || showBeatFXModal
-      || showLoopModal || activeFXTrackId || isRecording || isLoadingCloud || showInstallModal
+      || showLoopModal || activeFXTrackId || isRecording || isPlaying || isLoadingCloud || showInstallModal || isInstalledApp
       || installGuideOfferedRef.current) return;
-    const standalone = window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as Navigator & { standalone?: boolean }).standalone;
-    if (standalone) return;
     try { if (localStorage.getItem(INSTALL_GUIDE_HIDDEN_KEY) === 'true') return; } catch { /* Guide works without storage. */ }
     const timer = setTimeout(() => {
       installGuideOfferedRef.current = true;
@@ -885,7 +884,7 @@ export default function App() {
     }, 500);
     return () => clearTimeout(timer);
   }, [isStartupResolved, showStartupModal, showLoadBeatModal, isUnlockModalOpen, showCloudSaveDialog,
-    showCloudGallery, showExportModal, showBeatFXModal, showLoopModal, activeFXTrackId, isRecording, isLoadingCloud, showInstallModal]);
+    showCloudGallery, showExportModal, showBeatFXModal, showLoopModal, activeFXTrackId, isRecording, isPlaying, isLoadingCloud, showInstallModal, isInstalledApp]);
 
   // Initialize AudioEngine
   const sessionSettingsRef = useRef({ loopSettings, currentTime, beatVolume: beatFX.volume });
@@ -3333,7 +3332,7 @@ export default function App() {
       {/* Guide modal on how to install PWA on Android & iOS */}
       <InstallAppModal
         isOpen={showInstallModal}
-        onClose={() => setShowInstallModal(false)}
+        onClose={() => { installGuideOfferedRef.current = true; setShowInstallModal(false); }}
       />
 
       {/* Startup Choice Modal: Continuar Último Proyecto vs Proyecto Nuevo */}

@@ -123,10 +123,9 @@ try {
           event.userChoice=Promise.resolve({outcome:'accepted',platform:'web'});
           window.dispatchEvent(event);
         });
-        await page.getByRole('button',{name:'SIGUIENTE →',exact:true}).click();
-        await page.getByRole('button',{name:'SIGUIENTE →',exact:true}).click();
         await page.getByRole('button',{name:'INSTALAR AHORA →',exact:true}).click();
         assert.equal(await page.evaluate(()=>window.installCalls),1);
+        await page.getByRole('button',{name:'Cerrar tutorial',exact:true}).click();
         await page.locator('#reopen').click();
       }
       // Manual choice corrects privacy-masked identity, then automatic detection returns.

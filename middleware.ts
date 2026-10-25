@@ -105,8 +105,9 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - manifest.json (public Studio installation metadata, no auth refresh)
      * - static assets (.svg, .png, .jpg, .jpeg, .gif, .webp, .mp3, .wav)
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp3|wav)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest\\.json$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp3|wav)$).*)",
   ],
 };
