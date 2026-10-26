@@ -263,6 +263,17 @@ export default function App() {
   const [showAppSettings, setShowAppSettings] = useState(false);
   const projectMenuTriggerRef = useRef<HTMLButtonElement>(null);
 
+  // Include body decoration and installation portals; restore the store on exit.
+  useEffect(() => {
+    const body = document.body;
+    const previous = body.getAttribute('data-studio-rendering');
+    body.setAttribute('data-studio-rendering', lightVisuals ? 'light' : 'standard');
+    return () => {
+      if (previous === null) body.removeAttribute('data-studio-rendering');
+      else body.setAttribute('data-studio-rendering', previous);
+    };
+  }, [lightVisuals]);
+
   // Recovery runs before the workspace can autosave or offer beat selection.
   const [isStartupResolved, setIsStartupResolved] = useState<boolean>(false);
   const startupResolvedRef = useRef(false);
@@ -2917,6 +2928,7 @@ export default function App() {
           <div className="w-full max-w-xl flex flex-col items-center">
             {/* Core Artwork & Unified Transport Player (1 Play, 1 Rec, Tempo & Escalas) */}
             <ArtworkPlayer
+              lightVisuals={lightVisuals}
               beat={currentBeat}
               isPlaying={isPlaying}
               currentTime={currentTime}

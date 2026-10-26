@@ -18,6 +18,7 @@ import { parseKeyAndGetRelative, getRelativeKey, NOTE_NAMES } from '@/lib/studio
 import { MAIN_SCALES } from '@/lib/studio/audio/pitchCorrection';
 
 interface ArtworkPlayerProps {
+  lightVisuals?: boolean;
   beat: BeatData | null;
   isPlaying: boolean;
   currentTime: number;
@@ -52,6 +53,7 @@ interface ArtworkPlayerProps {
 }
 
 export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
+  lightVisuals = false,
   beat,
   isPlaying,
   currentTime,
@@ -191,7 +193,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
       {/* 1. FLOW IPOD: Focal Disc & Album Art (Plato Negro Carbón) */}
       <div className="relative group w-48 h-48 sm:w-56 sm:h-56 my-2 flex items-center justify-center">
         {/* Deep Platter Ambient Shadow */}
-        <div className="absolute inset-0 rounded-full blur-2xl opacity-40 bg-black pointer-events-none" />
+        {!lightVisuals && <div data-studio-decoration="platter-shadow" className="absolute inset-0 rounded-full blur-2xl opacity-40 bg-black pointer-events-none" />}
 
         {/* Outer Vinyl Disc (Negro Carbón) */}
         <div

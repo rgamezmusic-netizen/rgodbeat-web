@@ -84,7 +84,7 @@ export function StudioSettingsModal({ lightVisuals, onChangeLightVisuals, busyRe
           <div className="mt-3 grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr))' }}>
             {[
               { value: false, title: 'Estándar', text: 'Animaciones y fondos completos.', Icon: Sparkles },
-              { value: true, title: 'Ligero', text: 'Menos animaciones y decoración.', Icon: Leaf },
+              { value: true, title: 'Ligero', text: 'Menos sombras, fondos y animaciones.', Icon: Leaf },
             ].map(({ value, title, text, Icon }) => {
               const selected = lightVisuals === value;
               return <label key={title} className={`relative flex cursor-pointer flex-col rounded-2xl border p-3.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-amber-300 ${selected ? 'border-amber-400/70 bg-amber-400/[0.07]' : 'border-zinc-700 bg-zinc-900/50 hover:border-zinc-500'}`}>

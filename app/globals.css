@@ -93,16 +93,26 @@ body::before {
 
 /* Optional Studio-only rendering preference. Audio and project state are untouched. */
 [data-studio-visual-mode="light"],
-[data-studio-visual-mode="light"] * {
+[data-studio-visual-mode="light"] *,
+body[data-studio-rendering="light"],
+body[data-studio-rendering="light"] * {
+  /* Remove decorative filters while retaining functional grayscale/brightness. */
+  --tw-drop-shadow: initial !important;
+  --tw-blur: initial !important;
   transition: none !important;
   box-shadow: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
 
-[data-studio-visual-mode="light"] .animate-pulse,
-[data-studio-visual-mode="light"] .animate-ping {
+[data-studio-visual-mode="light"] :is(.animate-pulse, .animate-ping, .animate-bounce, .animate-in),
+body[data-studio-rendering="light"] :is(.animate-pulse, .animate-ping, .animate-bounce, .animate-in) {
   animation: none !important;
+}
+
+body[data-studio-rendering="light"]::before {
+  content: none;
+  background-image: none;
 }
 
 /* Keep both settings groups discoverable on short, wide mobile screens. */

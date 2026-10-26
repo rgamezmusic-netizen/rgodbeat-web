@@ -48,6 +48,7 @@ for (const [name, launcher] of [['chromium', chromium], ['webkit', webkit], ['fi
       const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 768, ...(name !== 'firefox' ? { isMobile: width < 768 } : {}) });
       const errors = []; page.on('pageerror', e => errors.push(e.message));
       await page.addInitScript(instrument);
+      if (process.env.STUDIO_TEST_VISUAL_MODE === 'light') await page.addInitScript(() => localStorage.setItem('rgodbeat_studio_visual_light_v1', 'true'));
       let cloudWrites = 0;
       await page.route('**/api/studio/access', r => r.fulfill({ json: { isDemo: false, isLoggedIn: true, hasActivePass: true, email: 'local-media@example.invalid', daysRemaining: 30 } }));
       await page.route('**/api/studio/project**', r => {
