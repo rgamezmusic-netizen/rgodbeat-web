@@ -1,3 +1,4 @@
+import {selectFixtureBeat} from './helpers/studio-beat-browser.mjs';
 // Actual local production UI, touch controls and small/landscape viewports.
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
@@ -16,7 +17,7 @@ for (const [name,launcher] of [['chromium',chromium],['webkit',webkit]]) {
       await page.addInitScript(()=>localStorage.setItem('rgodbeat_install_guide_hidden_v2','true'));
       await page.route('**/api/studio/access',r=>r.fulfill({json:{isDemo:true,isLoggedIn:false,hasActivePass:false,email:null,daysRemaining:0}}));
       await page.goto(base+'/studio');
-      await page.getByText('Midnight 808',{exact:true}).first().waitFor();
+      await selectFixtureBeat(page);
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'no page-wide horizontal overflow');
       for(const label of ['Grabador','Edición']) {
         const tab=page.getByRole('button',{name:label,exact:true});

@@ -9,6 +9,7 @@ import { useInstalledApp } from '@/hooks/useAppInstallation';
 import {
   BeatAnalysisResult,
   BeatData,
+  BeatSummary,
   BeatFX,
   LoopSettings,
   MusicalKey,
@@ -20,17 +21,17 @@ import {
   VocalTrackId,
 } from '@/lib/studio/types/audio';
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
-import { createDemoBeat } from '@/lib/studio/audio/demoBeats';
 import { analyzeBeatAudio } from '@/lib/studio/audio/beatAnalyzer';
 import { punchInClips } from '@/lib/studio/audio/wavEncoder';
 import { getTrackClips, splitClip, trimClip, withTrackClips } from '@/lib/studio/audio/clipEditing';
 import { MAIN_SCALES } from '@/lib/studio/audio/pitchCorrection';
 import {
   saveBeatToDatabase,
-  getAllSavedBeats,
+  listSavedBeats,
+  loadSavedBeat,
+  summarizeBeat,
   deleteSavedBeat,
   saveActiveBeatId,
-  getActiveBeatSettings,
   MAX_SAVED_BEATS,
 } from '@/lib/studio/audio/beatStorage';
 import {
@@ -232,8 +233,7 @@ const initialTracks: VocalTrack[] = [
 
 export default function App() {
   const [engine, setEngine] = useState<AudioEngine | null>(null);
-  const [demoBeats, setDemoBeats] = useState<BeatData[]>([]);
-  const [savedCustomBeats, setSavedCustomBeats] = useState<BeatData[]>([]);
+  const [savedCustomBeats, setSavedCustomBeats] = useState<BeatSummary[]>([]);
   const [isBeatLocked, setIsBeatLocked] = useState<boolean>(false);
   const [currentBeat, setCurrentBeat] = useState<BeatData | null>(null);
   const currentBeatRef = useRef<BeatData | null>(null);
@@ -991,7 +991,6 @@ export default function App() {
 
         // 0. Detect last active Studio session or cloud project to give user the choice:
         // "Continuar Último Proyecto" vs "Iniciar Proyecto Nuevo"
-        let restoredSessionBeatId: string | null = null;
         let hasPreviousSession = false;
         let cloudCheck: CloudProjectCheckResult | null = null;
 
@@ -1073,12 +1072,9 @@ export default function App() {
           hasPreviousSession = true;
           const sessionBeat = lastSession!.beat || null;
           if (sessionBeat) {
-            restoredSessionBeatId = sessionBeat.id;
             setCurrentBeat(sessionBeat);
             currentBeatRef.current = sessionBeat;
             audioEngine.setBeat(sessionBeat);
-          } else if (lastSession!.beatId) {
-            restoredSessionBeatId = lastSession!.beatId;
           }
 
           if (lastSession!.beatVolume !== undefined) {
@@ -1141,10 +1137,13 @@ export default function App() {
                   };
                 }
 
+                if (!cloudBeat && cloudData.beatData?.id) {
+                  cloudBeat = await loadSavedBeat(audioCtx, cloudData.beatData.id);
+                  if (cancelled) return;
+                }
                 if (cloudTakes > 0 || cloudBeat) {
                   hasPreviousSession = true;
                   if (cloudBeat) {
-                    restoredSessionBeatId = cloudBeat.id;
                     setCurrentBeat(cloudBeat);
                     currentBeatRef.current = cloudBeat;
                     audioEngine.setBeat(cloudBeat);
@@ -1159,7 +1158,7 @@ export default function App() {
                     takesCount: cloudTakes,
                     beatTitle: cloudBeat?.title || cloudData.beatData?.title || 'Proyecto en Cuenta',
                     savedTimeText: cloudCheck.projectMeta?.savedAt ? new Date(cloudCheck.projectMeta.savedAt).toLocaleDateString() : 'En tu cuenta',
-                    missingBeat: cloudData.missingBeat,
+                    missingBeat: !cloudBeat,
                   });
                   setShowStartupModal(true);
                 }
@@ -1181,67 +1180,13 @@ export default function App() {
           setIsStartupResolved(true);
         }
 
-        // 1. Fetch saved custom beats from persistent IndexedDB
-        const storedBeats = await getAllSavedBeats(audioCtx);
+        // Only lightweight library metadata lives in React state. The open
+        // project's beat/voices were restored above; no unrelated audio or demos.
+        const storedBeats = await listSavedBeats();
         if (cancelled) return;
         setSavedCustomBeats(storedBeats);
-
-        // 2. Fetch saved active beat preference and lock status
-        const { activeBeatId, isLocked } = await getActiveBeatSettings();
-        const preferredBeatId = restoredSessionBeatId || activeBeatId;
-
-        // 3. Generate initial offline demo beats
-        const trapBeat = await createDemoBeat(audioCtx, 'trap');
-        const rnbBeat = await createDemoBeat(audioCtx, 'rnb');
-        const drillBeat = await createDemoBeat(audioCtx, 'drill');
-
-        const beats = [trapBeat, rnbBeat, drillBeat];
-        setDemoBeats(beats);
-
-        // If a startup session exists with a known beat ID, match its title
-        if (restoredSessionBeatId) {
-          const matchBeat = storedBeats.find((b) => b.id === restoredSessionBeatId) || beats.find((b) => b.id === restoredSessionBeatId);
-          if (matchBeat) {
-            setPendingStartupSession((prev) => prev ? { ...prev, beat: matchBeat, beatTitle: matchBeat.title } : null);
-          }
-        }
-
-        // 4. Select initial beat:
-        // CRITICAL CHECK: If user already uploaded, selected or restored a beat from previous project,
-        // NEVER OVERWRITE IT!
-        if (currentBeatRef.current) {
-          return;
-        }
-
-        let chosenBeat: BeatData = trapBeat;
-        let chosenLock = isLocked;
-
-        if (storedBeats.length > 0) {
-          const matchedStored = storedBeats.find((b) => b.id === preferredBeatId);
-          if (matchedStored) {
-            chosenBeat = matchedStored;
-          } else {
-            chosenBeat = storedBeats[0];
-          }
-          chosenLock = true; // Custom beats are locked by default so they don't get lost
-        } else if (preferredBeatId) {
-          const matchedPreset = beats.find((b) => b.id === preferredBeatId);
-          if (matchedPreset) chosenBeat = matchedPreset;
-        }
-
-        if (currentBeatRef.current) return;
-
-        setCurrentBeat(chosenBeat);
-        currentBeatRef.current = chosenBeat;
-        setIsBeatLocked(chosenLock);
-        audioEngine.setBeat(chosenBeat);
-
-        // Adapt vocal channel tuning scales to the chosen beat
-        const tracksWithScale = adaptTracksTonalityToBeat(tracksRef.current, chosenBeat);
-        setTracks(tracksWithScale);
-        tracksRef.current = tracksWithScale;
       } catch (err) {
-        console.error('Initial beat generation/restore error:', err);
+        console.error('Initial project/library restore error:', err);
         setStartupError(err instanceof Error ? err.message : 'No se pudo recuperar el respaldo. Se conserva sin modificar.');
       }
     })();
@@ -1434,14 +1379,6 @@ export default function App() {
       setCurrentBeat(pendingStartupSession.beat);
       currentBeatRef.current = pendingStartupSession.beat;
       if (engine) engine.setBeat(pendingStartupSession.beat);
-    } else if (pendingStartupSession.beatId) {
-      const match = savedCustomBeats.find((b) => b.id === pendingStartupSession.beatId) ||
-        demoBeats.find((b) => b.id === pendingStartupSession.beatId);
-      if (match) {
-        setCurrentBeat(match);
-        currentBeatRef.current = match;
-        if (engine) engine.setBeat(match);
-      }
     }
 
     if (pendingStartupSession.loopSettings) {
@@ -1461,7 +1398,7 @@ export default function App() {
 
     setIsStartupResolved(true);
     setShowStartupModal(false);
-    if (pendingStartupSession.missingBeat) setShowLoadBeatModal(true);
+    if (pendingStartupSession.missingBeat || !currentBeatRef.current) setShowLoadBeatModal(true);
 
     // Lock confirmed project into persistent IndexedDB immediately
     saveStudioSession(
@@ -1504,7 +1441,9 @@ export default function App() {
       if (!localArchive.success) { showToast('No se pudo proteger la copia anterior. Descarga tu proyecto.', 'error'); return; }
       setHasLocalPrevious(Boolean(localArchive.hasPrevious));
       if (!await clearActiveProjectBackup()) return;
-      engine.stop();
+      engine.setBeat(null);
+      setCurrentBeat(null);
+      currentBeatRef.current = null;
       const cleanTracks = applyUserFXTemplatesToTracks(
         initialTracks.map((track) => ({
           ...track,
@@ -2363,7 +2302,7 @@ export default function App() {
     showToast('Abre "Beats" para seleccionar o subir otro beat.', 'info');
   };
 
-  // Explicitly select beat from library or demo list
+  // Explicitly select only the requested library/catalog beat
   const handleSelectBeat = async (beat: BeatData) => {
     if (isRecordingRef.current) await handleStopRecord();
     if (replacingProjectRef.current) return;
@@ -2408,11 +2347,14 @@ export default function App() {
     tracksRef.current = adapted;
 
     // 3. Persist to browser's IndexedDB and localStorage so it survives refreshes
-    await saveBeatToDatabase(uploadedBeat, rawBuffer, true);
+    if (!await saveBeatToDatabase(uploadedBeat, rawBuffer, true)) {
+      showToast('El beat está abierto, pero no se pudo guardar en la biblioteca. Conserva el archivo original.', 'error');
+      return;
+    }
     await saveActiveBeatId(uploadedBeat.id, true);
 
     // 4. Update state preserving slot sequence up to 23
-    const nextSaved = [...savedCustomBeats.filter((b) => b.id !== uploadedBeat.id), uploadedBeat].slice(0, MAX_SAVED_BEATS);
+    const nextSaved = [...savedCustomBeats.filter((b) => b.id !== uploadedBeat.id), summarizeBeat(uploadedBeat)].slice(0, MAX_SAVED_BEATS);
     setSavedCustomBeats(nextSaved);
 
     const slotNumber = nextSaved.findIndex((b) => b.id === uploadedBeat.id) + 1;
@@ -2451,15 +2393,8 @@ export default function App() {
     const nextSaved = savedCustomBeats.filter((b) => b.id !== beatId);
     setSavedCustomBeats(nextSaved);
 
-    if (currentBeat?.id === beatId) {
-      const fallback = nextSaved[0] || demoBeats[0];
-      if (fallback) {
-        setCurrentBeat(fallback);
-        if (engine) engine.setBeat(fallback);
-        saveActiveBeatId(fallback.id, false);
-        setIsBeatLocked(false);
-      }
-    }
+    // Removing a library slot must not replace the open project's beat with
+    // unrelated audio. Its loaded copy remains part of this workspace.
     showToast(`Slot #${targetSlot || 1} liberado (${nextSaved.length}/${MAX_SAVED_BEATS} beats ocupados)`, 'info');
   };
 
@@ -2663,8 +2598,7 @@ export default function App() {
           };
           loadedBeat = fullCustomBeat;
         } else if (beat.id) {
-          const found = demoBeats.find((b) => b.id === beat.id) || savedCustomBeats.find((b) => b.id === beat.id);
-          loadedBeat = found ?? null;
+          loadedBeat = await loadSavedBeat(audioCtx, beat.id);
         }
         if (!loadedBeat) cloudData.losses.push('beat');
       }
@@ -2829,7 +2763,8 @@ export default function App() {
       showToast('Abriendo archivo de proyecto desde tu dispositivo...', 'info');
       const audioCtx = await engine.ensureAudioContext();
       const restored = await importProjectFromDeviceFile(file, audioCtx, crypto.randomUUID(), sessionOwnerRef.current,
-        [...(currentBeatRef.current ? [currentBeatRef.current] : []), ...savedCustomBeats, ...demoBeats]);
+        currentBeatRef.current ? [currentBeatRef.current] : [],
+        id => loadSavedBeat(audioCtx, id));
 
       if (!restored) {
         showToast('No se pudo leer el archivo de proyecto.', 'error');
@@ -2890,7 +2825,7 @@ export default function App() {
     : 1;
 
   return (
-    <div className={`w-full max-w-[100vw] ${
+    <div data-studio-ready={isStartupResolved && !startupError ? 'true' : 'false'} className={`w-full max-w-[100vw] ${
       activeView === 'editor'
         ? 'bg-[#09090b] text-white h-dvh max-h-dvh overflow-hidden'
         : 'bg-[#fbbf24] text-zinc-950 min-h-screen overflow-x-hidden justify-between'
@@ -3264,7 +3199,6 @@ export default function App() {
       {showLoadBeatModal && (
         <LoadBeatModal
           currentBeat={currentBeat}
-          demoBeats={demoBeats}
           savedCustomBeats={savedCustomBeats}
           onSelectBeat={handleSelectBeat}
           onUploadBeat={handleUploadBeat}

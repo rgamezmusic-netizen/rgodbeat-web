@@ -1,3 +1,4 @@
+import {selectFixtureBeat} from './helpers/studio-beat-browser.mjs';
 // Validate the built online app/manifest in isolated Chrome. No OS installation,
 // production access, real account, upload or persistent browser profile.
 import assert from 'node:assert/strict';
@@ -62,7 +63,7 @@ try {
   const player = await playbackContext.newPage();
   await player.route('**/api/studio/access', route => route.fulfill({ json: { isDemo: true, isLoggedIn: false, hasActivePass: false, email: null } }));
   await player.goto(base + '/studio');
-  await player.getByText('Midnight 808', { exact: true }).first().waitFor();
+  await selectFixtureBeat(player);
   await player.getByTitle('Reproducir (Espacio)', { exact: true }).click();
   await player.getByTitle('Pausar (Espacio)', { exact: true }).waitFor();
   await player.evaluate(() => localStorage.removeItem('rgodbeat_install_guide_hidden_v2'));

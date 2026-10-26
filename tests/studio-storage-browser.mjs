@@ -329,3 +329,106 @@ test('closing after an aborted snapshot preserves the previous session and the r
     return [result.recovered, result.session.tracks[0].clips[0].id, result.session.tracks.length];
   }), [1, 'saved', 2]);
 });
+
+test('23 library slots list metadata without reading or decoding their audio payloads', async () => {
+  const result = await page.evaluate(async () => {
+    const buffer = audio.createBuffer(1,4800,48000);buffer.getChannelData(0).fill(.125);
+    for(let i=0;i<23;i++) if(!await StorageTest.saveBeatToDatabase({...beat('library-'+i),buffer})) throw Error('seed');
+    const originals = Object.fromEntries(['get','getAll','openCursor'].map(method=>[method,IDBObjectStore.prototype[method]]));
+    const decode=audio.decodeAudioData;let audioReads=0,decodes=0;
+    audio.decodeAudioData=()=>{decodes++;throw Error('Listing must not decode');};
+    for(const method of Object.keys(originals)) IDBObjectStore.prototype[method]=function(...args){
+      if(this.name==='saved_beats'){audioReads++;throw Error('Listing must not read encoded audio');}
+      return originals[method].apply(this,args);
+    };
+    try {
+      const summaries=await StorageTest.listSavedBeats();
+      return {count:summaries.length,audioReads,decodes,hasAudio:summaries.some(b=>'buffer'in b||'audioData'in b),title:summaries[0].title};
+    } finally {
+      audio.decodeAudioData=decode;
+      for(const method of Object.keys(originals)) IDBObjectStore.prototype[method]=originals[method];
+    }
+  });
+  assert.deepEqual(result,{count:23,audioReads:0,decodes:0,hasAudio:false,title:'library-0'});
+});
+
+test('legacy library indexing preserves bytes and sessions, and never decodes audio', async () => {
+  assert.deepEqual(await page.evaluate(async()=>{
+    const buffer=audio.createBuffer(1,480,48000);buffer.getChannelData(0).fill(.25);
+    for(const id of ['legacy-a','legacy-b']) await StorageTest.saveBeatToDatabase({...beat(id),buffer});
+    await save([track([.125,-.25])]);
+    const before=await readStore('saved_beats','RGODBEAT_STUDIO_DB');
+    const database=await new Promise(resolve=>{const r=indexedDB.open('RGODBEAT_STUDIO_DB');r.onsuccess=()=>resolve(r.result);});
+    await new Promise((resolve,reject)=>{const tx=database.transaction('studio_settings','readwrite');for(const id of ['legacy-a','legacy-b'])tx.objectStore('studio_settings').delete('saved_beat_summary:'+id);tx.oncomplete=resolve;tx.onabort=reject;});database.close();
+    const original=audio.decodeAudioData;let decodes=0;audio.decodeAudioData=()=>{decodes++;throw Error('Unexpected decoding');};
+    const summaries=await StorageTest.listSavedBeats();audio.decodeAudioData=original;
+    const after=await readStore('saved_beats','RGODBEAT_STUDIO_DB');
+    const equal=before.every((item,i)=>new Uint8Array(item.audioData).every((value,j)=>value===new Uint8Array(after[i].audioData)[j]));
+    return {ids:summaries.map(b=>b.id),decodes,equal,sessions:(await readStore('studio_sessions','RGODBEAT_STUDIO_DB')).length};
+  }),{ids:['legacy-a','legacy-b'],decodes:0,equal:true,sessions:1});
+});
+
+test('opening one saved beat reads/decodes only that beat and leaves its stored bytes intact', async()=>{
+  assert.deepEqual(await page.evaluate(async()=>{
+    const buffer=audio.createBuffer(1,480,48000);buffer.getChannelData(0).fill(.25);
+    for(const id of ['one','two','three'])await StorageTest.saveBeatToDatabase({...beat(id),buffer});
+    const originalGet=IDBObjectStore.prototype.get,originalDecode=audio.decodeAudioData.bind(audio);const reads=[];let decodes=0;
+    IDBObjectStore.prototype.get=function(key){if(this.name==='saved_beats')reads.push(key);return originalGet.call(this,key);};
+    audio.decodeAudioData=bytes=>{decodes++;return originalDecode(bytes);};
+    let chosen;
+    try {chosen=await StorageTest.loadSavedBeat(audio,'two');}
+    finally {IDBObjectStore.prototype.get=originalGet;audio.decodeAudioData=originalDecode;}
+    const stored=(await readStore('saved_beats','RGODBEAT_STUDIO_DB')).find(b=>b.id==='two');
+    return {reads,decodes,id:chosen.id,frames:chosen.buffer.length,storedBytes:stored.audioData.byteLength};
+  }),{reads:['two'],decodes:1,id:'two',frames:480,storedBytes:1004});
+});
+
+test('aborted library deletion preserves both the audio and metadata',async()=>{
+  assert.deepEqual(await page.evaluate(async()=>{
+    const buffer=audio.createBuffer(1,10,48000);
+    await StorageTest.saveBeatToDatabase({...beat('keep'),buffer});
+    failNext('studio_settings','delete');
+    const deleted=await StorageTest.deleteSavedBeat('keep');
+    return {deleted,ids:(await StorageTest.listSavedBeats()).map(b=>b.id),audios:(await readStore('saved_beats','RGODBEAT_STUDIO_DB')).length};
+  }),{deleted:false,ids:['keep'],audios:1});
+});
+
+test('legacy metadata quota failure is explicit and preserves the library for retry',async()=>{
+  assert.deepEqual(await page.evaluate(async()=>{
+    await StorageTest.saveBeatToDatabase(beat('keep'),new ArrayBuffer(8));
+    const database=await new Promise(resolve=>{const r=indexedDB.open('RGODBEAT_STUDIO_DB');r.onsuccess=()=>resolve(r.result);});
+    await new Promise(resolve=>{const tx=database.transaction('studio_settings','readwrite');tx.objectStore('studio_settings').delete('saved_beat_summary:keep');tx.oncomplete=resolve;});database.close();
+    failNext('studio_settings','put','quota');let rejected=false;
+    try{await StorageTest.listSavedBeats();}catch{rejected=true;}
+    return {rejected,audios:(await readStore('saved_beats','RGODBEAT_STUDIO_DB')).length,retry:(await StorageTest.listSavedBeats()).map(b=>b.id)};
+  }),{rejected:true,audios:1,retry:['keep']});
+});
+
+test('restoring an active project decodes only its beat and voice, not the archive or library',async()=>{
+  assert.deepEqual(await page.evaluate(async()=>{
+    const owner='local@example.invalid';
+    const buffer=audio.createBuffer(1,480,48000);buffer.getChannelData(0).fill(.125);
+    for(const id of ['unused-a','unused-b'])await StorageTest.saveBeatToDatabase({...beat(id),buffer});
+    await StorageTest.saveStudioSession([track([.25,-.25])],{...beat('project-a'),buffer},undefined,0,1,'studio',owner,undefined,'project-a');
+    await StorageTest.archiveSavedStudioSession(owner);
+    await StorageTest.saveStudioSession([track([.5,-.5])],{...beat('project-b'),buffer},undefined,0,1,'studio',owner,undefined,'project-b');
+    const decode=audio.decodeAudioData.bind(audio),get=IDBObjectStore.prototype.get;let decodes=0;const reads=[];
+    audio.decodeAudioData=bytes=>{decodes++;return decode(bytes);};
+    IDBObjectStore.prototype.get=function(key){reads.push([this.name,key]);return get.call(this,key);};
+    try {
+      const project=await StorageTest.restoreLastStudioSession(audio,owner);
+      return {id:project.projectId,beat:project.beat.id,voice:project.tracks[0].clips[0].buffer.getChannelData(0)[0],decodes,reads,hasPrevious:await StorageTest.hasPreviousStudioSession(owner)};
+    }finally{audio.decodeAudioData=decode;IDBObjectStore.prototype.get=get;}
+  }),{id:'project-b',beat:'project-b',voice:.5,decodes:2,reads:[['studio_sessions','session_local@example.invalid']],hasPrevious:true});
+});
+
+test('an old project file resolves only its referenced library beat on demand',async()=>{
+  assert.deepEqual(await page.evaluate(async()=>{
+    const buffer=audio.createBuffer(1,48,48000);
+    for(const id of ['referenced','unrelated'])await StorageTest.saveBeatToDatabase({...beat(id),buffer});
+    const file=new File([JSON.stringify({format:'RGODBEAT_PROJECT_V1',sessionData:{beatData:beat('referenced'),tracks:[]}})],'legacy.rgodbeat');
+    const ids=[];
+    const project=await StorageTest.importProjectFromDeviceFile(file,audio,'imported','local@example.invalid',[],id=>{ids.push(id);return StorageTest.loadSavedBeat(audio,id);});
+    return {id:project.projectId,beat:project.beat.id,ids};
+  }),{id:'imported',beat:'referenced',ids:['referenced']});
+});

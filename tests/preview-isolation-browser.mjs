@@ -1,3 +1,4 @@
+import {selectFixtureBeat} from './helpers/studio-beat-browser.mjs';
 // Validates an isolated online build with no Supabase/R2/YouTube environment.
 // Uses only a local server and an ephemeral browser context; no physical mic or account.
 import assert from 'node:assert/strict';
@@ -36,7 +37,7 @@ try {
   const response = await page.goto(`${base}/studio`);
   assert.equal(response?.status(), 200);
   await page.getByText(/Servicios de cuenta no configurados; tu proyecto permanece en este dispositivo\./).waitFor();
-  await page.getByText('Midnight 808', { exact: true }).first().waitFor();
+  await selectFixtureBeat(page);
   await page.getByTitle('Reproducir (Espacio)', { exact: true }).click();
   await page.getByTitle('Pausar (Espacio)', { exact: true }).waitFor();
   await page.getByTitle('Pausar (Espacio)', { exact: true }).click();

@@ -1,3 +1,4 @@
+import {selectFixtureBeat} from './helpers/studio-beat-browser.mjs';
 // Local-only regression: real UI/storage modules, isolated responses, no production writes.
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
@@ -64,11 +65,13 @@ for (const name of ['chromium', 'webkit']) {
       let accessCalls=0;
       await page.route('**/api/studio/access', route => {accessCalls++;return route.fulfill({json:{isDemo:true,isLoggedIn:false,hasActivePass:false,email:null,daysRemaining:0}});});
       const response = await page.goto(base+'/studio'); assert.equal(response.status(),200);
-      await page.getByText('Midnight 808',{exact:true}).first().waitFor();
+      await page.getByText('Selecciona un Beat',{exact:true}).waitFor();
+      await page.locator('[data-studio-ready="true"]').waitFor();
       assert.deepEqual(await audioStats(page),{contexts:1,resumes:0,premature:0,active:1});
       assert.equal(accessCalls,1,'one initialization/access verification');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'startup fits the viewport');
       assert.equal(await page.getByTitle('Reproducir (Espacio)',{exact:true}).isVisible(),true);
+      await selectFixtureBeat(page);
       await page.getByTitle('Reproducir (Espacio)',{exact:true}).click();
       await page.getByTitle('Pausar (Espacio)',{exact:true}).waitFor();
       assert.equal((await audioStats(page)).premature,0);

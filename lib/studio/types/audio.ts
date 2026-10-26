@@ -114,7 +114,8 @@ export interface VocalTrack {
   isCustom?: boolean;               // user-added non-lead track
 }
 
-export interface BeatData {
+/** Library entries contain display metadata only, never decoded audio. */
+export interface BeatSummary {
   id: string;
   /** Canonical public.beats.id when this Studio beat was loaded from the RGodBeat catalog. */
   catalogBeatId?: string | null;
@@ -126,7 +127,6 @@ export interface BeatData {
   key: string;                      // e.g. "A minor" or "F#m"
   scale: string;
   duration: number;
-  buffer: AudioBuffer;
   artworkGradient: string;
   /** Public beat artwork used as the default background for Studio video exports. */
   coverUrl?: string;
@@ -139,6 +139,10 @@ export interface BeatData {
   relativeTonalityName?: string;    // e.g. "Do Mayor (C)"
   isLocked?: boolean;
   savedTimestamp?: number;
+}
+
+export interface BeatData extends BeatSummary {
+  buffer: AudioBuffer;
 }
 
 export interface LoopSettings {

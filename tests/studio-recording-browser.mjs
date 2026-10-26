@@ -1,3 +1,4 @@
+import {selectFixtureBeat} from './helpers/studio-beat-browser.mjs';
 // Local UI regression with synthetic microphone input. No production writes,
 // account impersonation, autoplay override or real microphone access.
 import assert from 'node:assert/strict';
@@ -54,9 +55,9 @@ for (const [name, launcher] of [['chromium', chromium], ['webkit', webkit], ['fi
         return r.fulfill({ status: 503, json: { error: 'No se pudo consultar el respaldo. Tu proyecto no se ha borrado.' } });
       });
       await page.goto(base + '/studio');
-      await page.getByText('Midnight 808', { exact: true }).first().waitFor();
+      await selectFixtureBeat(page);
       await page.getByRole('button', { name: 'Conectar', exact: true }).waitFor();
-      // REC is the first interaction. Native Web Audio still needs that gesture.
+      // After explicitly selecting a beat, REC retains its own activation gesture. Native Web Audio still needs that gesture.
       await page.getByTitle('Grabar en Lead 1', { exact: true }).click();
       try { await page.getByTitle('Pausar (Espacio)', { exact: true }).waitFor({timeout:10000}); }
       catch (error) {
@@ -131,7 +132,7 @@ for (const [name, launcher] of [['chromium', chromium], ['webkit', webkit], ['fi
       isDemo: true, isLoggedIn: false, hasActivePass: false, email: null, daysRemaining: 0,
     } }));
     await listener.goto(base + '/studio');
-    await listener.getByText('Midnight 808', { exact: true }).first().waitFor();
+    await selectFixtureBeat(listener);
     await listener.getByTitle('Reproducir (Espacio)', { exact: true }).click();
     await listener.getByTitle('Pausar (Espacio)', { exact: true }).waitFor();
     await listener.waitForFunction(() => {

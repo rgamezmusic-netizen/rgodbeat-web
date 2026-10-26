@@ -3,6 +3,7 @@ import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from '.
 import { recoverRecordingCheckpoints, retireRecordingCheckpoints } from './recordingRecovery';
 import { getCatalogBeatId } from './catalogBeat';
 import { restoredVocalFX } from './restoredFX';
+import { loadSavedBeat } from './beatStorage';
 
 const DB_NAME = 'RGODBEAT_STUDIO_DB';
 const DB_VERSION = 2; // Upgraded to support session persistence
@@ -499,6 +500,20 @@ export async function restoreLastStudioSession(
       }
     }
 
+    // Legacy projects may reference a library beat instead of embedding it.
+    // Resolve only that beat; never decode the rest of the library.
+    const referencedBeatId = session.beatData?.id || session.beatId;
+    if (!restoredBeat && referencedBeatId) {
+      try { restoredBeat = await loadSavedBeat(audioCtx, referencedBeatId); }
+      catch (error) {
+        if ((error as { name?: string }).name !== 'EncodingError') throw error;
+      }
+      if (restoredBeat) {
+        const missing = losses.indexOf('beat');
+        if (missing >= 0) losses.splice(missing, 1);
+      } else if (!losses.includes('beat')) losses.push('beat');
+    }
+
     // Has any track with actual recorded clips?
     const hasAnyRecordings = Array.isArray(session.tracks) && session.tracks.some((t) => t.clips && t.clips.length > 0);
     if (!hasAnyRecordings && !restoredBeat && !session.beatId) {
@@ -606,7 +621,7 @@ export async function archiveSavedStudioSession(userIdentifier?: string | null, 
       let result = { success: true, hasPrevious: false, requiresConfirmation: false };
       const source = store.get(key);
       source.onsuccess = () => {
-        const previous = store.get(`${key}:previous`);
+        const previous = store.getKey(`${key}:previous`);
         previous.onsuccess = () => {
           result.hasPrevious = Boolean(previous.result);
           const session = source.result as StoredStudioSession | undefined;
@@ -871,7 +886,8 @@ export async function importProjectFromDeviceFile(
   audioCtx: AudioContext,
   projectId = crypto.randomUUID(),
   userIdentifier?: string | null,
-  availableBeats: BeatData[] = []
+  availableBeats: BeatData[] = [],
+  resolveBeat?: (id: string) => Promise<BeatData | null>
 ): Promise<{
   projectId: string;
   tracks: VocalTrack[];
@@ -920,7 +936,8 @@ export async function importProjectFromDeviceFile(
     }
 
     if (s.beatData && !restoredBeat) {
-      const available = availableBeats.find(beat => beat.id === s.beatData!.id && beat.buffer);
+      const available = availableBeats.find(beat => beat.id === s.beatData!.id && beat.buffer)
+        ?? await resolveBeat?.(s.beatData.id);
       if (!available) throw new Error('Este archivo antiguo no incluye el audio del beat. Carga ese mismo beat en tu biblioteca antes de abrirlo.');
       restoredBeat = { ...available, ...s.beatData, buffer: available.buffer };
     }

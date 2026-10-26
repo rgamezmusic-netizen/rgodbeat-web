@@ -106,7 +106,7 @@ async function measure(context, label, sample) {
   const start = requests.length;
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + '/studio', { waitUntil: 'domcontentloaded' });
-  await page.getByText('Midnight 808', { exact: true }).first().waitFor();
+  await page.locator('[data-studio-ready="true"]').waitFor();
   const readyMs = await page.evaluate(() => performance.now());
   await page.waitForTimeout(300);
   const data = await page.evaluate(async () => ({

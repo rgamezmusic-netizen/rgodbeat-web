@@ -1,4 +1,4 @@
-import { BeatData } from '../types/audio';
+import { BeatData, BeatSummary } from '../types/audio';
 import { audioBufferToWav } from './wavEncoder';
 
 const DB_NAME = 'RGODBEAT_STUDIO_DB';
@@ -6,6 +6,7 @@ const DB_VERSION = 2;
 const BEATS_STORE = 'saved_beats';
 const SETTINGS_STORE = 'studio_settings';
 const SESSIONS_STORE = 'studio_sessions';
+const SUMMARY_PREFIX = 'saved_beat_summary:';
 
 export const MAX_SAVED_BEATS = 23;
 
@@ -27,6 +28,22 @@ export interface StoredBeatItem {
   detectedConfidence?: number;
   timestamp: number;
   isLocked?: boolean;
+}
+
+export function summarizeBeat(beat: BeatData): BeatSummary {
+  const { buffer, ...summary } = beat;
+  void buffer;
+  return summary;
+}
+
+function summarizeStoredBeat(item: StoredBeatItem): BeatSummary {
+  return {
+    id: item.id, title: item.title, producer: item.producer, genre: item.genre,
+    bpm: item.bpm, key: item.key, scale: item.scale, duration: item.duration,
+    artworkGradient: item.artworkGradient, waveformSample: item.waveformSample,
+    isCustomUpload: true, detectedBpm: item.detectedBpm, detectedKey: item.detectedKey,
+    detectedConfidence: item.detectedConfidence, isLocked: item.isLocked, savedTimestamp: item.timestamp,
+  };
 }
 
 let dbInstance: IDBDatabase | null = null;
@@ -116,14 +133,17 @@ export async function saveBeatToDatabase(
       const store = transaction.objectStore(BEATS_STORE);
       let written = false;
       const count = store.count();
-      const existing = store.get(beat.id);
+      const existing = store.getKey(beat.id);
       existing.onsuccess = () => {
-        if (!existing.result && count.result >= MAX_SAVED_BEATS) return;
-        store.put(item);
-        const settings = transaction.objectStore(SETTINGS_STORE);
-        settings.put({ key: 'active_beat_id', value: beat.id });
-        settings.put({ key: 'beat_locked', value: item.isLocked });
-        written = true;
+        if (existing.result === undefined && count.result >= MAX_SAVED_BEATS) return;
+        try {
+          store.put(item);
+          const settings = transaction.objectStore(SETTINGS_STORE);
+          settings.put({ key: SUMMARY_PREFIX + beat.id, value: summarizeStoredBeat(item) });
+          settings.put({ key: 'active_beat_id', value: beat.id });
+          settings.put({ key: 'beat_locked', value: item.isLocked });
+          written = true;
+        } catch { transaction.abort(); }
       };
       transaction.oncomplete = () => resolve(written);
       transaction.onabort = () => reject(transaction.error ?? new DOMException('No se guardó el beat.', 'AbortError'));
@@ -137,56 +157,57 @@ export async function saveBeatToDatabase(
 }
 
 /**
- * Retrieves all saved custom beats decoded into AudioBuffers for playback
+ * List small metadata records, without reading/decoding the library audio.
+ * Old libraries are indexed one record at a time on their first read. This
+ * adds metadata in the existing settings store; no schema/audio migration.
  */
-export async function getAllSavedBeats(audioCtx: AudioContext): Promise<BeatData[]> {
-  try {
-    const db = await getDB();
-    const items = await new Promise<StoredBeatItem[]>((resolve, reject) => {
-      const transaction = db.transaction([BEATS_STORE], 'readonly');
-      const store = transaction.objectStore(BEATS_STORE);
-      const req = store.getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
+export async function listSavedBeats(): Promise<BeatSummary[]> {
+  const db = await getDB();
+  const { keys, summaries } = await new Promise<{ keys: IDBValidKey[]; summaries: { value: BeatSummary }[] }>((resolve, reject) => {
+    const tx = db.transaction([BEATS_STORE, SETTINGS_STORE], 'readonly');
+    const keys = tx.objectStore(BEATS_STORE).getAllKeys();
+    const summaries = tx.objectStore(SETTINGS_STORE).getAll(IDBKeyRange.bound(SUMMARY_PREFIX, SUMMARY_PREFIX + '\uffff'));
+    tx.oncomplete = () => resolve({ keys: keys.result, summaries: summaries.result });
+    tx.onabort = () => reject(tx.error ?? new DOMException('No se pudo leer la biblioteca.', 'AbortError'));
+  });
+  const byId = new Map(summaries.map(({ value }) => [value.id, value]));
+  const result: BeatSummary[] = [];
+  for (const key of keys) {
+    const cached = byId.get(String(key));
+    if (cached) { result.push(cached); continue; }
+    // One encoded legacy record at a time, never all payloads or AudioBuffers.
+    const summary = await new Promise<BeatSummary | null>((resolve, reject) => {
+      const tx = db.transaction([BEATS_STORE, SETTINGS_STORE], 'readwrite');
+      const read = tx.objectStore(BEATS_STORE).get(key);
+      let summary: BeatSummary | null = null;
+      let failure: unknown;
+      read.onsuccess = () => {
+        if (!read.result) return; // A concurrent deletion must not be resurrected.
+        try {
+          summary = summarizeStoredBeat(read.result);
+          tx.objectStore(SETTINGS_STORE).put({ key: SUMMARY_PREFIX + String(key), value: summary });
+        } catch (error) { failure = error; tx.abort(); }
+      };
+      tx.oncomplete = () => resolve(summary);
+      tx.onabort = () => reject(failure ?? tx.error ?? new DOMException('No se pudo preparar la biblioteca. Los audios se conservan.', 'AbortError'));
     });
-
-    const beats: BeatData[] = [];
-
-    for (const item of items) {
-      try {
-        // audioCtx.decodeAudioData mutates/detaches the ArrayBuffer, so pass a clone
-        const arrayBufferCopy = item.audioData.slice(0);
-        const decodedBuffer = await audioCtx.decodeAudioData(arrayBufferCopy);
-
-        beats.push({
-          id: item.id,
-          title: item.title,
-          producer: item.producer,
-          genre: item.genre,
-          bpm: item.bpm,
-          key: item.key,
-          scale: item.scale,
-          duration: decodedBuffer.duration,
-          buffer: decodedBuffer,
-          artworkGradient: item.artworkGradient,
-          waveformSample: item.waveformSample,
-          isCustomUpload: true,
-          detectedBpm: item.detectedBpm,
-          detectedKey: item.detectedKey,
-          detectedConfidence: item.detectedConfidence,
-          isLocked: item.isLocked,
-        });
-      } catch (decodeErr) {
-        console.warn(`Failed to decode saved beat "${item.title}":`, decodeErr);
-      }
-    }
-
-    // Sort by timestamp descending (newest first)
-    return beats;
-  } catch (err) {
-    console.error('Failed to retrieve beats from IndexedDB:', err);
-    return [];
+    if (summary) result.push(summary);
   }
+  return result;
+}
+
+/** Decode only an explicitly selected beat. IDB already returns a private copy. */
+export async function loadSavedBeat(audioCtx: BaseAudioContext, id: string): Promise<BeatData | null> {
+  const db = await getDB();
+  const item = await new Promise<StoredBeatItem | undefined>((resolve, reject) => {
+    const tx = db.transaction(BEATS_STORE, 'readonly');
+    const request = tx.objectStore(BEATS_STORE).get(id);
+    tx.oncomplete = () => resolve(request.result);
+    tx.onabort = () => reject(tx.error ?? new DOMException('No se pudo abrir el beat.', 'AbortError'));
+  });
+  if (!item) return null;
+  const buffer = await audioCtx.decodeAudioData(item.audioData);
+  return { ...summarizeStoredBeat(item), duration: buffer.duration, buffer };
 }
 
 /**
@@ -196,9 +217,10 @@ export async function deleteSavedBeat(beatId: string): Promise<boolean> {
   try {
     const db = await getDB();
     await new Promise<void>((resolve, reject) => {
-      const transaction = db.transaction([BEATS_STORE], 'readwrite');
+      const transaction = db.transaction([BEATS_STORE, SETTINGS_STORE], 'readwrite');
       const store = transaction.objectStore(BEATS_STORE);
       store.delete(beatId);
+      transaction.objectStore(SETTINGS_STORE).delete(SUMMARY_PREFIX + beatId);
       transaction.oncomplete = () => resolve();
       transaction.onabort = () => reject(transaction.error ?? new DOMException('No se eliminó el beat.', 'AbortError'));
     });

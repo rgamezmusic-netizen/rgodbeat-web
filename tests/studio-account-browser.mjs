@@ -1,3 +1,4 @@
+import {selectFixtureBeat} from './helpers/studio-beat-browser.mjs';
 // Isolated local UI regression. No real accounts or cloud projects are modified.
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
@@ -135,7 +136,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await chooser.getByLabel('Nombre del proyecto').waitFor();
     assert.equal(await chooser.getByLabel('Nombre del proyecto').inputValue(),'Mi canción');
     assert(await named.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-    await named.page.screenshot({path:`/private/tmp/rgodbeat-cloud-slots-${engineName}.png`,fullPage:true});
+    await named.page.screenshot({path:`${process.env.STUDIO_SCREENSHOT_DIR || '/private/tmp'}/rgodbeat-cloud-slots-${engineName}.png`,fullPage:true});
     await chooser.getByRole('button',{name:'Cerrar guardado en nube'}).click();
     assert.deepEqual(named.errors,[]); await named.context.close();
     console.log(`PASS ${engineName}: name, cancel, confirm replacement, autosave and reopen`);
@@ -156,8 +157,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await empty.page.getByText('ESPACIO FÍSICO DE BEATS',{exact:true}).waitFor();
     assert(empty.state.active && empty.state.previous,'new workspace preserves both cloud slots');
     const savesBeforeNewBeat = empty.state.posts.length;
-    await empty.page.getByRole('button',{name:'Demo',exact:true}).click();
-    await empty.page.getByText('Midnight 808',{exact:true}).click();
+    await selectFixtureBeat(empty.page,{alreadyOpen:true});
     await empty.page.waitForTimeout(1200);
     assert.equal(empty.state.posts.length,savesBeforeNewBeat,'new project requires explicit cloud destination');
     assert.deepEqual(empty.errors,[]); await empty.context.close();
@@ -254,7 +254,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await two.page.getByRole('button',{name:'Mis proyectos en la nube',exact:true}).click();
     await gallery.getByRole('heading',{name:'Previous cloud project',exact:true}).waitFor();
     assert(await two.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-    await two.page.screenshot({path:`/private/tmp/rgodbeat-cloud-gallery-${engineName}.png`});
+    await two.page.screenshot({path:`${process.env.STUDIO_SCREENSHOT_DIR || '/private/tmp'}/rgodbeat-cloud-gallery-${engineName}.png`});
     await acceptClick(two.page,gallery.getByRole('button',{name:'Abrir Previous cloud project, espacio 2',exact:true}));
     await two.page.getByText('Proyecto recuperado.',{exact:true}).waitFor();
     await two.page.getByRole('button',{name:'SOLO',exact:true}).first().click();
@@ -308,6 +308,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await guideEntry.page.reload();
     await guideEntry.page.getByRole('button',{name:/Continuar Sesión/}).click();
     await installGuide.waitFor();
+    await installGuide.getByText('Más ayuda',{exact:true}).click();
     await installGuide.getByRole('checkbox').check();
     await installGuide.getByRole('button',{name:'Cerrar tutorial'}).click();
     await guideEntry.page.reload();
@@ -333,7 +334,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     assert.equal(await partial.page.locator('[data-clip-item]').count(),1);
     assert.equal(partial.state.lostDownloads,1,'lost clip must not be searched repeatedly');
     assert(await partial.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
-    await partial.page.screenshot({path:`/private/tmp/rgodbeat-studio-recovery-${engineName}.png`,fullPage:true});
+    await partial.page.screenshot({path:`${process.env.STUDIO_SCREENSHOT_DIR || '/private/tmp'}/rgodbeat-studio-recovery-${engineName}.png`,fullPage:true});
     assert.deepEqual(partial.errors,[]); await partial.context.close();
     console.log(`PASS ${engineName}: report lost clip and continue with recovered voice`);
 
@@ -348,8 +349,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await offline.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await acceptClick(offline.page,offline.page.getByRole('button',{name:'Nuevo Proyecto',exact:true}));
     await offline.page.getByText('ESPACIO FÍSICO DE BEATS',{exact:true}).waitFor();
-    await offline.page.getByRole('button',{name:'Demo',exact:true}).click();
-    await offline.page.getByText('Midnight 808',{exact:true}).click();
+    await selectFixtureBeat(offline.page,{alreadyOpen:true});
     await acceptClick(offline.page,offline.page.getByRole('button',{name:'Recuperar anterior local',exact:true}));
     await offline.page.getByText('Copia local anterior recuperada.',{exact:true}).waitFor();
     await offline.page.getByRole('button',{name:'Edición',exact:true}).click();
@@ -405,15 +405,14 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await device.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await acceptClick(device.page,device.page.getByRole('button',{name:'Nuevo Proyecto',exact:true}));
     await device.page.getByText('ESPACIO FÍSICO DE BEATS',{exact:true}).waitFor();
-    await device.page.getByRole('button',{name:'Demo',exact:true}).click();
-    await device.page.getByText('Midnight 808',{exact:true}).click();
+    await selectFixtureBeat(device.page,{alreadyOpen:true});
     await device.page.getByText('Estado y opciones',{exact:true}).click();
     await acceptClick(device.page,device.page.getByRole('button',{name:'Recuperar anterior local',exact:true}));
     await device.page.getByText('Copia local anterior recuperada.',{exact:true}).waitFor();
     await device.page.getByRole('button',{name:'Edición',exact:true}).click();
     assert.equal(await device.page.locator('[data-clip-item]').count(),1);
     assert.equal(device.state.gets,failedGets,'new project and local recovery must honor the paused cloud choice');
-    await device.page.screenshot({path:`/private/tmp/rgodbeat-device-work-${engineName}.png`,fullPage:true});
+    await device.page.screenshot({path:`${process.env.STUDIO_SCREENSHOT_DIR || '/private/tmp'}/rgodbeat-device-work-${engineName}.png`,fullPage:true});
     device.state.failure=false;
     await device.page.getByRole('button',{name:'Conectar',exact:true}).click();
     await waitUntil(()=>device.state.posts.length>0,'an explicit cloud connection resumes backup');

@@ -1,10 +1,10 @@
 import Image from "next/image";
 import React, { useRef, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   X,
   Upload,
   Music,
-  Disc,
   Sparkles,
   Check,
   Trash2,
@@ -18,15 +18,23 @@ import {
   Flame,
   Loader2,
 } from 'lucide-react';
-import { BeatAnalysisResult, BeatData } from '@/lib/studio/types/audio';
+import { BeatAnalysisResult, BeatData, BeatSummary } from '@/lib/studio/types/audio';
 import { extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from '@/lib/studio/audio/wavEncoder';
 import { analyzeBeatAudio, parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
-import { MAX_SAVED_BEATS } from '@/lib/studio/audio/beatStorage';
+import { MAX_SAVED_BEATS, loadSavedBeat } from '@/lib/studio/audio/beatStorage';
+
+function releasePreview(source: AudioBufferSourceNode | null, gain: GainNode | null) {
+  if (source) {
+    try { source.stop(); } catch { /* Already ended. */ }
+    source.disconnect();
+    source.buffer = null;
+  }
+  gain?.disconnect();
+}
 
 interface LoadBeatModalProps {
   currentBeat: BeatData | null;
-  demoBeats: BeatData[];
-  savedCustomBeats: BeatData[];
+  savedCustomBeats: BeatSummary[];
   onSelectBeat: (beat: BeatData) => void;
   onUploadBeat: (beat: BeatData, detectedAnalysis?: BeatAnalysisResult, rawBuffer?: ArrayBuffer) => void;
   onDeleteSavedBeat?: (beatId: string) => void;
@@ -34,9 +42,20 @@ interface LoadBeatModalProps {
   audioCtx: AudioContext | null;
 }
 
+interface RankingBeat {
+  id: string;
+  title: string;
+  bpm?: number;
+  key?: string;
+  genre?: string;
+  currentRank?: number;
+  favorites?: number;
+  previewUrl?: string | null;
+  coverUrl?: string | null;
+}
+
 export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
   currentBeat,
-  demoBeats,
   savedCustomBeats,
   onSelectBeat,
   onUploadBeat,
@@ -44,9 +63,10 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
   onClose,
   audioCtx,
 }) => {
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [activeTab, setActiveTab] = useState<'ranking' | 'upload' | 'slots' | 'presets'>('ranking');
-  const [rankingBeats, setRankingBeats] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'ranking' | 'upload' | 'slots'>('ranking');
+  const [rankingBeats, setRankingBeats] = useState<RankingBeat[]>([]);
   const [isLoadingRanking, setIsLoadingRanking] = useState(false);
   const [votedBeatIds, setVotedBeatIds] = useState<Record<string, boolean>>({});
   const [votingBeatId, setVotingBeatId] = useState<string | null>(null);
@@ -60,6 +80,20 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
   // In-modal audio preview player
   const [previewingBeatId, setPreviewingBeatId] = useState<string | null>(null);
   const previewSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const previewGainRef = useRef<GainNode | null>(null);
+  const previewRequestRef = useRef(0);
+  const selectionRequestRef = useRef(0);
+  const mountedRef = useRef(true);
+  const [loadingBeatId, setLoadingBeatId] = useState<string | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      releasePreview(previewSourceRef.current, previewGainRef.current);
+      previewSourceRef.current = null;
+      previewGainRef.current = null;
+    };
+  }, []);
 
   // Load Top 23 Ranking Beats from server
   useEffect(() => {
@@ -100,11 +134,11 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
         );
         setStatusMsg(data.message || "¡Voto registrado en el ranking de esta semana!");
       } else if (data.requireLogin) {
-        window.location.href = `/login?redirect=/studio`;
+        router.push('/login?redirect=/studio');
       } else {
         setStatusMsg(data.message || data.error);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setStatusMsg("Error al emitir el voto.");
     } finally {
@@ -112,7 +146,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
     }
   };
 
-  const handleLoadRankingBeat = async (beat: any) => {
+  const handleLoadRankingBeat = async (beat: RankingBeat) => {
     if (!audioCtx) {
       setStatusMsg("El motor de audio no está listo.");
       return;
@@ -122,12 +156,16 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       return;
     }
 
+    const request = ++selectionRequestRef.current;
+    stopPreview();
     try {
       setIsProcessing(true);
       setStatusMsg(`Descargando y preparando audio de "${beat.title}"...`);
       const res = await fetch(beat.previewUrl);
+      if (!res.ok) throw new Error('No se pudo descargar el beat.');
       const arrayBuffer = await res.arrayBuffer();
       const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      if (!mountedRef.current || request !== selectionRequestRef.current) return;
       const waveform = extractWaveformPeaks(decodedBuffer, WAVEFORM_SAMPLE_COUNT);
 
       const newBeat: BeatData = {
@@ -146,66 +184,85 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       };
 
       stopPreview();
-      onSelectBeat(newBeat);
-      onClose();
-    } catch (err: any) {
+      await onSelectBeat(newBeat);
+      if (mountedRef.current && request === selectionRequestRef.current) onClose();
+    } catch (err) {
       console.error(err);
-      setStatusMsg("Error al cargar el beat del catálogo.");
+      if (mountedRef.current && request === selectionRequestRef.current) setStatusMsg("Error al cargar el beat del catálogo.");
     } finally {
-      setIsProcessing(false);
+      if (mountedRef.current && request === selectionRequestRef.current) setIsProcessing(false);
     }
   };
 
   const stopPreview = () => {
-    if (previewSourceRef.current) {
-      try {
-        previewSourceRef.current.stop();
-        previewSourceRef.current.disconnect();
-      } catch {
-        // already stopped
-      }
-      previewSourceRef.current = null;
-    }
+    ++previewRequestRef.current;
+    const source = previewSourceRef.current;
+    const gain = previewGainRef.current;
+    previewSourceRef.current = null;
+    previewGainRef.current = null;
+    releasePreview(source, gain);
     setPreviewingBeatId(null);
+    setLoadingBeatId(null);
   };
 
-  const handleTogglePreview = (beat: BeatData, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!audioCtx || !beat.buffer) return;
+  const resolveSavedBeat = (beat: BeatSummary) =>
+    currentBeat?.id === beat.id ? Promise.resolve(currentBeat) : loadSavedBeat(audioCtx!, beat.id);
 
-    if (previewingBeatId === beat.id) {
-      stopPreview();
-      return;
-    }
-
+  const handleUseSavedBeat = async (beat: BeatSummary) => {
+    if (!audioCtx) return;
+    const request = ++selectionRequestRef.current;
     stopPreview();
-
+    setIsProcessing(true);
+    setStatusMsg('Abriendo beat…');
     try {
-      if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-      }
-      const source = audioCtx.createBufferSource();
-      source.buffer = beat.buffer;
+      const loaded = await resolveSavedBeat(beat);
+      if (!mountedRef.current || request !== selectionRequestRef.current) return;
+      if (!loaded) throw new Error('Este beat ya no está en la biblioteca.');
+      await onSelectBeat(loaded);
+      if (mountedRef.current && request === selectionRequestRef.current) onClose();
+    } catch (error) {
+      if (mountedRef.current && request === selectionRequestRef.current) setStatusMsg(error instanceof Error ? error.message : 'No se pudo abrir el beat.');
+    } finally {
+      if (mountedRef.current && request === selectionRequestRef.current) setIsProcessing(false);
+    }
+  };
 
+  const handleTogglePreview = async (beat: BeatSummary, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!audioCtx) return;
+    if (previewingBeatId === beat.id || loadingBeatId === beat.id) { stopPreview(); return; }
+    stopPreview();
+    const request = ++previewRequestRef.current;
+    setLoadingBeatId(beat.id);
+    // Resume in the click gesture, before awaiting IndexedDB/decoding on Safari.
+    const resumed = audioCtx.state === 'suspended' ? audioCtx.resume() : Promise.resolve();
+    try {
+      const [loaded] = await Promise.all([resolveSavedBeat(beat), resumed]);
+      if (!mountedRef.current || request !== previewRequestRef.current) return;
+      if (!loaded) throw new Error('Este beat ya no está en la biblioteca.');
+      const source = audioCtx.createBufferSource();
+      source.buffer = loaded.buffer;
       const gain = audioCtx.createGain();
       gain.gain.value = 0.85;
-
       source.connect(gain);
       gain.connect(audioCtx.destination);
-
       source.onended = () => {
-        if (previewSourceRef.current === source) {
-          previewSourceRef.current = null;
-          setPreviewingBeatId(null);
-        }
+        if (previewSourceRef.current !== source) return;
+        previewSourceRef.current = null;
+        previewGainRef.current = null;
+        releasePreview(source, gain);
+        if (mountedRef.current) setPreviewingBeatId(null);
       };
-
-      source.start(0);
       previewSourceRef.current = source;
+      previewGainRef.current = gain;
+      source.start(0);
+      setLoadingBeatId(null);
       setPreviewingBeatId(beat.id);
-    } catch (err) {
-      console.error('Preview error:', err);
-      stopPreview();
+    } catch (error) {
+      if (mountedRef.current && request === previewRequestRef.current) {
+        stopPreview();
+        setStatusMsg(error instanceof Error ? error.message : 'No se pudo escuchar el beat.');
+      }
     }
   };
 
@@ -238,6 +295,8 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       return;
     }
 
+    const request = ++selectionRequestRef.current;
+    stopPreview();
     try {
       setIsProcessing(true);
       setStatusMsg(`Preparando decodificación de "${file.name}"...`);
@@ -267,7 +326,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       let decodedBuffer: AudioBuffer;
       try {
         decodedBuffer = await ctx.decodeAudioData(arrayBuffer);
-      } catch (err) {
+      } catch {
         // Fallback for older Safari callback syntax
         decodedBuffer = await new Promise((resolve, reject) => {
           ctx!.decodeAudioData(arrayBufferForStorage.slice(0), resolve, reject);
@@ -287,6 +346,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
         console.warn('Auto analysis warning:', analErr);
       }
 
+      if (!mountedRef.current || request !== selectionRequestRef.current) return;
       const waveform = extractWaveformPeaks(decodedBuffer, WAVEFORM_SAMPLE_COUNT);
       const cleanTitle = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
 
@@ -296,7 +356,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       const detectedBpmVal = analysisResult ? analysisResult.bpm : customBpm;
 
       const newBeat: BeatData = {
-        id: `upload-${Date.now()}`,
+        id: `upload-${crypto.randomUUID()}`,
         title: cleanTitle,
         producer: 'Mi Beat (Físico)',
         bpm: detectedBpmVal,
@@ -315,7 +375,8 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
         isLocked: true,
       };
 
-      onUploadBeat(newBeat, analysisResult || undefined, arrayBufferForStorage);
+      await onUploadBeat(newBeat, analysisResult || undefined, arrayBufferForStorage);
+      if (!mountedRef.current || request !== selectionRequestRef.current) return;
 
       setStatusMsg(
         analysisResult
@@ -324,6 +385,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
       );
 
       setTimeout(() => {
+        if (!mountedRef.current || request !== selectionRequestRef.current) return;
         setIsProcessing(false);
         setActiveTab('slots');
         onClose();
@@ -343,27 +405,6 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
     }
   };
 
-  // Analyze an existing preset beat
-  const handleAnalyzePreset = async (beat: BeatData, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsProcessing(true);
-    setStatusMsg(`Analizando ${beat.title}...`);
-    try {
-      const res = await analyzeBeatAudio(beat.buffer);
-      setLastAnalysis(res);
-      beat.detectedBpm = res.bpm;
-      beat.detectedKey = res.key;
-      beat.detectedConfidence = res.confidence;
-      beat.relativeKey = res.relativeKey;
-      beat.relativeTonalityName = res.relativeTonalityName;
-      setStatusMsg(`Detectado: ${res.bpm} BPM • ${res.tonalityName} · Relativa: ${res.relativeTonalityName} (${res.confidence}% confianza)`);
-      setIsProcessing(false);
-    } catch {
-      setIsProcessing(false);
-      setStatusMsg('Error analizando audio');
-    }
-  };
-
   // Generate 23 slots
   const slots = Array.from({ length: MAX_SAVED_BEATS }, (_, index) => {
     const beat = savedCustomBeats[index] || null;
@@ -374,7 +415,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-label="Biblioteca de beats" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-xl bg-[#101014] border border-zinc-800 rounded-t-3xl sm:rounded-2xl max-h-[92vh] flex flex-col shadow-2xl text-white overflow-hidden">
         {/* Header with Slot Badge */}
         <div className="p-4 sm:p-5 pb-3 border-b border-zinc-800 bg-[#14141a]">
@@ -396,7 +437,9 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
               </div>
             </div>
             <button
+              aria-label="Cerrar biblioteca de beats"
               onClick={() => {
+                ++selectionRequestRef.current;
                 stopPreview();
                 onClose();
               }}
@@ -428,7 +471,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
           </div>
 
                     {/* Navigation Tabs */}
-          <div className="grid grid-cols-4 gap-1.5 mt-3 pt-2 border-t border-zinc-800/80">
+          <div className="grid grid-cols-3 gap-1.5 mt-3 pt-2 border-t border-zinc-800/80">
             <button
               onClick={() => setActiveTab('ranking')}
               className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center gap-1 ${
@@ -461,17 +504,6 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
             >
               <HardDrive className="w-3.5 h-3.5 shrink-0" />
               <span className="truncate">Slots ({savedCustomBeats.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('presets')}
-              className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center gap-1 ${
-                activeTab === 'presets'
-                  ? 'bg-amber-500 text-black shadow-md'
-                  : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
-              }`}
-            >
-              <Disc className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Demo</span>
             </button>
           </div>
         </div>
@@ -615,6 +647,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
           {/* TAB 1: 23 SLOTS RACK VIEW */}
           {activeTab === 'slots' && (
             <div className="space-y-3">
+              {statusMsg && <p role="status" className="text-sm text-amber-300">{statusMsg}</p>}
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold font-mono text-zinc-300 uppercase tracking-wider">
                   RACK FÍSICO (23 SLOTS INDIVIDUALES)
@@ -694,7 +727,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                             }`}
                             title={isPreviewing ? 'Detener prueba' : 'Escuchar beat'}
                           >
-                            {isPreviewing ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
+                            {loadingBeatId === beat.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isPreviewing ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
                           </button>
 
                           {/* Use / Active Badge */}
@@ -705,11 +738,8 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                             </span>
                           ) : (
                             <button
-                              onClick={() => {
-                                stopPreview();
-                                onSelectBeat(beat);
-                                onClose();
-                              }}
+                              disabled={isProcessing}
+                              onClick={() => void handleUseSavedBeat(beat)}
                               className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-amber-500 hover:text-black text-zinc-200 text-xs font-mono font-semibold transition-all border border-zinc-700 active:scale-95"
                             >
                               Cargar
@@ -719,6 +749,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                           {/* Delete from slot */}
                           {onDeleteSavedBeat && (
                             <button
+                              disabled={isProcessing}
                               onClick={() => {
                                 if (previewingBeatId === beat.id) stopPreview();
                                 onDeleteSavedBeat(beat.id);
@@ -980,104 +1011,6 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
             </div>
           )}
 
-          {/* TAB 3: FACTORY PRESETS */}
-          {activeTab === 'presets' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold font-mono uppercase tracking-wider text-zinc-400">
-                  BEATS PREINSTALADOS DEL ESTUDIO
-                </span>
-                <span className="text-[10px] font-mono text-zinc-500">Sin conexión</span>
-              </div>
-
-              <div className="space-y-2">
-                {demoBeats.map((beat) => {
-                  const isSelected = currentBeat?.id === beat.id;
-                  const isPreviewing = previewingBeatId === beat.id;
-                  const keyInfo = parseKeyAndGetRelative(beat.key, beat.scale);
-
-                  return (
-                    <div
-                      key={beat.id}
-                      onClick={() => {
-                        stopPreview();
-                        onSelectBeat(beat);
-                        onClose();
-                      }}
-                      className={`w-full flex items-center justify-between p-3 rounded-xl border text-left cursor-pointer transition-all ${
-                        isSelected
-                          ? 'bg-amber-500/15 border-amber-500/50 shadow-sm ring-1 ring-amber-500/30'
-                          : 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div
-                          className="w-10 h-10 rounded-lg border border-zinc-700/60 shadow flex items-center justify-center shrink-0"
-                          style={{ background: beat.artworkGradient }}
-                        >
-                          <Disc className="w-5 h-5 text-white/80" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-zinc-100 font-display truncate">
-                            {beat.title}
-                          </p>
-                          <p className="text-xs text-zinc-400 font-mono-numbers flex items-center gap-1.5 flex-wrap">
-                            <span className="text-amber-300 font-semibold">{beat.bpm} BPM</span>
-                            <span>·</span>
-                            <span>{keyInfo.keySymbol}</span>
-                            <span className="text-zinc-500">⇄</span>
-                            <span className="text-amber-300/80 bg-amber-500/10 px-1 rounded text-[10px]">
-                              Rel. {keyInfo.relativeKey}
-                            </span>
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={(e) => handleTogglePreview(beat, e)}
-                          className={`p-1.5 rounded-lg border text-xs font-mono transition-all ${
-                            isPreviewing
-                              ? 'bg-amber-500 text-black border-amber-400 animate-pulse'
-                              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
-                          }`}
-                          title={isPreviewing ? 'Detener' : 'Probar beat'}
-                        >
-                          {isPreviewing ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current ml-0.5" />}
-                        </button>
-
-                        <button
-                          onClick={(e) => handleAnalyzePreset(beat, e)}
-                          className="p-1.5 rounded-lg bg-zinc-800 hover:bg-amber-500/20 text-zinc-400 hover:text-amber-300 border border-zinc-700 text-[10px] font-mono flex items-center gap-1 transition-all"
-                          title="Analizar BPM y Tonalidad con el motor de IA/DSP"
-                        >
-                          <Sparkles className="w-3 h-3 text-amber-400" />
-                          <span className="hidden sm:inline">Detectar</span>
-                        </button>
-
-                        {isSelected ? (
-                          <div className="w-6 h-6 rounded-full bg-amber-500 text-black flex items-center justify-center shrink-0">
-                            <Check className="w-4 h-4 stroke-[3]" />
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              stopPreview();
-                              onSelectBeat(beat);
-                              onClose();
-                            }}
-                            className="text-xs font-mono px-2.5 py-1 rounded bg-zinc-800 hover:bg-amber-500 hover:text-black transition-colors"
-                          >
-                            Usar
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
