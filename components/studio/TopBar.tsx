@@ -58,6 +58,7 @@ interface TopBarProps {
   onLogout?: () => void;
   onOpenInstallModal?: () => void;
   onOpenSettings?: () => void;
+  projectMenuTriggerRef?: React.Ref<HTMLButtonElement>;
   onSaveCloudProject?: () => void;
   onLoadCloudProject?: () => void;
   onOpenCloudGallery?: () => void;
@@ -96,6 +97,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onLogout,
   onOpenInstallModal,
   onOpenSettings,
+  projectMenuTriggerRef,
   onSaveCloudProject,
   onLoadCloudProject,
   onOpenCloudGallery,
@@ -234,6 +236,9 @@ export const TopBar: React.FC<TopBarProps> = ({
           <div className="relative shrink-0" ref={menuRef}>
             <button
               type="button"
+              ref={projectMenuTriggerRef}
+              aria-expanded={showProjectMenu}
+              aria-controls={showProjectMenu ? 'studio-project-menu' : undefined}
               onClick={() => setShowProjectMenu(!showProjectMenu)}
               className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 hover:bg-zinc-850 text-zinc-300 hover:text-white transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
               title="Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)"
@@ -243,7 +248,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
             {/* Dropdown Menu Box */}
             {showProjectMenu && (
-              <div className="absolute left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-auto sm:right-0 mt-2 w-56 max-h-[calc(100dvh-6rem)] overflow-y-auto overscroll-contain rounded-2xl bg-[#0e0e14] border border-zinc-700/80 shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
+              <div id="studio-project-menu" className="absolute left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-auto sm:right-0 mt-2 w-56 max-h-[calc(100dvh-6rem)] overflow-y-auto overscroll-contain rounded-2xl bg-[#0e0e14] border border-zinc-700/80 shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150">
                 {/* Save Cloud */}
                 {onSaveCloudProject && (
                   <button
@@ -355,7 +360,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <button type="button" onClick={() => {
                     setShowProjectMenu(false);
                     onOpenSettings();
-                  }} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-zinc-300 hover:bg-zinc-800 transition-all text-left cursor-pointer">
+                  }} className="w-full min-h-11 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-zinc-300 hover:bg-zinc-800 transition-all text-left cursor-pointer">
                     <Settings className="w-4 h-4 text-amber-400" />
                     <span>Ajustes de la app</span>
                   </button>

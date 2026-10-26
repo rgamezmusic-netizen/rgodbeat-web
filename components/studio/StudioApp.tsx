@@ -261,6 +261,7 @@ export default function App() {
   const isInstalledApp = useInstalledApp();
   const { lightVisuals, setLightVisuals } = useStudioVisualMode();
   const [showAppSettings, setShowAppSettings] = useState(false);
+  const projectMenuTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Recovery runs before the workspace can autosave or offer beat selection.
   const [isStartupResolved, setIsStartupResolved] = useState<boolean>(false);
@@ -2786,6 +2787,7 @@ export default function App() {
         currentBeatBpm={currentBeat?.bpm}
         onOpenInstallModal={isInstalledApp ? undefined : () => setShowInstallModal(true)}
         onOpenSettings={() => setShowAppSettings(true)}
+        projectMenuTriggerRef={projectMenuTriggerRef}
         accessStatus={accessStatus}
         onOpenUnlockModal={() => {
           setUnlockModalReason('general');
@@ -3185,7 +3187,11 @@ export default function App() {
 
       {/* Guide modal on how to install PWA on Android & iOS */}
       {showAppSettings && <StudioSettingsModal lightVisuals={lightVisuals} onChangeLightVisuals={setLightVisuals}
-        busy={isRecording || isPlaying || isLoadingCloud || isOpeningDeviceProject} onClose={() => setShowAppSettings(false)} />}
+        returnFocusRef={projectMenuTriggerRef}
+        busyReason={isRecording ? 'Termina la grabación antes de limpiar.'
+          : isPlaying ? 'Pausa la reproducción antes de limpiar.'
+          : isLoadingCloud || isOpeningDeviceProject || isStartingNewProject || !isStartupResolved ? 'Espera a que el proyecto esté listo antes de limpiar.' : null}
+        onClose={() => setShowAppSettings(false)} />}
       <InstallAppModal
         isOpen={showInstallModal}
         onClose={() => {

@@ -105,6 +105,26 @@ body::before {
   animation: none !important;
 }
 
+/* Keep both settings groups discoverable on short, wide mobile screens. */
+@media (min-width: 640px) and (max-height: 480px) {
+  .studio-settings-panel {
+    max-width: 48rem;
+  }
+
+  .studio-settings-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    column-gap: 1.5rem;
+  }
+
+  .studio-settings-storage {
+    margin-top: 0;
+    border-top: 0;
+    padding-top: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .youtube-progress-indeterminate {
     width: 100%;

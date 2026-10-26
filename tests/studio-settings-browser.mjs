@@ -37,22 +37,61 @@ try{
   await page.goto(base+'/studio');await page.locator('[data-studio-ready="true"]').waitFor();
   await page.evaluate(()=>navigator.serviceWorker.ready);
   assert.equal(await page.locator('[data-studio-decoration="collage"] img').count(),32);
+  const originalOverflow=await page.evaluate(()=>document.body.style.overflow);
   let settings=await openSettings();
-  await settings.getByRole('checkbox',{name:/Modo visual ligero/}).check();
+  assert.equal(await page.evaluate(()=>document.body.style.overflow),'hidden');
+  await settings.getByRole('radio',{name:'Ligero',exact:true}).check();
   assert.equal(await page.locator('[data-studio-visual-mode]').getAttribute('data-studio-visual-mode'),'light');
   assert.equal(await page.locator('[data-studio-decoration="collage"]').count(),0);
   assert.equal(await settings.evaluate(el=>getComputedStyle(el.parentElement).backdropFilter),'none','light mode disables backdrop blur');
   assert.equal(await settings.evaluate(el=>getComputedStyle(el).boxShadow),'none');
-  const cacheButton=settings.getByRole('button',{name:'Limpiar caché de la app',exact:true});
-  await cacheButton.click();await settings.getByText(/Caché de interfaz borrada/).waitFor();
+  const cacheButton=settings.getByRole('button',{name:'Limpiar caché',exact:true});
+  await cacheButton.click();await settings.getByText(/Caché limpiada/).waitFor();
   assert.deepEqual(await page.evaluate(()=>caches.keys()),['foreign-cache']);
   assert.equal(await page.evaluate(async()=>(await navigator.serviceWorker.getRegistrations()).filter(r=>new URL(r.scope).pathname==='/studio').length),1,'cleanup keeps the Studio worker registered');
   assert.equal(await page.evaluate(()=>localStorage.getItem('session-sentinel')),'preserved');
   assert.equal(await page.evaluate(()=>localStorage.getItem('rgodbeat_install_guide_hidden_v2')),'true');
   assert.equal(await page.evaluate(async()=>{if(!navigator.storage?.getDirectory)return 'unsupported';const root=await navigator.storage.getDirectory();return(await(await root.getFileHandle('settings-sentinel.txt')).getFile()).text();}),'OPFS preserved');
-  await settings.getByRole('button',{name:'Cerrar ajustes'}).click();
+  // Keep cache results separate from preference feedback; prevent duplicate clears.
+  await page.evaluate(async()=>{
+    await(await caches.open('rgodbeat-studio-ui-hold')).put('/hold',new Response('temporary'));
+    const nativeDelete=CacheStorage.prototype.delete;
+    window.restoreCacheDelete=()=>{CacheStorage.prototype.delete=nativeDelete;};
+    window.heldDeletes=0;
+    CacheStorage.prototype.delete=function(name){
+      if(name!=='rgodbeat-studio-ui-hold')return nativeDelete.call(this,name);
+      window.heldDeletes++;
+      return new Promise(resolve=>{window.releaseCacheClear=async()=>resolve(await nativeDelete.call(this,name));});
+    };
+  });
+  await cacheButton.click();
+  const clearing=settings.getByRole('button',{name:'Limpiando…',exact:true});
+  assert.equal(await clearing.isDisabled(),true);
+  await clearing.evaluate(button=>{button.click();button.click();});
+  await settings.getByRole('radio',{name:'Estándar',exact:true}).check();
+  await settings.getByText('Cambios guardados en este dispositivo.',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>window.heldDeletes),1);
+  await page.evaluate(async()=>{await window.releaseCacheClear();window.restoreCacheDelete();});
+  await settings.getByText(/Caché limpiada/).waitFor();
+  await settings.getByRole('radio',{name:'Ligero',exact:true}).check();
+  assert.equal(await settings.getByText(/Caché limpiada/).isVisible(),true);
+  // An actual cache failure remains an error, then a normal retry can succeed.
+  await page.evaluate(async()=>{
+    await(await caches.open('rgodbeat-studio-ui-fail')).put('/fail',new Response('temporary'));
+    const nativeDelete=CacheStorage.prototype.delete;
+    window.restoreCacheDelete=()=>{CacheStorage.prototype.delete=nativeDelete;};
+    CacheStorage.prototype.delete=()=>Promise.reject(new DOMException('Blocked','SecurityError'));
+  });
+  await cacheButton.click();await settings.getByRole('alert').filter({hasText:'No se pudo completar la limpieza.'}).waitFor();
+  assert.ok(await page.evaluate(async()=>(await caches.keys()).includes('rgodbeat-studio-ui-fail')));
+  await page.evaluate(()=>window.restoreCacheDelete());
+  await cacheButton.click();await settings.getByText(/Caché limpiada/).waitFor();
+  await settings.getByRole('button',{name:'Listo',exact:true}).click();
+  assert.equal(await page.evaluate(()=>document.body.style.overflow),originalOverflow);
+  await page.waitForFunction(()=>document.activeElement?.getAttribute('title')==='Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)');
   await page.getByRole('button',{name:'PLAY',exact:true}).click();
-  settings=await openSettings();assert.equal(await settings.getByRole('button',{name:'Limpiar caché de la app',exact:true}).isDisabled(),true);
+  settings=await openSettings();assert.equal(await settings.getByRole('button',{name:'Limpiar caché',exact:true}).isDisabled(),true);
+  await settings.getByText('Pausa la reproducción antes de limpiar.',{exact:true}).waitFor();
   await page.keyboard.press('Escape');await page.getByRole('button',{name:'PAUSA',exact:true}).click();
   await page.reload();await page.locator('[data-studio-ready="true"]').waitFor();
   assert.equal(await page.getByRole('dialog').count(),0,'settings never add entry questions');
@@ -68,7 +107,7 @@ try{
   assert.deepEqual(preserved,{active:'current-settings',previous:'previous-settings',activeClip:'settings-take',previousClip:'settings-take',frames:480000,sample:.125,library:1});
   const second=await context.newPage();await second.goto(base+'/studio');await second.locator('[data-studio-ready="true"]').waitFor();
   assert.equal(await second.locator('[data-studio-visual-mode]').getAttribute('data-studio-visual-mode'),'light');
-  settings=await openSettings();await settings.getByRole('checkbox',{name:/Modo visual ligero/}).uncheck();
+  settings=await openSettings();await settings.getByRole('radio',{name:'Estándar',exact:true}).check();
   await second.locator('[data-studio-visual-mode="standard"]').waitFor();
   await second.close();
   await page.evaluate(()=>{
@@ -76,21 +115,47 @@ try{
     window.restoreSettingsStorage=()=>{Storage.prototype.setItem=set;};
     Storage.prototype.setItem=()=>{throw new DOMException('Blocked','SecurityError');};
   });
-  await settings.getByRole('checkbox',{name:/Modo visual ligero/}).check();
-  await settings.getByText(/Ajuste aplicado a esta ventana/).waitFor();
+  await settings.getByRole('radio',{name:'Ligero',exact:true}).check();
+  await settings.getByText(/Solo en esta ventana/).waitFor();
   assert.equal(await page.locator('[data-studio-visual-mode]').getAttribute('data-studio-visual-mode'),'light');
   await page.evaluate(()=>window.restoreSettingsStorage());
-  await settings.getByRole('checkbox',{name:/Modo visual ligero/}).uncheck();
-  await settings.getByRole('checkbox',{name:/Modo visual ligero/}).check();
-  await settings.getByText('Preferencia guardada en este dispositivo.',{exact:true}).waitFor();
+  await settings.getByRole('radio',{name:'Estándar',exact:true}).check();
+  await settings.getByRole('radio',{name:'Ligero',exact:true}).check();
+  await settings.getByText('Cambios guardados en este dispositivo.',{exact:true}).waitFor();
   for(const [width,height] of [[320,568],[390,844],[844,390],[768,1024]]){
     await page.setViewportSize({width,height});
     const fits=await settings.evaluate(dialog=>{const r=dialog.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1;});
     assert.equal(fits,true,`settings fit ${width}x${height}`);
+    assert.equal(await settings.getByRole('button',{name:'Listo',exact:true}).evaluate(button=>{const r=button.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;}),true,'close remains visible without scrolling');
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
+    if(width===320) assert.equal(await settings.getByRole('heading',{name:'Almacenamiento',exact:true}).evaluate(heading=>{
+      const r=heading.getBoundingClientRect(),footer=heading.closest('[role=dialog]').querySelector('footer').getBoundingClientRect();
+      return r.top>=0&&r.bottom<=footer.top+1;
+    }),true,'storage group is visible on a narrow phone');
+    if(width===844) assert.equal(await settings.getByRole('button',{name:'Limpiar caché',exact:true}).evaluate(button=>{
+      const r=button.getBoundingClientRect(),footer=button.closest('[role=dialog]').querySelector('footer').getBoundingClientRect();
+      return r.top>=0&&r.bottom<=footer.top+1;
+    }),true,'cache action is discoverable without scrolling on a short wide screen');
   }
+  await page.setViewportSize({width:320,height:568});
+  await page.evaluate(()=>document.documentElement.style.fontSize='24px');
+  assert.equal(await settings.evaluate(dialog=>[dialog,dialog.querySelector('.studio-settings-body')].every(el=>el.scrollWidth<=el.clientWidth+1)),true,'larger text does not overflow the panel');
+  assert.equal(await settings.getByRole('button',{name:'Listo',exact:true}).evaluate(button=>{const r=button.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight;}),true);
+  await page.evaluate(()=>document.documentElement.style.fontSize='');
   await page.setViewportSize({width:390,height:844});
+  await settings.getByRole('radio',{name:'Estándar',exact:true}).check();
+  await settings.getByRole('radio',{name:'Estándar',exact:true}).focus();
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await settings.getByRole('radio',{name:'Ligero',exact:true}).isChecked(),true,'native radio keyboard navigation works');
+  // The footer anchors a short focus cycle, including Shift+Tab wrapping.
+  await settings.getByRole('button',{name:'Listo',exact:true}).focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await settings.getByRole('button',{name:'Cerrar ajustes'}).evaluate(button=>button===document.activeElement),true);
+  await page.keyboard.press('Shift+Tab');
+  assert.equal(await settings.getByRole('button',{name:'Listo',exact:true}).evaluate(button=>button===document.activeElement),true);
+  await settings.locator(':scope > div').evaluate(el=>{el.scrollTop=0;});
   if(process.env.STUDIO_SCREENSHOT_DIR)await page.screenshot({path:process.env.STUDIO_SCREENSHOT_DIR+'/ajustes-cache-modo-visual.png',fullPage:true});
   assert.deepEqual(errors,[]);
-  console.log('PASS settings: owned cache only; IndexedDB active/previous/library, OPFS, session preference and audio preserved; no reload; playback guard; light mode persisted/synchronized; four mobile viewports');
+  console.log('PASS settings: native radios, focus trap/restore, fixed close, larger text, independent feedback, duplicate/error/retry guards; owned cache only; IndexedDB active/previous/library, OPFS, session preference and audio preserved; no reload; playback guard; light mode persisted/synchronized; four mobile viewports');
   console.log(JSON.stringify(preserved));
 }finally{await context.close();await browser.close();}
