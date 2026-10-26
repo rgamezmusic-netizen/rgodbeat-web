@@ -724,7 +724,10 @@ export default function App() {
       cloudRetryableRef.current = true;
       setCloudRequiresSignIn(false);
       setCloudNeedsCheck(Boolean(email));
-      if (!email) { setCloudBackupNotice(''); setCloudBackupStatus(''); }
+      if (!email) {
+        setCloudBackupNotice('');
+        setCloudBackupStatus(typeof data.serviceMessage === 'string' ? data.serviceMessage : '');
+      }
       if (allowAccountChangeRef.current && !deviceWork) {
         try {
           const remote = await checkCloudProject();

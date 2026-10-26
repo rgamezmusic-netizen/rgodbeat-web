@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { getSupabasePublicConfig } from "@/lib/supabase/config";
 import { hasAuthLinkParameters, hasPendingAuthRecovery, RECOVERY_SESSION_MARKER, resolveAuthRecovery } from "@/lib/auth/recovery";
 import { safeAuthRedirect } from "@/lib/auth/redirect";
 
@@ -9,6 +10,7 @@ import { safeAuthRedirect } from "@/lib/auth/redirect";
 export function RecoveryLinkRedirect() {
   useEffect(() => {
     if (window.location.pathname === "/reset-password") return;
+    if (!getSupabasePublicConfig()) return;
     let active = true;
     const url = new URL(window.location.href);
     const processing = hasAuthLinkParameters(url) || hasPendingAuthRecovery();

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Escribe un correo válido." }, { status: 400, headers });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return NextResponse.json({ error: "La recuperación no está disponible. Inténtalo más tarde." }, { status: 503, headers });
+  if (!url || !key) return NextResponse.json({ error: "Supabase no está configurado para recuperar cuentas en este entorno." }, { status: 503, headers });
   const redirect = new URL("/reset-password", origin);
   if (typeof body.next === "string") redirect.searchParams.set("next", safeAuthRedirect(body.next, "/account"));
   // Public Auth API, without the service key or a browser-specific PKCE verifier.

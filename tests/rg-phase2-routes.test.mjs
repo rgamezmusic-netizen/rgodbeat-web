@@ -114,10 +114,23 @@ test('actual Artist/Track routes derive ownership from validated session and rej
 test('actual Studio entitlement route uses customers.studio_access_until; null is demo, admin is permanent bypass',async()=>{
   for(const [expiry,admin,active] of [[null,false,false],['2000-01-01T00:00:00Z',false,false],['2030-01-01T00:00:00Z',false,true],[null,true,true]]){
     const columns=[];const q={select:(value)=>{columns.push(value);return q;},eq:()=>q,maybeSingle:async()=>({data:{studio_access_until:expiry}})};
-    const route=loadSource('app/api/studio/access/route.ts',{'@/lib/supabase/server':{createClient:async()=>({auth:{getUser:async()=>({data:{user:{id:'session-user',email:'fixture@example.invalid'}},error:null})}})},'@/lib/auth/admin':{isSiteAdmin:()=>admin},'@/lib/supabase/admin':{createAdminClient:()=>({from:()=>q})}});
+    const route=loadSource('app/api/studio/access/route.ts',{'@/lib/supabase/config':{getSupabasePublicConfig:()=>({url:'https://fixture.supabase.invalid',key:'fixture-public-key'})},'@/lib/supabase/server':{createClient:async()=>({auth:{getUser:async()=>({data:{user:{id:'session-user',email:'fixture@example.invalid'}},error:null})}})},'@/lib/auth/admin':{isSiteAdmin:()=>admin},'@/lib/supabase/admin':{createAdminClient:()=>({from:()=>q})}});
     const data=await(await route.GET()).json();assert.equal(data.hasActivePass,active);assert.equal(data.isDemo,!active);
     assert.ok(columns[0].includes('studio_access_until'));if(admin)assert.equal(data.daysRemaining,365);
   }
+});
+
+test('Studio without Supabase returns only the existing anonymous local state and does not initialize auth or admin clients',async()=>{
+  const route=loadSource('app/api/studio/access/route.ts',{
+    '@/lib/supabase/config':{getSupabasePublicConfig:()=>null},
+    '@/lib/supabase/server':{createClient:()=>{throw Error('Auth client must remain unused');}},
+    '@/lib/supabase/admin':{createAdminClient:()=>{throw Error('Admin client must remain unused');}},
+    '@/lib/auth/admin':{isSiteAdmin:()=>false},
+  });
+  const response=await route.GET();const data=await response.json();
+  assert.equal(response.status,200);assert.equal(data.isDemo,true);assert.equal(data.isLoggedIn,false);
+  assert.equal(data.hasActivePass,false);assert.equal(data.email,null);
+  assert.match(data.serviceMessage,/no configurados.*este dispositivo/i);
 });
 
 test('persisted YouTube crossings retry after failure, ignore view dips/recovery and exclude past seasons',()=>{

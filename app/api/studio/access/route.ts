@@ -2,10 +2,25 @@ import { NextResponse } from "next/server";
 import { isSiteAdmin } from "@/lib/auth/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { getSupabasePublicConfig } from "@/lib/supabase/config";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (!getSupabasePublicConfig()) {
+    // This is the same anonymous/local Studio state used when no session exists.
+    // It grants no account, cloud, admin, purchase or publishing permissions.
+    return NextResponse.json({
+      isDemo: true,
+      isLoggedIn: false,
+      hasActivePass: false,
+      daysRemaining: 0,
+      expiresAt: null,
+      email: null,
+      serviceMessage: "Servicios de cuenta no configurados; tu proyecto permanece en este dispositivo.",
+    }, { headers: { "Cache-Control": "private, no-store" } });
+  }
+
   try {
     const supabaseAuth = await createClient();
     const { data: authData, error: authError } = await supabaseAuth.auth.getUser();

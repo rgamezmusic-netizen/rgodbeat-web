@@ -1,8 +1,13 @@
 import { createClient } from "@/utils/supabase/server";
 import { cookies } from "next/headers";
 import { Navbar, Footer } from "@/components/layout";
+import { getSupabasePublicConfig } from "@/lib/supabase/config";
 
 export default async function SupabaseTestPage() {
+  const config = getSupabasePublicConfig();
+  if (!config) {
+    return <main className="min-h-screen bg-[#08080a] p-10 text-white">Supabase no está configurado para este entorno.</main>;
+  }
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
@@ -22,7 +27,7 @@ export default async function SupabaseTestPage() {
             Supabase Client Status
           </h1>
           <p className="text-sm text-zinc-400">
-            Connected to project URL: <code className="text-purple-300 font-mono text-xs">{process.env.NEXT_PUBLIC_SUPABASE_URL}</code>
+            Connected to project URL: <code className="text-purple-300 font-mono text-xs">{config.url}</code>
           </p>
         </div>
 

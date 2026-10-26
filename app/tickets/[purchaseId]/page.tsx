@@ -9,6 +9,7 @@ import { notFound as denyPurchaseTicket } from "next/navigation";
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getAuthorizedPurchase, guestPurchaseCookieName } from "@/lib/commerce/authorization";
+import { getPublicStorageUrl } from "@/lib/storage/public";
 
 export const dynamic = "force-dynamic";
 
@@ -175,13 +176,13 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
           {/* Beat Information */}
           <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-4">
             <div className="w-16 h-16 rounded-lg bg-zinc-900 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center">
-              {beat?.cover_path ? (
+              {beat?.cover_path && getPublicStorageUrl(beat.cover_path) ? (
                 <Image
                   width={64}
                   height={64}
                   sizes="64px"
                   loading="lazy"
-                  src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/rgodbeat-public/${beat.cover_path}`}
+                  src={getPublicStorageUrl(beat.cover_path)!}
                   alt={beat.title}
                   className="w-full h-full object-cover"
                 />

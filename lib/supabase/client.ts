@@ -1,12 +1,11 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { Database } from "@/types/database";
 import { fetchSupabaseAuth } from "@/lib/auth/request";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+import { requireSupabasePublicConfig } from "@/lib/supabase/config";
 
 export const createClient = () => {
-  return createBrowserClient<Database>(supabaseUrl, supabaseKey, {
+  const { url, key } = requireSupabasePublicConfig();
+  return createBrowserClient<Database>(url, key, {
     global: { fetch: fetchSupabaseAuth },
     auth: {
       // RecoveryLinkRedirect/ResetPasswordForm exchange these links explicitly.

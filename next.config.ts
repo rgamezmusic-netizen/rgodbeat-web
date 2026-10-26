@@ -1,5 +1,16 @@
 import type { NextConfig } from "next";
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+const supabaseHostname = (() => {
+  if (!supabaseUrl) return null;
+  try {
+    const parsed = new URL(supabaseUrl);
+    return parsed.protocol === "https:" || parsed.hostname === "localhost" ? parsed.hostname : null;
+  } catch {
+    return null;
+  }
+})();
+
 const nextConfig: NextConfig = {
   async headers() {
     return [{
@@ -9,13 +20,11 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ["image/webp"],
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "https://wrcdapajrsuqgpbfadff.supabase.co").hostname,
-        pathname: "/storage/v1/object/public/rgodbeat-public/**",
-      },
-    ],
+    remotePatterns: supabaseHostname ? [{
+      protocol: supabaseHostname === "localhost" ? "http" : "https",
+      hostname: supabaseHostname,
+      pathname: "/storage/v1/object/public/rgodbeat-public/**",
+    }] : [],
   },
   outputFileTracingIncludes: {
     "/api/download/*": ["./public/images/rgodbeat-logo.png"],

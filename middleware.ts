@@ -13,8 +13,19 @@ export async function middleware(request: NextRequest) {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const pathname = request.nextUrl.pathname;
 
   if (!supabaseUrl || !supabaseKey) {
+    const protectedPath = pathname === "/admin" || pathname.startsWith("/admin/")
+      || pathname === "/account" || pathname.startsWith("/account/")
+      || pathname === "/park" || pathname.startsWith("/park/");
+    if (protectedPath) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = "/login";
+      loginUrl.searchParams.set("redirect", pathname);
+      loginUrl.searchParams.set("error", "services_unavailable");
+      return NextResponse.redirect(loginUrl);
+    }
     return supabaseResponse;
   }
 
@@ -45,8 +56,6 @@ export async function middleware(request: NextRequest) {
     // Keep public pages available during Auth outages; protected routes and
     // their server/API guards still require a verified user.
   }
-
-  const pathname = request.nextUrl.pathname;
 
   // Protect every route in The Park with the same artist login as /account.
   if (pathname === "/park" || pathname.startsWith("/park/")) {

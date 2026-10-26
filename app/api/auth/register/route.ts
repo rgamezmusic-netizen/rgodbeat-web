@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !key) {
-      return NextResponse.json({ error: "El registro no está disponible. Inténtalo más tarde." }, { status: 503, headers });
+      return NextResponse.json({ error: "Supabase no está configurado para el registro en este entorno." }, { status: 503, headers });
     }
 
     // Use the public Auth signup flow. Supabase controls email confirmation,

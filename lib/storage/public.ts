@@ -5,8 +5,6 @@
 
 export const PUBLIC_STORAGE_BUCKET = "rgodbeat-public";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://wrcdapajrsuqgpbfadff.supabase.co";
-
 /**
  * Expected path formats for public assets:
  * - covers/{beat_id}/cover.{ext}
@@ -41,6 +39,8 @@ export function validatePublicPath(path: string | null | undefined): boolean {
  */
 export function getPublicStorageUrl(path: string | null | undefined): string | null {
   if (!path || typeof path !== "string") return null;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  if (!supabaseUrl) return null;
   const cleanPath = path.trim().replace(/^\/+/, "");
 
   if (!validatePublicPath(cleanPath)) {
@@ -48,5 +48,11 @@ export function getPublicStorageUrl(path: string | null | undefined): string | n
     return null;
   }
 
-  return `${supabaseUrl}/storage/v1/object/public/${PUBLIC_STORAGE_BUCKET}/${cleanPath}`;
+  try {
+    const base = new URL(supabaseUrl);
+    if (base.protocol !== "https:" && base.protocol !== "http:") return null;
+    return new URL(`/storage/v1/object/public/${PUBLIC_STORAGE_BUCKET}/${cleanPath}`, base).toString();
+  } catch {
+    return null;
+  }
 }

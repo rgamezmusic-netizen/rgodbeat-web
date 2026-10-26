@@ -15,6 +15,7 @@ import { getRgWalletSummary } from "@/lib/rg/product/wallet";
 import { RgAccountWallet } from "@/components/rg/RgAccountWallet";
 import { LegalNameForm } from '@/components/account/LegalNameForm';
 import { getLegalName } from '@/lib/account/legal-name';
+import { getPublicStorageUrl } from '@/lib/storage/public';
 
 export const dynamic = "force-dynamic";
 
@@ -200,9 +201,9 @@ export default async function AccountPage() {
                     <div className="flex items-center gap-4">
                       {/* Cover Preview */}
                       <div className="w-16 h-16 rounded-lg bg-zinc-900 border border-white/10 overflow-hidden shrink-0 relative flex items-center justify-center">
-                        {beat?.cover_path ? (
+                        {beat?.cover_path && getPublicStorageUrl(beat.cover_path) ? (
                           <Image
-                            src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/rgodbeat-public/${beat.cover_path}`}
+                            src={getPublicStorageUrl(beat.cover_path)!}
                             alt={beat.title || "Beat Cover"}
                             fill
                             sizes="64px"

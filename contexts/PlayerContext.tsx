@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Beat } from "@/types";
+import { getPublicPreviewPath, getPublicStorageUrl } from "@/lib/storage/public";
 
 interface PlayerContextType {
   currentBeat: Beat | null;
@@ -113,10 +114,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const audio = audioRef.current;
     if (!audio) return;
 
-    // Resolve robust public preview URL with Supabase fallback
-    const resolvedUrl =
-      beat.previewAudioUrl ||
-      `https://wrcdapajrsuqgpbfadff.supabase.co/storage/v1/object/public/rgodbeat-public/previews/${beat.id}/preview.mp3`;
+    // Use only the catalog URL or the configured public bucket; no project fallback.
+    const resolvedUrl = beat.previewAudioUrl || getPublicStorageUrl(getPublicPreviewPath(beat.id));
+    if (!resolvedUrl) {
+      console.info("[BeatPlayer] La reproducción no está disponible porque el almacenamiento público no está configurado.");
+      return;
+    }
 
     if (selectedBeatId.current === beat.id && audio.getAttribute("src")) {
       startAudio(audio);

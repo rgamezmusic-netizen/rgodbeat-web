@@ -70,7 +70,7 @@ export async function uploadToR2(params: {
     return {
       success: false,
       key: params.key,
-      error: "Cloudflare R2 is not configured in .env.local",
+      error: "Cloudflare R2 no está configurado para este entorno.",
     };
   }
 
@@ -208,4 +208,3 @@ export async function deleteR2Prefix(prefix: string, bucket?: string): Promise<b
     return false;
   }
 }
-

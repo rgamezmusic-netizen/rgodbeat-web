@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { createCommerceAdminClient } from "@/lib/commerce/admin-client";
 import { guestPurchaseTokenHash } from "@/lib/commerce/authorization";
 import GiftClaimClient from "./GiftClaimClient";
+import { getPublicStorageUrl } from "@/lib/storage/public";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Reclamar regalo | RGODBEAT", robots: { index: false, follow: false }, referrer: "no-referrer" };
@@ -57,8 +58,7 @@ export default async function GiftClaimPage({ searchParams }: { searchParams: Pr
   return <GiftClaimClient token={token} contextId={gift ? contextId : null} alreadyClaimed={alreadyClaimed}
     claimedPurchaseId={claimedPurchaseId} claimedBenefitKind={claimedBenefitKind} gift={gift ? {
     beatTitle: gift.beat_title,
-    coverUrl: gift.cover_path && process.env.NEXT_PUBLIC_SUPABASE_URL
-      ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/rgodbeat-public/${encodeURI(gift.cover_path)}` : null,
+    coverUrl: getPublicStorageUrl(gift.cover_path),
     licenseTier: gift.license_tier,
     licenseName: gift.license_name,
   } : null} />;

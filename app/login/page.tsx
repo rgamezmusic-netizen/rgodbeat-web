@@ -22,7 +22,11 @@ function AuthForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(() =>
+    searchParams.get("error") === "services_unavailable"
+      ? "Supabase no está configurado para este entorno. Las funciones de cuenta permanecen protegidas."
+      : null
+  );
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
