@@ -6,6 +6,7 @@ assert.ok(['localhost','127.0.0.1','[::1]'].includes(new URL(base).hostname));
 assert.ok(process.env.STUDIO_PLAYWRIGHT_PATH);
 const {chromium,webkit} = await import(pathToFileURL(process.env.STUDIO_PLAYWRIGHT_PATH).href);
 for (const [name,launcher] of [['chromium',chromium],['webkit',webkit]]) {
+  if (process.env.STUDIO_TEST_BROWSER && process.env.STUDIO_TEST_BROWSER !== name) continue;
   const browser = await launcher.launch({headless:true,...(name==='chromium'?{channel:'chrome'}:{})});
   try {
     for (const [width,height] of [[320,568],[390,844],[844,390],[768,1024]]) {
@@ -39,7 +40,7 @@ for (const [name,launcher] of [['chromium',chromium],['webkit',webkit]]) {
       assert.equal(await gallery.getByText('Espacio vacío',{exact:true}).count(),0,'guest gallery never invents empty cloud slots');
       await gallery.getByRole('button',{name:'Cerrar galería'}).tap();
       await page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').tap();
-      await page.getByRole('button',{name:'Instalar App Móvil',exact:true}).tap();
+      await page.getByRole('button',{name:'Instalar App',exact:true}).tap();
       await page.getByRole('dialog',{name:'Instala RGodbeat Studio'}).waitFor();
       await page.getByRole('button',{name:'Cerrar tutorial'}).tap();
       if(process.env.STUDIO_SCREENSHOT_DIR) await page.screenshot({path:process.env.STUDIO_SCREENSHOT_DIR+'/'+name+'-'+width+'x'+height+'.png'});

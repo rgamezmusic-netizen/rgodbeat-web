@@ -21,11 +21,11 @@ try {
   await page.route('**/api/studio/access', route => route.fulfill({ json: { isDemo: true, isLoggedIn: false, hasActivePass: false, email: null } }));
   await page.goto(base + '/studio');
   await page.getByTitle('Reproducir (Espacio)', { exact: true }).waitFor();
-  assert.match(await page.title(), /^RGodbeat Studio/);
+  assert.match(await page.title(), /^RGODBEAT Studio/);
   assert.equal(await page.locator('link[rel="manifest"]').count(), 1);
   assert.equal(await page.locator('link[rel="manifest"]').getAttribute('href'), '/manifest.json');
-  assert.equal(await page.locator('meta[name="apple-mobile-web-app-title"]').getAttribute('content'), 'RGodbeat Studio');
-  assert.equal(await page.locator('meta[name="application-name"]').getAttribute('content'), 'RGodbeat Studio');
+  assert.equal(await page.locator('meta[name="apple-mobile-web-app-title"]').getAttribute('content'), 'RGODBEAT Studio');
+  assert.equal(await page.locator('meta[name="application-name"]').getAttribute('content'), 'RGODBEAT Studio');
   const viewport = await page.locator('meta[name="viewport"]').getAttribute('content');
   assert.match(viewport, /maximum-scale=5/);
   assert.match(viewport, /user-scalable=yes/);
@@ -51,8 +51,10 @@ try {
   const diagnostics = await cdp.send('Page.getInstallabilityErrors');
   console.log('Chrome installability diagnostics (not an OS installation):', JSON.stringify(diagnostics));
   assert.deepEqual(diagnostics.installabilityErrors, []);
-  const storage = await page.evaluate(async () => ({ registrations: (await navigator.serviceWorker.getRegistrations()).length, caches: await caches.keys() }));
-  assert.deepEqual(storage, { registrations: 0, caches: [] });
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  const storage = await page.evaluate(async () => ({ registrations: (await navigator.serviceWorker.getRegistrations()).map(r => new URL(r.scope).pathname), caches: await caches.keys() }));
+  assert.deepEqual(storage.registrations, ['/studio']);
+  assert.ok(storage.caches.every(key => key.startsWith('rgodbeat-studio-ui-')));
   // Separate storage from the metadata check so its autosave cannot create a
   // project-choice modal in this playback-specific fixture.
   const playbackContext = await context.browser().newContext();
@@ -76,8 +78,19 @@ try {
   await playbackContext.close();
   console.log('PASS Chrome: automatic install guide waits until playback is paused');
   await page.goto(base + '/login');
-  assert.equal(await page.locator('link[rel="manifest"]').count(), 0);
+  assert.equal(await page.locator('link[rel="manifest"]').getAttribute('href'), '/manifest.json');
   assert.equal(await page.locator('meta[name="apple-mobile-web-app-title"]').count(), 0);
+  await page.goto(base + '/');
+  await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).waitFor();
+  for (const width of [320, 390, 640, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const bounds = await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).boundingBox();
+    assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width + 1, `install button fits at ${width}px`);
+  }
+  assert.equal(await page.locator('link[rel="manifest"]').getAttribute('href'), '/manifest.json');
+  assert.deepEqual((await cdp.send('Page.getAppManifest')).errors, []);
+  assert.deepEqual((await cdp.send('Page.getInstallabilityErrors')).installabilityErrors, []);
+  console.log('PASS Chrome: the public home exposes the Studio install button and passes native installability diagnostics');
   assert.deepEqual(errors, []);
-  console.log('PASS Chrome: web identity outside Studio retained; no Service Worker or Cache Storage introduced');
+  console.log('PASS Chrome: web identity outside Studio retained; worker scope is limited to Studio');
 } finally { await context?.close(); await rm(profile, { recursive: true, force: true }); }

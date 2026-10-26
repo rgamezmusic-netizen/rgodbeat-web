@@ -12,16 +12,18 @@ assert.ok(process.env.STUDIO_PLAYWRIGHT_PATH);
 const { chromium } = await import(pathToFileURL(process.env.STUDIO_PLAYWRIGHT_PATH).href);
 let server, browser, context, page, base;
 before(async () => {
-  const source = await readFile('components/studio/InstallAppModal.tsx', 'utf8');
+  const source = (await Promise.all(['components/studio/InstallAppModal.tsx', 'components/home/InstallStudioButton.tsx'].map(path => readFile(path, 'utf8')))).join('\n');
   const compiler = await compile(await readFile('app/globals.css', 'utf8'), { base: `${process.cwd()}/app`, onDependency() {} });
   const css = compiler.build(source.match(/[^\s"'`<>]+/g));
   const bundle = await build({ stdin: { resolveDir: process.cwd(), loader: 'tsx', contents: `
     import React, {useState} from 'react';
     import {createRoot} from 'react-dom/client';
     import {InstallAppModal} from './components/studio/InstallAppModal';
-    import {useInstalledApp} from './hooks/useAppInstallation';
-    function Fixture(){const [open,setOpen]=useState(false),installed=useInstalledApp();return <>
-      <button onClick={()=>setOpen(true)}>Abrir instalación</button><output id="installed">{String(installed)}</output>
+    import {InstallStudioButton} from './components/home/InstallStudioButton';
+    import {useAppInstallation} from './hooks/useAppInstallation';
+    function Fixture(){const [open,setOpen]=useState(false),[home,setHome]=useState(location.pathname === '/home'),installation=useAppInstallation();return home ? <>
+      <InstallStudioButton/><button onClick={()=>setHome(false)}>Ir al Studio</button></> : <>
+      <button onClick={()=>setOpen(true)}>Abrir instalación</button><output id="installed">{String(installation.isInstalled)}</output>
       <InstallAppModal isOpen={open} onClose={()=>setOpen(false)}/></>;
     }
     createRoot(document.getElementById('root')).render(<Fixture/>);
@@ -52,6 +54,37 @@ async function offer({ outcome = 'accepted', fail = false, hold = false } = {}) 
     window.offerPrevented = !window.dispatchEvent(event);
   }, { outcome, fail, hold });
 }
+
+test('public install button opens the native prompt directly from a single click', async () => {
+  await page.goto(base + '/home');
+  await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).waitFor();
+  await offer();
+  await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).click();
+  assert.deepEqual(await page.evaluate(() => [installCalls, installGesture]), [1, true]);
+  assert.equal(await page.getByRole('dialog').count(), 0);
+  await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
+  await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).waitFor({ state: 'detached' });
+});
+
+for (const failure of ['dismissed', 'rejected']) test(`public button falls back to guidance after a ${failure} prompt without reusing the offer`, async () => {
+  await page.goto(base + '/home');
+  await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).waitFor();
+  await offer({ outcome: 'dismissed', fail: failure === 'rejected' });
+  await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Instala RGodbeat Studio' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).count(), 0);
+  assert.equal(await page.evaluate(() => installCalls), 1);
+});
+
+test('the native offer survives navigation from the public button to the Studio guide', async () => {
+  await page.goto(base + '/home');
+  await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).waitFor();
+  await offer();
+  await page.getByRole('button', { name: 'Ir al Studio', exact: true }).click();
+  await page.getByRole('button', { name: 'Abrir instalación', exact: true }).click();
+  await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).click();
+  assert.deepEqual(await page.evaluate(() => [installCalls, installGesture]), [1, true]);
+});
 
 test('native offer captured while closed opens a direct one-click install with a real click gesture', async () => {
   await page.goto(base); await page.getByRole('button', { name: 'Abrir instalación' }).waitFor();
@@ -120,10 +153,10 @@ test('iOS Safari has honest manual steps and no invented native install button',
   page = await context.newPage();
   await page.addInitScript(() => Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: undefined }));
   await open();
-  await page.getByRole('heading', { name: 'Abre Compartir en Safari', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '1. Abre Compartir en Safari', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).count(), 0);
-  await page.getByRole('button', { name: 'SIGUIENTE →', exact: true }).click();
-  await page.getByRole('heading', { name: 'Añadir a pantalla de inicio', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '2. Añadir a pantalla de inicio', exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'SIGUIENTE →', exact: true }).count(), 0);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
   if (process.env.STUDIO_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.STUDIO_SCREENSHOT_DIR}/install-safari-manual.png` });
 });
@@ -133,7 +166,7 @@ test('manual device override keeps native installation separate and automatic de
   await page.locator('summary').click();
   await page.getByRole('combobox', { name: 'Sistema operativo' }).selectOption('ios');
   await page.getByRole('combobox', { name: 'Navegador' }).selectOption('safari');
-  await page.getByRole('heading', { name: 'Abre Compartir en Safari', exact: true }).waitFor();
+  await page.getByRole('heading', { name: '1. Abre Compartir en Safari', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).count(), 0);
   await page.getByRole('button', { name: 'Detectar automáticamente', exact: true }).click();
   await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).waitFor();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 
 interface InstallPromptEvent extends Event {
   prompt: () => Promise<unknown>;
@@ -32,52 +32,68 @@ export function useInstalledApp() {
   return useSyncExternalStore(subscribeInstalled, installedSnapshot, serverSnapshot);
 }
 
+type InstallStatus = 'idle' | 'prompting' | 'accepted' | 'dismissed' | 'error';
+interface PromptSnapshot { hasPrompt: boolean; status: InstallStatus }
+const emptyPrompt: PromptSnapshot = { hasPrompt: false, status: 'idle' };
+let promptSnapshot = emptyPrompt;
+let nativePrompt: InstallPromptEvent | null = null;
+let busy = false;
+const promptListeners = new Set<() => void>();
+const readPrompt = () => promptSnapshot;
+const serverPrompt = () => emptyPrompt;
+function updatePrompt(hasPrompt: boolean, status: InstallStatus) {
+  promptSnapshot = { hasPrompt, status };
+  promptListeners.forEach(listener => listener());
+}
+function beforeInstall(event: Event) {
+  const candidate = event as Partial<InstallPromptEvent>;
+  if (busy || installedSnapshot() || typeof candidate.prompt !== 'function' || typeof candidate.userChoice?.then !== 'function') return;
+  event.preventDefault();
+  nativePrompt = event as InstallPromptEvent;
+  updatePrompt(true, 'idle');
+}
+function installCompleted() {
+  nativePrompt = null;
+  updatePrompt(false, 'idle');
+}
+function subscribePrompt(listener: () => void) {
+  if (promptListeners.size === 0) {
+    window.addEventListener('beforeinstallprompt', beforeInstall);
+    window.addEventListener('appinstalled', installCompleted);
+  }
+  promptListeners.add(listener);
+  return () => {
+    promptListeners.delete(listener);
+    if (promptListeners.size === 0) {
+      window.removeEventListener('beforeinstallprompt', beforeInstall);
+      window.removeEventListener('appinstalled', installCompleted);
+    }
+  };
+}
+
+// One browser offer is shared by every button/dialog in this document and
+// survives client navigation. It must only be consumed once, even if declined.
+async function requestInstall(): Promise<'accepted' | 'dismissed' | 'error' | undefined> {
+  const event = nativePrompt;
+  if (!event || busy || installedSnapshot()) return;
+  busy = true;
+  nativePrompt = null;
+  updatePrompt(false, 'prompting');
+  try {
+    await event.prompt();
+    const choice = await event.userChoice;
+    updatePrompt(false, installedSnapshot() ? 'idle' : choice.outcome);
+    return choice.outcome;
+  } catch {
+    updatePrompt(false, 'error');
+    return 'error';
+  } finally {
+    busy = false;
+  }
+}
+
 export function useAppInstallation() {
   const isInstalled = useInstalledApp();
-  const prompt = useRef<InstallPromptEvent | null>(null);
-  const busy = useRef(false);
-  const mounted = useRef(false);
-  const [hasPrompt, setHasPrompt] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'prompting' | 'accepted' | 'dismissed' | 'error'>('idle');
-
-  useEffect(() => {
-    mounted.current = true;
-    const beforeInstall = (event: Event) => {
-      const candidate = event as Partial<InstallPromptEvent>;
-      if (installedSnapshot() || typeof candidate.prompt !== 'function' || typeof candidate.userChoice?.then !== 'function') return;
-      event.preventDefault();
-      prompt.current = event as InstallPromptEvent;
-      setHasPrompt(true);
-      if (!busy.current) setStatus('idle');
-    };
-    const installed = () => { prompt.current = null; busy.current = false; setHasPrompt(false); setStatus('idle'); };
-    window.addEventListener('beforeinstallprompt', beforeInstall);
-    window.addEventListener('appinstalled', installed);
-    return () => {
-      mounted.current = false;
-      window.removeEventListener('beforeinstallprompt', beforeInstall);
-      window.removeEventListener('appinstalled', installed);
-    };
-  }, []);
-
-  const requestInstall = useCallback(async () => {
-    const event = prompt.current;
-    if (!event || busy.current || installedSnapshot()) return;
-    busy.current = true;
-    // A native event is single-use, including when cancelled or rejected.
-    prompt.current = null;
-    setHasPrompt(false);
-    setStatus('prompting');
-    try {
-      await event.prompt();
-      const choice = await event.userChoice;
-      if (mounted.current) setStatus(choice.outcome === 'accepted' ? 'accepted' : 'dismissed');
-    } catch {
-      if (mounted.current) setStatus('error');
-    } finally {
-      busy.current = false;
-    }
-  }, []);
-
+  const { hasPrompt, status } = useSyncExternalStore(subscribePrompt, readPrompt, serverPrompt);
   return { isInstalled, canInstall: hasPrompt && !isInstalled, isPrompting: status === 'prompting', status, requestInstall };
 }

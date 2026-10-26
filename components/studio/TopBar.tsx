@@ -357,7 +357,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-zinc-300 hover:bg-zinc-800 transition-all text-left cursor-pointer"
                   >
                     <Smartphone className="w-4 h-4 text-amber-400" />
-                    <span>Instalar App Móvil</span>
+                    <span>Instalar App</span>
                   </button>
                 )}
 

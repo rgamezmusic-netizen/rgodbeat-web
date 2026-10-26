@@ -315,7 +315,7 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await guideEntry.page.waitForTimeout(650);
     assert.equal(await installGuide.count(),0,'explicit preference hides subsequent automatic guide');
     await guideEntry.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
-    await guideEntry.page.getByRole('button',{name:'Instalar App Móvil',exact:true}).click();
+    await guideEntry.page.getByRole('button',{name:'Instalar App',exact:true}).click();
     await installGuide.waitFor();
     assert.deepEqual(guideEntry.errors,[]); await guideEntry.context.close();
     const appEntry=await fixture(browser,{showGuide:true,standalone:true});

@@ -41,21 +41,21 @@ test('Studio provides its own title, Apple icon and accessible viewport without 
   const root = loadSource('app/layout.tsx', { './globals.css': {}, '@/components/providers/AppProviders': {} });
   assert.equal(studio.metadata.applicationName, manifest.name);
   assert.equal(studio.metadata.manifest, '/manifest.json');
-  assert.match(studio.metadata.title, /RGodbeat Studio/);
+  assert.match(studio.metadata.title, /RGODBEAT Studio/);
   assert.equal(studio.metadata.appleWebApp.title, manifest.name);
   assert.equal(studio.metadata.icons.apple[0].url, '/apple-touch-icon.png');
   assert.equal(studio.viewport.userScalable, true);
   assert.ok(studio.viewport.maximumScale >= 2);
-  assert.equal(root.metadata.manifest, undefined);
+  assert.equal(root.metadata.manifest, '/manifest.json', 'the public site can promote the scoped Studio app');
   assert.equal(root.metadata.appleWebApp, undefined);
 });
 
 test('installation manifest is public while auth and API middleware coverage remains intact', () => {
   const { config } = loadSource('middleware.ts');
-  for (const url of ['/manifest.json', '/manifest.json?version=test', '/icons/icon-512.png', '/apple-touch-icon.png']) {
+  for (const url of ['/manifest.json', '/manifest.json?version=test', '/sw.js', '/sw.js?version=test', '/icons/icon-512.png', '/apple-touch-icon.png']) {
     assert.equal(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url }), false, url);
   }
-  for (const url of ['/studio', '/account', '/admin/youtube', '/login', '/api/studio/project', '/api/studio/youtube/publish', '/api/manifest.json']) {
+  for (const url of ['/studio', '/account', '/admin/youtube', '/login', '/api/studio/project', '/api/studio/youtube/publish', '/api/manifest.json', '/api/sw.js']) {
     assert.equal(unstable_doesMiddlewareMatch({ config, nextConfig: {}, url }), true, url);
   }
 });

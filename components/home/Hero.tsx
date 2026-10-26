@@ -15,7 +15,7 @@ export function Hero() {
           </span>
         </h1>
 
-        <nav className="mt-9 sm:mt-11 flex w-full flex-col items-center justify-center gap-4 sm:w-auto sm:flex-row" aria-label="Explorar RGODBEAT">
+        <nav className="mt-9 sm:mt-11 flex w-full flex-col items-center justify-center gap-4 sm:flex-row sm:flex-wrap" aria-label="Explorar RGODBEAT">
           <Button
             href={RG_CHART_PATH}
             variant="primary"

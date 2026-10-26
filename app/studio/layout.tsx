@@ -2,14 +2,14 @@ import type { Metadata, Viewport } from 'next';
 
 // Installation belongs to Studio; the store/account keep their own web identity.
 export const metadata: Metadata = {
-  title: 'RGodbeat Studio | Graba, mezcla y exporta',
+  title: 'RGODBEAT Studio | Graba, mezcla y exporta',
   description: 'Graba voces, mezcla tus canciones y exporta tu música con RGodbeat Studio.',
-  applicationName: 'RGodbeat Studio',
+  applicationName: 'RGODBEAT Studio',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'RGodbeat Studio',
+    title: 'RGODBEAT Studio',
   },
   icons: {
     icon: [

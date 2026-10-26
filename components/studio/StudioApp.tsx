@@ -2933,7 +2933,7 @@ export default function App() {
         redoCount={redoStack.length}
         currentBeatTitle={currentBeat?.title}
         currentBeatBpm={currentBeat?.bpm}
-        onOpenInstallModal={() => { installGuideOfferedRef.current = true; setShowInstallModal(true); }}
+        onOpenInstallModal={isInstalledApp ? undefined : () => { installGuideOfferedRef.current = true; setShowInstallModal(true); }}
         accessStatus={accessStatus}
         onOpenUnlockModal={() => {
           setUnlockModalReason('general');

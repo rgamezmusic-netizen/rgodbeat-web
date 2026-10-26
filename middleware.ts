@@ -115,8 +115,9 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
      * - manifest.json (public Studio installation metadata, no auth refresh)
+     * - sw.js (public worker code, no auth refresh or session cookies)
      * - static assets (.svg, .png, .jpg, .jpeg, .gif, .webp, .mp3, .wav)
      */
-    "/((?!_next/static|_next/image|favicon.ico|manifest\\.json$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp3|wav)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest\\.json$|sw\\.js$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp3|wav)$).*)",
   ],
 };

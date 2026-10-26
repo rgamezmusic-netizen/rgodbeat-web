@@ -2,7 +2,7 @@ import { BROWSER_LABELS, type BrowserName, type DeviceOS } from './device';
 
 export const INSTALL_GUIDE_HIDDEN_KEY = 'rgodbeat_install_guide_hidden_v2';
 interface Step { title: string; text: string }
-export interface InstallGuide { steps: [Step, Step, Step]; note?: string; source?: string }
+export interface InstallGuide { steps: [Step, Step] | [Step, Step, Step]; note?: string; source?: string }
 
 // Instructions checked against the linked browser documentation in October 2026.
 // Menu presence remains conditional where the browser/vendor does not guarantee it.
@@ -21,20 +21,20 @@ export function getInstallGuide(os: DeviceOS, browser: BrowserName): InstallGuid
     if (browser === 'safari') return {
       steps: [
         { title: 'Abre Compartir en Safari', text: 'Toca el menú de página y después Compartir. Según la disposición de Safari, Compartir también puede aparecer directamente en la barra.' },
-        { title: 'Añadir a pantalla de inicio', text: 'En la hoja de Compartir busca «Añadir a pantalla de inicio». Activa «Abrir como app web» si aparece y toca Añadir.' }, finish,
+        { title: 'Añadir a pantalla de inicio', text: 'En la hoja de Compartir busca «Añadir a pantalla de inicio». Activa «Abrir como app web» si aparece y toca Añadir.' },
       ], source: 'https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/ios',
     };
     if (browser === 'chrome') return {
       steps: [
         { title: 'Abre Compartir en Chrome', text: 'En Chrome para iPhone o iPad, toca Compartir a la derecha de la barra de direcciones.' },
-        { title: 'Añadir a pantalla de inicio', text: 'Desplázate por las acciones, toca «Añadir a pantalla de inicio», comprueba el nombre y confirma con Añadir.' }, finish,
+        { title: 'Añadir a pantalla de inicio', text: 'Desplázate por las acciones, toca «Añadir a pantalla de inicio», comprueba el nombre y confirma con Añadir.' },
       ], note: 'Si tu versión solo crea un acceso directo, puede abrirse en el navegador predeterminado.',
       source: 'https://support.google.com/chrome/answer/9658361?co=GENIE.Platform%3DiOS&hl=es',
     };
     return {
       steps: [
         { title: `Abre Compartir en ${name}`, text: `En ${name}, abre el menú de la página y busca Compartir para abrir la hoja de acciones de iOS.` },
-        { title: 'Comprueba las acciones de iOS', text: 'Si aparece «Añadir a pantalla de inicio», selecciónalo y confirma con Añadir. La disponibilidad depende del navegador y de la versión de iOS.' }, finish,
+        { title: 'Comprueba las acciones de iOS', text: 'Si aparece «Añadir a pantalla de inicio», selecciónalo y confirma con Añadir. La disponibilidad depende del navegador y de la versión de iOS.' },
       ], note: 'Si esa acción no aparece, abre esta dirección en Chrome o Safari y selecciona ese navegador en la guía. Un marcador interno del navegador no instala la app.',
       source: 'https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable',
     };
