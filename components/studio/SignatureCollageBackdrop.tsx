@@ -53,6 +53,7 @@ export const SignatureCollageBackdrop: React.FC = () => {
   return (
     <div
       aria-hidden="true"
+      data-studio-decoration="collage"
       className="pointer-events-none select-none absolute inset-0 overflow-hidden z-0"
     >
       {/* Ambient gradient lighting to give depth to the collage */}

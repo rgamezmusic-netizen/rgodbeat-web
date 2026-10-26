@@ -91,6 +91,20 @@ body::before {
   animation: youtube-progress-indeterminate 1.35s ease-in-out infinite;
 }
 
+/* Optional Studio-only rendering preference. Audio and project state are untouched. */
+[data-studio-visual-mode="light"],
+[data-studio-visual-mode="light"] * {
+  transition: none !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+[data-studio-visual-mode="light"] .animate-pulse,
+[data-studio-visual-mode="light"] .animate-ping {
+  animation: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .youtube-progress-indeterminate {
     width: 100%;

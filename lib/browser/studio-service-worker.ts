@@ -1,4 +1,4 @@
-const CACHE_PREFIX = 'rgodbeat-studio-ui-';
+import { STUDIO_UI_CACHE_PREFIX as CACHE_PREFIX } from './studio-settings';
 
 /** No skipWaiting, clients.claim or reload: normal browser lifecycle coordinates windows. */
 export async function configureStudioServiceWorker(enabled: boolean) {

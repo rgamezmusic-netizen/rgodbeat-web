@@ -25,6 +25,7 @@ import {
   Music,
   User,
   ShieldCheck,
+  Settings,
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -56,6 +57,7 @@ interface TopBarProps {
   onOpenUnlockModal?: () => void;
   onLogout?: () => void;
   onOpenInstallModal?: () => void;
+  onOpenSettings?: () => void;
   onSaveCloudProject?: () => void;
   onLoadCloudProject?: () => void;
   onOpenCloudGallery?: () => void;
@@ -93,6 +95,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenUnlockModal,
   onLogout,
   onOpenInstallModal,
+  onOpenSettings,
   onSaveCloudProject,
   onLoadCloudProject,
   onOpenCloudGallery,
@@ -348,6 +351,15 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <div className="h-[1px] bg-zinc-800 my-1" />
 
                 {/* Install App */}
+                {onOpenSettings && (
+                  <button type="button" onClick={() => {
+                    setShowProjectMenu(false);
+                    onOpenSettings();
+                  }} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-zinc-300 hover:bg-zinc-800 transition-all text-left cursor-pointer">
+                    <Settings className="w-4 h-4 text-amber-400" />
+                    <span>Ajustes de la app</span>
+                  </button>
+                )}
                 {onOpenInstallModal && (
                   <button
                     onClick={() => {

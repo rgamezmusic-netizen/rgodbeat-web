@@ -62,6 +62,8 @@ import { getCatalogBeatId } from '@/lib/studio/audio/catalogBeat';
 import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
 import { InstallAppModal } from './InstallAppModal';
+import { StudioSettingsModal } from './StudioSettingsModal';
+import { useStudioVisualMode } from '@/hooks/useStudioVisualMode';
 import { hasSeenInstallGuide } from '@/lib/browser/install-guide';
 import { maintainScreenWakeLock } from '@/lib/browser/screen-wake-lock';
 import { CloudProjectGalleryModal } from './CloudProjectGalleryModal';
@@ -257,6 +259,8 @@ export default function App() {
   const [tracks, setTracks] = useState<VocalTrack[]>(() => applyUserFXTemplatesToTracks(initialTracks, null));
   const tracksRef = useRef<VocalTrack[]>(tracks);
   const isInstalledApp = useInstalledApp();
+  const { lightVisuals, setLightVisuals } = useStudioVisualMode();
+  const [showAppSettings, setShowAppSettings] = useState(false);
 
   // Recovery runs before the workspace can autosave or offer beat selection.
   const [isStartupResolved, setIsStartupResolved] = useState<boolean>(false);
@@ -2737,7 +2741,7 @@ export default function App() {
     : 1;
 
   return (
-    <div data-studio-ready={isStartupResolved && !startupError ? 'true' : 'false'} className={`w-full max-w-[100vw] ${
+    <div data-studio-visual-mode={lightVisuals ? 'light' : 'standard'} data-studio-ready={isStartupResolved && !startupError ? 'true' : 'false'} className={`w-full max-w-[100vw] ${
       activeView === 'editor'
         ? 'bg-[#09090b] text-white h-dvh max-h-dvh overflow-hidden'
         : 'bg-[#fbbf24] text-zinc-950 min-h-screen overflow-x-hidden justify-between'
@@ -2781,6 +2785,7 @@ export default function App() {
         currentBeatTitle={currentBeat?.title}
         currentBeatBpm={currentBeat?.bpm}
         onOpenInstallModal={isInstalledApp ? undefined : () => setShowInstallModal(true)}
+        onOpenSettings={() => setShowAppSettings(true)}
         accessStatus={accessStatus}
         onOpenUnlockModal={() => {
           setUnlockModalReason('general');
@@ -2971,7 +2976,7 @@ export default function App() {
           /* Dedicated Editing Workspace (Timeline with Beat + Vocal Tracks, moveable clips, micro-latency nudge, 2 leads) */
           <div className="w-full max-w-4xl flex flex-col items-center shrink-0 relative">
             {/* Signature collage watermark pattern */}
-            <SignatureCollageBackdrop />
+            {!lightVisuals && <SignatureCollageBackdrop />}
 
             {/* Multitrack Workspace: Action buttons fixed above, and tracks independently scrolling below */}
             <div className="w-full flex flex-col relative z-10">
@@ -3179,6 +3184,8 @@ export default function App() {
       />
 
       {/* Guide modal on how to install PWA on Android & iOS */}
+      {showAppSettings && <StudioSettingsModal lightVisuals={lightVisuals} onChangeLightVisuals={setLightVisuals}
+        busy={isRecording || isPlaying || isLoadingCloud || isOpeningDeviceProject} onClose={() => setShowAppSettings(false)} />}
       <InstallAppModal
         isOpen={showInstallModal}
         onClose={() => {
