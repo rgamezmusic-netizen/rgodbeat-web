@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/Button";
 import { RG_CHART_PATH } from "@/lib/rg/product/presentation";
+import { InstallStudioButton } from "@/components/home/InstallStudioButton";
 import styles from "./Hero.module.css";
 
 export function Hero() {
@@ -31,6 +32,7 @@ export function Hero() {
           >
             CATÁLOGO
           </Button>
+          <InstallStudioButton />
         </nav>
       </div>
     </section>
