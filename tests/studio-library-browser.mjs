@@ -62,6 +62,8 @@ async function fixture(seed=false) {
   return {context,page,errors};
 }
 async function library(page){
+  const close=page.getByRole('button',{name:'Cerrar biblioteca de beats'});
+  if(await close.isVisible()) await close.click();
   await page.getByTitle(/Clic para cambiar beat o cargar audio/).click();
   const dialog=page.getByRole('dialog',{name:'Biblioteca de beats'});await dialog.waitFor();
   await dialog.getByRole('button',{name:/^Slots/}).click();return dialog;
@@ -81,11 +83,12 @@ try {
 
   const f=await fixture(true),{page}=f;
   try {
-    await page.getByRole('button',{name:/Continuar Sesión/}).waitFor();
+    await page.locator('[data-studio-ready="true"]').waitFor();
     const startup=await page.evaluate(()=>({decoded:__library.decoded,libraryReads:__library.reads.filter(([name])=>name==='saved_beats')}));
     assert.equal(startup.decoded.length,2);assert.deepEqual(startup.libraryReads,[]);
     assert.equal(startup.decoded.reduce((sum,b)=>sum+b.bytes,0),960000);
-    await page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await page.locator('[data-studio-ready="true"]').waitFor();
     let dialog=await library(page);
     await dialog.getByText('library-22',{exact:true}).waitFor();
     if(process.env.STUDIO_SCREENSHOT_DIR) await page.screenshot({path:process.env.STUDIO_SCREENSHOT_DIR+'/biblioteca-metadatos.png'});

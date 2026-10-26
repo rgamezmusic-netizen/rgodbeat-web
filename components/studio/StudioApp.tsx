@@ -62,10 +62,9 @@ import { getCatalogBeatId } from '@/lib/studio/audio/catalogBeat';
 import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
 import { InstallAppModal } from './InstallAppModal';
-import { INSTALL_GUIDE_HIDDEN_KEY } from '@/lib/browser/install-guide';
+import { hasSeenInstallGuide } from '@/lib/browser/install-guide';
 import { maintainScreenWakeLock } from '@/lib/browser/screen-wake-lock';
 import { CloudProjectGalleryModal } from './CloudProjectGalleryModal';
-import { StartupProjectModal } from './StartupProjectModal';
 import { CloudProjectSaveModal } from './CloudProjectSaveModal';
 import { SignatureCollageBackdrop } from './SignatureCollageBackdrop';
 import {
@@ -259,25 +258,12 @@ export default function App() {
   const tracksRef = useRef<VocalTrack[]>(tracks);
   const isInstalledApp = useInstalledApp();
 
-  // Startup Project Prompt state (Continuar Último Proyecto vs Iniciar Proyecto Nuevo)
-  const [showStartupModal, setShowStartupModal] = useState<boolean>(false);
+  // Recovery runs before the workspace can autosave or offer beat selection.
   const [isStartupResolved, setIsStartupResolved] = useState<boolean>(false);
   const startupResolvedRef = useRef(false);
   useEffect(() => { startupResolvedRef.current = isStartupResolved; }, [isStartupResolved]);
-  const [pendingStartupSession, setPendingStartupSession] = useState<{
-    tracks: VocalTrack[];
-    beat?: BeatData | null;
-    beatId?: string | null;
-    loopSettings?: LoopSettings;
-    beatFX?: BeatFX;
-    isBeatMuted?: boolean;
-    currentTime?: number;
-    activeView?: 'studio' | 'editor';
-    takesCount: number;
-    beatTitle: string;
-    savedTimeText?: string;
-    missingBeat?: boolean;
-  } | null>(null);
+  const [needsFirstBeat, setNeedsFirstBeat] = useState(false);
+  const openBeatsAfterInstallRef = useRef(false);
 
   // Covers the whole visible session, including the export/upload modal.
   useEffect(() => maintainScreenWakeLock({ document, window, navigator }), []);
@@ -286,8 +272,6 @@ export default function App() {
   const [bluetoothSyncEnabled, setBluetoothSyncEnabled] = useState<boolean>(false);
   const [bluetoothOffsetMs] = useState<number>(185);
   const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
-
-  const installGuideOfferedRef = useRef(false);
 
   const handleToggleBluetoothSync = () => {
     if (isRecordingRef.current) return;
@@ -874,20 +858,20 @@ export default function App() {
   const [showLoadBeatModal, setShowLoadBeatModal] = useState<boolean>(false);
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
 
-  // Offer the matching guide on entry unless the user explicitly hides it.
+  // Only an empty workspace needs onboarding. Existing projects open directly.
   useEffect(() => {
-    if (!isStartupResolved || showStartupModal || showLoadBeatModal || isUnlockModalOpen
-      || showCloudSaveDialog || showCloudGallery || showExportModal || showBeatFXModal
-      || showLoopModal || activeFXTrackId || isRecording || isPlaying || isLoadingCloud || showInstallModal || isInstalledApp
-      || installGuideOfferedRef.current) return;
-    try { if (localStorage.getItem(INSTALL_GUIDE_HIDDEN_KEY) === 'true') return; } catch { /* Guide works without storage. */ }
+    if (!isStartupResolved || !needsFirstBeat) return;
     const timer = setTimeout(() => {
-      installGuideOfferedRef.current = true;
-      setShowInstallModal(true);
-    }, 500);
+      setNeedsFirstBeat(false);
+      if (!isInstalledApp && !hasSeenInstallGuide()) {
+        openBeatsAfterInstallRef.current = true;
+        setShowInstallModal(true);
+      } else {
+        setShowLoadBeatModal(true);
+      }
+    }, 0);
     return () => clearTimeout(timer);
-  }, [isStartupResolved, showStartupModal, showLoadBeatModal, isUnlockModalOpen, showCloudSaveDialog,
-    showCloudGallery, showExportModal, showBeatFXModal, showLoopModal, activeFXTrackId, isRecording, isPlaying, isLoadingCloud, showInstallModal, isInstalledApp]);
+  }, [isStartupResolved, needsFirstBeat, isInstalledApp]);
 
   // Initialize AudioEngine
   const sessionSettingsRef = useRef({ loopSettings, currentTime, beatVolume: beatFX.volume });
@@ -981,7 +965,7 @@ export default function App() {
 
     setEngine(audioEngine);
 
-    // Generate demo beats and restore saved custom beats from IndexedDB
+    // Restore only the open project; keep the library as lightweight metadata.
     (async () => {
       try {
         const owner = await refreshStudioAccess();
@@ -989,8 +973,52 @@ export default function App() {
         const audioCtx = await audioEngine.ensureAudioContext({ resume: false });
         if (cancelled) return;
 
-        // 0. Detect last active Studio session or cloud project to give user the choice:
-        // "Continuar Último Proyecto" vs "Iniciar Proyecto Nuevo"
+        const openStartupProject = async (session: {
+          tracks: VocalTrack[];
+          beat: BeatData | null;
+          beatVolume?: number;
+          loopSettings?: LoopSettings;
+          beatFX?: BeatFX;
+          isBeatMuted?: boolean;
+          currentTime?: number;
+          activeView?: 'studio' | 'editor';
+        }) => {
+          const defaults = applyUserFXTemplatesToTracks(initialTracks, session.beat, owner);
+          const mergedTracks = defaults.map(track => session.tracks.find(saved => saved.id === track.id) || track);
+          const customTracks = session.tracks.filter(track => !initialTracks.some(initial => initial.id === track.id));
+          // Saved project FX take precedence over templates from other sessions.
+          const finalTracks = [...mergedTracks, ...customTracks];
+          const nextLoop = session.loopSettings || sessionSettingsRef.current.loopSettings;
+          const nextMix = {
+            beatFX: session.beatFX || { lowPass: 20000, highPass: 20, volume: session.beatVolume ?? 1 },
+            isBeatMuted: session.isBeatMuted ?? false,
+          };
+          const nextTime = session.currentTime ?? 0;
+          const nextView = session.activeView || 'studio';
+          setCurrentBeat(session.beat);
+          currentBeatRef.current = session.beat;
+          audioEngine.setBeat(session.beat);
+          setBeatFX(nextMix.beatFX);
+          setIsBeatMuted(nextMix.isBeatMuted);
+          beatMixRef.current = nextMix;
+          setTracks(finalTracks);
+          tracksRef.current = finalTracks;
+          setLoopSettings(nextLoop);
+          audioEngine.setLoopSettings(nextLoop);
+          setCurrentTime(nextTime);
+          // A suspended context can be positioned without requesting playback.
+          if (nextTime) audioEngine.seek(nextTime, finalTracks);
+          setActiveView(nextView);
+          activeViewRef.current = nextView;
+          sessionSettingsRef.current = { loopSettings: nextLoop, currentTime: nextTime, beatVolume: nextMix.beatFX.volume };
+          // Commit interrupted-take recovery using the restored mix, never stale UI state.
+          await saveStudioSession(finalTracks, session.beat, nextLoop, nextTime,
+            nextMix.beatFX.volume, nextView, owner, nextMix);
+          if (cancelled) return;
+          if (!session.beat) setShowLoadBeatModal(true);
+        };
+
+        // Restore the verified owner's project without a startup confirmation.
         let hasPreviousSession = false;
         let cloudCheck: CloudProjectCheckResult | null = null;
 
@@ -1062,40 +1090,9 @@ export default function App() {
           }
         }
         if (cancelled) return;
-        const localTakesCount = (lastSession?.tracks || []).reduce(
-          (acc, t) => acc + (t.clips?.length || (t.buffer ? 1 : 0)),
-          0
-        );
-
-        // Priority 1: If local session has vocal takes, offer local session
         if (lastSession) {
           hasPreviousSession = true;
-          const sessionBeat = lastSession!.beat || null;
-          if (sessionBeat) {
-            setCurrentBeat(sessionBeat);
-            currentBeatRef.current = sessionBeat;
-            audioEngine.setBeat(sessionBeat);
-          }
-
-          if (lastSession!.beatVolume !== undefined) {
-            setBeatFX((prev) => ({ ...prev, volume: lastSession!.beatVolume! }));
-          }
-
-          setPendingStartupSession({
-            tracks: lastSession!.tracks || [],
-            beat: sessionBeat,
-            beatId: sessionBeat?.id || lastSession!.beatId,
-            loopSettings: lastSession!.loopSettings,
-            beatFX: lastSession!.beatFX,
-            isBeatMuted: lastSession!.isBeatMuted,
-            currentTime: lastSession!.currentTime,
-            activeView: lastSession!.activeView || 'studio',
-            takesCount: localTakesCount,
-            beatTitle: sessionBeat?.title || 'Último Beat',
-            savedTimeText: 'Guardado en tu dispositivo',
-            missingBeat: lastSession.losses?.includes('beat'),
-          });
-          setShowStartupModal(true);
+          await openStartupProject({ ...lastSession, beat: lastSession.beat || null });
         } else {
           // Use the query already made above. An unavailable account pauses
           // cloud writes while the device workspace and beat library still open.
@@ -1143,24 +1140,13 @@ export default function App() {
                 }
                 if (cloudTakes > 0 || cloudBeat) {
                   hasPreviousSession = true;
-                  if (cloudBeat) {
-                    setCurrentBeat(cloudBeat);
-                    currentBeatRef.current = cloudBeat;
-                    audioEngine.setBeat(cloudBeat);
-                  }
-                  setPendingStartupSession({
+                  await openStartupProject({
                     tracks: cloudData.tracks || [],
                     beat: cloudBeat,
-                    beatId: cloudBeat?.id || cloudData.beatData?.id,
                     loopSettings: cloudData.loopSettings,
                     beatFX: cloudData.beatFX,
                     isBeatMuted: cloudData.isBeatMuted,
-                    takesCount: cloudTakes,
-                    beatTitle: cloudBeat?.title || cloudData.beatData?.title || 'Proyecto en Cuenta',
-                    savedTimeText: cloudCheck.projectMeta?.savedAt ? new Date(cloudCheck.projectMeta.savedAt).toLocaleDateString() : 'En tu cuenta',
-                    missingBeat: !cloudBeat,
                   });
-                  setShowStartupModal(true);
                 }
               }
             }
@@ -1175,10 +1161,9 @@ export default function App() {
 
         }
 
-        // If no previous session detected at all, mark startup as resolved immediately
-        if (!hasPreviousSession) {
-          setIsStartupResolved(true);
-        }
+        if (cancelled) return;
+        setNeedsFirstBeat(!hasPreviousSession);
+        setIsStartupResolved(true);
 
         // Only lightweight library metadata lives in React state. The open
         // project's beat/voices were restored above; no unrelated audio or demos.
@@ -1325,11 +1310,10 @@ export default function App() {
     // requires an explicit name and destination; local history is archived first.
     if (!cloudWorkPausedRef.current && !cloudVerificationPendingRef.current && !cloudConflictRef.current
       && accessStatusRef.current.isLoggedIn && navigator.onLine && hasConfirmedCloudProject(activeProjectIdRef.current)) {
-      const source = pendingStartupSession;
-      await saveProjectToCloud(source?.tracks || tracksRef.current,
-        source?.missingBeat ? null : source?.beat || currentBeatRef.current,
-        source?.loopSettings || sessionSettingsRef.current.loopSettings,
-        source ? { beatFX: source.beatFX || beatMixRef.current.beatFX, isBeatMuted: source.isBeatMuted || false } : beatMixRef.current);
+      await saveProjectToCloud(tracksRef.current,
+        currentBeatRef.current,
+        sessionSettingsRef.current.loopSettings,
+        beatMixRef.current);
     }
     replacingProjectRef.current = true;
     try {
@@ -1343,94 +1327,25 @@ export default function App() {
       selectCloudProjectSlot('active');
       setCloudBackupStatus(accessStatusRef.current.isLoggedIn ? 'Proyecto local · Elige un espacio en la nube' : '');
       setLocalBackupStatus('Proyecto anterior protegido en este dispositivo');
-      setPendingStartupSession(null);
       return true;
     } finally { replacingProjectRef.current = false; }
   }
 
-  // Handlers for Startup Choice: Continuar Último Proyecto vs Iniciar Proyecto Nuevo
-  const handleContinueLastProject = () => {
-    if (!pendingStartupSession) {
-      setIsStartupResolved(true);
-      setShowStartupModal(false);
-      return;
-    }
-
-    // Merge default track presets with restored session tracks so all channels exist
-    const restoredTracks = pendingStartupSession.tracks;
-    const mergedTracks = initialTracks.map((defaultTrack) => {
-      const found = restoredTracks.find((t) => t.id === defaultTrack.id);
-      return found || defaultTrack;
-    });
-    const customTracks = restoredTracks.filter(
-      (t) => !initialTracks.some((it) => it.id === t.id)
-    );
-    const finalTracks = applyUserFXTemplatesToTracks(
-      [...mergedTracks, ...customTracks],
-      pendingStartupSession.beat || currentBeatRef.current,
-      accessStatus.email
-    );
-    restoreBeatMix(pendingStartupSession);
-
-    setTracks(finalTracks);
-    tracksRef.current = finalTracks;
-
-    if (pendingStartupSession.beat) {
-      setCurrentBeat(pendingStartupSession.beat);
-      currentBeatRef.current = pendingStartupSession.beat;
-      if (engine) engine.setBeat(pendingStartupSession.beat);
-    }
-
-    if (pendingStartupSession.loopSettings) {
-      setLoopSettings(pendingStartupSession.loopSettings);
-      if (engine) engine.setLoopSettings(pendingStartupSession.loopSettings);
-    }
-
-    if (pendingStartupSession.currentTime) {
-      setCurrentTime(pendingStartupSession.currentTime);
-      if (engine) engine.seek(pendingStartupSession.currentTime, finalTracks);
-    }
-
-    if (pendingStartupSession.activeView) {
-      setActiveView(pendingStartupSession.activeView);
-      activeViewRef.current = pendingStartupSession.activeView;
-    }
-
-    setIsStartupResolved(true);
-    setShowStartupModal(false);
-    if (pendingStartupSession.missingBeat || !currentBeatRef.current) setShowLoadBeatModal(true);
-
-    // Lock confirmed project into persistent IndexedDB immediately
-    saveStudioSession(
-      finalTracks,
-      pendingStartupSession.beat || currentBeatRef.current,
-      pendingStartupSession.loopSettings,
-      pendingStartupSession.currentTime,
-      beatFX.volume,
-      pendingStartupSession.activeView || activeViewRef.current
-    );
-
-    setPendingStartupSession(null);
-    showToast('Proyecto abierto.', 'success');
-  };
-
-  // Both entry points create the same clean workspace and open beat selection.
+  // A new project is an explicit menu action; archive the current workspace first.
   const handleNewProject = async () => {
     if (!engine || isRecordingRef.current || replacingProjectRef.current
       || startingNewProjectRef.current || sessionOwnerRef.current === undefined || startupError) return;
-    const hasTakes = Boolean(pendingStartupSession?.takesCount)
-      || tracksRef.current.some(track => getTrackClips(track).length);
+    const hasTakes = tracksRef.current.some(track => getTrackClips(track).length);
     if (hasTakes && !window.confirm('¿Nuevo proyecto? El actual se conservará como anterior.')) return;
 
     startingNewProjectRef.current = true;
     setIsStartingNewProject(true);
     try {
-      const source = pendingStartupSession;
       const settings = sessionSettingsRef.current;
-      if (!await saveStudioSession(source?.tracks || tracksRef.current, source?.missingBeat ? null : source?.beat || currentBeatRef.current,
-        source?.loopSettings || settings.loopSettings, source?.currentTime ?? settings.currentTime,
-        settings.beatVolume, source?.activeView || activeViewRef.current, undefined,
-        source ? { beatFX: source.beatFX || beatMixRef.current.beatFX, isBeatMuted: source.isBeatMuted || false } : beatMixRef.current)) {
+      if (!await saveStudioSession(tracksRef.current, currentBeatRef.current,
+        settings.loopSettings, settings.currentTime,
+        settings.beatVolume, activeViewRef.current, undefined,
+        beatMixRef.current)) {
         showToast('No se pudo proteger el proyecto. Descarga una copia antes de continuar.', 'error'); return;
       }
       let localArchive = await archiveSavedStudioSession(sessionOwnerRef.current);
@@ -1470,7 +1385,6 @@ export default function App() {
       setUndoStack([]);
       setRedoStack([]);
       setIsStartupResolved(true);
-      setShowStartupModal(false);
       setShowLoadBeatModal(true);
       showToast('Nuevo proyecto iniciado', 'success');
     } catch (error) {
@@ -1829,7 +1743,7 @@ export default function App() {
     const handleTransportKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.closest('input, textarea, select, button, a, [contenteditable="true"]') ||
-        document.querySelector('[role="dialog"]') || showLoadBeatModal || showExportModal || activeFXTrackId || showBeatFXModal || showStartupModal) return;
+        document.querySelector('[role="dialog"]') || showLoadBeatModal || showExportModal || activeFXTrackId || showBeatFXModal) return;
       if (event.code === 'Space' && !event.repeat) { event.preventDefault(); void handlePlayPause(); }
     };
     window.addEventListener('keydown', handleTransportKey);
@@ -2625,7 +2539,7 @@ export default function App() {
       restoreBeatMix(nextMix);
       setTracks(cloudTracks); tracksRef.current = cloudTracks;
       setLoopSettings(nextLoop); engine.setLoopSettings(nextLoop); setCurrentTime(0);
-      setUndoStack([]); setRedoStack([]); setPendingStartupSession(null); setShowStartupModal(false);
+      setUndoStack([]); setRedoStack([]);
       if (cloudData.missingBeat || !loadedBeat) setShowLoadBeatModal(true);
       setRecoveryNotice(cloudData.losses.length ? `Se perdió audio de la nube (${cloudData.losses.length}). Se recuperó lo disponible.` : '');
       cloudConflictRef.current = false;
@@ -2739,12 +2653,11 @@ export default function App() {
   const handleImportDeviceProject = async (file: File) => {
     if (isRecordingRef.current || replacingProjectRef.current) return;
     if (sessionOwnerRef.current === undefined || startupError) return;
-    if ((pendingStartupSession?.takesCount || tracksRef.current.some(track => getTrackClips(track).length)) && !window.confirm('¿Abrir archivo? El actual se conservará en este dispositivo.')) return;
+    if (tracksRef.current.some(track => getTrackClips(track).length) && !window.confirm('¿Abrir archivo? El actual se conservará en este dispositivo.')) return;
     if (!engine) return;
-    const source = pendingStartupSession;
     const settings = sessionSettingsRef.current;
-    if (!await saveStudioSession(source?.tracks || tracksRef.current, source?.missingBeat ? null : source?.beat || currentBeatRef.current,
-      source?.loopSettings || settings.loopSettings, source?.currentTime ?? settings.currentTime, settings.beatVolume, activeViewRef.current)) {
+    if (!await saveStudioSession(tracksRef.current, currentBeatRef.current,
+      settings.loopSettings, settings.currentTime, settings.beatVolume, activeViewRef.current)) {
       showToast('No se pudo proteger el proyecto actual. Descarga una copia.', 'error'); return;
     }
     let archived = await archiveSavedStudioSession(sessionOwnerRef.current);
@@ -2787,7 +2700,7 @@ export default function App() {
       setTracks(importedTracks);
       tracksRef.current = importedTracks;
       setRecoveryNotice('');
-      setUndoStack([]); setRedoStack([]); setPendingStartupSession(null);
+      setUndoStack([]); setRedoStack([]);
 
       if (restored.loopSettings) {
         setLoopSettings(restored.loopSettings);
@@ -2803,8 +2716,7 @@ export default function App() {
         });
       }
 
-      // Close startup modal if open and mark startup as resolved
-      setShowStartupModal(false);
+      // The imported workspace is now ready.
       setIsStartupResolved(true);
 
       showToast('✅ Proyecto cargado con éxito desde tu dispositivo.', 'success');
@@ -2868,7 +2780,7 @@ export default function App() {
         redoCount={redoStack.length}
         currentBeatTitle={currentBeat?.title}
         currentBeatBpm={currentBeat?.bpm}
-        onOpenInstallModal={isInstalledApp ? undefined : () => { installGuideOfferedRef.current = true; setShowInstallModal(true); }}
+        onOpenInstallModal={isInstalledApp ? undefined : () => setShowInstallModal(true)}
         accessStatus={accessStatus}
         onOpenUnlockModal={() => {
           setUnlockModalReason('general');
@@ -3269,20 +3181,15 @@ export default function App() {
       {/* Guide modal on how to install PWA on Android & iOS */}
       <InstallAppModal
         isOpen={showInstallModal}
-        onClose={() => { installGuideOfferedRef.current = true; setShowInstallModal(false); }}
+        onClose={() => {
+          setShowInstallModal(false);
+          if (openBeatsAfterInstallRef.current) {
+            openBeatsAfterInstallRef.current = false;
+            setShowLoadBeatModal(true);
+          }
+        }}
       />
 
-      {/* Startup Choice Modal: Continuar Último Proyecto vs Proyecto Nuevo */}
-      <StartupProjectModal
-        isOpen={showStartupModal}
-        beatTitle={pendingStartupSession?.beatTitle || currentBeat?.title || 'Mi Beat'}
-        takesCount={pendingStartupSession?.takesCount || 0}
-        savedTimeText={pendingStartupSession?.savedTimeText}
-        onContinueLastProject={handleContinueLastProject}
-        onStartNewProject={handleNewProject}
-        onOpenDeviceProject={handleImportDeviceProject}
-        onClose={handleContinueLastProject}
-      />
     </div>
   );
 }

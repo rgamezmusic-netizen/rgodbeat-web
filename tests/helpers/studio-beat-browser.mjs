@@ -19,8 +19,9 @@ export async function selectFixtureBeat(page, {alreadyOpen = false} = {}) {
     currentRank:1,previewUrl:origin+'/studio-test-fixture.wav',
   }]}}));
   await page.route('**/studio-test-fixture.wav', route => route.fulfill({contentType:'audio/wav',body:wav}));
-  if(alreadyOpen) await page.getByRole('button',{name:'Cerrar biblioteca de beats'}).click();
   await page.locator('[data-studio-ready="true"]').waitFor();
+  const close = page.getByRole('button',{name:'Cerrar biblioteca de beats'});
+  if(alreadyOpen || await close.isVisible()) await close.click();
   await page.getByTitle(/Clic para cambiar beat o cargar audio/).click();
   await page.getByRole('button',{name:'Top 23',exact:true}).click();
   await page.getByRole('button',{name:'Grabar',exact:true}).click();

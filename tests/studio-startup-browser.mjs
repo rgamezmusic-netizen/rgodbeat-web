@@ -93,11 +93,10 @@ for (const name of ['chromium', 'webkit']) {
     });
     await seed(page,owner); account=owner;
     await page.goto(base+'/studio');
-    await page.getByRole('button',{name:/Continuar Sesión/}).waitFor();
+    await page.locator('[data-studio-ready="true"]').waitFor();
     assert.equal(checks,1);
     assert.deepEqual(await audioStats(page),{contexts:1,resumes:0,premature:0,active:1});
     assert.ok(await page.getByText('Conectando con tu cuenta…',{exact:false}).isVisible());
-    await page.getByRole('button',{name:/Continuar Sesión/}).click();
     assert.ok(await page.getByText('Local saved project',{exact:true}).first().isVisible());
     release();
     await page.getByText('Hay una copia más reciente en tu cuenta. Tu proyecto local se conserva.',{exact:false}).waitFor();
@@ -115,9 +114,8 @@ for (const name of ['chromium', 'webkit']) {
     const external=await browser.newPage();await external.addInitScript(instrumentAudio);
     await external.route('**/api/studio/access',r=>r.fulfill({json:{isDemo:true,isLoggedIn:false,hasActivePass:false,email:null}}));
     await seed(external,null,true);await external.goto(base+'/studio');
-    await external.getByRole('button',{name:/Continuar Sesión/}).waitFor();
+    await external.locator('[data-studio-ready="true"]').waitFor();
     assert.equal((await audioStats(external)).resumes,0);
-    await external.getByRole('button',{name:/Continuar Sesión/}).click();
     await external.addScriptTag({content:bundle.outputFiles[0].text});
     const data=await external.evaluate(async()=>{
       const e=new StudioRegression.AudioEngine({});const ctx=await e.ensureAudioContext({resume:false});
@@ -140,9 +138,8 @@ for (const name of ['chromium', 'webkit']) {
       if (!saved) throw Error('Checkpoint seed failed');
     });
     await interrupted.goto(base + '/studio');
-    await interrupted.getByRole('button', { name: /Continuar Sesión/ }).waitFor();
+    await interrupted.locator('[data-studio-ready="true"]').waitFor();
     assert.equal((await audioStats(interrupted)).premature, 0);
-    await interrupted.getByRole('button', { name: /Continuar Sesión/ }).click();
     await interrupted.getByText('Copia local guardada', { exact: false }).first().waitFor();
     await interrupted.addScriptTag({ content: bundle.outputFiles[0].text });
     const recoveredFirst = await interrupted.evaluate(async () => {
@@ -151,7 +148,7 @@ for (const name of ['chromium', 'webkit']) {
       return { id: session.projectId, clip: session.tracks[0].clips[0].id, frames: session.tracks[0].clips[0].buffer.length };
     });
     assert.deepEqual(recoveredFirst, { id: 'interrupted-first-project', clip: 'interrupted-first-take', frames: 4800 });
-    console.log(`PASS ${name}: first interrupted take offered in startup UI and committed only after continuing`);
+    console.log(`PASS ${name}: first interrupted take automatically recovered and committed`);
     await interrupted.close();
     const authPage = await browser.newPage(), authErrors = [];
     authPage.on('pageerror', error => authErrors.push(error.message));

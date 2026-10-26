@@ -1,24 +1,15 @@
 "use client";
 
-import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, Download, Ellipsis, PlusSquare, Share, Smartphone, X } from 'lucide-react';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import { useModalFocus } from '@/hooks/useModalFocus';
 import { useAppInstallation } from '@/hooks/useAppInstallation';
 import { BROWSER_LABELS, OS_LABELS, type BrowserName, type DeviceOS } from '@/lib/browser/device';
-import { getInstallGuide, INSTALL_GUIDE_HIDDEN_KEY } from '@/lib/browser/install-guide';
+import { getInstallGuide, rememberInstallGuide } from '@/lib/browser/install-guide';
 
 interface InstallAppModalProps { isOpen: boolean; onClose: () => void; isFirstVisitWelcome?: boolean }
-
-const readHiddenPreference = () => {
-  try { return localStorage.getItem(INSTALL_GUIDE_HIDDEN_KEY) === 'true'; } catch { return false; }
-};
-const subscribePreference = (listener: () => void) => {
-  window.addEventListener('storage', listener);
-  window.addEventListener('rgodbeat:install-preference', listener);
-  return () => { window.removeEventListener('storage', listener); window.removeEventListener('rgodbeat:install-preference', listener); };
-};
 
 export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
   const device = useDeviceProfile();
@@ -32,10 +23,10 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
   const [stepState, setStepState] = useState({ key: guideKey, step: 0 });
   const activeStep = stepState.key === guideKey ? stepState.step : 0;
   const setActiveStep = (step: number) => setStepState({ key: guideKey, step });
-  const hidden = useSyncExternalStore(subscribePreference, readHiddenPreference, () => false);
   const dialog = useRef<HTMLElement>(null);
   const handleClose = useCallback(() => {
     if (installation.isPrompting) return;
+    rememberInstallGuide();
     setStepState({ key: '', step: 0 }); setShowInstructions(false); onClose();
   }, [onClose, installation.isPrompting]);
   useModalFocus(isOpen, dialog, handleClose);
@@ -52,7 +43,12 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
   const next = () => {
     if (installation.isPrompting) return;
     if (installation.isInstalled) { handleClose(); return; }
-    if (quickInstall) { void installation.requestInstall(); return; }
+    if (quickInstall) {
+      void installation.requestInstall().then(outcome => {
+        if (outcome === 'accepted') handleClose();
+      });
+      return;
+    }
     if (!iosGuide && activeStep < lastStep) { setActiveStep(activeStep + 1); return; }
     handleClose();
   };
@@ -99,10 +95,6 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
         </div>
         {manual && <button type="button" onClick={() => { setStepState({ key: '', step: 0 }); setOsOverride(null); setBrowserOverride(null); }} className="mt-2 py-2 text-amber-300 underline">Detectar automáticamente</button>}
       {guide.source && <a href={guide.source} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block py-2 text-xs text-zinc-400 underline">Ayuda oficial del navegador</a>}
-      <label className="mt-3 flex items-start gap-2 text-xs text-zinc-400"><input type="checkbox" checked={hidden} onChange={event => {
-        try { if (event.target.checked) localStorage.setItem(INSTALL_GUIDE_HIDDEN_KEY, 'true'); else localStorage.removeItem(INSTALL_GUIDE_HIDDEN_KEY); } catch { /* Storage may be restricted. */ }
-        window.dispatchEvent(new Event('rgodbeat:install-preference'));
-      }} className="mt-0.5 accent-amber-400" /><span>No mostrar al entrar</span></label>
       </details>
       </>}
       <div className="mt-2 flex gap-2">

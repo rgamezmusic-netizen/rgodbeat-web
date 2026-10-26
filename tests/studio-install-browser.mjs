@@ -27,7 +27,10 @@ before(async () => {
       <InstallAppModal isOpen={open} onClose={()=>setOpen(false)}/></>;
     }
     createRoot(document.getElementById('root')).render(<Fixture/>);
-  ` }, bundle: true, write: false, format: 'iife', platform: 'browser', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' } });
+  ` }, bundle: true, write: false, format: 'iife', platform: 'browser', plugins: [{ name: 'fixture-router', setup(build) {
+    build.onResolve({filter: /^next\/navigation$/}, () => ({path:'router',namespace:'fixture'}));
+    build.onLoad({filter: /.*/,namespace:'fixture'}, () => ({contents:`export const useRouter=()=>({push(path){window.__navigation=path;}});`,loader:'js'}));
+  } }], jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' } });
   server = createServer((req, res) => {
     res.setHeader('Content-Type', req.url === '/app.js' ? 'text/javascript' : req.url === '/app.css' ? 'text/css' : 'text/html');
     res.end(req.url === '/app.js' ? bundle.outputFiles[0].text : req.url === '/app.css' ? css : '<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><div id="root"></div><script src="/app.js"></script></html>');
@@ -62,6 +65,7 @@ test('public install button opens the native prompt directly from a single click
   await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).click();
   assert.deepEqual(await page.evaluate(() => [installCalls, installGesture]), [1, true]);
   assert.equal(await page.getByRole('dialog').count(), 0);
+  assert.equal(await page.evaluate(() => window.__navigation), '/studio');
   await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
   await page.getByRole('button', { name: 'Instalar RGODBEAT Studio', exact: true }).waitFor({ state: 'detached' });
 });
@@ -93,7 +97,7 @@ test('native offer captured while closed opens a direct one-click install with a
   assert.equal(await page.getByRole('button', { name: 'SIGUIENTE →', exact: true }).count(), 0);
   if (process.env.STUDIO_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.STUDIO_SCREENSHOT_DIR}/install-native.png` });
   await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).click();
-  await page.getByRole('status').filter({ hasText: 'Instalación solicitada' }).waitFor();
+  await page.getByRole('dialog').waitFor({state:'detached'});
   assert.deepEqual(await page.evaluate(() => [installCalls, installGesture, offerPrevented]), [1, true, true]);
   assert.equal(await page.locator('#installed').textContent(), 'false', 'acceptance alone is not installation confirmation');
 });
@@ -108,8 +112,7 @@ test('busy prompt prevents duplicate submission and modal closure; the consumed 
   await waiting.evaluate(button => { button.click(); button.click(); });
   assert.equal(await page.getByRole('dialog').count(), 1);
   await page.evaluate(() => window.releaseInstall());
-  await page.getByRole('status').filter({ hasText: 'Instalación solicitada' }).waitFor();
-  await page.getByRole('button', { name: 'Cerrar tutorial' }).click();
+  await page.getByRole('dialog').waitFor({state:'detached'});
   await page.getByRole('button', { name: 'Abrir instalación' }).click();
   assert.equal(await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).count(), 0);
   assert.equal(await page.evaluate(() => installCalls), 1);
@@ -126,16 +129,15 @@ for (const failure of ['dismissed', 'rejected']) test(`${failure} native prompt 
   assert.equal(await page.evaluate(() => installCalls), 1);
 });
 
-test('appinstalled updates both the modal and its parent without reload or persistent flags', async () => {
-  await open(); await offer();
-  await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).click();
+test('appinstalled updates installed state; tutorial dismissal is recorded separately', async () => {
+  await open();
   await page.evaluate(() => window.dispatchEvent(new Event('appinstalled')));
   await page.getByText('Studio ya está instalado o abierto como app.', { exact: false }).waitFor();
   assert.equal(await page.locator('#installed').textContent(), 'true');
   assert.equal(await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).count(), 0);
   await page.getByRole('button', { name: 'VOLVER AL STUDIO', exact: true }).click();
   assert.equal(await page.getByRole('dialog').count(), 0);
-  assert.equal(await page.evaluate(() => localStorage.length), 0);
+  assert.equal(await page.evaluate(() => localStorage.getItem('rgodbeat_install_guide_hidden_v2')), 'true');
 });
 
 test('standalone iOS signal avoids offering installation again', async () => {
@@ -199,7 +201,7 @@ test('blocked localStorage and malformed browser events do not prevent using the
   await page.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt', { cancelable: true })));
   assert.equal(await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).count(), 0);
   await page.locator('summary').click();
-  await page.getByRole('checkbox').click();
+  assert.equal(await page.getByRole('checkbox').count(), 0, 'dismissal needs no extra preference');
   await page.getByRole('button', { name: 'SIGUIENTE →', exact: true }).click();
   await page.keyboard.press('Escape');
   assert.equal(await page.getByRole('dialog').count(), 0);
@@ -217,6 +219,6 @@ for (const mode of ['missing', 'legacy']) test(`progressive installation still w
   await page.getByRole('button', { name: 'SIGUIENTE →', exact: true }).waitFor();
   await offer();
   await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).click();
-  await page.getByRole('status').filter({ hasText: 'Instalación solicitada' }).waitFor();
+  await page.getByRole('dialog').waitFor({state:'detached'});
   assert.deepEqual(errors, []);
 });

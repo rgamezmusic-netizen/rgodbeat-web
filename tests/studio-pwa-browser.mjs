@@ -67,17 +67,16 @@ try {
   await player.getByTitle('Reproducir (Espacio)', { exact: true }).click();
   await player.getByTitle('Pausar (Espacio)', { exact: true }).waitFor();
   await player.evaluate(() => localStorage.removeItem('rgodbeat_install_guide_hidden_v2'));
-  // Re-evaluate automatic guidance through an ordinary UI transition while
-  // playing, rather than racing the welcome timer during initial page loading.
+  // Completing the entry flow must never schedule a tutorial during a session.
   await player.getByTitle('Ajustes de filtro y volumen del Beat', { exact: true }).click();
   await player.getByRole('heading', { name: 'BEAT FILTER & FX', exact: true }).locator('xpath=../..').getByRole('button').click();
   await player.waitForTimeout(700);
-  assert.equal(await player.getByRole('dialog', { name: 'Instala RGodbeat Studio' }).count(), 0, 'automatic install guide must not interrupt playback');
+  assert.equal(await player.getByRole('dialog', { name: 'Instala RGodbeat Studio' }).count(), 0);
   await player.getByTitle('Pausar (Espacio)', { exact: true }).click();
-  await player.getByRole('dialog', { name: 'Instala RGodbeat Studio' }).waitFor();
-  await player.getByRole('button', { name: 'Cerrar tutorial' }).click();
+  await player.waitForTimeout(700);
+  assert.equal(await player.getByRole('dialog', { name: 'Instala RGodbeat Studio' }).count(), 0);
   await playbackContext.close();
-  console.log('PASS Chrome: automatic install guide waits until playback is paused');
+  console.log('PASS Chrome: no repeat entry tutorial during playback or after pausing');
   await page.goto(base + '/login');
   assert.equal(await page.locator('link[rel="manifest"]').getAttribute('href'), '/manifest.json');
   assert.equal(await page.locator('meta[name="apple-mobile-web-app-title"]').count(), 0);

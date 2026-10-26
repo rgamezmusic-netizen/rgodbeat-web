@@ -87,7 +87,7 @@ async function fixture(browser, { local = true, failure = false, missingVoice = 
   });
   await context.route('**/api/studio/project/archive', route => route.fulfill({status:503,json:{error:'Nube no disponible.'}}));
   await page.goto(base);
-  await page.getByRole('button', { name: /Continuar Sesión/ }).waitFor();
+  await page.locator('[data-studio-ready="true"]').waitFor();
   return {context,page,state,errors};
 }
 async function waitUntil(predicate, message) {
@@ -104,7 +104,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
   const browser = engineName==='webkit' ? await webkit.launch({headless:true}) : await chromium.launch({channel:'chrome',headless:true});
   try {
     const named = await fixture(browser,{previous:true});
-    await named.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await named.page.locator('[data-studio-ready="true"]').waitFor();
     await waitUntil(()=>named.state.posts.length>0,'initial confirmed save');
     await named.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await named.page.getByRole('button',{name:'Guardar en la Nube',exact:true}).click();
@@ -130,7 +131,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     assert.equal(named.state.posts.at(-1).projectName,'Mi canción');
     await named.page.getByText('Respaldo de cuenta actualizado',{exact:true}).waitFor();
     await named.page.reload();
-    await named.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await named.page.locator('[data-studio-ready="true"]').waitFor();
     await named.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await named.page.getByRole('button',{name:'Guardar en la Nube',exact:true}).click();
     await chooser.getByLabel('Nombre del proyecto').waitFor();
@@ -142,7 +144,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     console.log(`PASS ${engineName}: name, cancel, confirm replacement, autosave and reopen`);
 
     const empty = await fixture(browser,{confirmed:false});
-    await empty.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await empty.page.locator('[data-studio-ready="true"]').waitFor();
     await empty.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await empty.page.getByRole('button',{name:'Guardar en la Nube',exact:true}).click();
     const emptyChooser = empty.page.getByRole('dialog',{name:'Guardar en la nube'});
@@ -164,7 +167,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     console.log(`PASS ${engineName}: free slot and new project preserve both cloud saves`);
 
     const stale = await fixture(browser,{previous:true,confirmed:false});
-    await stale.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await stale.page.locator('[data-studio-ready="true"]').waitFor();
     await stale.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await stale.page.getByRole('button',{name:'Guardar en la Nube',exact:true}).click();
     const staleChooser = stale.page.getByRole('dialog',{name:'Guardar en la nube'});
@@ -181,7 +185,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     console.log(`PASS ${engineName}: changed slot cannot be silently overwritten`);
 
     const unavailable = await fixture(browser,{failure:'permanent'});
-    await unavailable.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await unavailable.page.locator('[data-studio-ready="true"]').waitFor();
     await unavailable.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await unavailable.page.getByRole('button',{name:'Guardar en la Nube',exact:true}).click();
     const unavailableChooser = unavailable.page.getByRole('dialog',{name:'Guardar en la nube'});
@@ -198,7 +203,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     console.log(`PASS ${engineName}: unavailable cloud remains unknown and recovers on retry`);
 
     const recovered = await fixture(browser,{failure:'temporary'});
-    await recovered.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await recovered.page.locator('[data-studio-ready="true"]').waitFor();
     await recovered.page.getByRole('button',{name:'Conectar',exact:true}).waitFor();
     recovered.state.failure=false;
     await recovered.page.getByRole('button',{name:'Conectar',exact:true}).click();
@@ -231,7 +237,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     console.log(`PASS ${engineName}: reconnect same project and download to device`);
 
     const two = await fixture(browser,{previous:true});
-    await two.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await two.page.locator('[data-studio-ready="true"]').waitFor();
     await waitUntil(()=>two.state.posts.length>0,'current project initial backup');
     await two.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await two.page.getByRole('button',{name:'Mis proyectos en la nube',exact:true}).click();
@@ -266,7 +273,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     console.log(`PASS ${engineName}: previous and current cloud slots stay independent`);
 
     const galleryErrors = await fixture(browser,{failure:'permanent',confirmed:false});
-    await galleryErrors.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await galleryErrors.page.locator('[data-studio-ready="true"]').waitFor();
     await galleryErrors.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await galleryErrors.page.getByRole('button',{name:'Mis proyectos en la nube',exact:true}).click();
     const errorGallery = galleryErrors.page.getByRole('dialog',{name:'Mis proyectos en la nube'});
@@ -299,35 +307,28 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     const guideEntry = await fixture(browser,{showGuide:true});
     await guideEntry.page.waitForTimeout(650);
     const installGuide=guideEntry.page.getByRole('dialog',{name:'Instala RGodbeat Studio'});
-    assert.equal(await installGuide.count(),0,'guide waits for project selection');
-    await guideEntry.page.getByRole('button',{name:/Continuar Sesión/}).click();
-    await installGuide.waitFor();
-    await installGuide.getByRole('button',{name:'Cerrar tutorial'}).click();
-    await guideEntry.page.waitForTimeout(650);
-    assert.equal(await installGuide.count(),0,'guide appears once per entry');
-    await guideEntry.page.reload();
-    await guideEntry.page.getByRole('button',{name:/Continuar Sesión/}).click();
-    await installGuide.waitFor();
-    await installGuide.getByText('Más ayuda',{exact:true}).click();
-    await installGuide.getByRole('checkbox').check();
-    await installGuide.getByRole('button',{name:'Cerrar tutorial'}).click();
-    await guideEntry.page.reload();
-    await guideEntry.page.getByRole('button',{name:/Continuar Sesión/}).click();
-    await guideEntry.page.waitForTimeout(650);
-    assert.equal(await installGuide.count(),0,'explicit preference hides subsequent automatic guide');
+    assert.equal(await installGuide.count(),0,'returning project opens without a tutorial');
+    assert.equal(await guideEntry.page.getByRole('button',{name:/Continuar Sesión/}).count(),0);
+    assert.equal(await guideEntry.page.locator('[data-clip-item]').count(),1);
     await guideEntry.page.getByTitle('Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)').click();
     await guideEntry.page.getByRole('button',{name:'Instalar App',exact:true}).click();
     await installGuide.waitFor();
+    await installGuide.getByRole('button',{name:'Cerrar tutorial'}).click();
+    assert.equal(await guideEntry.page.evaluate(()=>localStorage.getItem('rgodbeat_install_guide_hidden_v2')),'true');
+    await guideEntry.page.reload();
+    await guideEntry.page.locator('[data-studio-ready="true"]').waitFor();
+    await guideEntry.page.waitForTimeout(650);
+    assert.equal(await installGuide.count(),0,'completed tutorial stays dismissed');
     assert.deepEqual(guideEntry.errors,[]); await guideEntry.context.close();
     const appEntry=await fixture(browser,{showGuide:true,standalone:true});
-    await appEntry.page.getByRole('button',{name:/Continuar Sesión/}).click();
     await appEntry.page.waitForTimeout(650);
-    assert.equal(await appEntry.page.getByRole('dialog',{name:'Instala RGodbeat Studio'}).count(),0,'installed app is not prompted again');
+    assert.equal(await appEntry.page.getByRole('dialog').count(),0,'installed app goes directly to project');
     assert.deepEqual(appEntry.errors,[]); await appEntry.context.close();
-    console.log(`PASS ${engineName}: automatic guide waits, repeats on entry, opt-out, manual reopening and standalone`);
+    console.log(`PASS ${engineName}: automatic return, persistent tutorial dismissal, manual reopening and standalone`);
 
     const partial = await fixture(browser,{local:false,missingVoice:true});
-    await partial.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await partial.page.locator('[data-studio-ready="true"]').waitFor();
     await partial.page.getByText('Estado y opciones',{exact:true}).click();
     await partial.page.getByText(/Se perdió audio de la nube/).waitFor();
     await partial.page.getByRole('button',{name:'Edición',exact:true}).click();
@@ -339,7 +340,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     console.log(`PASS ${engineName}: report lost clip and continue with recovered voice`);
 
     const offline = await fixture(browser,{failure:'permanent'});
-    await offline.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await offline.page.locator('[data-studio-ready="true"]').waitFor();
     await offline.page.getByText('Estado y opciones',{exact:true}).click();
     await offline.page.getByText('Configuración de nube no disponible.',{exact:true}).waitFor();
     await offline.page.clock.install();
@@ -359,7 +361,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     console.log(`PASS ${engineName}: stop permanent retry, start locally and recover previous audio`);
 
     const transient = await fixture(browser,{failure:'temporary'});
-    await transient.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await transient.page.locator('[data-studio-ready="true"]').waitFor();
     await transient.page.getByRole('button',{name:'Conectar',exact:true}).waitFor();
     await transient.page.clock.install();
     for (let attempt=0;attempt<3;attempt++) {
@@ -381,7 +384,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     console.log(`PASS ${engineName}: transient retry budget stops without losing open audio`);
 
     const device = await fixture(browser,{failure:'temporary'});
-    await device.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await device.page.locator('[data-studio-ready="true"]').waitFor();
     await device.page.getByRole('button',{name:'Conectar',exact:true}).waitFor();
     const failedGets = device.state.gets;
     await device.page.getByRole('button',{name:'SOLO',exact:true}).first().click();
@@ -397,7 +401,8 @@ for (const engineName of (process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWS
     await device.page.clock.fastForward(90000);
     assert.equal(device.state.gets,failedGets,'device work stops all automatic cloud requests');
     await device.page.reload();
-    await device.page.getByRole('button',{name:/Continuar Sesión/}).click();
+
+    await device.page.locator('[data-studio-ready="true"]').waitFor();
     await device.page.getByText('Nube pausada',{exact:true}).waitFor();
     assert.equal(device.state.gets,failedGets,'the same project remembers device work after reopening');
     assert.equal(await device.page.locator('[data-clip-item]').count(),1);

@@ -1,6 +1,18 @@
 import { BROWSER_LABELS, type BrowserName, type DeviceOS } from './device';
 
 export const INSTALL_GUIDE_HIDDEN_KEY = 'rgodbeat_install_guide_hidden_v2';
+
+export function hasSeenInstallGuide(): boolean {
+  try {
+    return localStorage.getItem(INSTALL_GUIDE_HIDDEN_KEY) === 'true'
+      || localStorage.getItem('rgodbeat_install_prompt_seen') === 'true';
+  } catch { return false; }
+}
+
+// This records dismissal of the tutorial, never proof of OS installation.
+export function rememberInstallGuide(): void {
+  try { localStorage.setItem(INSTALL_GUIDE_HIDDEN_KEY, 'true'); } catch { /* Storage may be restricted. */ }
+}
 interface Step { title: string; text: string }
 export interface InstallGuide { steps: [Step, Step] | [Step, Step, Step]; note?: string; source?: string }
 
