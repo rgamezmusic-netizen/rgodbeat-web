@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, Download, PlusSquare, Share2, Smartphone, X } from 'lucide-react';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import { useModalFocus } from '@/hooks/useModalFocus';
@@ -39,7 +40,7 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
   }, [onClose, installation.isPrompting]);
   useModalFocus(isOpen, dialog, handleClose);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
   const guide = getInstallGuide(os, browser);
   const step = guide.steps[activeStep];
   const manual = osOverride !== null || browserOverride !== null;
@@ -54,7 +55,7 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
     if (!iosGuide && activeStep < lastStep) { setActiveStep(activeStep + 1); return; }
     handleClose();
   };
-  return <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm" onClick={handleClose}>
+  return createPortal(<div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/85 p-3 backdrop-blur-sm" onClick={handleClose}>
     <section ref={dialog} role="dialog" aria-modal="true" aria-labelledby="install-title" tabIndex={-1} onClick={event => event.stopPropagation()} className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl border border-white/15 bg-[#101014] p-5 text-white shadow-2xl sm:p-7">
       <div className="flex items-start justify-between gap-3">
         <div><Smartphone className="mb-3 text-amber-400" size={28} /><h2 id="install-title" className="text-xl font-bold">Instala RGodbeat Studio</h2></div>
@@ -66,14 +67,14 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
       {!quickInstall && <>{iosGuide ? <ol className="my-5 space-y-3">
         {guide.steps.map((item, index) => <li key={item.title} className="flex gap-3 rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4">
           <span className="mt-0.5 text-amber-300" aria-hidden="true">{index === 0 ? <Share2 size={24} /> : <PlusSquare size={24} />}</span>
-          <div><h3 className="text-base font-bold">{index + 1}. {item.title}</h3><p className="mt-1 text-sm leading-relaxed text-zinc-200">{item.text}</p></div>
+          <div><h3 className="text-base font-bold text-white">{index + 1}. {item.title}</h3><p className="mt-1 text-sm leading-relaxed text-zinc-200">{item.text}</p></div>
         </li>)}
       </ol> : <><div className="my-5 flex gap-2" aria-label={`Paso ${activeStep + 1} de ${guide.steps.length}`}>
         {guide.steps.map((_, index) => <span key={index} className={`h-1.5 flex-1 rounded-full ${index <= activeStep ? 'bg-amber-400' : 'bg-white/10'}`} />)}
       </div>
       <div aria-live="polite" className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4">
         <span className="text-xs font-bold text-amber-400">PASO {activeStep + 1} / {guide.steps.length}</span>
-        <h3 className="mt-2 text-lg font-bold">{step.title}</h3>
+        <h3 className="mt-2 text-lg font-bold text-white">{step.title}</h3>
         <p className="mt-2 text-sm leading-relaxed text-zinc-200">{step.text}</p>
       </div></>}
       {guide.note && <p className="mt-3 text-xs leading-relaxed text-zinc-400">{guide.note}</p>}</>}
@@ -100,5 +101,5 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
         <button type="button" disabled={installation.isPrompting} onClick={next} className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-amber-400 px-3 py-3 text-sm font-bold text-black hover:bg-amber-300 disabled:opacity-50">{installation.isInstalled ? 'VOLVER AL STUDIO' : installation.isPrompting ? 'ESPERANDO CONFIRMACIÓN…' : quickInstall ? <><Download size={18} />INSTALAR AHORA →</> : iosGuide ? 'ENTENDIDO' : activeStep < lastStep ? 'SIGUIENTE →' : 'LISTO →'}</button>
       </div>
     </section>
-  </div>;
+  </div>, document.body);
 }

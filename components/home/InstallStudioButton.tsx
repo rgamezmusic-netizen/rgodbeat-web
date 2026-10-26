@@ -26,7 +26,7 @@ export function InstallStudioButton() {
           else setShowGuide(true);
         }}
         disabled={installation.isPrompting}
-        className="inline-flex min-h-14 w-full min-w-[220px] items-center justify-center gap-2 rounded-full border border-amber-400/50 bg-amber-400/10 px-7 py-3.5 text-sm font-semibold tracking-wide text-amber-200 transition hover:bg-amber-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60 sm:w-auto sm:text-base"
+        className="inline-flex min-h-14 w-full min-w-[220px] items-center justify-center gap-2 rounded-full border border-amber-400/50 bg-amber-400/10 px-7 py-3.5 text-sm font-semibold tracking-wide text-[#fde68a] transition hover:bg-amber-400/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 disabled:opacity-60 sm:w-auto sm:text-base"
       >
         <Download aria-hidden="true" size={18} />
         {installation.isPrompting ? "Confirma en tu dispositivo…" : "Instalar RGODBEAT Studio"}
