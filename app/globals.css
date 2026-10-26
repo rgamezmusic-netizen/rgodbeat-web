@@ -2,7 +2,8 @@
 @import "../styles/theme.css";
 
 @theme {
-  --color-base: var(--bg-base);
+  /* Avoid text-base: it is Tailwind's font size, not our background color. */
+  --color-page: var(--bg-base);
   --color-surface: var(--bg-surface);
   --color-surface-elevated: var(--bg-surface-elevated);
   --color-surface-hover: var(--bg-surface-hover);

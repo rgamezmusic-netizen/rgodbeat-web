@@ -77,7 +77,7 @@ try {
   await constrained.goto(base, { waitUntil: 'load' });
   await constrained.waitForTimeout(5000);
   assert.ok(!routes.some(path => /^\/(park|the-park|studio|download|services|about)(\/|$)/.test(path)), 'Data saver skips secondary route queue');
-  await constrained.getByRole('button', { name: 'Toggle mobile menu' }).click();
+  await constrained.getByRole('button', { name: 'Menú principal' }).click();
   await constrained.locator('nav a[href="/park"]').filter({ visible: true }).click();
   await constrained.waitForURL(`${base}/park`);
   await constrained.getByRole('heading', { name: 'Graba en el estudio', exact: true }).waitFor();

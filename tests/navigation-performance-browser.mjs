@@ -55,7 +55,7 @@ try {
       assert.equal(await page.getByRole('tab', { name: kind, exact: true }).getAttribute('aria-selected'), 'true');
     }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'No horizontal overflow');
-    if (width === 390) await page.getByRole('button', { name: 'Toggle mobile menu' }).click();
+    if (width === 390) await page.getByRole('button', { name: 'Menú principal' }).click();
     await page.locator('nav').getByRole('link', { name: /^BEATS/ }).filter({ visible: true }).click();
     await page.waitForURL(`${base}/beats`);
     await page.getByRole('textbox', { name: 'Search catalog by title, genre, mood, BPM, or key' }).waitFor();

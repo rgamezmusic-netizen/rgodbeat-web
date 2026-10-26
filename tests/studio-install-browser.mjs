@@ -27,13 +27,13 @@ before(async () => {
       <InstallAppModal isOpen={open} onClose={()=>setOpen(false)}/></>;
     }
     createRoot(document.getElementById('root')).render(<Fixture/>);
-  ` }, bundle: true, write: false, format: 'iife', platform: 'browser', plugins: [{ name: 'fixture-router', setup(build) {
+  ` }, bundle: true, write: false, outfile: 'install.js', format: 'iife', platform: 'browser', plugins: [{ name: 'fixture-router', setup(build) {
     build.onResolve({filter: /^next\/navigation$/}, () => ({path:'router',namespace:'fixture'}));
     build.onLoad({filter: /.*/,namespace:'fixture'}, () => ({contents:`export const useRouter=()=>({push(path){window.__navigation=path;}});`,loader:'js'}));
   } }], jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' } });
   server = createServer((req, res) => {
     res.setHeader('Content-Type', req.url === '/app.js' ? 'text/javascript' : req.url === '/app.css' ? 'text/css' : 'text/html');
-    res.end(req.url === '/app.js' ? bundle.outputFiles[0].text : req.url === '/app.css' ? css : '<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><div id="root"></div><script src="/app.js"></script></html>');
+    res.end(req.url === '/app.js' ? bundle.outputFiles.find(file => file.path.endsWith('.js')).text : req.url === '/app.css' ? css + '\n' + bundle.outputFiles.find(file => file.path.endsWith('.css')).text : '<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"><div id="root"></div><script src="/app.js"></script></html>');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}`;

@@ -37,7 +37,7 @@ try {
   assert.equal(await page.locator('img[alt="RGodbeat Studio"]').getAttribute('loading'), 'lazy');
 
   assert.equal(await page.getByText('TU CARRITO', { exact: true }).count(), 0, 'Background imports must not open checkout');
-  await page.getByRole('button', { name: /CART/ }).click();
+  await page.getByRole('button', { name: /^Abrir carrito/ }).click();
   await page.getByText('TU CARRITO', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Cerrar carrito' }).click();
 
@@ -60,7 +60,7 @@ try {
   await gallery.getByRole('button', { name: /COMPRAR/ }).click();
   await page.getByText('TU CARRITO', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Cerrar carrito' }).click();
-  await page.getByRole('button', { name: /CART/ }).click();
+  await page.getByRole('button', { name: /^Abrir carrito/ }).click();
   await page.getByText('1 ARTÍCULO', { exact: true }).waitFor();
   assert.deepEqual(errors, []);
   console.log('PASS: WebP, responsive/lazy images, asynchronous scripts, cart open/reopen, preview only on play, pause/resume/seek and cart reopen');

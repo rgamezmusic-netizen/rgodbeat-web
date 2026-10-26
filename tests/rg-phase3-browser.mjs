@@ -24,7 +24,7 @@ try {
       await hero.click();await page.waitForURL(`${base}/ranking/season`);
       await page.getByRole('heading',{name:'RG TOP 23.',exact:true}).waitFor();
       await page.goto(base,{waitUntil:'networkidle'});
-      if(width===390)await page.getByRole('button',{name:'Toggle mobile menu'}).click();
+      if(width===390)await page.getByRole('button',{name:'Menú principal'}).click();
       const menuLink=page.locator('nav').filter({has:page.getByAltText('RGodbeat', {exact:true})}).getByRole('link',{name:/^TOP 23/}).filter({visible:true});
       assert.equal(await menuLink.getAttribute('href'),'/ranking/season');
       await menuLink.click();await page.waitForURL(`${base}/ranking/season`);

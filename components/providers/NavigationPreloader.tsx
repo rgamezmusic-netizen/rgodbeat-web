@@ -36,7 +36,7 @@ export function NavigationPreloader() {
       if (!control) return;
       const href = control.getAttribute("href");
       const feature = href === "/studio" ? "studio"
-        : /CART/i.test(control.textContent ?? "") ? "cart"
+        : (control.hasAttribute("data-cart-trigger") || /CART/i.test(control.textContent ?? "")) ? "cart"
         : /^(Play preview of|Escuchar beat)/.test(control.getAttribute("aria-label") ?? "") ? "player" : null;
       if (feature) warmCode(feature);
     };

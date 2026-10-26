@@ -43,11 +43,11 @@ try {
       await sameCanvas();
     }
     await page.screenshot({ path: `${output}/persistent-top23-${width}.png` });
-    if (width === 390) await page.getByRole('button', { name: 'Toggle mobile menu' }).click();
+    if (width === 390) await page.getByRole('button', { name: 'Menú principal' }).click();
     await page.locator('nav').getByRole('link', { name: /^BEATS/ }).filter({ visible: true }).click();
     await page.getByRole('textbox', { name: 'Search catalog by title, genre, mood, BPM, or key' }).waitFor();
     await sameCanvas();
-    if (width === 390) await page.getByRole('button', { name: 'Toggle mobile menu' }).click();
+    if (width === 390) await page.getByRole('button', { name: 'Menú principal' }).click();
     await page.locator('nav a[href="/studio"]').filter({ visible: true }).click();
     await page.waitForURL(`${base}/studio`);
     await page.waitForFunction(() => document.querySelector('[data-persistent-atmosphere]')?.hidden === true);

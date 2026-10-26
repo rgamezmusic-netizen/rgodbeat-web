@@ -68,7 +68,7 @@ try {
     async function navigate(path) {
       let link = page.locator(`nav a[href="${path}"]`).filter({ visible: true }).first();
       if (!await link.count()) {
-        await page.getByRole('button', { name: 'Toggle mobile menu' }).click();
+        await page.getByRole('button', { name: 'Menú principal' }).click();
         link = page.locator(`nav a[href="${path}"]`).filter({ visible: true }).first();
       }
       const started = Date.now();

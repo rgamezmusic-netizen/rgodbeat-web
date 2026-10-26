@@ -134,15 +134,15 @@ test('homepage and both TOP 23 menu links use the existing RG chart; legacy rank
   assert.equal(presentation.RG_CHART_PATH,'/ranking/season');
   const mocks={...replacements,
     './Hero.module.css':{__esModule:true,default:{}},
+    './Navbar.module.css':{__esModule:true,default:{}},
+    'next/navigation':{usePathname:()=>'/',useRouter:()=>({})},
     '@/components/ui/Button':{Button:({children,href})=>React.createElement('a',{href},children)},
     '@/contexts/CartContext':{useCart:()=>({openCart(){},itemCount:0})},
     '@/lib/auth/client':{getBrowserUser:async()=>null},
   };
   const {Hero}=loadSource('components/home/Hero.tsx',mocks);
   const {Navbar}=loadSource('components/layout/Navbar.tsx',mocks);
-  for(const component of [Hero,Navbar])assert.match(html(component),/href="\/ranking\/season"[^>]*>TOP 23/);
-  const menu=readFileSync('components/layout/Navbar.tsx','utf8');
-  assert.equal((menu.match(/href=\{RG_CHART_PATH\}/g)??[]).length,2);
+  for(const component of [Hero,Navbar])assert.match(html(component),/href="\/ranking\/season"[^>]*>(?:<span>)?TOP 23/);
   assert.match(readFileSync('app/ranking/page.tsx','utf8'),/getPublicChart/);
   assert.doesNotMatch(readFileSync('app/ranking/page.tsx','utf8'),/getRgChart|redirect\(/);
 });

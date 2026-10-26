@@ -1,291 +1,116 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Button } from "@/components/ui/Button";
+import { usePathname } from "next/navigation";
+import { ArrowUpRight, Menu, ShoppingBag, UserRound, X } from "lucide-react";
 import { useCart } from "@/contexts/CartContext";
 import { getBrowserUser } from "@/lib/auth/client";
+import { createClient } from "@/lib/supabase/client";
 import { RG_CHART_PATH } from "@/lib/rg/product/presentation";
 import { useBackgroundPrefetch } from "@/lib/browser/prefetch";
+import styles from "./Navbar.module.css";
+
+const destinations = [
+  { href: RG_CHART_PATH, label: "TOP 23" },
+  { href: "/beats", label: "BEATS" },
+  { href: "/studio", label: "STUDIO" },
+  { href: "/services", label: "SERVICIOS" },
+  { href: "/park", label: "THE PARK" },
+  { href: "/about", label: "BIOGRAFÍA" },
+];
 
 export function Navbar() {
   const prefetch = useBackgroundPrefetch();
+  const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<Awaited<ReturnType<typeof getBrowserUser>>>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const { openCart, itemCount } = useCart();
 
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
-    getBrowserUser().then(setCurrentUser).catch(() => {});
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  return (
-    <nav
-      style={{
-        paddingTop: isScrolled
-          ? "max(12px, calc(env(safe-area-inset-top, 0px) + 8px))"
-          : "max(18px, calc(env(safe-area-inset-top, 0px) + 14px))",
-      }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        isScrolled
-          ? "bg-[#08080a]/95 backdrop-blur-xl border-b border-white/[0.08] pb-3.5 shadow-[0_10px_30px_rgba(0,0,0,0.5)]"
-          : "bg-gradient-to-b from-[#08080a]/90 via-[#08080a]/40 to-transparent pb-5 sm:pb-6"
-      }`}
-    >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-        {/* Brand Logo with Graffiti Handstyle & Green Status Indicator */}
-        <Link prefetch={prefetch} href="/" className="flex items-center gap-2.5 group">
-          <div className="relative h-8 sm:h-9 flex items-center">
-            <Image
-              src="/images/rgodbeat-logo.png"
-              alt="RGodbeat"
-              width={979}
-              height={345}
-              sizes="(min-width: 640px) 91px, 80px"
-              loading="eager"
-              fetchPriority="high"
-              style={{ aspectRatio: "979 / 345" }}
-              className="h-7 sm:h-8 w-auto object-contain filter brightness-110 group-hover:drop-shadow-[0_0_14px_rgba(255,255,255,0.45)] transition-all"
-            />
-          </div>
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.9)]" />
+  useEffect(() => {
+    let mounted = true;
+    let authChanged = false;
+    const { data: { subscription } } = createClient().auth.onAuthStateChange((event, session) => {
+      if (event === "INITIAL_SESSION") return;
+      authChanged = true;
+      if (mounted) setCurrentUser(session?.user ?? null);
+    });
+    // A late initial read must not restore a user after a sign-out event.
+    void getBrowserUser().then(user => {
+      if (mounted && !authChanged) setCurrentUser(user);
+    }).catch(() => {});
+    return () => { mounted = false; subscription.unsubscribe(); };
+  }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !navRef.current?.contains(event.target)) setMobileMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMobileMenuOpen(false);
+      menuTrigger.current?.focus();
+    };
+    const desktop = window.matchMedia("(min-width: 1280px)");
+    const closeOnDesktop = () => { if (desktop.matches) setMobileMenuOpen(false); };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+      desktop.removeEventListener("change", closeOnDesktop);
+    };
+  }, [mobileMenuOpen]);
+
+  const selected = (href: string) => href === RG_CHART_PATH
+    ? pathname.startsWith("/ranking") : pathname === href || pathname.startsWith(`${href}/`);
+  const accountHref = currentUser ? "/account" : "/login";
+  const accountLabel = currentUser ? "Mi Cuenta" : "Acceso Artistas";
+
+  return <nav ref={navRef} aria-label="Navegación principal" className={`${styles.header} ${isScrolled || mobileMenuOpen ? styles.solid : ""}`}>
+    <div className={styles.bar}>
+      <Link prefetch={prefetch} href="/" className={styles.brand} aria-label="RGodbeat — Inicio" onClick={() => setMobileMenuOpen(false)}>
+        <Image src="/images/rgodbeat-logo.png" alt="RGodbeat" width={979} height={345}
+          sizes="(min-width: 640px) 100px, 90px" loading="eager" fetchPriority="high" />
+      </Link>
+      <div className={styles.desktopLinks}>
+        {destinations.map(({ href, label }) => <Link key={href} href={href} prefetch={href === "/park" ? false : prefetch}
+          className={styles.navLink} aria-current={selected(href) ? "page" : undefined}>{label}</Link>)}
+      </div>
+      <div className={styles.utilities}>
+        <Link href={accountHref} aria-label={accountLabel} className={`${styles.utility} ${styles.account}`}>
+          <UserRound size={17} aria-hidden="true" /><span>{currentUser ? "MI CUENTA" : "ACCEDER"}</span>
         </Link>
-
-        {/* Center Primary Navigation */}
-        <div className="hidden xl:flex items-center gap-6 text-[13px] font-medium tracking-[0.14em] text-zinc-300">
-          <Link prefetch={prefetch} href={RG_CHART_PATH} className="text-[#d8bc7c] hover:text-[#f0dbab] transition-colors py-1 whitespace-nowrap font-bold">TOP 23</Link>
-          <Link
-            prefetch={prefetch} href="/beats"
-            className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
-          >
-            BEATS
-          </Link>
-          <Link
-            prefetch={prefetch} href="/studio"
-            className="hover:text-amber-300 transition-colors py-1 flex items-center gap-1.5 group"
-            title="Abre el DAW móvil RGODBEAT Studio con Auto-Tune"
-          >
-            <span className="text-white group-hover:text-amber-300 font-bold tracking-wider">STUDIO</span>
-            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
-              APP
-            </span>
-          </Link>
-          <Link
-            prefetch={prefetch} href="/#services"
-            className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
-          >
-            SERVICES
-          </Link>
-          <Link
-            prefetch={false} href="/park"
-            className="hover:text-cyan-300 transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-cyan-400 hover:after:w-full after:transition-all after:duration-200 flex items-center gap-1.5"
-            title="Guía privada de registro de derechos musicales"
-          >
-            <span>THE PARK</span>
-            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-              RIGHTS
-            </span>
-          </Link>
-          <Link
-            prefetch={prefetch} href="/#about"
-            className="hover:text-white transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-purple-400 hover:after:w-full after:transition-all after:duration-200"
-          >
-            ABOUT
-          </Link>
-        </div>
-
-        {/* Right Side Utility Actions */}
-        <div className="hidden sm:flex items-center gap-3 md:gap-3.5">
-          {/* Search Trigger */}
-          <Link
-            prefetch={prefetch} href="/beats"
-            aria-label="Search Beats"
-            className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-colors cursor-pointer"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </Link>
-
-          {/* Account / User Portal Button */}
-          <Link
-            href={currentUser ? "/account" : "/login"}
-            aria-label={currentUser ? "Mi Cuenta" : "Acceso Artistas"}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono text-zinc-300 hover:text-white hover:bg-white/[0.05] border border-white/[0.08] transition-colors"
-          >
-            {currentUser ? (
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-            ) : (
-              <svg
-                className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-              >
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-            )}
-            <span className="hidden md:inline tracking-wider uppercase font-semibold">
-              {currentUser ? "MI CUENTA" : "ACCESO ARTISTAS"}
-            </span>
-          </Link>
-
-          {/* Cart Button */}
-          <Button
-            type="button"
-            onClick={openCart}
-            variant="secondary"
-            size="sm"
-            className="relative group cursor-pointer"
-          >
-            <svg
-              className="w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-colors"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              viewBox="0 0 24 24"
-            >
-              <circle cx="9" cy="21" r="1" />
-              <circle cx="20" cy="21" r="1" />
-              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-            </svg>
-            <span className="tracking-wider">CART</span>
-            <span
-              className={`ml-1 text-[10px] font-mono px-1.5 py-0.2 rounded-full border transition-colors ${
-                itemCount > 0
-                  ? "bg-purple-500 text-white border-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.5)]"
-                  : "bg-white/[0.08] text-zinc-200 border border-white/10"
-              }`}
-            >
-              {itemCount}
-            </span>
-          </Button>
-        </div>
-
-        {/* Mobile Menu Hamburger Trigger with guaranteed 44x44px touch target */}
-        <button
-          type="button"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="xl:hidden p-2.5 rounded-xl bg-white/[0.08] hover:bg-white/15 active:bg-white/25 border border-white/15 text-white focus:outline-none cursor-pointer transition-all active:scale-95 flex items-center justify-center min-w-[44px] min-h-[44px] shadow-sm relative z-50"
-          aria-label="Toggle mobile menu"
-        >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            {mobileMenuOpen ? (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            ) : (
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            )}
-          </svg>
+        <button type="button" data-cart-trigger="true" onClick={() => { setMobileMenuOpen(false); openCart(); }}
+          aria-label={`Abrir carrito, ${itemCount} ${itemCount === 1 ? "producto" : "productos"}`} className={styles.utility}>
+          <ShoppingBag size={17} aria-hidden="true" /><span className={styles.cartLabel}>CARRITO</span><span className={styles.count} aria-hidden="true">{itemCount}</span>
+        </button>
+        <button ref={menuTrigger} type="button" onClick={() => setMobileMenuOpen(open => !open)} className={`${styles.utility} ${styles.menuTrigger}`}
+          aria-label="Menú principal" aria-expanded={mobileMenuOpen} aria-controls="site-mobile-menu">
+          {mobileMenuOpen ? <X size={21} aria-hidden="true" /> : <Menu size={21} aria-hidden="true" />}
         </button>
       </div>
-
-      {/* Mobile Drawer Overlay */}
-      {mobileMenuOpen && (
-        <div className="xl:hidden border-b border-white/10 bg-[#08080a]/98 backdrop-blur-2xl px-6 py-6 space-y-6 max-h-[calc(100vh-100px)] overflow-y-auto shadow-2xl">
-          <div className="flex flex-col gap-4 text-sm tracking-[0.18em] font-medium text-zinc-300">
-            <Link prefetch={prefetch} href={RG_CHART_PATH} onClick={() => setMobileMenuOpen(false)} className="py-3 flex items-center justify-between border-b border-white/[0.06] text-[#d8bc7c]">
-              <span className="font-bold text-base">TOP 23</span><span className="text-xs font-mono">EL RANKING →</span>
-            </Link>
-            <Link
-              prefetch={prefetch} href="/beats"
-              onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
-            >
-              <span className="font-bold text-white text-base">BEATS</span>
-              <span className="text-purple-400 text-xs font-mono font-bold">SHOP →</span>
-            </Link>
-            <Link
-              prefetch={prefetch} href="/studio"
-              onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-amber-300 py-3 transition-colors flex items-center justify-between border-b border-white/[0.06] text-amber-300 bg-amber-500/10 px-3.5 rounded-xl border border-amber-500/30"
-            >
-              <span className="font-bold text-base">RGODBEAT STUDIO</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/30 text-amber-200 border border-amber-500/40 font-bold">
-                DAW APP 🎙️
-              </span>
-            </Link>
-            <Link
-              prefetch={prefetch} href="/#services"
-              onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-white py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
-            >
-              <span>SERVICES</span>
-              <span className="text-zinc-600 text-xs">02</span>
-            </Link>
-            <Link
-              prefetch={false} href="/park"
-              onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-cyan-300 py-3 transition-colors flex items-center justify-between border-b border-white/[0.06]"
-            >
-              <span className="font-bold text-white text-base">THE PARK</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 font-bold">
-                RIGHTS 🛡️
-              </span>
-            </Link>
-            <Link
-              prefetch={prefetch} href="/#about"
-              onClick={() => setMobileMenuOpen(false)}
-              className="hover:text-white py-3 transition-colors flex items-center justify-between pb-3"
-            >
-              <span>ABOUT</span>
-              <span className="text-zinc-600 text-xs">04</span>
-            </Link>
-          </div>
-
-          <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3">
-            <Link
-              href={currentUser ? "/account" : "/login"}
-              className="w-full py-3 rounded-xl text-xs font-mono font-bold tracking-wider uppercase text-center bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-white transition-colors flex items-center justify-center gap-2 min-h-[44px]"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              {currentUser && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
-              <span>{currentUser ? "MI CUENTA" : "ACCESO ARTISTAS"}</span>
-            </Link>
-            <Button
-              variant="primary"
-              size="md"
-              className="w-full justify-center min-h-[44px]"
-              onClick={() => {
-                setMobileMenuOpen(false);
-                openCart();
-              }}
-            >
-              CART ({itemCount})
-            </Button>
-          </div>
-        </div>
-      )}
-    </nav>
-  );
+    </div>
+    {mobileMenuOpen && <div id="site-mobile-menu" className={styles.mobileMenu}>
+      <div className={styles.mobileLinks}>{destinations.map(({ href, label }) => <Link key={href} href={href}
+        prefetch={href === "/park" ? false : prefetch} className={styles.navLink} aria-current={selected(href) ? "page" : undefined}
+        onClick={() => setMobileMenuOpen(false)}><span>{label}</span><ArrowUpRight size={16} aria-hidden="true" /></Link>)}</div>
+      <Link href={accountHref} aria-label={accountLabel} className={`${styles.utility} ${styles.mobileAccount}`} onClick={() => setMobileMenuOpen(false)}>
+        <UserRound size={17} aria-hidden="true" />{currentUser ? "MI CUENTA" : "ACCEDER A MI CUENTA"}
+      </Link>
+    </div>}
+  </nav>;
 }
