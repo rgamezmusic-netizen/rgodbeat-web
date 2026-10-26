@@ -273,7 +273,7 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
           {/* Ticket Security Footer */}
           <div className="pt-4 border-t border-dashed border-white/10 text-center space-y-2">
             <div className="text-[10px] font-mono text-zinc-500">
-              🔒 Autenticidad verificada por RGODBEAT 2.0 • Austin, TX • Global Delivery
+              🔒 Autenticidad verificada por RGodbeat • Austin, TX • Global Delivery
             </div>
             <div className="text-[9px] font-mono text-zinc-600 truncate">
               Hash de seguridad: {purchase.id}

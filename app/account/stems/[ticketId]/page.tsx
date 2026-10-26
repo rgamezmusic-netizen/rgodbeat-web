@@ -253,7 +253,7 @@ export default async function CustomerStemTicketPage({ params }: CustomerTicketP
 
           {/* Footer note */}
           <div className="pt-4 border-t border-dashed border-white/10 text-center text-[10px] font-mono text-zinc-500">
-            RGODBEAT 2.0 &bull; Stems Agrupados Oficiales &bull; Austin, TX &bull; rgodbeat@gmail.com
+            RGodbeat &bull; Stems Agrupados Oficiales &bull; Austin, TX &bull; rgodbeat@gmail.com
           </div>
         </div>
       </div>

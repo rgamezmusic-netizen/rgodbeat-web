@@ -44,7 +44,7 @@ export default function NotFound() {
           </div>
 
           <div className="pt-4 border-t border-white/[0.06] text-[11px] font-mono text-zinc-500">
-            RGODBEAT 2.0 • AUSTIN, TX • ESTUDIO OFICIAL
+            RGodbeat • AUSTIN, TX • ESTUDIO OFICIAL
           </div>
         </div>
       </main>

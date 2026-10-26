@@ -280,7 +280,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
             New Beat
           </h1>
           <p className="text-xs text-zinc-400 font-mono mt-0.5">
-            CREATE AND ENROLL AN INSTRUMENTAL INTO RGODBEAT 2.0
+            CREATE AND ENROLL AN INSTRUMENTAL INTO RGodbeat
           </p>
         </div>
 

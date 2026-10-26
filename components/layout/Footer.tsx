@@ -12,13 +12,12 @@ export function Footer() {
           <div className="col-span-2 space-y-4">
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-xl tracking-[0.2em] text-white">
-                RGODBEAT
+                RGodbeat
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
             </div>
             <p className="text-zinc-500 text-xs max-w-sm leading-relaxed">
-              Premium independent music production house founded by Rafael Gámez. 
-              Modern instrumentals, multi-track licensing, and creative direction for worldwide artists.
+              An independent creative platform built around music, sound, and artistic identity.
             </p>
             <div className="pt-2 text-[11px] font-mono text-zinc-500 space-y-1">
               <div>Austin, TX • Global Delivery</div>
@@ -99,12 +98,12 @@ export function Footer() {
         {/* Bottom Bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] font-mono text-zinc-500">
           <div>
-            &copy; {new Date().getFullYear()} RGODBEAT. All Rights Reserved.
+            &copy; {new Date().getFullYear()} RGodbeat. All Rights Reserved.
           </div>
           <div className="flex items-center gap-6 text-zinc-500">
             <span>Licensing Terms</span>
             <span>Privacy Policy</span>
-            <span className="text-purple-400/80">RGODBEAT 2.0</span>
+            <span className="text-purple-400/80">RGodbeat</span>
           </div>
         </div>
       </div>
