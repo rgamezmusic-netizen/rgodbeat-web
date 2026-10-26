@@ -158,7 +158,24 @@ test('iOS Safari has honest manual steps and no invented native install button',
   await page.getByRole('heading', { name: '2. Añadir a pantalla de inicio', exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'SIGUIENTE →', exact: true }).count(), 0);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+  assert.equal(await page.getByRole('combobox', { name: 'Sistema operativo' }).isVisible(), false, 'device settings stay folded');
+  assert.equal(await page.getByRole('link', { name: 'Ayuda oficial del navegador' }).isVisible(), false);
+  assert.equal(await page.getByLabel('Más opciones de Safari').isVisible(), true);
+  for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 664 }, { width: 820, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    if (process.env.STUDIO_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.STUDIO_SCREENSHOT_DIR}/install-safari-${viewport.width}.png` });
+    const bounds = await page.getByRole('dialog').evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return { fits: rect.top >= 0 && rect.bottom <= innerHeight && rect.left >= 0 && rect.right <= innerWidth, scrolls: element.scrollHeight > element.clientHeight + 1, height: element.clientHeight, content: element.scrollHeight };
+    });
+    assert.equal(bounds.fits && !bounds.scrolls, true, `the two steps and close action fit ${viewport.width} × ${viewport.height}: ${JSON.stringify(bounds)}`);
+  }
+  await page.setViewportSize({ width: 390, height: 664 });
   if (process.env.STUDIO_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.STUDIO_SCREENSHOT_DIR}/install-safari-manual.png` });
+  await page.locator('summary').click();
+  assert.equal(await page.getByRole('combobox', { name: 'Sistema operativo' }).isVisible(), true);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('dialog').count(), 0);
 });
 
 test('manual device override keeps native installation separate and automatic detection restores it', async () => {
@@ -181,6 +198,7 @@ test('blocked localStorage and malformed browser events do not prevent using the
   await open();
   await page.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt', { cancelable: true })));
   assert.equal(await page.getByRole('button', { name: 'INSTALAR AHORA →', exact: true }).count(), 0);
+  await page.locator('summary').click();
   await page.getByRole('checkbox').click();
   await page.getByRole('button', { name: 'SIGUIENTE →', exact: true }).click();
   await page.keyboard.press('Escape');
