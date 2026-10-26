@@ -1,5 +1,4 @@
 import React from "react";
-import Link from "next/link";
 import { STUDIO_SERVICES, formatServicePrice, serviceInquiryMessage } from "@/lib/data/services";
 import { ServiceInfo } from "@/types";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -18,12 +17,6 @@ export function ServicesSection() {
           </ContactButton>
         }
       />
-
-      <div className="mb-8 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 sm:p-6 space-y-3 text-sm text-zinc-400 leading-relaxed">
-        <p>Los precios se expresan en <strong className="text-zinc-200">USD</strong>. “Desde” indica una tarifa inicial por proyecto; desarrollo artístico corresponde a un programa mensual. El alcance, las revisiones, los derechos de uso y la fecha de entrega se confirman en la cotización.</p>
-        <p>Si estás en <strong className="text-zinc-200">Austin</strong>, puedes consultar una sesión de grabación en el estudio. Si estás fuera, podemos trabajar tu <strong className="text-zinc-200">mix y master a distancia</strong>. <ContactButton subject="Grabación en Austin" variant="ghost" size="sm" className="px-0 text-cyan-300 underline underline-offset-4">Consultar grabación</ContactButton>.</p>
-        <p>También puedes consultar la <Link href="/park" className="text-cyan-300 hover:text-white underline underline-offset-4">guía privada de derechos musicales de The Park</Link> y <Link href="/studio" className="text-amber-300 hover:text-white underline underline-offset-4">grabar en la app Studio</Link>.</p>
-      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {STUDIO_SERVICES.map((service: ServiceInfo) => (

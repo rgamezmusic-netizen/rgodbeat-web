@@ -145,7 +145,8 @@ try{
   // Real Next client navigation/back: no Studio preference leaks to the store.
   await page.goto(base+'/');
   await page.evaluate(()=>{window.__modeNavigation='same-document';});
-  await page.getByRole('link',{name:'grabar en la app Studio',exact:true}).click();
+  await page.getByRole('button',{name:'Menú principal',exact:true}).click();
+  await page.getByRole('navigation',{name:'Navegación principal'}).getByRole('link',{name:'STUDIO',exact:true}).click();
   await page.locator('[data-studio-ready="true"]').waitFor();
   assert.equal(await page.evaluate(()=>window.__modeNavigation),'same-document');
   await page.waitForFunction(()=>document.body.dataset.studioRendering==='light');
