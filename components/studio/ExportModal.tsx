@@ -5,6 +5,9 @@ import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 import { StemDeliveryForm } from './StemDeliveryForm';
 import { useModalFocus } from '@/hooks/useModalFocus';
 import { studioVideoMetadata } from '@/lib/youtube/metadata';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { publicationRewardMessages, type PublicationRewards } from '@/lib/rg/publication-rewards';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -74,6 +77,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
   const [isExportingBeatStem, setIsExportingBeatStem] = useState(false);
   const [isSendingStems, setIsSendingStems] = useState(false);
   const exportLock = useRef(false);
+  const router = useRouter();
   const [view, setView] = useState<'choose' | 'youtube' | 'advanced' | 'delivery'>('choose');
   const [downloadingStemId, setDownloadingStemId] = useState<string | null>(null);
   const [youtubeStatus, setYoutubeStatus] = useState<{ available: boolean; connected: boolean; channelName?: string; error?: string; code?: string; canReconnect?: boolean; maxMasterBytes?: number; maxCoverBytes?: number } | null>(null);
@@ -86,7 +90,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
   const [madeForKids, setMadeForKids] = useState(false);
   const [hasRights, setHasRights] = useState(false);
   const [coverImage, setCoverImage] = useState<File | null>(null);
-  const [youtubeResult, setYoutubeResult] = useState<{ videoId: string; videoUrl: string; privacy: string; uploadId: string; rgLink?: { artistId: string; trackId: string; beatId: string | null }; rgPublicationLinked?: boolean; rgPublicationError?: string } | null>(null);
+  const [youtubeResult, setYoutubeResult] = useState<{ videoId: string; videoUrl: string; privacy: string; uploadId: string; rgLink?: { artistId: string; trackId: string; beatId: string | null }; rgPublicationLinked?: boolean; rgPublicationError?: string; rewards?: PublicationRewards } | null>(null);
   const [rgArtist, setRgArtist] = useState<RgArtist | null>(null);
   const [rgTracks, setRgTracks] = useState<RgTrack[]>([]);
   const [rgTrackId, setRgTrackId] = useState('');
@@ -322,7 +326,10 @@ const ExportDialog: React.FC<ExportModalProps> = ({
       }
       setYoutubeResult({ videoId: result.videoId, videoUrl: result.videoUrl, privacy: result.privacy, uploadId,
         rgLink,
-        rgPublicationLinked: result.rgPublicationLinked, rgPublicationError: result.rgPublicationError });
+        rgPublicationLinked: result.rgPublicationLinked, rgPublicationError: result.rgPublicationError, rewards: result.rgRewards });
+      window.dispatchEvent(new Event('rg-wallet-updated'));
+      window.dispatchEvent(new Event('rg-publication-updated'));
+      router.refresh();
       setYoutubeProgress({ stage: 'publish', label: 'Vídeo cargado y confirmado por YouTube', transferredBytes: 1, totalBytes: 1 });
       content.current?.scrollTo(0, 0);
       onShowToast(result.rgPublicationLinked === true
@@ -351,11 +358,14 @@ const ExportDialog: React.FC<ExportModalProps> = ({
         body: JSON.stringify({ ...youtubeResult.rgLink, youtubeExportJobId: youtubeResult.uploadId }) });
       const data = await response.json();
       if (!response.ok || !data.linked) throw new Error(data.error || 'No se pudo vincular el RG Track.');
-      setYoutubeResult(previous => previous ? { ...previous, rgPublicationLinked: true, rgPublicationError: undefined } : previous);
-      onShowToast('El vínculo con el RG Track quedó guardado.', 'success');
+      setYoutubeResult(previous => previous ? { ...previous, rgPublicationLinked: true, rgPublicationError: undefined, rewards: data.rewards } : previous);
+      window.dispatchEvent(new Event('rg-wallet-updated'));
+      window.dispatchEvent(new Event('rg-publication-updated'));
+      router.refresh();
+      onShowToast('Participación consultada. Mostrando los puntos y RG confirmados.', 'info');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo vincular el RG Track.';
-      setYoutubeResult(previous => previous ? { ...previous, rgPublicationLinked: false, rgPublicationError: message } : previous);
+      setYoutubeResult(previous => previous ? { ...previous, rgPublicationError: message } : previous);
       onShowToast('La publicación sigue confirmada. El vínculo RG puede reintentarse.', 'info');
     } finally { setRgLoading(false); }
   };
@@ -500,7 +510,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
               <h3 className="text-2xl font-bold leading-tight tracking-tight">Lleva tu canción al Top.</h3>
               <div className="my-5 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-amber-200">
                 <span className="flex items-center gap-1.5"><Trophy size={15} /> Puntos para el Top 23</span>
-                <span className="flex items-center gap-1.5"><Coins size={15} /> Premios en RG Coins</span>
+                <span className="flex items-center gap-1.5"><Coins size={15} /> Premios en RG</span>
               </div>
               <button type="button" onClick={openYouTube} disabled={!beat || !engine || isBusy} className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}><Video size={19} /> Publicar en YouTube <ArrowRight className="ml-auto" size={18} /></button>
             </section>
@@ -516,14 +526,21 @@ const ExportDialog: React.FC<ExportModalProps> = ({
             <p className="text-sm text-zinc-400">{youtubeResult.privacy === 'private' ? 'Privado' : youtubeResult.privacy === 'public' ? 'Público' : 'No listado'}</p>
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-relaxed text-amber-100">
               <Trophy size={22} className="mx-auto mb-2 text-amber-300" />
-              {youtubeResult.rgPublicationLinked === true ? 'Tu publicación quedó vinculada al Top 23.' : 'Tu vídeo se publicó. Falta vincular tu participación al Top 23.'}
-              {youtubeResult.rgPublicationLinked !== true && youtubeResult.rgLink && <button type="button" onClick={() => void handleRetryRgLink()} disabled={rgLoading} className={`${buttonClass} mt-3 bg-amber-400 text-black hover:bg-amber-300`}>{rgLoading ? 'Vinculando…' : 'Reintentar participación'}</button>}
+              <p>{youtubeResult.rgPublicationLinked === true ? 'Tu publicación quedó vinculada al Top 23.' : 'Tu vídeo se publicó. Falta vincular tu participación al Top 23.'}</p>
+              {youtubeResult.rgPublicationLinked === true && <div className="mt-3 space-y-2">
+                <p>{publicationRewardMessages(youtubeResult.rewards).score}</p>
+                <p>{publicationRewardMessages(youtubeResult.rewards).credits}</p>
+                {youtubeResult.rewards?.balanceRg != null && <p>Saldo: {youtubeResult.rewards.balanceRg.toLocaleString('es')} RG</p>}
+              </div>}
+              {youtubeResult.rgPublicationError && <p className="mt-2 text-xs text-amber-200">{youtubeResult.rgPublicationError}</p>}
+              {youtubeResult.rgLink && (youtubeResult.rgPublicationLinked !== true || youtubeResult.rewards?.score !== 'recorded' || youtubeResult.rewards?.credits !== 'credited') && <button type="button" onClick={() => void handleRetryRgLink()} disabled={rgLoading} className={`${buttonClass} mt-3 bg-amber-400 text-black hover:bg-amber-300`}>{rgLoading ? 'Consultando…' : youtubeResult.rgPublicationLinked ? 'Actualizar puntos y RG' : 'Reintentar participación'}</button>}
             </div>
+            <Link href="/rg/wallet" prefetch={false} className={`${buttonClass} border border-amber-300/20 text-amber-200`}>Ver mi wallet RG <ArrowRight size={17} /></Link>
             <a href={youtubeResult.videoUrl} target="_blank" rel="noreferrer" className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}>Ver en YouTube <ExternalLink size={17} /></a>
             <button type="button" onClick={handleClose} disabled={isBusy} className={`${buttonClass} bg-white/5 hover:bg-white/10`}>Volver al Studio</button>
           </div> : <form id="youtube-publish-form" className="space-y-4" onSubmit={event => { event.preventDefault(); void handlePublishToYouTube(); }}>
             <h3 tabIndex={-1} className="sr-only outline-none">Publica y entra al Top</h3>
-            <div className="flex items-start gap-2.5 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-200"><Trophy size={18} className="mt-0.5 shrink-0" /><p>Suma puntos para el Top 23 y compite por premios en RG Coins.</p></div>
+            <div className="flex items-start gap-2.5 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-200"><Trophy size={18} className="mt-0.5 shrink-0" /><p>Suma puntos para el Top 23 y compite por premios en RG.</p></div>
             <label className="block text-sm text-zinc-300">Nombre artístico
               <input value={artistName} maxLength={80} required autoComplete="nickname" onChange={event => setArtistName(event.target.value)} disabled={isBusy} placeholder="Tu nombre de artista" className={inputClass} />
             </label>

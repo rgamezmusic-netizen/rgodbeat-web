@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { loadSource } from './helpers/rg-fixtures.mjs';
+import sharp from 'sharp';
 
 const manifest = JSON.parse(readFileSync('public/manifest.json', 'utf8'));
 const require = createRequire(import.meta.url);
@@ -23,7 +24,11 @@ test('Studio keeps the existing install identity and launches inside its explici
   assert.equal(manifest.lang, 'es');
 });
 
-test('all declared install icons exist as PNG files with their actual advertised sizes', () => {
+test('all declared install icons have real sizes; the black RG adaptive icon keeps its mark inside the safe circle', async () => {
+  assert.equal(manifest.name, 'RG');
+  assert.equal(manifest.short_name, 'RG');
+  assert.equal(manifest.background_color, '#000000');
+  assert.equal(manifest.theme_color, '#000000');
   assert.ok(manifest.icons.some(icon => icon.sizes === '192x192'));
   assert.ok(manifest.icons.some(icon => icon.sizes === '512x512'));
   for (const icon of manifest.icons) {
@@ -32,7 +37,14 @@ test('all declared install icons exist as PNG files with their actual advertised
     assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
     assert.equal(`${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`, icon.sizes);
     assert.equal(icon.type, 'image/png');
-    assert.ok(!icon.purpose?.includes('maskable'), 'existing wide logo is not certified for adaptive masks');
+    if (icon.purpose?.includes('maskable')) {
+      const {data,info}=await sharp(bytes).removeAlpha().raw().toBuffer({resolveWithObject:true});
+      assert.deepEqual([...data.subarray(0,3)],[0,0,0]);
+      for(let y=0;y<info.height;y++) for(let x=0;x<info.width;x++) {
+        const offset=(y*info.width+x)*info.channels;
+        if(data[offset]>16||data[offset+1]>16||data[offset+2]>16) assert.ok(Math.hypot(x-info.width/2,y-info.height/2)<info.width*0.4,'RG stays in the adaptive safe zone');
+      }
+    }
   }
 });
 

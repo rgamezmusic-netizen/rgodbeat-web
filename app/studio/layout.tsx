@@ -4,12 +4,12 @@ import type { Metadata, Viewport } from 'next';
 export const metadata: Metadata = {
   title: 'RGODBEAT Studio | Graba, mezcla y exporta',
   description: 'Graba voces, mezcla tus canciones y exporta tu música con RGodbeat Studio.',
-  applicationName: 'RGODBEAT Studio',
+  applicationName: 'RG',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'RGODBEAT Studio',
+    title: 'RG',
   },
   icons: {
     icon: [
@@ -26,7 +26,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: 'cover',
-  themeColor: '#09090b',
+  themeColor: '#000000',
 };
 
 export default function StudioLayout({ children }: { children: React.ReactNode }) {

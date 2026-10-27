@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       beatId: value.beatId as string | null, youtubeExportJobId: value.youtubeExportJobId,
     });
     if (!result.linked) return NextResponse.json({ linked: false, error: result.error, code: result.code }, { status: 409 });
-    return NextResponse.json({ linked: true, publicationId: result.publicationId });
+    return NextResponse.json({ linked: true, publicationId: result.publicationId, rewards: result.rewards }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     const result = serializeIdentityError(error);
     return NextResponse.json({ error: result.error, code: result.code }, { status: result.status });

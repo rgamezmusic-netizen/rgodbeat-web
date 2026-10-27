@@ -188,6 +188,9 @@ export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
         <button type="button" className={styles.play} onClick={() => togglePlay(selected)} aria-label={selectedIsPlaying ? "Pausar beat" : "Escuchar beat"}>
           {selectedIsPlaying ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
         </button>
+        <Link href="/studio" className={styles.record} aria-label="REC — Abrir Studio" title="Abrir RGodbeat Studio">
+          <span aria-hidden="true" />REC
+        </Link>
         <button type="button" className={styles.arrow} onClick={() => moveBy(1)} aria-label="Siguiente beat">
           <ChevronRight size={21} />
         </button>

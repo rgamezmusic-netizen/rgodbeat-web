@@ -1,5 +1,4 @@
 import React from "react";
-import Link from "next/link";
 import { RetryRouteButton } from "@/components/ui/RetryRouteButton";
 import { Navbar, Footer } from "@/components/layout";
 import { BeatsShopClient } from "@/components/beats";
@@ -48,16 +47,9 @@ export default async function BeatsPage() {
             </span>
           </div>
 
-          <div className="flex items-center justify-between gap-4">
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white uppercase">
-              BEATS
-            </h1>
-            <Link href="/studio" aria-label="REC — Abrir Studio" title="Abrir RGodbeat Studio"
-              className="inline-flex min-h-12 min-w-24 shrink-0 items-center justify-center gap-2.5 rounded-2xl border border-red-400/30 bg-red-600 px-5 py-3 text-sm font-bold tracking-[0.12em] text-white transition-colors hover:bg-red-500 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300">
-              <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-white" />
-              REC
-            </Link>
-          </div>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white uppercase">
+            BEATS
+          </h1>
 
           <p className="text-base sm:text-lg text-zinc-400 font-normal leading-relaxed">
             Production-ready sounds and pristine sonic textures designed for your signature sound.

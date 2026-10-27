@@ -31,7 +31,12 @@ const bundle = await build({ stdin: { resolveDir: process.cwd(), loader: 'tsx', 
     <ExportModal isOpen={open} onClose={()=>{window.__exportFixture.closed++;setOpen(false)}} accountArtistName="Nombre de la web" isDemo={new URLSearchParams(location.search).has('demo')} onOpenUnlockModal={()=>setToast('Activar pase')} beat={beat} tracks={tracks} engine={engine} onShowToast={setToast}/>
   </>};
   createRoot(document.getElementById('root')).render(<Fixture/>);
-` }, bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' } });
+` }, bundle: true, write: false, platform: 'browser', format: 'iife', jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' }, plugins: [{name:'router-fixture',setup(build){
+  build.onResolve({filter:/^next\/(navigation|link)$/},args=>({path:args.path,namespace:'router-fixture'}));
+  build.onLoad({filter:/.*/,namespace:'router-fixture'},args=>({loader:'jsx',resolveDir:process.cwd(),contents:args.path.endsWith('navigation')
+    ? 'export const useRouter=()=>({refresh(){window.__exportFixture.refreshes=(window.__exportFixture.refreshes||0)+1}});'
+    : 'import React from "react";export default function Link({prefetch,...props}){return <a {...props}/>};'}));
+}}] });
 const server = createServer((request, response) => {
   const path = new URL(request.url, 'http://localhost').pathname;
   if (path === '/images/rgodbeat-studio-logo.png') { response.setHeader('content-type', 'image/png'); response.end(studioLogo); return; }
@@ -45,7 +50,7 @@ const artist = { id: '11111111-1111-4111-8111-111111111111', stage_name: 'LARY',
 const track = { id: '22222222-2222-4222-8222-222222222222', title: 'Mi canción', beat_id: '33333333-3333-4333-8333-333333333333', status: 'draft' };
 const browsers = process.env.STUDIO_BROWSER === 'webkit' ? [['webkit', webkit]] : [['chromium', chromium]];
 
-async function fixture(browser, { width = 390, height = 844, noArtist = false, unavailable = false, authorizationExpired = false, owner = false, identityError = false, failedTrack = false, failedPublish = false, pendingLink = false, demo = false } = {}) {
+async function fixture(browser, { width = 390, height = 844, noArtist = false, unavailable = false, authorizationExpired = false, owner = false, identityError = false, failedTrack = false, failedPublish = false, pendingLink = false, demo = false, rewards } = {}) {
   const page = await browser.newPage({ viewport: { width, height }, hasTouch: true, isMobile: width < 600 });
   const errors = [], requests = [], posts = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -65,9 +70,9 @@ async function fixture(browser, { width = 390, height = 844, noArtist = false, u
     if (path === '/api/studio/youtube/upload') return route.fulfill({json:{success:true}});
     if (path === '/api/studio/youtube/publish') {
       if (failedPublish && posts.filter(item=>item.path===path).length===1) return route.fulfill({status:502,json:{error:'YouTube no terminó la publicación. Inténtalo de nuevo.'}});
-      return route.fulfill({json:{success:true,videoId:'fixture-video',videoUrl:'https://www.youtube.com/watch?v=fixture-video',privacy:request.postDataJSON().privacy,rgPublicationLinked:!pendingLink}});
+      return route.fulfill({json:{success:true,videoId:'fixture-video',videoUrl:'https://www.youtube.com/watch?v=fixture-video',privacy:request.postDataJSON().privacy,rgPublicationLinked:!pendingLink,rgRewards:rewards}});
     }
-    if (path === '/api/rg/publications') return route.fulfill({json:{linked:true}});
+    if (path === '/api/rg/publications') return route.fulfill({json:{linked:true,rewards}});
     return route.fulfill({status:503,json:{error:'Unexpected fixture request'}});
   });
   await page.goto(base + (demo ? '/?demo' : '/'));
@@ -91,7 +96,7 @@ try {
         const dialog=f.page.getByRole('dialog');
         assert.equal(await dialog.locator('input,select,textarea').count(),0,'home has no forms');
         assert.equal(await dialog.getByText(/sidechain|24-bit|32-bit|stems|Hz|ID canónico/i).count(),0,'home hides technical information');
-        assert.ok(await dialog.getByText('Premios en RG Coins',{exact:true}).isVisible());
+        assert.ok(await dialog.getByText('Premios en RG',{exact:true}).isVisible());
         assert.equal(await dialog.getByText('Publica en YouTube, suma puntos para el Top 23 y compite por RG Coins.',{exact:true}).count(),0,'remove repeated explanation');
         assert.ok(await dialog.locator('[aria-hidden="true"][style*="rgodbeat-studio-logo.png"]').isVisible(),'existing Studio logo is the card backdrop');
         assert.ok(await dialog.getByRole('button',{name:'Publicar en YouTube',exact:true}).isVisible());
@@ -128,7 +133,7 @@ try {
       await automatic.page.getByText('Portada y más opciones',{exact:true}).click();
       const description=automatic.page.getByLabel('Descripción del vídeo',{exact:true});
       assert.match(await description.inputValue(),/Artista: LARY/);
-      assert.match(await description.inputValue(),/#RGodbeat #RGodbeatStudio #Top23 #RGCoins/);
+      assert.match(await description.inputValue(),/#RGodbeat #RGodbeatStudio #Top23 #RG/);
       assert.match(await description.inputValue(),/https:\/\/www\.rgodbeat\.com\/ranking\/season/);
       await automaticTitle.fill('Título personalizado'); await description.fill('Descripción personalizada');
       await automaticArtist.fill('LARY 2');
@@ -147,6 +152,25 @@ try {
       assert.match(automaticPublished.videoDescription,/14 días/);
       assert.deepEqual(automatic.errors,[]);await automatic.page.close();
       console.log(`PASS ${name}: website-name fallback, automatic metadata, editable overrides, restore defaults, confirmed completion`);
+
+      for(const credits of ['credited','pending','unavailable']) {
+        const f=await fixture(browser,{rewards:{score:'recorded',points:10,credits,creditedRg:credits==='credited'?200:null,balanceRg:credits==='credited'?400:null}});
+        await publishForm(f.page);
+        await f.page.getByRole('button',{name:'Publicar y participar',exact:true}).click();
+        await f.page.getByText('10 puntos registrados en el Top 23.',{exact:true}).waitFor();
+        assert.equal(await f.page.getByText('200 RG acreditados en tu wallet.',{exact:true}).count(),credits==='credited'?1:0);
+        assert.equal(await f.page.getByText('Saldo: 400 RG',{exact:true}).count(),credits==='credited'?1:0);
+        assert.equal(await f.page.getByRole('link',{name:'Ver mi wallet RG'}).getAttribute('href'),'/rg/wallet');
+        assert.ok(await f.page.evaluate(()=>window.__exportFixture.refreshes>0));
+        if(credits!=='credited') {
+          await f.page.getByRole('button',{name:'Actualizar puntos y RG',exact:true}).click();
+          await f.page.getByRole('button',{name:'Actualizar puntos y RG',exact:true}).waitFor();
+        }
+        assert.equal(f.posts.filter(item=>item.path.endsWith('/publish')).length,1);
+        if(credits==='credited' && process.env.STUDIO_SCREENSHOT_DIR) await f.page.screenshot({path:`${process.env.STUDIO_SCREENSHOT_DIR}/recibo-rg-simulado.png`});
+        assert.deepEqual(f.errors,[]);await f.page.close();
+      }
+      console.log(`PASS ${name}: confirmed points, credited RG and balance, unavailable/pending credits, wallet link and accounting-only retry`);
 
       const fresh=await fixture(browser,{noArtist:true,pendingLink:true});
       await publishForm(fresh.page,{noArtist:true});

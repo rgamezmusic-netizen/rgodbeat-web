@@ -19,6 +19,15 @@ export function RgSeasonRankingClient({ data }: { data: ChartData }) {
   const router = useRouter();
   const refreshedSeasonRef = useRef<string | null>(null);
   useEffect(() => {
+    const refresh = () => { if (!document.hidden) startTransition(() => router.refresh()); };
+    window.addEventListener('focus', refresh);
+    window.addEventListener('rg-publication-updated', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('rg-publication-updated', refresh);
+    };
+  }, [router]);
+  useEffect(() => {
     const started = performance.now();
     const update = () => {
       const elapsed = Math.max(0, (navigationServerTime() ?? (Date.parse(data.serverTime) + performance.now() - started)) - Date.parse(data.serverTime));

@@ -19,6 +19,28 @@ const replacements = {
 };
 const markup = (component, props) => renderToStaticMarkup(React.createElement(component, props));
 
+test('wallet shows the authoritative owner balance when the optional Market is unavailable and never fabricates passes',async()=>{
+  for(const balance of [0,200]) {
+    const page=loadSource('app/rg/wallet/page.tsx',{...replacements,
+      '@/lib/auth/server':{getCurrentUser:async()=>({id:'owner'})},
+      '@/lib/rg/product/wallet':{getRgWalletSummary:async()=>{throw Error('Market schema unavailable');},getRgWalletBalance:async id=>{assert.equal(id,'owner');return balance;}},
+    });
+    const html=renderToStaticMarkup(await page.default());
+    assert.match(html,new RegExp(`${balance} RG`));assert.match(html,/No pudimos consultar tus pases/);
+    assert.doesNotMatch(html,/0 AVAILABLE|RG MARKET|No pudimos consultar tu saldo/);
+  }
+});
+
+test('wallet balance uses the original ledger only when Market view is absent; network failures cannot turn into zero',async()=>{
+  for(const [code,fallback] of [['PGRST205',true],['42P01',true],['NETWORK',false]]) {
+    const tables=[];
+    const db={from(table){tables.push(table);const q={select(){return q;},eq(key,value){assert.equal(key,'user_id');assert.equal(value,'owner');return q;},async maybeSingle(){return table==='rg_spendable_balances'?{data:null,error:{code}}:{data:{balance_rg:'200'},error:null};}};return q;}};
+    const {getRgWalletBalance}=loadSource('lib/rg/product/wallet.ts',{'@/lib/rg/phase2/database':{createPhase2AdminClient:()=>db}});
+    if(fallback) {assert.equal(await getRgWalletBalance('owner'),200);assert.deepEqual(tables,['rg_spendable_balances','rg_coin_balances']);}
+    else {await assert.rejects(getRgWalletBalance('owner'));assert.deepEqual(tables,['rg_spendable_balances']);}
+  }
+});
+
 test('Wallet and account show earned RG, purchased inventory and consumed/reserved totals without ledger internals', async () => {
   for (const wallet of [summary(), summary({ balanceRg: 0, availableBeatPasses: 1 }), summary({ balanceRg: 0, consumedBeatPasses: 1 }), summary({ balanceRg: 0, reservedBeatPasses: 1 })]) {
     const mocks = { ...replacements, '@/lib/auth/server': { getCurrentUser: async () => ({ id: 'owner' }) },

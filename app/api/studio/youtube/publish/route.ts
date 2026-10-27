@@ -10,6 +10,7 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { RG_UUID, serializeIdentityError, validateOwnedTrackForPublication } from "@/lib/rg/identity";
 import { recordConfirmedPublication } from "@/lib/rg/publications";
+import type { PublicationRewards } from '@/lib/rg/publication-rewards';
 import { getAuthorizedStudioExporter } from "@/lib/youtube/access";
 import { getVerifiedYouTubeAccessToken } from "@/lib/youtube/channel";
 import { googleYouTubeError, youtubeFailure, type YouTubeFailureCode } from "@/lib/youtube/errors";
@@ -230,7 +231,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error("[YouTube publish job persistence]", error instanceof Error ? error.name : "UNKNOWN");
     }
-    let rgPublication: { linked: boolean; publicationId?: string; error?: string; code?: string } | undefined;
+    let rgPublication: { linked: boolean; publicationId?: string; error?: string; code?: string; rewards?: PublicationRewards } | undefined;
     if (rgLink) {
       rgPublication = jobConfirmed
         ? await recordConfirmedPublication({
@@ -244,7 +245,7 @@ export async function POST(request: NextRequest) {
         : { linked: false, error: "YouTube confirmó la publicación, pero el registro del trabajo no se pudo verificar para vincularlo.", code: "YOUTUBE_JOB_PERSISTENCE_FAILED" };
     }
     return NextResponse.json({ success: true, videoId: result.id, videoUrl, privacy: actualPrivacy,
-      ...(rgPublication ? { rgPublicationLinked: rgPublication.linked, rgPublicationId: rgPublication.publicationId, rgPublicationError: rgPublication.error, rgPublicationCode: rgPublication.code } : {}) });
+      ...(rgPublication ? { rgPublicationLinked: rgPublication.linked, rgPublicationId: rgPublication.publicationId, rgPublicationError: rgPublication.error, rgPublicationCode: rgPublication.code, rgRewards: rgPublication.rewards } : {}) }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     const failure = youtubeFailure(error, fallback);
     try {

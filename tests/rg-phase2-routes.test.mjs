@@ -48,7 +48,7 @@ test('actual publication sidecar keeps verified link successful when Score RPC e
       '@/lib/rg/identity':{validateOwnedTrackForPublication:async()=>{},RG_UUID:/.*/,RgIdentityError:class extends Error{}},
       '@/lib/rg/phase2/database':{createPhase2AdminClient:()=>({rpc:async(name)=>{calls.push(name);if(throwing)throw new Error('Score unavailable');return {data:null,error:{code:'PGRST202'}};}})},
     });
-    assert.deepEqual(await f.recordConfirmedPublication({userId:'user',artistId:'artist',trackId:'track',beatId:'beat',youtubeExportJobId:'job',youtubeVideoId:'video'}),{linked:true,publicationId:'verified-publication'});
+    assert.deepEqual(await f.recordConfirmedPublication({userId:'user',artistId:'artist',trackId:'track',beatId:'beat',youtubeExportJobId:'job',youtubeVideoId:'video'}),{linked:true,publicationId:'verified-publication',rewards:{score:'pending',points:null,credits:'pending',creditedRg:null,balanceRg:null}});
     assert.deepEqual(calls,['record_rg_publication_link','rg_record_score_event']);
   }
 });

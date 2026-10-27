@@ -99,7 +99,7 @@ test('automatic metadata reaches YouTube when no manual title or description is 
     assert.equal(f.calls.metadata.snippet.title,'WINGS x LARY | TOP 23 Prod RGodbeat');
     assert.match(f.calls.metadata.snippet.description,/Artista: LARY/);
     assert.match(f.calls.metadata.snippet.description,/14 días/);
-    assert.match(f.calls.metadata.snippet.description,/#RGodbeat #RGodbeatStudio #Top23 #RGCoins/);
+    assert.match(f.calls.metadata.snippet.description,/#RGodbeat #RGodbeatStudio #Top23 #RG/);
     assert.match(f.calls.metadata.snippet.description,/https:\/\/www\.rgodbeat\.com\/ranking\/season/);
   } finally {f.restore()}
 });

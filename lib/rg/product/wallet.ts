@@ -3,6 +3,21 @@ import { createPhase2AdminClient } from '@/lib/rg/phase2/database';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { readMarketProduct, type RgOwnedPass } from './catalog';
 
+/** Balance remains readable independently of optional Market/inventory rollout. */
+export async function getRgWalletBalance(userId: string) {
+  const db = createPhase2AdminClient();
+  let result = await db.from('rg_spendable_balances').select('balance_rg').eq('user_id', userId).maybeSingle();
+  // Before Market V1, Beat Pass uses the original wallet ledger. Only an absent
+  // view permits this compatibility path; connection/permission errors stay errors.
+  if (result.error && ['PGRST205', '42P01'].includes(result.error.code || '')) {
+    result = await db.from('rg_coin_balances').select('balance_rg').eq('user_id', userId).maybeSingle();
+  }
+  if (result.error) throw new Error('RG balance is unavailable.');
+  const amount = Number((result.data as { balance_rg?: number | string } | null)?.balance_rg ?? 0);
+  if (!Number.isSafeInteger(amount) || amount < 0) throw new Error('RG balance is invalid.');
+  return amount;
+}
+
 async function readOwnedInventory(db: SupabaseClient, userId: string) {
   const columns = 'id,product_key,product_version,status,reserved_intent_id';
   const first = await db.from('rg_beat_passes').select(columns, { count: 'exact' }).eq('user_id', userId)
