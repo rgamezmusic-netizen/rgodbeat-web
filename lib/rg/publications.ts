@@ -42,41 +42,23 @@ export async function recordConfirmedPublication(input: LinkedPublicationInput):
     const rewards: PublicationRewards = { score: 'pending', points: null, credits: 'pending', creditedRg: null, balanceRg: null };
     try {
       const db = createPhase2AdminClient();
-      const { data: scoreId, error: scoreError } = await db.rpc('rg_record_score_event', {
-        p_event_type: 'TRACK_PUBLISHED',
-        p_artist_id: input.artistId,
-        p_track_id: input.trackId,
-        p_beat_id: input.beatId,
-        p_publication_id: data,
-        p_source_type: 'rg_publication_link',
-        p_source_id: data,
-        p_milestone_key: null,
-      });
-      if (scoreError || typeof scoreId !== 'string') {
-        console.error('[RG score event]', scoreError?.code || 'TRACK_PUBLISHED_NOT_RECORDED');
+      const award = await db.rpc('rg_reward_publication', { p_publication_id: data });
+      if (award.error || !award.data || typeof award.data !== 'object') {
+        console.error('[RG publication reward]', award.error?.code || 'REWARD_NOT_CONFIRMED');
       } else {
-        const score = await db.from('rg_score_events').select('score_points').eq('id', scoreId)
-          .eq('track_id', input.trackId).eq('artist_id', input.artistId).maybeSingle();
-        const points = Number((score.data as { score_points?: number } | null)?.score_points);
-        if (!score.error && Number.isSafeInteger(points) && points > 0) {
+        const result = award.data as { status?: string; points?: number; creditedRg?: number };
+        const validAward = result.status === 'awarded' && [23, 7, 4].includes(result.points!) && result.points === result.creditedRg;
+        const validZero = ['limit_reached', 'duplicate_audio'].includes(result.status || '') && result.points === 0 && result.creditedRg === 0;
+        const validLegacy = result.status === 'legacy' && Number.isSafeInteger(result.points) && result.points! >= 0 && result.creditedRg === 0;
+        if (validAward || validZero || validLegacy) {
           rewards.score = 'recorded';
-          rewards.points = points;
-          const award = await db.rpc('rg_award_verified_activity', { p_score_event_id: scoreId });
-          if (award.error) {
-            if (award.error.code === 'PGRST202') rewards.credits = 'unavailable';
-            console.error('[RG publication credit]', award.error.code || 'CREDIT_NOT_CONFIRMED');
-          } else if (typeof award.data === 'string') {
-            const ledger = await db.from('rg_coin_ledger').select('amount').eq('id', award.data)
-              .eq('user_id', input.userId).eq('source_type', 'verified_activity').eq('source_id', scoreId).maybeSingle();
-            const amount = Number((ledger.data as { amount?: number | string } | null)?.amount);
-            if (!ledger.error && Number.isSafeInteger(amount) && amount > 0) {
-              rewards.credits = 'credited';
-              rewards.creditedRg = amount;
-              const balance = await db.from('rg_spendable_balances').select('balance_rg').eq('user_id', input.userId).maybeSingle();
-              const balanceRg = Number((balance.data as { balance_rg?: number | string } | null)?.balance_rg);
-              if (!balance.error && balance.data && Number.isSafeInteger(balanceRg) && balanceRg >= 0) rewards.balanceRg = balanceRg;
-            }
-          } else rewards.credits = 'not_awarded';
+          rewards.points = Number.isSafeInteger(result.points) ? result.points! : 0;
+          rewards.creditedRg = Number.isSafeInteger(result.creditedRg) ? result.creditedRg! : 0;
+          rewards.credits = rewards.creditedRg > 0 ? 'credited' : 'not_awarded';
+          rewards.reason = result.status as PublicationRewards['reason'];
+          const balance = await db.from('rg_spendable_balances').select('balance_rg').eq('user_id', input.userId).maybeSingle();
+          const balanceRg = Number((balance.data as { balance_rg?: number | string } | null)?.balance_rg ?? 0);
+          if (!balance.error && balance.data && Number.isSafeInteger(balanceRg) && balanceRg >= 0) rewards.balanceRg = balanceRg;
         }
       }
     } catch (error) {

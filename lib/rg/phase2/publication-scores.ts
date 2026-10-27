@@ -19,7 +19,7 @@ export async function reconcileRgPublicationScores(now = new Date()) {
   for (const season of seasons) {
     for (let offset = 0; ; offset += 500) {
       const result = await db.from('rg_publication_links').select('id,track_id,artist_id')
-        .gte('published_at', season.starts_at).lt('published_at', season.ends_at).order('id', { ascending: true }).range(offset, offset + 499);
+        .gte('published_at', season.starts_at).lt('published_at', season.ends_at).order('published_at', { ascending: true }).order('id', { ascending: true }).range(offset, offset + 499);
       if (result.error) throw new Error('Verified RG publications could not be reconciled.');
       const links = (result.data ?? []) as Publication[];
       if (!links.length) break;
@@ -39,7 +39,7 @@ export async function reconcileRgPublicationScores(now = new Date()) {
         });
         checked++;
         if (score.error?.message?.includes('score_artist_season_cap')) capped++;
-        else if (score.error && ['score_artist_inactive','score_track_unverified'].some(code => score.error?.message?.includes(code))) skipped++;
+        else if (score.error && ['score_artist_inactive','score_track_unverified','publication_unverified','publication_audio_unverified'].some(code => score.error?.message?.includes(code))) skipped++;
         else if (score.error) { failures++; console.error('[RG publication Score reconciliation]', score.error.code || 'FAILED'); }
         else scoredTracks.add(link.track_id);
       }

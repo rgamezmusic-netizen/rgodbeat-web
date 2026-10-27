@@ -20,10 +20,11 @@ export async function GET(request: NextRequest) {
     try { youtube = await refreshRgYoutubeMilestones(now); }
     catch (error) { youtubeError = true; console.error('[RG scheduled YouTube metrics]', error instanceof Error ? error.message : 'FAILED'); }
     if (youtubeError) throw new Error('YouTube metric verification failed; season finalization is deferred.');
-    const earnings = await reconcileVerifiedRgEarnings(String(activeSeasonId));
-    const settings = await db.from('rg_economy_config').select('season_rewards_v2_enabled').eq('id', true).single();
+    const settings = await db.from('rg_economy_config').select('*').eq('id', true).single();
     if (settings.error || !settings.data) throw new Error('Season issuance configuration unavailable.');
-    const rewardsEnabled = (settings.data as { season_rewards_v2_enabled: boolean }).season_rewards_v2_enabled === true;
+    const config = settings.data as { wallet_v3_enabled?: boolean; season_rewards_v3_enabled?: boolean; season_rewards_v2_enabled?: boolean };
+    const earnings = config.wallet_v3_enabled ? { enabled: true, atomicWithPublications: true } : await reconcileVerifiedRgEarnings(String(activeSeasonId));
+    const rewardsEnabled = config.wallet_v3_enabled ? config.season_rewards_v3_enabled === true : config.season_rewards_v2_enabled === true;
     const { data: endedSeasons, error: endedError } = await db.from('rg_seasons').select('id')
       .eq('status', 'ended').lte('ends_at', now.toISOString());
     if (endedError) throw new Error('Ended seasons could not be loaded.');

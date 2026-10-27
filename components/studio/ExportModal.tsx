@@ -533,7 +533,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
                 {youtubeResult.rewards?.balanceRg != null && <p>Saldo: {youtubeResult.rewards.balanceRg.toLocaleString('es')} RG</p>}
               </div>}
               {youtubeResult.rgPublicationError && <p className="mt-2 text-xs text-amber-200">{youtubeResult.rgPublicationError}</p>}
-              {youtubeResult.rgLink && (youtubeResult.rgPublicationLinked !== true || youtubeResult.rewards?.score !== 'recorded' || youtubeResult.rewards?.credits !== 'credited') && <button type="button" onClick={() => void handleRetryRgLink()} disabled={rgLoading} className={`${buttonClass} mt-3 bg-amber-400 text-black hover:bg-amber-300`}>{rgLoading ? 'Consultando…' : youtubeResult.rgPublicationLinked ? 'Actualizar puntos y RG' : 'Reintentar participación'}</button>}
+              {youtubeResult.rgLink && (youtubeResult.rgPublicationLinked !== true || youtubeResult.rewards?.score !== 'recorded' || !['credited', 'not_awarded'].includes(youtubeResult.rewards?.credits || '')) && <button type="button" onClick={() => void handleRetryRgLink()} disabled={rgLoading} className={`${buttonClass} mt-3 bg-amber-400 text-black hover:bg-amber-300`}>{rgLoading ? 'Consultando…' : youtubeResult.rgPublicationLinked ? 'Actualizar puntos y RG' : 'Reintentar participación'}</button>}
             </div>
             <Link href="/rg/wallet" prefetch={false} className={`${buttonClass} border border-amber-300/20 text-amber-200`}>Ver mi wallet RG <ArrowRight size={17} /></Link>
             <a href={youtubeResult.videoUrl} target="_blank" rel="noreferrer" className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}>Ver en YouTube <ExternalLink size={17} /></a>

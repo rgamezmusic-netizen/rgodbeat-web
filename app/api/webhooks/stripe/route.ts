@@ -4,6 +4,7 @@ import { fulfillStripeCheckoutSession } from "@/lib/commerce/fulfillment";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
+import { fulfillRgTopup, reverseRgTopup } from "@/lib/rg/wallet-payments";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +76,8 @@ export async function POST(req: NextRequest) {
         const session = event.data.object as Stripe.Checkout.Session;
         // Verify payment status
         if (session.payment_status === "paid") {
-          await fulfillStripeCheckoutSession(session);
+          if (session.metadata?.type === 'rg_wallet_topup') await fulfillRgTopup(session);
+          else await fulfillStripeCheckoutSession(session);
           console.log(`[Stripe Webhook] Successfully fulfilled checkout session ${session.id}`);
         } else {
           console.log(`[Stripe Webhook] Checkout session ${session.id} not marked paid (status: ${session.payment_status}).`);
@@ -88,7 +90,8 @@ export async function POST(req: NextRequest) {
         console.log(`[Stripe Webhook] payment_intent.succeeded: ${paymentIntent.id}`);
           const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentIntent.id, limit: 2 });
           if (sessions.data.length === 1 && sessions.data[0].payment_status === "paid") {
-            await fulfillStripeCheckoutSession(sessions.data[0]);
+            if (sessions.data[0].metadata?.type === 'rg_wallet_topup') await fulfillRgTopup(sessions.data[0]);
+            else await fulfillStripeCheckoutSession(sessions.data[0]);
           }
         break;
       }
@@ -96,6 +99,11 @@ export async function POST(req: NextRequest) {
       case "checkout.session.expired": {
         const session = event.data.object as Stripe.Checkout.Session;
         console.log(`[Stripe Webhook] Checkout session expired: ${session.id}`);
+        if (session.metadata?.type === 'rg_wallet_topup') {
+          const expired = await supabase.from('rg_wallet_topups').update({ status: 'expired' }).eq('stripe_session_id', session.id).eq('status', 'pending');
+          if (expired.error) throw new Error('RG_TOPUP_EXPIRATION_FAILED');
+          break;
+        }
         const intentUpdate = supabase.from("commerce_checkout_intents").update({ state: "expired" }).eq("state", "awaiting_payment");
         const { error } = session.metadata?.commerceIntentId
           ? await intentUpdate.eq("id", session.metadata.commerceIntentId)
@@ -107,6 +115,7 @@ export async function POST(req: NextRequest) {
       case "charge.refunded": {
         const charge = event.data.object as Stripe.Charge;
         const paymentIntent = typeof charge.payment_intent === "string" ? charge.payment_intent : null;
+        if (paymentIntent && await reverseRgTopup(stripe, paymentIntent, charge.amount_refunded)) break;
         if (charge.amount_refunded < charge.amount) {
           const { data: order } = paymentIntent
             ? await supabase.from("orders").select("id").eq("stripe_payment_intent_id", paymentIntent).maybeSingle()
@@ -144,11 +153,20 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      case "charge.dispute.created": {
+      case "charge.dispute.created":
+      case "charge.dispute.closed": {
         const dispute = event.data.object as Stripe.Dispute;
         const charge = typeof dispute.charge === "string" ? await stripe.charges.retrieve(dispute.charge) : dispute.charge;
         const paymentIntent = typeof charge.payment_intent === "string" ? charge.payment_intent : null;
         if (!paymentIntent) throw new Error("DISPUTE_PAYMENT_INTENT_UNRESOLVED");
+        if (await reverseRgTopup(stripe, paymentIntent, charge.amount_refunded, {
+          amountCents: dispute.status === 'won' ? 0 : dispute.amount, eventCreated: event.created,
+        })) break;
+        if (event.type === 'charge.dispute.closed') {
+          const review = await supabase.from('commerce_manual_reviews').upsert({ event_id: event.id, reason: 'refund_dispute_review' }, { onConflict: 'event_id', ignoreDuplicates: true });
+          if (review.error) throw new Error('DISPUTE_CLOSURE_REVIEW_FAILED');
+          break;
+        }
         const { data: order, error } = await supabase.from("orders").select("id").eq("stripe_payment_intent_id", paymentIntent).maybeSingle();
         if (error) throw new Error("DISPUTE_ORDER_LOOKUP_FAILED");
         if (order) {

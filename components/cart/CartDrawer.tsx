@@ -34,7 +34,7 @@ export function CartDrawer() {
   const [selectedArtist, setSelectedArtist] = useState<{ stage_name: string; slug: string; bio: string | null } | null>(null);
   const [giftStatus, setGiftStatus] = useState<string | null>(null);
   const [giftError, setGiftError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "rg_beat_pass" | "rg_market">("stripe");
+  const [paymentMethod, setPaymentMethod] = useState<"stripe" | "rg_beat_pass" | "rg_market" | "rg_wallet">("stripe");
   const [passWallet, setPassWallet] = useState<RgWalletSummary | null>(null);
   const [walletError, setWalletError] = useState<string | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
@@ -45,6 +45,12 @@ export function CartDrawer() {
   const [marketIntentId, setMarketIntentId] = useState<string | null>(null);
   const eligiblePasses = (passWallet?.passes ?? []).filter(pass => pass.status === 'available' && items.length === 1
     && passWallet?.products.some(product => product.productKey === pass.productKey && product.version === pass.version && product.allowedCategory === items[0].licenseTier));
+  const [walletQuoteVersion, setWalletQuoteVersion] = useState(0);
+  const [walletQuote, setWalletQuote] = useState<{ amountRg: number; signature: string } | null>(null);
+  const [completedRgAmount, setCompletedRgAmount] = useState<number | null>(null);
+  const walletSignature = JSON.stringify(items.map(item => ({ beatId: item.beat.id, licenseTier: item.licenseTier })));
+  const currentWalletQuote = walletQuote?.signature === walletSignature ? walletQuote : null;
+  const walletEligible = items.length > 0 && items.every(i => ['mp3', 'wav', 'unlimited'].includes(i.licenseTier));
   const [completedWithPass, setCompletedWithPass] = useState(false);
   const passRequestRef = useRef<{ signature: string; key: string } | null>(null);
 
@@ -78,6 +84,17 @@ export function CartDrawer() {
     window.addEventListener("focus", refresh);
     return () => { reads.sequence++; window.removeEventListener("focus", refresh); };
   }, [isCartOpen, paymentMethod, refreshPassWallet]);
+
+  useEffect(() => {
+    if (!isCartOpen || paymentMethod !== 'rg_wallet' || !walletEligible) return;
+    const controller = new AbortController();
+    void fetch('/api/checkout/rg-wallet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
+      body: JSON.stringify({ quoteOnly: true, items: JSON.parse(walletSignature) }) })
+      .then(async response => { const data = await response.json(); if (!response.ok) throw new Error(data.error || 'No se pudo validar el importe RG.');
+        if (!controller.signal.aborted && Number.isSafeInteger(data.amountRg)) setWalletQuote({ amountRg: data.amountRg, signature: walletSignature }); })
+      .catch(e => { if (!controller.signal.aborted) setErrorMessage(e.message || 'No se pudo validar el importe.'); });
+    return () => controller.abort();
+  }, [isCartOpen, paymentMethod, walletEligible, walletSignature, walletQuoteVersion]);
 
   useEffect(() => {
     if (!isCartOpen || paymentMethod !== 'rg_market' || !selectedPassId || items.length !== 1) return;
@@ -175,7 +192,7 @@ export function CartDrawer() {
       })),
     };
 
-      if (paymentMethod === "rg_beat_pass" || paymentMethod === "rg_market") {
+      if (paymentMethod === "rg_beat_pass" || paymentMethod === "rg_market" || paymentMethod === "rg_wallet") {
         const signature = JSON.stringify(payload);
         if (!passRequestRef.current) {
           try {
@@ -187,12 +204,15 @@ export function CartDrawer() {
           passRequestRef.current = { signature, key: crypto.randomUUID() };
         }
         sessionStorage.setItem("rg-beat-pass-redemption-request-v1", JSON.stringify(passRequestRef.current));
-        const response = await fetch(paymentMethod === "rg_market" ? "/api/checkout/rg-market" : "/api/checkout/rg-beat-pass", {
+        const response = await fetch(paymentMethod === "rg_wallet" ? "/api/checkout/rg-wallet" : paymentMethod === "rg_market" ? "/api/checkout/rg-market" : "/api/checkout/rg-beat-pass", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, idempotencyKey: passRequestRef.current.key }),
+          body: JSON.stringify({ ...payload, expectedAmountRg: currentWalletQuote?.amountRg, idempotencyKey: passRequestRef.current.key }),
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "No se pudo canjear RG Beat Pass.");
+        if (!response.ok) {
+          if (data.priceChanged) { setWalletQuote(null); setWalletQuoteVersion(version => version + 1); }
+          throw new Error(data.error || 'No se pudo confirmar la compra con RG.');
+        }
         if (paymentMethod === 'rg_market') setMarketIntentId(data.intentId || null);
         if (data.clientSecret && data.sessionId) {
           setCheckoutTotal(data.totalAmount); setCheckoutSessionId(data.sessionId); setClientSecret(data.clientSecret);
@@ -202,7 +222,8 @@ export function CartDrawer() {
         setCompletedPurchases(data.purchases || []);
         setGiftStatus(data.giftStatus || null);
         setCheckoutSessionId(null);
-        setCompletedWithPass(true);
+        setCompletedWithPass(paymentMethod !== 'rg_wallet');
+        setCompletedRgAmount(paymentMethod === 'rg_wallet' ? data.amountRg : null);
         setCheckoutComplete(true);
         setCompletionStatus("ready");
         setClientSecret(null);
@@ -242,7 +263,7 @@ export function CartDrawer() {
       console.error("[Checkout Error]:", err);
       setErrorMessage(err instanceof Error ? err.message : "Failed to initiate checkout. Please try again.");
     } finally {
-      if (paymentMethod === "rg_beat_pass" || paymentMethod === "rg_market") {
+      if (paymentMethod === "rg_beat_pass" || paymentMethod === "rg_market" || paymentMethod === "rg_wallet") {
         await refreshPassWallet();
         router.refresh();
         window.dispatchEvent(new Event("rg-wallet-updated"));
@@ -283,6 +304,7 @@ export function CartDrawer() {
     setGiftError(null);
     setPaymentMethod("stripe");
     setCompletedWithPass(false);
+    setCompletedRgAmount(null);
     passRequestRef.current = null;
     setErrorMessage(null);
     closeCart();
@@ -348,17 +370,17 @@ export function CartDrawer() {
                   <div className="text-center space-y-2">
                     <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 text-2xl">✓</div>
                     <h2 className="text-xl font-bold text-white">
-                      {completionStatus === "ready" ? completedWithPass ? "Canje confirmado" : "Pago confirmado" : "Pago recibido"}
+                      {completionStatus === "ready" ? completedWithPass || completedRgAmount !== null ? "Canje confirmado" : "Pago confirmado" : "Pago recibido"}
                     </h2>
                     <p className="text-sm text-zinc-400">
                       {completionStatus === "ready"
-                        ? completedWithPass ? "Tu RG Beat Pass se aplicó y la licencia quedó preparada." : "Tu compra y tus archivos están listos aquí."
+                        ? completedRgAmount !== null ? "Tus RG se aplicaron y la licencia quedó preparada." : completedWithPass ? "Tu RG Beat Pass se aplicó y la licencia quedó preparada." : "Tu compra y tus archivos están listos aquí."
                         : completionStatus === "loading"
                           ? "Estamos verificando el pago y preparando tus archivos."
                           : "Estamos terminando de verificar la compra. Actualiza el estado antes de volver a pagar."}
                     </p>
                     {checkoutTotal !== null && (
-                      <p className="text-sm font-mono text-emerald-300">{completedWithPass ? "TOTAL: 0 USD · RG BEAT PASS" : `TOTAL: ${formatCurrency(checkoutTotal)}`}</p>
+                      <p className="text-sm font-mono text-emerald-300">{completedRgAmount !== null ? `TOTAL: ${completedRgAmount.toLocaleString("es-MX")} RG` : completedWithPass ? "TOTAL: 0 USD · RG BEAT PASS" : `TOTAL: ${formatCurrency(checkoutTotal)}`}</p>
                     )}
                   </div>
 
@@ -477,6 +499,12 @@ export function CartDrawer() {
               )}
 
               {items.length > 0 && <div className="space-y-4 border-t border-white/[0.08] pt-5">
+                {passWallet?.walletV3 && passWallet.redemptionEnabled && walletEligible && recipientMode === 'self' && <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.035] p-4 space-y-3">
+                  <h2 className="text-xs font-bold tracking-wider text-amber-200">PAGAR CON TU SALDO</h2>
+                  <p className="text-sm text-zinc-300">Tienes {passWallet.balanceRg.toLocaleString('es-MX')} RG · 100 RG = US$1</p>
+                  <div className="grid grid-cols-2 gap-2"><button disabled={isLoading} type="button" aria-pressed={paymentMethod === 'stripe'} onClick={() => setPaymentMethod('stripe')} className="rounded-lg border border-white/15 p-3 text-xs text-zinc-300">TARJETA</button><button disabled={isLoading} type="button" aria-pressed={paymentMethod === 'rg_wallet'} onClick={() => setPaymentMethod('rg_wallet')} className={`rounded-lg border p-3 text-xs ${paymentMethod === 'rg_wallet' ? 'border-amber-300 bg-amber-300/10 text-amber-100' : 'border-white/15 text-zinc-300'}`}>USAR RG</button></div>
+                  {paymentMethod === 'rg_wallet' && <><p className="text-sm text-amber-100">{currentWalletQuote ? `Total confirmado: ${currentWalletQuote.amountRg.toLocaleString('es-MX')} RG` : 'Consultando el precio final…'}</p>{currentWalletQuote && currentWalletQuote.amountRg > passWallet.balanceRg && <p className="text-xs text-zinc-400">Te faltan {(currentWalletQuote.amountRg - passWallet.balanceRg).toLocaleString('es-MX')} RG. <a className="text-amber-200 underline" href="/rg/wallet">Comprar RG</a></p>}</>}
+                </section>}
                 {passWallet?.beatPassEnabled && items.length === 1 && passWallet.beatPassEligibleTiers.includes(items[0].licenseTier) && <section className="rounded-xl border border-amber-300/20 bg-amber-300/[0.035] p-4 space-y-2">
                   <h2 className="text-xs font-mono font-bold tracking-wider text-amber-200">PAGA CON</h2>
                   <div className="grid grid-cols-2 gap-2">
@@ -514,7 +542,7 @@ export function CartDrawer() {
                   <h2 className="text-xs font-mono font-bold tracking-wider text-white">¿PARA QUIÉN ES?</h2>
                   <div className="grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => { setRecipientMode("self"); setArtistResults([]); }} aria-pressed={recipientMode === "self"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "self" ? "border-purple-400 bg-purple-500/15 text-purple-100" : "border-white/10 text-zinc-400"}`}>PARA MÍ</button>
-                    <button type="button" onClick={() => { setRecipientMode("gift"); setArtistResults([]); }} aria-pressed={recipientMode === "gift"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "gift" ? "border-amber-400 bg-amber-400/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>ENVIAR COMO REGALO</button>
+                    <button type="button" onClick={() => { setRecipientMode("gift"); if (paymentMethod === "rg_wallet") setPaymentMethod("stripe"); setArtistResults([]); }} aria-pressed={recipientMode === "gift"} className={`rounded-lg border px-3 py-2.5 text-xs font-semibold ${recipientMode === "gift" ? "border-amber-400 bg-amber-400/10 text-amber-100" : "border-white/10 text-zinc-400"}`}>ENVIAR COMO REGALO</button>
                   </div>
                   {recipientMode === "gift" && <div className="space-y-3">
                     <p className="text-[11px] text-zinc-400">La licencia y los 30 días de Studio serán para quien reciba el beat.</p>
@@ -573,13 +601,13 @@ export function CartDrawer() {
               <div className="flex items-center justify-between text-sm font-mono">
                 <span className="text-zinc-400">SUBTOTAL</span>
                 <span className="text-lg font-bold text-white">
-                  {paymentMethod === "rg_market" ? ticketQuote ? formatCurrency(ticketQuote.remainingCents / 100) : "…" : formatCurrency(paymentMethod === "rg_beat_pass" ? 0 : totalAmount)}
+                  {paymentMethod === "rg_wallet" ? currentWalletQuote ? `${currentWalletQuote.amountRg.toLocaleString("es-MX")} RG` : "…" : paymentMethod === "rg_market" ? ticketQuote ? formatCurrency(ticketQuote.remainingCents / 100) : "…" : formatCurrency(paymentMethod === "rg_beat_pass" ? 0 : totalAmount)}
                 </span>
               </div>
 
               <div className="text-[11px] text-zinc-500 font-mono flex items-center justify-between">
                 <span>Entrega digital</span>
-                <span>{paymentMethod !== "stripe" ? "Aplicación de pase RG" : "Pago con Stripe"}</span>
+                <span>{paymentMethod === "rg_wallet" ? "Saldo RG" : paymentMethod !== "stripe" ? "Aplicación de pase RG" : "Pago con Stripe"}</span>
               </div>
 
               {/* Checkout Button */}
@@ -588,7 +616,7 @@ export function CartDrawer() {
                 size="lg"
                 className="w-full justify-center text-sm tracking-wider"
                 onClick={handleCheckout}
-                disabled={isLoading || (paymentMethod === "rg_market" && (walletLoading || !ticketQuote || !eligiblePasses.some(pass => pass.id === selectedPassId))) || (paymentMethod === "rg_beat_pass" && (walletLoading || !passWallet?.beatPassEnabled || passWallet.availableBeatPasses < 1 || items.length !== 1 || !passWallet.beatPassEligibleTiers.includes(items[0]?.licenseTier || ""))) || (recipientMode === "gift" && (recipientKind === "email"
+                disabled={isLoading || (paymentMethod === "rg_wallet" && (walletLoading || !currentWalletQuote || !passWallet?.redemptionEnabled || currentWalletQuote.amountRg > passWallet.balanceRg || recipientMode !== "self")) || (paymentMethod === "rg_market" && (walletLoading || !ticketQuote || !eligiblePasses.some(pass => pass.id === selectedPassId))) || (paymentMethod === "rg_beat_pass" && (walletLoading || !passWallet?.beatPassEnabled || passWallet.availableBeatPasses < 1 || items.length !== 1 || !passWallet.beatPassEligibleTiers.includes(items[0]?.licenseTier || ""))) || (recipientMode === "gift" && (recipientKind === "email"
                   ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail.trim())
                   : !selectedArtist))}
               >
@@ -598,10 +626,10 @@ export function CartDrawer() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    {paymentMethod === "rg_beat_pass" ? "CANJEANDO RG BEAT PASS..." : paymentMethod === 'rg_market' ? 'APLICANDO RG PASS…' : "CARGANDO FORMULARIO DE PAGO..."}
+                    {paymentMethod === "rg_wallet" ? "PREPARANDO LICENCIA…" : paymentMethod === "rg_beat_pass" ? "CANJEANDO RG BEAT PASS..." : paymentMethod === 'rg_market' ? 'APLICANDO RG PASS…' : "CARGANDO FORMULARIO DE PAGO..."}
                   </span>
                 ) : (
-                  paymentMethod === "rg_beat_pass" ? "CANJEAR RG BEAT PASS"
+                  paymentMethod === "rg_wallet" ? `CONFIRMAR COMPRA · ${currentWalletQuote ? currentWalletQuote.amountRg.toLocaleString("es-MX") : "…"} RG` : paymentMethod === "rg_beat_pass" ? "CANJEAR RG BEAT PASS"
                     : paymentMethod === 'rg_market' ? ticketQuote?.remainingCents === 0 ? recipientMode === 'gift' ? 'CONFIRMAR REGALO CON RG PASS' : 'USAR RG PASS'
                       : `${recipientMode === 'gift' ? 'CONFIRMAR REGALO' : 'CONTINUAR AL PAGO'} (${ticketQuote ? formatCurrency(ticketQuote.remainingCents / 100) : '…'})`
                       : recipientMode === "gift" ? `CONFIRMAR REGALO (${formatCurrency(totalAmount)})` : `CONTINUAR AL PAGO (${formatCurrency(totalAmount)})`

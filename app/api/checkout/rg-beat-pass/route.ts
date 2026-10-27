@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Esta licencia no es elegible para RG Beat Pass.' }, { status: 400 });
   }
   const catalog = await admin.from('rg_market_products').select('*').eq('product_key', 'beat_pass').eq('version', 1).single();
-  if (catalog.error || !catalog.data) return NextResponse.json({ error: 'No se pudo validar RG Beat Pass.' }, { status: 503 });
-  try { calculateTicketPayment(readMarketProduct(catalog.data), line.licenseTier, Math.round(line.unitPrice * 100)); }
+  if (catalog.error && !['PGRST205', '42P01'].includes(catalog.error.code)) return NextResponse.json({ error: 'No se pudo validar RG Beat Pass.' }, { status: 503 });
+  try { if (catalog.data) calculateTicketPayment(readMarketProduct(catalog.data), line.licenseTier, Math.round(line.unitPrice * 100)); }
   catch { return NextResponse.json({ error: 'Esta licencia supera el beneficio estándar de RG Beat Pass.' }, { status: 400 }); }
 
   let recipientKind: RecipientKind | null = null;

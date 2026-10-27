@@ -1,4 +1,5 @@
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -184,6 +185,9 @@ export async function POST(request: NextRequest) {
     const audioPath = join(directory, "master.wav");
     const videoPath = join(directory, "export.mp4");
     await downloadR2File(`${prefix}master.wav`, audioPath);
+    const audioHash = createHash('sha256');
+    for await (const chunk of createReadStream(audioPath)) audioHash.update(chunk);
+    const audioSha256 = audioHash.digest('hex');
     stage = 'cover'; fallback = 'coverUnavailable';
     const customCover = await readYouTubeR2(`${prefix}cover`);
     const cover = customCover?.length ? customCover : await loadDefaultCover(input.coverUrl || null);
@@ -219,7 +223,7 @@ export async function POST(request: NextRequest) {
     if (!uploaded.ok || !result.id) throw googleYouTubeError(result, uploaded.status);
     const videoUrl = `https://www.youtube.com/watch?v=${result.id}`;
     const actualPrivacy = result.status?.privacyStatus || privacy;
-    const uploadedValues = { status: "uploaded" as const, privacy: actualPrivacy, youtube_video_id: result.id, youtube_url: videoUrl, finished_at: new Date().toISOString() };
+    const uploadedValues = { audio_sha256: audioSha256, status: "uploaded" as const, privacy: actualPrivacy, youtube_video_id: result.id, youtube_url: videoUrl, finished_at: new Date().toISOString() };
     // Once YouTube returns its video ID, persistence failures must not claim the
     // upload failed or invite another upload of the same video.
     stage = 'confirm';

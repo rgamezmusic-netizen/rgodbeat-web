@@ -185,6 +185,7 @@ export interface GenerateContractParams {
   beatId: string;
   licenseTier: LicenseTier | string;
   amountPaid: number;
+  amountPaidRg?: number;
   currency?: string;
   purchaseDate?: string;
   licenseId?: string;
@@ -207,6 +208,7 @@ export function generateLicenseContract({
   beatId,
   licenseTier,
   amountPaid,
+  amountPaidRg,
   currency = "USD",
   purchaseDate = new Date().toISOString(),
   licenseId,
@@ -237,7 +239,7 @@ export function generateLicenseContract({
     BEAT_NAME: beatTitle,
     BEAT_ID: beatId,
     LICENSE_TIER: config.licenseTier,
-    PURCHASE_PRICE: `$${amountPaid.toFixed(2)} ${currency}`,
+    PURCHASE_PRICE: amountPaidRg ? `${amountPaidRg.toLocaleString('en-US')} RG (RGodbeat internal credits)` : `$${amountPaid.toFixed(2)} ${currency}`,
     PURCHASE_DATE: formattedDate,
     DELIVERABLES: config.deliverables,
     CONTRACT_VERSION: effectiveVersion,
@@ -376,7 +378,7 @@ export async function generateContractPdfBuffer(contractParams: GenerateContract
       month: "long",
       day: "numeric",
     }),
-    price: `$${contractParams.amountPaid.toFixed(2)} ${contractParams.currency || "USD"}`,
+    price: contractParams.amountPaidRg ? `${contractParams.amountPaidRg.toLocaleString('en-US')} RG` : `$${contractParams.amountPaid.toFixed(2)} ${contractParams.currency || 'USD'}`,
     governingLaw: contractParams.governingLaw || DEFAULT_GOVERNING_LAW,
     jurisdiction: contractParams.jurisdiction || DEFAULT_JURISDICTION,
   };

@@ -21,9 +21,9 @@ export interface Database {
         Relationships: [];
       };
       youtube_export_jobs: {
-        Row: { id: string; user_id: string; artist_name: string; title: string; privacy: "private" | "unlisted" | "public"; status: "processing" | "uploaded" | "failed"; youtube_video_id: string | null; youtube_url: string | null; error_code: string | null; created_at: string; finished_at: string | null };
-        Insert: { id: string; user_id: string; artist_name: string; title: string; privacy: "private" | "unlisted" | "public"; status: "processing" | "uploaded" | "failed"; youtube_video_id?: string | null; youtube_url?: string | null; error_code?: string | null; created_at?: string; finished_at?: string | null };
-        Update: { artist_name?: string; title?: string; privacy?: "private" | "unlisted" | "public"; status?: "processing" | "uploaded" | "failed"; youtube_video_id?: string | null; youtube_url?: string | null; error_code?: string | null; finished_at?: string | null };
+        Row: { id: string; user_id: string; artist_name: string; title: string; privacy: "private" | "unlisted" | "public"; status: "processing" | "uploaded" | "failed"; youtube_video_id: string | null; youtube_url: string | null; error_code: string | null; created_at: string; finished_at: string | null; audio_sha256: string | null };
+        Insert: { id: string; user_id: string; artist_name: string; title: string; privacy: "private" | "unlisted" | "public"; status: "processing" | "uploaded" | "failed"; youtube_video_id?: string | null; youtube_url?: string | null; error_code?: string | null; created_at?: string; finished_at?: string | null; audio_sha256?: string | null };
+        Update: { artist_name?: string; title?: string; privacy?: "private" | "unlisted" | "public"; status?: "processing" | "uploaded" | "failed"; youtube_video_id?: string | null; youtube_url?: string | null; error_code?: string | null; finished_at?: string | null; audio_sha256?: string | null };
         Relationships: [];
       };
       rg_artists: {

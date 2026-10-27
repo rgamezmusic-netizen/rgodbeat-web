@@ -51,6 +51,17 @@ export async function GET(
       const licensee = purchase.customers;
       const { data: contractItem } = await supabase.from("order_items").select("unit_price")
         .eq("id", purchase.order_item_id).maybeSingle();
+      let amountPaidRg: number | undefined;
+      if (order.stripe_checkout_session_id?.startsWith('rgwallet:')) {
+        const rgPurchase = await (supabase as unknown as import('@supabase/supabase-js').SupabaseClient).from('rg_wallet_redemptions')
+          .select('intent_id').eq('order_id', order.id).eq('status', 'consumed').maybeSingle();
+        if (rgPurchase.error || !rgPurchase.data || order.stripe_checkout_session_id !== `rgwallet:${rgPurchase.data.intent_id}`) throw new Error('RG_CONTRACT_PAYMENT_UNAVAILABLE');
+        const frozen = await (supabase as unknown as import('@supabase/supabase-js').SupabaseClient).from('commerce_checkout_intents')
+          .select('snapshot').eq('id', rgPurchase.data.intent_id).single();
+        const line = frozen.data?.snapshot?.items?.find((i: { beatId: string; licenseTier: string }) => i.beatId === purchase.beat_id && i.licenseTier === purchase.license_tier);
+        if (frozen.error || !line || !Number.isFinite(line.catalogUnitPrice)) throw new Error('RG_CONTRACT_SNAPSHOT_UNAVAILABLE');
+        amountPaidRg = Math.round(line.catalogUnitPrice * 100);
+      }
       const tierUpper = String(purchase.license_tier || "WAV").toUpperCase();
 
       const format = searchParams.get("format") || "pdf";
@@ -62,7 +73,7 @@ export async function GET(
         orderId: purchase.order_id, customerName, customerEmail: licensee?.email || '', purchaserName,
         isGift: purchase.customer_id !== order.customer_id, beatTitle, beatId: purchase.beat_id,
         licenseTier: purchase.license_tier, amountPaid: Number(contractItem?.unit_price ?? order.total_amount) || 0,
-        currency: order.currency || 'USD', purchaseDate: purchase.created_at, licenseId, version: contractVersion,
+        amountPaidRg, currency: order.currency || 'USD', purchaseDate: purchase.created_at, licenseId, version: contractVersion,
       };
 
       // Plaintext certificate fallback if explicitly requested (?format=txt)

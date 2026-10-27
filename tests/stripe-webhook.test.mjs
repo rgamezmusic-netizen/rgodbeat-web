@@ -6,7 +6,7 @@ import { loadSource } from './helpers/rg-fixtures.mjs';
 
 const webhookSecret = 'whsec_local_fixture_only';
 const stripe = new Stripe('sk_test_fixture_no_network', { apiVersion: '2025-02-24.acacia' });
-const runtime = { fulfill: async () => {}, order: { id: 'order-fixture' }, duplicate: false, calls: [] };
+const runtime = { fulfill: async () => {}, order: { id: 'order-fixture' }, duplicate: false, rgCalls: [], calls: [] };
 const supabase = {
   async rpc(name, args) {
     runtime.calls.push({ kind: 'rpc', name, args });
@@ -40,6 +40,7 @@ const route = loadSource(resolve('app/api/webhooks/stripe/route.ts'), {
     stripeWebhookSecret: webhookSecret,
     isStripeConfigured: () => true,
   },
+  '@/lib/rg/wallet-payments': { fulfillRgTopup: async session => {runtime.rgCalls.push(session)}, reverseRgTopup: async () => false },
   '@/lib/commerce/fulfillment': { fulfillStripeCheckoutSession: (...args) => runtime.fulfill(...args) },
   '@/lib/supabase/admin': { createAdminClient: () => supabase },
 });
@@ -60,6 +61,7 @@ function reset() {
   runtime.order = { id: 'order-fixture' };
   runtime.duplicate = false;
   runtime.calls = [];
+  runtime.rgCalls = [];
 }
 
 test('Stripe SDK signature verification gates signed paid checkout fulfillment', async () => {
@@ -107,6 +109,7 @@ test('failed mandatory fulfillment records failed lease so Stripe can retry', as
   assert.equal(first.status, 500);
   assert.equal(runtime.calls.at(-1).args.p_success, false);
   runtime.calls = [];
+  runtime.rgCalls = [];
   const second = await route.POST(signedRequest('checkout.session.completed', { id: 'cs_retry', payment_status: 'paid' }));
   assert.equal(second.status, 200);
   assert.equal(attempts, 2);
@@ -140,4 +143,10 @@ test('partial refund remains a manual-review case', async () => {
   assert.ok(runtime.calls.some((call) => call.kind === 'query' && call.table === 'commerce_manual_reviews'
     && call.upsert?.value?.reason === 'partial_refund_item_mapping'));
   assert.ok(!runtime.calls.some((call) => call.name === 'rg_revoke_commerce_order'));
+});
+
+test('a signed RG top-up uses wallet fulfillment and never creates a beat order',async()=>{
+ reset();let ordinary=false;runtime.fulfill=async()=>{ordinary=true};
+ const result=await route.POST(signedRequest('checkout.session.completed',{id:'cs_rg_fixture',payment_status:'paid',metadata:{type:'rg_wallet_topup'}}));
+ assert.equal(result.status,200);assert.equal(ordinary,false);assert.equal(runtime.rgCalls.length,1);
 });

@@ -19,10 +19,10 @@ export function RgAccountWallet({ wallet }: { wallet: Wallet | null }) {
         </div>
         <div className="flex flex-wrap gap-3">
           <Link href="/rg/wallet" className="rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-xs font-mono font-bold text-amber-200 hover:bg-amber-300/20">VER MI WALLET →</Link>
-          <Link href="/rg/market" className="rounded-lg border border-white/10 px-4 py-3 text-xs font-mono font-bold text-zinc-300 hover:bg-white/5">RG MARKET →</Link>
+          <Link href={wallet?.walletV3 ? "/beats" : "/rg/market"} className="rounded-lg border border-white/10 px-4 py-3 text-xs font-mono font-bold text-zinc-300 hover:bg-white/5">{wallet?.walletV3 ? "ELEGIR BEATS →" : "RG MARKET →"}</Link>
         </div>
       </div>
-      {wallet && <p className="mt-5 text-xs leading-relaxed text-zinc-400">Al canjear RG por un Beat Pass, esos RG se descuentan del saldo y el pase queda disponible hasta que lo uses en una compra elegible.</p>}
+      {wallet && !wallet.walletV3 && <p className="mt-5 text-xs leading-relaxed text-zinc-400">Al canjear RG por un Beat Pass, esos RG se descuentan del saldo y el pase queda disponible hasta que lo uses en una compra elegible.</p>}
     </section>
   );
 }

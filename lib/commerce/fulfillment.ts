@@ -29,7 +29,7 @@ type CheckoutIntent = {
   id: string; recipient_mode: string; recipient_kind: "artist" | "email" | null;
   recipient_email: string | null; recipient_artist_id: string | null; recipient_artist_slug: string | null;
   buyer_auth_user_id?: string;
-  snapshot: { siteOrigin?: string; kind?: string; serviceId?: string; paymentMethod?: string; beat_pass_request_key?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string; utility?: MarketUtility };
+  snapshot: { siteOrigin?: string; kind?: string; serviceId?: string; paymentMethod?: string; beat_pass_request_key?: string; items?: AuthoritativeLineItem[]; totalAmountCents?: number; currency?: string; rgAmount?: number; utility?: MarketUtility };
   state: string; buyer_email: string | null; attempt_count: number;
 };
 
@@ -189,6 +189,7 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
   const isStudioPass = session.metadata?.type === "studio_pass";
   const isBeatPassRedemption = session.metadata?.type === "rg_beat_pass";
   const isMarketUtility = session.metadata?.type === 'rg_market';
+  const isWalletPayment = session.metadata?.type === 'rg_wallet';
   let marketUtility: MarketUtility | null = null;
   if (!intentId && !isStudioPass) {
     if (existingOrder?.status === "completed") {
@@ -220,7 +221,22 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
     if (!Number.isInteger(snapshot?.totalAmountCents)
       || snapshot.currency?.toLowerCase() !== (session.currency || "usd").toLowerCase()
       || session.amount_total !== snapshot.totalAmountCents) throw new Error("PAYMENT_SNAPSHOT_MISMATCH");
-    if (isMarketUtility) {
+    if (isWalletPayment) {
+      const reservation = await supabase.from('rg_wallet_redemptions').select('user_id,amount_rg,status,debit_ledger_id').eq('intent_id', intentId).maybeSingle();
+      if (session.id !== `rgwallet:${intentId}` || snapshot.kind !== 'rg_wallet' || snapshot.paymentMethod !== 'rg_wallet'
+        || resolvedIntent.recipient_mode !== 'self' || snapshot.totalAmountCents !== 0
+        || !Number.isSafeInteger(snapshot.rgAmount) || snapshot.rgAmount! <= 0 || !Array.isArray(snapshot.items) || !snapshot.items.length
+        || snapshot.items.some(item => item.unitPrice !== 0 || !Number.isFinite(item.catalogUnitPrice))
+        || snapshot.items.reduce((total, item) => total + Math.round(item.catalogUnitPrice! * 100), 0) !== snapshot.rgAmount
+        || reservation.error || !reservation.data || reservation.data.user_id !== resolvedIntent.buyer_auth_user_id
+        || Number(reservation.data.amount_rg) !== snapshot.rgAmount || !['reserved', 'consumed'].includes(reservation.data.status)) throw new Error('WALLET_PAYMENT_UNVERIFIED');
+      const debit = await supabase.from('rg_coin_ledger').select('amount').eq('id', reservation.data.debit_ledger_id)
+        .eq('user_id', resolvedIntent.buyer_auth_user_id!).eq('source_type', 'wallet_checkout').eq('source_id', intentId).maybeSingle();
+      if (debit.error || Number(debit.data?.amount) !== -snapshot.rgAmount!) throw new Error('WALLET_DEBIT_UNVERIFIED');
+      authoritativeCart = { items: snapshot.items, totalAmount: 0, currency: 'usd' };
+    } else if (snapshot.paymentMethod === 'rg_wallet') {
+      throw new Error('WALLET_PAYMENT_METHOD_MISMATCH');
+    } else if (isMarketUtility) {
       if (snapshot.kind !== 'rg_market' || snapshot.paymentMethod !== 'rg_market') throw new Error('MARKET_SNAPSHOT_MISMATCH');
       marketUtility = await validateMarketUtility(supabase, resolvedIntent, snapshot);
       authoritativeCart = { items: snapshot.items ?? [], totalAmount: snapshot.totalAmountCents! / 100, currency: snapshot.currency! };
@@ -431,6 +447,7 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
       beatId: item.beatId,
       licenseTier: item.licenseTier,
       amountPaid: item.unitPrice,
+      amountPaidRg: isWalletPayment ? Math.round(item.catalogUnitPrice! * 100) : undefined,
       currency: "USD",
       licenseId,
       version: contractVersion,
@@ -525,6 +542,10 @@ export async function fulfillStripeCheckoutSession(session: Stripe.Checkout.Sess
     if (consumed.error) throw new Error('MARKET_PASS_CONSUMPTION_FAILED');
   }
 
+  if (isWalletPayment && intentId) {
+    const consumed = await supabase.rpc('rg_consume_wallet_checkout', { p_intent_id: intentId, p_order_id: orderId });
+    if (consumed.error) throw new Error('WALLET_CHECKOUT_COMPLETION_FAILED');
+  }
   console.log(`[Fulfillment] Successfully fulfilled order ${orderId} for customer ${customerEmail} (Granted 30 days Studio Access)`);
   return { status: "fulfilled", orderId, customerId };
 }

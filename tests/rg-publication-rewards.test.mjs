@@ -2,70 +2,59 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadSource } from './helpers/rg-fixtures.mjs';
 
-const input = {userId:'owner',artistId:'artist',trackId:'track',beatId:null,youtubeExportJobId:'job',youtubeVideoId:'video'};
+const input = { userId:'owner',artistId:'artist',trackId:'track',beatId:null,youtubeExportJobId:'job',youtubeVideoId:'video' };
 function fixture(options = {}) {
-  const calls = []; let credits = 0;
+  const calls = [];
   const db = {
     async rpc(name,args) {
-      calls.push([name,args]);
-      if(name==='rg_record_score_event') return {data:options.scoreError?null:'score-id',error:options.scoreError};
-      if(name==='rg_award_verified_activity') {
-        if(options.awardThrows) throw Error('temporary failure');
-        if(options.awardError) return {data:null,error:options.awardError};
-        if(options.notAwarded) return {data:null,error:null};
-        credits = 200; return {data:'ledger-id',error:null};
-      }
-      throw Error('Unexpected RPC');
+      calls.push([name,args]); assert.equal(name,'rg_reward_publication');
+      if (options.throws) throw Error('temporary failure');
+      return { data: options.result ?? { status:'awarded',points:23,creditedRg:23 }, error:options.error || null };
     },
     from(table) {
-      const filters=[];
-      const q={select(){return q;},eq(k,v){filters.push([k,v]);return q;},async maybeSingle(){
-        calls.push([table,filters]);
-        if(table==='rg_score_events') return {data:{score_points:10},error:null};
-        assert.ok(filters.some(([k,v])=>k==='user_id'&&v==='owner'));
-        if(table==='rg_coin_ledger') return {data:options.ledgerMissing?null:{amount:'200'},error:null};
-        if(table==='rg_spendable_balances') return {data:options.balanceMissing?null:{balance_rg:String(credits)},error:options.balanceMissing?{code:'UNAVAILABLE'}:null};
-        throw Error('Unexpected table');
-      }};return q;
+      assert.equal(table,'rg_spendable_balances');
+      const q={ select(){return q;},eq(k,v){assert.equal(k,'user_id');assert.equal(v,'owner');return q;},
+        async maybeSingle(){return {data:options.balanceMissing?null:{balance_rg:'23'},error:options.balanceError?{code:'NETWORK'}:null};} };return q;
     },
   };
-  const publicationModule = loadSource('lib/rg/publications.ts',{
+  return { ...loadSource('lib/rg/publications.ts', {
     '@/lib/supabase/admin':{createAdminClient:()=>({rpc:async()=>({data:'publication',error:null})})},
     '@/lib/rg/identity':{validateOwnedTrackForPublication:async()=>{if(options.foreign)throw Error('Wrong owner');},RG_UUID:/.*/,RgIdentityError:class extends Error{}},
     '@/lib/rg/phase2/database':{createPhase2AdminClient:()=>db},
-  });
-  return {...publicationModule,calls,getCredits:()=>credits};
+  }), calls };
 }
-test('confirmed publication records points then credits the wallet using only verified Score evidence; retries reuse the same evidence',async()=>{
+test('confirmed publication uses the atomic points + matching RG RPC and only reads the owner balance',async()=>{
   const f=fixture();
-  for(let i=0;i<2;i++) {
-    const result=await f.recordConfirmedPublication(input);
-    assert.deepEqual(result.rewards,{score:'recorded',points:10,credits:'credited',creditedRg:200,balanceRg:200});
-  }
-  assert.equal(f.getCredits(),200);
-  assert.deepEqual(f.calls.filter(([name])=>name==='rg_award_verified_activity').map(([,args])=>args),[{p_score_event_id:'score-id'},{p_score_event_id:'score-id'}]);
-  assert.ok(f.calls.filter(([name])=>name==='rg_coin_ledger').every(([,filters])=>filters.some(([k,v])=>k==='source_id'&&v==='score-id')));
+  for(let i=0;i<2;i++) assert.deepEqual((await f.recordConfirmedPublication(input)).rewards,
+    {score:'recorded',points:23,credits:'credited',creditedRg:23,balanceRg:23,reason:'awarded'});
+  assert.deepEqual(f.calls,[['rg_reward_publication',{p_publication_id:'publication'}],['rg_reward_publication',{p_publication_id:'publication'}]]);
 });
-test('unverified ownership or failed Score cannot issue RG',async()=>{
-  const foreign=fixture({foreign:true});assert.equal((await foreign.recordConfirmedPublication(input)).linked,false);assert.equal(foreign.calls.length,0);
-  const f=fixture({scoreError:{code:'FAILED'}});const result=await f.recordConfirmedPublication(input);
-  assert.equal(result.linked,true);assert.equal(result.rewards.score,'pending');assert.equal(result.rewards.creditedRg,null);
-  assert.equal(f.calls.some(([name])=>name==='rg_award_verified_activity'),false);
+test('a foreign identity cannot trigger the reward RPC',async()=>{
+  const f=fixture({foreign:true});assert.equal((await f.recordConfirmedPublication(input)).linked,false);assert.equal(f.calls.length,0);
 });
-test('missing migration, exhausted budget, disabled awards and network failures never masquerade as credited RG or a failed YouTube upload',async()=>{
-  for(const [options,status] of [[{awardError:{code:'PGRST202'}},'unavailable'],[{awardError:{code:'P0001'}},'pending'],[{awardThrows:true},'pending'],[{notAwarded:true},'not_awarded'],[{ledgerMissing:true},'pending']]) {
+test('database errors and malformed award amounts leave rewards pending without failing YouTube',async()=>{
+  for(const options of [{error:{code:'PGRST202'}},{error:{code:'P0001'}},{throws:true},{result:{status:'awarded',points:23,creditedRg:999}},{result:{status:'awarded',points:200,creditedRg:200}}]) {
     const result=await fixture(options).recordConfirmedPublication(input);
-    assert.equal(result.linked,true);assert.equal(result.rewards.score,'recorded');assert.equal(result.rewards.points,10);
-    assert.equal(result.rewards.credits,status);assert.equal(result.rewards.creditedRg,null);assert.equal(result.rewards.balanceRg,null);
+    assert.equal(result.linked,true);assert.equal(result.rewards.score,'pending');assert.equal(result.rewards.creditedRg,null);
   }
 });
-test('a confirmed credit survives a failed balance read without inventing a zero balance',async()=>{
-  const result=await fixture({balanceMissing:true}).recordConfirmedPublication(input);
-  assert.equal(result.rewards.credits,'credited');assert.equal(result.rewards.creditedRg,200);assert.equal(result.rewards.balanceRg,null);
+test('block limits, duplicate files and historical scores are confirmed zero-credit outcomes',async()=>{
+  for(const status of ['limit_reached','duplicate_audio','legacy']) {
+    const r={status,points:status==='legacy'?10:0,creditedRg:0};
+    const result=await fixture({result:r}).recordConfirmedPublication(input);
+    assert.equal(result.rewards.reason,status);assert.equal(result.rewards.credits,'not_awarded');assert.equal(result.rewards.creditedRg,0);
+  }
 });
-test('receipt text distinguishes pending points and unconfirmed RG from an actual ledger credit',()=>{
+test('a confirmed credit survives an unavailable balance without inventing zero',async()=>{
+  for(const options of [{balanceMissing:true},{balanceError:true}]) {
+    const result=await fixture(options).recordConfirmedPublication(input);
+    assert.equal(result.rewards.credits,'credited');assert.equal(result.rewards.creditedRg,23);assert.equal(result.rewards.balanceRg,null);
+  }
+});
+test('receipt text explains block limits and retries without claiming nonexistent RG',()=>{
   const {publicationRewardMessages}=loadSource('lib/rg/publication-rewards.ts');
   assert.match(publicationRewardMessages().score,/pendientes/);
   assert.doesNotMatch(publicationRewardMessages().credits,/acreditados/);
-  assert.equal(publicationRewardMessages({score:'recorded',points:10,credits:'credited',creditedRg:200,balanceRg:200}).credits,'200 RG acreditados en tu wallet.');
+  assert.match(publicationRewardMessages({reason:'limit_reached',score:'recorded',points:0,credits:'not_awarded',creditedRg:0}).credits,/tres premios/);
+  assert.equal(publicationRewardMessages({score:'recorded',points:23,credits:'credited',creditedRg:23}).credits,'23 RG acreditados en tu wallet.');
 });

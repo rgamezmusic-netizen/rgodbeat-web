@@ -19,7 +19,7 @@ export async function getRgWalletBalance(userId: string) {
 }
 
 async function readOwnedInventory(db: SupabaseClient, userId: string) {
-  const columns = 'id,product_key,product_version,status,reserved_intent_id';
+  const columns = '*';
   const first = await db.from('rg_beat_passes').select(columns, { count: 'exact' }).eq('user_id', userId)
     .order('purchased_at', { ascending: false }).order('id').range(0, 499);
   if (first.error || !first.data || first.count === null || !Number.isSafeInteger(first.count)) throw new Error('RG pass inventory is unavailable.');
@@ -35,7 +35,7 @@ async function readOwnedInventory(db: SupabaseClient, userId: string) {
 }
 
 /** Caller supplies only the UUID from a validated server session. */
-export async function getRgWalletSummary(userId: string) {
+async function getMarketWalletSummary(userId: string) {
   const db = createPhase2AdminClient() as unknown as SupabaseClient;
   const [balance, config, inventory, catalog] = await Promise.all([
     db.from('rg_spendable_balances').select('balance_rg').eq('user_id', userId).maybeSingle(),
@@ -78,4 +78,45 @@ export async function getRgWalletSummary(userId: string) {
     beatPassEligibleTiers: [beatPass.allowedCategory] as string[], availableBeatPasses: count('available'),
     reservedBeatPasses: count('reserved'), consumedBeatPasses: count('consumed'),
     cashWithdrawalEnabled: false, tradingEnabled: false };
+}
+
+/** V3 uses the deployed ledger directly; optional Market inventory is preserved. */
+export async function getRgWalletSummary(userId: string) {
+  const db = createPhase2AdminClient() as unknown as SupabaseClient;
+  const config = await db.from('rg_economy_config').select('*').eq('id', true).single();
+  if (config.error || !config.data) throw new Error('RG configuration unavailable.');
+  const c = config.data;
+  const empty = { walletV3: false, purchasesEnabled: false, redemptionEnabled: false, transfersEnabled: false,
+    debtRg: 0, movements: [] as Array<{ id: string; amount: number; reason: string; created_at: string }>,
+    rewardStatus: null as { serverTime: string; rewarded: number; remaining: number; nextReward: number; resetsAt: string; seasonPoints: number; seasonNumber: number } | null,
+    pendingRedemptions: [] as Array<{ intentId: string; amountRg: number }> };
+  if (!c.wallet_v3_enabled) return { ...await getMarketWalletSummary(userId), ...empty };
+  const [balance, ledger, inventory, rewards, pending] = await Promise.all([
+    db.from('rg_spendable_balances').select('balance_rg').eq('user_id', userId).maybeSingle(),
+    db.from('rg_coin_ledger').select('id,amount,reason,created_at').eq('user_id', userId).order('created_at', { ascending: false }).order('id').limit(30),
+    readOwnedInventory(db, userId),
+    db.rpc('rg_wallet_reward_status', { p_user_id: userId }),
+    db.from('rg_wallet_redemptions').select('intent_id,amount_rg').eq('user_id', userId).eq('status', 'reserved'),
+  ]);
+  if (balance.error || ledger.error || inventory.error || rewards.error || pending.error) throw new Error('RG wallet unavailable.');
+  const rawBalance = Number(balance.data?.balance_rg ?? 0);
+  if (!Number.isSafeInteger(rawBalance)) throw new Error('Invalid RG balance.');
+  const passes: RgOwnedPass[] = (inventory.data || []).map(p => ({ id: p.id, productKey: p.product_key || 'beat_pass', version: p.product_version || 1,
+    status: p.status, resumeIntentId: null, cancellableIntentId: null }));
+  let products = [] as ReturnType<typeof readMarketProduct>[];
+  if (c.market_v1_enabled !== undefined) {
+    const catalog = await db.from('rg_market_products').select('*').order('cost_rg');
+    if (catalog.error) throw new Error('RG catalog unavailable.');
+    products = (catalog.data || []).map(readMarketProduct);
+  }
+  const count = (status: RgOwnedPass['status']) => passes.filter(p => p.productKey === 'beat_pass' && p.status === status).length;
+  return { balanceRg: Math.max(0, rawBalance), products, passes,
+    beatPassEnabled: c.beat_pass_enabled === true && count('available') > 0, beatPassCostRg: Number(c.beat_pass_cost_rg),
+    beatPassEligibleTiers: c.beat_pass_eligible_license_tiers as string[], availableBeatPasses: count('available'),
+    reservedBeatPasses: count('reserved'), consumedBeatPasses: count('consumed'), cashWithdrawalEnabled: false, tradingEnabled: false,
+    ...empty, walletV3: true, purchasesEnabled: c.purchases_enabled === true,
+    redemptionEnabled: c.redemption_enabled === true, transfersEnabled: c.wallet_transfers_enabled === true,
+    debtRg: Math.max(0, -rawBalance), movements: (ledger.data || []).map(m => ({ ...m, amount: Number(m.amount) })),
+    rewardStatus: rewards.data as typeof empty.rewardStatus,
+    pendingRedemptions: (pending.data || []).map(r => ({ intentId: r.intent_id, amountRg: Number(r.amount_rg) })) };
 }

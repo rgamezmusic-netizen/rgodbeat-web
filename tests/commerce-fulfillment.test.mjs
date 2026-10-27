@@ -11,7 +11,7 @@ const checkoutIntent = () => ({
   snapshot: { items: [{ beatId: 'beat-frozen', beatTitle: 'Frozen Beat', licenseTypeId: 'license-wav', licenseTier: 'wav', licenseName: 'WAV', unitPrice: 12.5 }], totalAmountCents: 2500, currency: 'usd' },
 });
 
-function commerceFixture({ failPurchaseOnce = false, snapshot = checkoutIntent().snapshot, legalName = null } = {}) {
+function commerceFixture({ failPurchaseOnce = false, snapshot = checkoutIntent().snapshot, legalName = null, walletOwner = "payer-user", walletDebit = null } = {}) {
   const state = { intent: { ...checkoutIntent(), snapshot }, order: null, orderItem: null, purchase: null,
     calls: [], failPurchaseOnce, allocated: 0, studioUntil: '2030-01-31T00:00:00.000Z' };
   const client = {
@@ -58,6 +58,10 @@ function commerceFixture({ failPurchaseOnce = false, snapshot = checkoutIntent()
       } else if (query.action === 'update') {
         if (state.order) Object.assign(state.order, query.values);
       }
+    } else if (query.table === 'rg_wallet_redemptions') {
+      data = { user_id: walletOwner, amount_rg: snapshot.rgAmount, status: 'reserved', debit_ledger_id: 'wallet-debit' };
+    } else if (query.table === 'rg_coin_ledger') {
+      data = { amount: walletDebit ?? -snapshot.rgAmount };
     } else if (query.table === 'rg_beat_passes') {
       data={id:'market-pass',user_id:'payer-user',product_key:state.intent.snapshot.utility.productKey,product_version:1,status:'reserved',reserved_intent_id:state.intent.id};
     } else if (query.table === 'rg_market_products') {
@@ -176,4 +180,36 @@ test('actual RG Studio fulfillment uses the existing idempotent Studio grant for
  assert.equal(fixture.state.order.total_amount,0);assert.equal(fixture.state.purchase,null);
  for(const grant of fixture.state.calls.filter(c=>c.name==='rg_grant_commerce_studio_access'))assert.deepEqual(grant.args,{p_source_type:'order',p_source_id:'order-fixture',p_customer_id:'payer-customer',p_days:30});
  assert.equal(fixture.state.calls.filter(c=>c.name==='rg_consume_market_pass').length,2);
+});
+
+const walletSnapshot = () => ({kind:'rg_wallet',paymentMethod:'rg_wallet',currency:'usd',rgAmount:2900,totalAmountCents:0,
+ items:[{beatId:'beat-frozen',beatTitle:'Frozen Beat',licenseTypeId:'license-mp3',licenseTier:'mp3',licenseName:'MP3',catalogUnitPrice:29,unitPrice:0}]});
+const walletSession = () => session({id:'rgwallet:intent-fixture',amount_total:0,payment_intent:null,metadata:{type:'rg_wallet',commerceIntentId:'intent-fixture'}});
+test('wallet fulfillment verifies the real debit, issues the license and writes RG in the contract',async()=>{
+ const f=commerceFixture({snapshot:walletSnapshot()});
+ const result=await fulfillmentFor(f).fulfillStripeCheckoutSession(walletSession());
+ assert.equal(result.status,'fulfilled');assert.equal(f.state.order.total_amount,0);assert.equal(f.state.orderItem.unit_price,0);
+ assert.match(f.state.purchase.contract_text,/2,900 RG/);assert.doesNotMatch(f.state.purchase.contract_text,/Purchase Price: \$0.00/);
+ const consumed=f.state.calls.findIndex(c=>c.name==='rg_consume_wallet_checkout');
+ const completed=f.state.calls.findIndex(c=>c.table==='orders'&&c.action==='update'&&c.values.status==='completed');
+ assert.ok(consumed>completed);assert.equal(f.state.calls.some(c=>c.name==='rg_record_score_event'),false);
+});
+test('wallet fulfillment rejects forged paid sessions, foreign reservations and altered debits before issuing a license',async()=>{
+ for(const [options,paid,error] of [
+  [{}, {...walletSession(),id:'cs_fake_paid'}, /WALLET_PAYMENT_UNVERIFIED/],
+  [{walletOwner:'other-user'},walletSession(),/WALLET_PAYMENT_UNVERIFIED/],
+  [{walletDebit:-1},walletSession(),/WALLET_DEBIT_UNVERIFIED/],
+  [{}, {...walletSession(),metadata:{commerceIntentId:'intent-fixture'}}, /WALLET_PAYMENT_METHOD_MISMATCH/],
+ ]) {
+  const f=commerceFixture({snapshot:walletSnapshot(),...options});await assert.rejects(fulfillmentFor(f).fulfillStripeCheckoutSession(paid),error);
+  assert.equal(f.state.purchase,null);assert.equal(f.state.order,null);
+ }
+});
+test('a wallet license retry reuses the frozen price and never invokes another debit',async()=>{
+ const f=commerceFixture({snapshot:walletSnapshot(),failPurchaseOnce:true});const fulfill=fulfillmentFor(f);
+ await assert.rejects(fulfill.fulfillStripeCheckoutSession(walletSession()),/PURCHASE_ENTITLEMENT_FAILED/);
+ assert.equal(f.state.calls.some(c=>c.name==='rg_consume_wallet_checkout'),false);
+ await fulfill.fulfillStripeCheckoutSession(walletSession());assert.equal(f.state.order.status,'completed');
+ assert.equal(f.state.calls.filter(c=>c.name==='rg_consume_wallet_checkout').length,1);
+ assert.equal(f.state.calls.some(c=>c.name==='rg_reserve_wallet_checkout'),false);
 });

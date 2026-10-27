@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth/server';
 import { getRgWalletBalance, getRgWalletSummary } from '@/lib/rg/product/wallet';
 import { ProductFrame } from '@/components/ranking/RgProductParts';
 import { RgMyPasses } from '@/components/rg/RgMyPasses';
+import { RgWalletDashboard } from '@/components/rg/RgWalletDashboard';
 import { RgBalance } from '@/components/ranking/RgBalance';
 import styles from '@/components/ranking/RgProduct.module.css';
 
@@ -19,7 +20,7 @@ export default async function WalletPage() {
     try { balance = await getRgWalletBalance(user.id); } catch { /* Keep an unavailable balance distinct from zero. */ }
   }
   return <ProductFrame><Link className={styles.textLink} href="/account">← VOLVER A MI CUENTA</Link>
-    <section className={styles.section}>{wallet ? <>
+    <section className={styles.section}>{wallet?.walletV3 ? <RgWalletDashboard initialWallet={wallet} /> : wallet ? <>
       <RgBalance wallet={wallet} /><RgMyPasses wallet={wallet} />
       <div className={styles.links}><Link className={styles.button} href="/rg/market">ABRIR RG MARKET →</Link><Link className={`${styles.button} ${styles.secondary}`} href="/beats">EXPLORAR BEATS →</Link></div>
     </> : balance !== null ? <>
