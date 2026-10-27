@@ -133,8 +133,9 @@ export function RgWalletDashboard({ initialWallet }: { initialWallet: RgWalletSu
     <header className="rounded-3xl border border-amber-300/20 bg-gradient-to-br from-amber-300/[0.08] to-black/30 p-6 sm:p-9">
       <p className="text-xs font-mono tracking-[0.2em] text-amber-200">MI RG WALLET</p>
       <h1 className="mt-3 text-5xl font-extrabold tracking-tight tabular-nums sm:text-6xl">{number(wallet.balanceRg)} <span className="text-xl text-amber-200">RG</span></h1>
-      <p className="mt-4 text-sm text-zinc-300">100 RG = US$1 en licencias de beats.</p>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">Gana RG publicando, compra saldo o apoya a un artista. El saldo se conserva entre temporadas; los puntos del Top compiten por separado.</p>
+      <p className="mt-4 text-sm text-zinc-300">{wallet.redemptionEnabled ? '100 RG = US$1 en licencias de beats.' : 'Tus RG se conservan en tu wallet entre temporadas.'}</p>
+      <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">{wallet.purchasesEnabled || wallet.transfersEnabled ? 'Gana RG publicando, compra saldo o apoya a un artista.' : 'Gana RG publicando tus canciones desde Studio.'} El saldo se conserva entre temporadas; los puntos del Top compiten por separado.</p>
+      {!wallet.redemptionEnabled && <p className="mt-3 text-xs text-zinc-400">El canje de RG por licencias todavía no está disponible.</p>}
       <Link href="/beats" className={`${button} mt-6 inline-block`}>ELEGIR UN BEAT →</Link>
     </header>
     <div aria-live="polite" className="space-y-3">
@@ -151,20 +152,26 @@ export function RgWalletDashboard({ initialWallet }: { initialWallet: RgWalletSu
       <Link href="/studio" className="mt-4 inline-block text-sm font-bold text-amber-200">ABRIR STUDIO →</Link>
     </section>}
     <div className="grid gap-6 lg:grid-cols-2">
-      <section className="rounded-2xl border border-white/10 p-6"><h2 className="text-lg font-bold">Comprar RG</h2><p className="mt-2 text-sm text-zinc-400">Elige la cantidad. Comprar RG no suma puntos al Top.</p>
+      <section className="rounded-2xl border border-white/10 p-6"><h2 className="text-lg font-bold">Comprar RG</h2><p className="mt-2 text-sm text-zinc-400">{wallet.purchasesEnabled ? 'Elige la cantidad. Comprar RG no suma puntos al Top.' : 'Comprar RG no suma puntos al Top.'}</p>
+        {!wallet.purchasesEnabled && <p role="status" className="mt-5 rounded-xl border border-white/10 p-4 text-sm text-zinc-400">La compra de RG todavía no está disponible.</p>}
+        <fieldset disabled={!wallet.purchasesEnabled} className={!wallet.purchasesEnabled ? 'hidden' : undefined}>
         <div className="mt-5 grid grid-cols-2 gap-2">{[500, 1000, 2000, 5000].map(n => <button key={n} disabled={busy} onClick={() => setBuyAmount(String(n))} aria-pressed={buyAmount === String(n)} className={`rounded-xl border px-3 py-3 text-left ${buyAmount === String(n) ? 'border-amber-300/60 bg-amber-300/10' : 'border-white/10 hover:border-white/30'}`}><strong className="block text-sm">{number(n)} RG</strong><span className="text-xs text-zinc-400">US${n / 100}</span></button>)}</div>
         <label className="mt-5 block text-sm text-zinc-300">Cantidad de RG<input className={input} type="number" inputMode="numeric" min="500" max="1000000" step="1" value={buyAmount} onChange={e => setBuyAmount(e.target.value)} disabled={busy} /></label>
         <p className="mt-3 text-sm text-amber-100">Total: US${Number.isFinite(Number(buyAmount)) ? (Number(buyAmount) / 100).toFixed(2) : '—'}</p>
         <button className={`${button} mt-5 w-full`} disabled={busy || !wallet.purchasesEnabled || !Number.isSafeInteger(Number(buyAmount)) || Number(buyAmount) < 500 || Number(buyAmount) > 1000000} onClick={() => void buy()}>{busy ? 'PROCESANDO…' : 'CONTINUAR AL PAGO SEGURO'}</button>
         <p className="mt-3 text-xs leading-relaxed text-zinc-500">Compra mínima: US$5. RG es saldo interno de RGodbeat para licencias. No se retira como dinero ni se negocia fuera de la plataforma.</p>
+        </fieldset>
       </section>
-      <section className="rounded-2xl border border-white/10 p-6"><h2 className="text-lg font-bold">Apoyar a un artista</h2><p className="mt-2 text-sm text-zinc-400">Envía RG a su wallet para que pueda elegir sus beats. El envío no cambia el Top.</p>
+      <section className="rounded-2xl border border-white/10 p-6"><h2 className="text-lg font-bold">Apoyar a un artista</h2><p className="mt-2 text-sm text-zinc-400">{wallet.transfersEnabled ? 'Envía RG a su wallet para que pueda elegir sus beats. El envío no cambia el Top.' : 'El apoyo con RG no cambia las posiciones del Top.'}</p>
+        {!wallet.transfersEnabled && <p role="status" className="mt-5 rounded-xl border border-white/10 p-4 text-sm text-zinc-400">Los envíos de RG todavía no están disponibles.</p>}
+        <fieldset disabled={!wallet.transfersEnabled} className={!wallet.transfersEnabled ? 'hidden' : undefined}>
         <label className="mt-5 block text-sm text-zinc-300">Buscar artista<input className={input} value={query} maxLength={60} disabled={busy} placeholder="Nombre o @artista" onChange={e => { setQuery(e.target.value); setArtist(null); setArtists([]); setConfirmSend(false); }} /></label>
         {artists.length > 0 && !artist && <ul className="mt-2 max-h-48 overflow-auto rounded-xl border border-white/10">{artists.map(a => <li key={a.slug}><button className="w-full px-4 py-3 text-left text-sm hover:bg-white/5" onClick={() => { setArtist(a); setQuery(a.stage_name); setArtists([]); setConfirmSend(false); }}><strong>{a.stage_name}</strong><span className="ml-2 text-xs text-zinc-500">@{a.slug}</span></button></li>)}</ul>}
         {artist && <p className="mt-3 text-sm text-amber-100">Destinatario: {artist.stage_name} · @{artist.slug}</p>}
         <label className="mt-5 block text-sm text-zinc-300">RG que quieres enviar<input className={input} type="number" inputMode="numeric" min="1" max={wallet.balanceRg} step="1" value={sendAmount} disabled={busy} onChange={e => { setSendAmount(e.target.value); setConfirmSend(false); }} /></label>
         {confirmSend && artist ? <div className="mt-5 space-y-3"><p className="text-sm text-amber-100">Confirma el envío de {number(Number(sendAmount))} RG a {artist.stage_name} (@{artist.slug}).</p><button className={`${button} w-full`} disabled={busy || !validSend} onClick={() => void transfer()}>CONFIRMAR ENVÍO</button><button className="text-sm text-zinc-400 underline" disabled={busy} onClick={() => setConfirmSend(false)}>Cancelar</button></div>
           : <button className={`${button} mt-5 w-full`} disabled={busy || !wallet.transfersEnabled || !validSend} onClick={() => setConfirmSend(true)}>REVISAR ENVÍO</button>}
+        </fieldset>
       </section>
     </div>
     {wallet.pendingRedemptions.length > 0 && <section className="rounded-2xl border border-amber-300/20 p-6"><h2 className="text-lg font-bold">Compras por terminar</h2><p className="mt-2 text-sm text-zinc-400">El saldo ya está reservado. Retomar prepara la licencia sin volver a cobrar.</p>{wallet.pendingRedemptions.map(r => <button key={r.intentId} className={`${button} mt-4 mr-3`} disabled={busy} onClick={() => void resume(r.intentId)}>RETOMAR COMPRA · {number(r.amountRg)} RG</button>)}</section>}

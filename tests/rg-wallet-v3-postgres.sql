@@ -1,9 +1,11 @@
--- Isolated PostgreSQL only. Apply bootstrap, V3 schema and activation first.
+-- Isolated PostgreSQL only. Apply bootstrap, V3 schema and publication activation first.
 \set ON_ERROR_STOP on
 DO $$ BEGIN IF current_database()<>'rgodbeat_validation' THEN RAISE EXCEPTION 'wrong_test_database'; END IF; END $$;
 UPDATE public.rg_economy_config SET season_anchor_at=date_trunc('day',now())-interval '2 days';
 UPDATE public.rg_seasons s SET starts_at=c.season_anchor_at+(s.season_number-1)*interval '14 days',ends_at=c.season_anchor_at+s.season_number*interval '14 days' FROM public.rg_economy_config c;
 BEGIN;
+-- Only fake money in this guarded disposable database enables the entire flow.
+UPDATE public.rg_economy_config SET purchases_enabled=true,redemption_enabled=true,wallet_transfers_enabled=true,purchase_price_cents_per_rg=1;
 CREATE FUNCTION pg_temp.expect_error(q text,expected text) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN EXECUTE q; RAISE EXCEPTION 'expected_failure_missing:%',expected; EXCEPTION WHEN OTHERS THEN IF position(expected IN SQLERRM)=0 THEN RAISE; END IF; END $$;
 INSERT INTO auth.users(id,email,email_confirmed_at) SELECT ('a0000000-0000-4000-8000-'||lpad(n::text,12,'0'))::uuid,'wallet-v3-'||n||'@example.test',now() FROM generate_series(1,8)n;

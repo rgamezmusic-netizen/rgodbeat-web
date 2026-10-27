@@ -72,7 +72,13 @@ try {
   else assert.fail(`Unexpected checkout API ${path}`);
   await route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
  });
- await page.goto(base);await page.evaluate(()=>window.showCart());await page.getByRole('button',{name:'USAR RG',exact:true}).click({timeout:5000}).catch(async error=>{console.error('CART DEBUG',JSON.stringify({errors,text:await page.locator('body').innerText()}));await page.screenshot({path:`${report}/carrito-debug.png`,fullPage:true});throw error});
+ await page.goto(base);await page.evaluate(w=>window.showWallet(w),{...wallet(),purchasesEnabled:false,redemptionEnabled:false,transfersEnabled:false});
+ await page.getByText('La compra de RG todavía no está disponible.').waitFor();
+ assert.equal(await page.getByRole('button',{name:'CONTINUAR AL PAGO SEGURO'}).count(),0);
+ assert.equal(await page.getByRole('button',{name:'REVISAR ENVÍO'}).count(),0);
+ assert.doesNotMatch(await page.locator('body').innerText(),/100 RG = US\$1/);
+ await page.screenshot({path:`${report}/wallet-publicaciones-390.png`,fullPage:true});
+ await page.evaluate(()=>window.showCart());await page.getByRole('button',{name:'USAR RG',exact:true}).click({timeout:5000}).catch(async error=>{console.error('CART DEBUG',JSON.stringify({errors,text:await page.locator('body').innerText()}));await page.screenshot({path:`${report}/carrito-debug.png`,fullPage:true});throw error});
  await page.getByRole('button',{name:'CONFIRMAR COMPRA · 2,900 RG'}).click();await page.getByText('TOTAL: 2,900 RG',{exact:true}).waitFor();
  assert.equal(checkouts.length,1);assert.equal(checkouts[0].expectedAmountRg,2900);assert.equal(checkouts[0].paymentMethod,'rg_wallet');assert.equal(checkouts[0].items[0].licenseTier,'mp3');
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
