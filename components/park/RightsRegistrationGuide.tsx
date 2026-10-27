@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ExternalLink, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Check, ExternalLink, ShieldCheck } from "lucide-react";
 
 const PROGRESS_KEY = "rgodbeat_park_rights_guide_v1";
 const CHECKLISTS_KEY = "rgodbeat_park_song_checklists_v2";
@@ -178,9 +179,18 @@ export function RightsRegistrationGuide() {
     <main className="min-h-screen bg-[#07070a] px-4 py-10 text-white sm:px-6 sm:py-16">
       <div className="mx-auto max-w-3xl">
         <header className="mb-10 border-b border-white/10 pb-8 sm:mb-12">
-          <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">
-            <ShieldCheck aria-hidden="true" className="h-4 w-4" />
-            The Park · Guía privada
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">
+              <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0" />
+              <span>The Park · Guía privada</span>
+            </div>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/25 text-xs font-medium text-zinc-300 hover:text-white transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Volver a Inicio</span>
+            </Link>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">
             Guía de registro de derechos musicales

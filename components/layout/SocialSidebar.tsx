@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { SOCIAL_URLS, type SocialService } from '@/lib/social-links';
 import { SocialLink } from './SocialLink';
 
@@ -80,11 +81,32 @@ export function SocialSidebar() {
       className="hidden xl:flex fixed left-5 -translate-y-1/2 z-40 max-h-[calc(100dvh-10rem-var(--rg-beat-player-height,0px))] overflow-y-auto flex-col items-center gap-5 p-3 rounded-2xl bg-[#08080a]/60 backdrop-blur-md border border-white/[0.05] shadow-[0_10px_30px_rgba(0,0,0,0.5)] transition-colors duration-300 hover:border-purple-500/30"
       aria-label="Social Media Links"
     >
-      <div
-        className="font-extrabold text-[10px] tracking-[0.28em] text-purple-400 select-none opacity-80 hover:opacity-100 transition-opacity cursor-default [writing-mode:vertical-lr] rotate-180 mb-2 drop-shadow-[0_0_8px_rgba(168,85,247,0.6)]"
+      <Link
+        href="/"
+        aria-label="Ir a Inicio"
+        title="Inicio - RGodbeat"
+        className="group flex flex-col items-center gap-1.5 mb-2 cursor-pointer transition-all duration-200"
       >
-        RGODBEAT
-      </div>
+        <svg
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-purple-400 opacity-80 group-hover:opacity-100 group-hover:text-purple-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] transition-all duration-200"
+        >
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        <span
+          className="font-extrabold text-[10px] tracking-[0.28em] text-purple-400 select-none opacity-80 group-hover:opacity-100 group-hover:text-purple-300 group-hover:scale-105 transition-all [writing-mode:vertical-lr] rotate-180 drop-shadow-[0_0_8px_rgba(168,85,247,0.6)]"
+        >
+          RGODBEAT
+        </span>
+      </Link>
 
       <div className="w-4 h-[1px] bg-white/10 mb-1" />
 
