@@ -36,20 +36,22 @@ const browser=await chromium.launch({channel:'chrome',headless:true});
 try {
  for(const width of (process.env.RG_BROWSER_SURFACE === 'cart' ? [] : [1366,390,320])) {
   const page=await browser.newPage({viewport:{width,height:900},isMobile:width<600,hasTouch:width<600});const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  let current=wallet(),transferAttempts=0;const sends=[],buys=[];
+  let current=wallet(),transferAttempts=0,walletReads=0;const sends=[],buys=[];
   await page.route('**/api/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname;const body=req.method()==='POST'?req.postDataJSON():null;
    let status=200,data;
-   if(path==='/api/rg/wallet')data=current;
+   if(path==='/api/rg/wallet'){walletReads++;data=current;}
    else if(path==='/api/gift/artists')data={artists:[{stage_name:'LARY',slug:'lary'}]};
    else if(path==='/api/rg/wallet/transfer'){sends.push(body);transferAttempts++;if(transferAttempts===1){status=503;data={error:'Conexión interrumpida. Reintenta el envío.'}}else {current={...current,balanceRg:4000,movements:[{id:'transfer',amount:-1000,reason:'Envío a @lary',created_at:new Date().toISOString()}]};data={transferId:'transfer',amountRg:1000}}}
    else if(path==='/api/rg/wallet/topup'){buys.push(body);status=503;data={error:'Pago de prueba aislado; no se abre Stripe.'}}
    else assert.fail(`Unexpected API ${path}`);
    await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
   });
+  if(width===1366) await page.clock.install({time:new Date('2099-01-01T00:00:00Z')});
   await page.goto(base);await page.evaluate(w=>window.showWallet(w),current);
   await page.getByRole('heading',{name:'5,000 RG'}).waitFor();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.screenshot({path:`${report}/wallet-${width}.png`,fullPage:true});
+  if(width===1366){assert.equal(walletReads,0,'wrong device clock cannot renew the reward block early');await Promise.all([page.waitForResponse(r=>r.url().endsWith('/api/rg/wallet')),page.clock.fastForward(3601000)]);assert.equal(walletReads,1);await page.clock.fastForward(60000);assert.equal(walletReads,1,'an unchanged backend response cannot cause a refresh loop');}
   if(width===390) {
    await page.getByLabel('Buscar artista').fill('LA');await page.getByRole('button',{name:/LARY.*@lary/}).click();await page.getByLabel('RG que quieres enviar').fill('1000');
    await page.getByRole('button',{name:'REVISAR ENVÍO'}).click();await page.getByRole('button',{name:'CONFIRMAR ENVÍO'}).click();await page.getByRole('alert').filter({hasText:'Conexión interrumpida'}).waitFor();
