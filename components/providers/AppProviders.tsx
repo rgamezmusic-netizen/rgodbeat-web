@@ -20,14 +20,17 @@ import { configureStudioServiceWorker } from "@/lib/browser/studio-service-worke
 const BeatPlayer = dynamic(() => import("@/components/player/BeatPlayer").then(mod => mod.BeatPlayer), { ssr: false });
 const CartDrawer = dynamic(() => import("@/components/cart/CartDrawer").then(mod => mod.CartDrawer), { ssr: false });
 
-function DeferredOverlays() {
-  const { currentBeat } = usePlayerState();
+function DeferredOverlays({ workspace }: { workspace: boolean }) {
+  const { currentBeat, isPlaying, pauseBeat } = usePlayerState();
   const { isCartOpen } = useCart();
   const [cartWasOpened, setCartWasOpened] = useState(false);
+  useEffect(() => {
+    if (workspace && isPlaying) pauseBeat();
+  }, [workspace, isPlaying, pauseBeat]);
   // Keep checkout mounted after its first use so closing/reopening preserves it.
   if (isCartOpen && !cartWasOpened) setCartWasOpened(true);
   return <>
-    {currentBeat && <BeatPlayer />}
+    {!workspace && currentBeat && <BeatPlayer />}
     {cartWasOpened && <CartDrawer />}
   </>;
 }
@@ -57,7 +60,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
             <div className={workspace ? undefined : "site-content"}>{children}</div>
             {!workspace && <SocialSidebar />}
             <FloatingSocialButtons />
-            <DeferredOverlays />
+            <DeferredOverlays workspace={workspace} />
           </ContactProvider>
         </AtmosphereProvider>
       </CartProvider>

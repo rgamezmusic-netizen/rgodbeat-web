@@ -158,10 +158,11 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
 
     const request = ++selectionRequestRef.current;
     stopPreview();
+    const resumed = audioCtx.state === 'suspended' ? audioCtx.resume().catch(() => {}) : Promise.resolve();
     try {
       setIsProcessing(true);
       setStatusMsg(`Descargando y preparando audio de "${beat.title}"...`);
-      const res = await fetch(beat.previewUrl);
+      const [res] = await Promise.all([fetch(beat.previewUrl), resumed]);
       if (!res.ok) throw new Error('No se pudo descargar el beat.');
       const arrayBuffer = await res.arrayBuffer();
       const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
@@ -513,6 +514,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
           {/* TAB 0: TOP 23 CATALOG & WEEKLY VOTES */}
           {activeTab === 'ranking' && (
             <div className="space-y-3">
+              {statusMsg && <p role="status" className="text-xs font-mono text-amber-300 bg-amber-950/40 p-2 rounded-lg border border-amber-500/30">{statusMsg}</p>}
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-xs font-bold font-mono text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">

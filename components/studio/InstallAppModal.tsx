@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, Download, Ellipsis, PlusSquare, Share, Smartphone, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Download, Ellipsis, MoreVertical, PlusSquare, Share, Smartphone, X } from 'lucide-react';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import { useModalFocus } from '@/hooks/useModalFocus';
 import { useAppInstallation } from '@/hooks/useAppInstallation';
@@ -61,30 +61,45 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
       <p className="mt-1 text-xs text-amber-300">{manual ? `${OS_LABELS[os]} · ${BROWSER_LABELS[browser]}` : device?.label || 'Detectando dispositivo…'}</p>
       {installation.isInstalled && <p className="mt-3 text-sm text-zinc-300">Studio ya está instalado o abierto como app.</p>}
       {!installation.isInstalled && <>
-      {!quickInstall && <>{iosGuide ? <ol className="mt-4 overflow-hidden rounded-2xl border border-amber-400/20 bg-amber-400/5">
+      {!quickInstall && <>{iosGuide ? <ol className="mt-3 overflow-hidden rounded-2xl border border-amber-400/25 bg-amber-400/5">
         {guide.steps.map((item, index) => <li key={item.title} className={`p-3 ${index > 0 ? 'border-t border-amber-400/20' : ''}`}>
-          <h3 className="flex items-start gap-2 text-sm font-bold text-white"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-400 text-xs text-black" aria-hidden="true">{index + 1}</span><span className="sr-only">{index + 1}. </span><span className="pt-0.5">{item.title}</span></h3>
-          {safariGuide && index === 0 ? <div className="mt-2">
-            <p className="flex items-center gap-2 text-sm font-semibold text-white">
-              <span aria-label="Más opciones de Safari" className="flex h-11 w-14 items-center justify-center rounded-full border-2 border-amber-400 bg-zinc-800 text-amber-300"><Ellipsis size={28} aria-hidden="true" /></span>
-              <ArrowRight size={18} className="shrink-0 text-amber-300" aria-hidden="true" />
-              <span className="flex min-h-11 items-center gap-2 rounded-xl bg-white/10 px-3"><Share size={22} aria-hidden="true" />Compartir</span>
-            </p>
-            <p className="mt-2 flex items-center gap-1 text-xs text-zinc-400">¿Ves <Share size={15} aria-label="Compartir" className="shrink-0" /> en la barra? Tócalo directamente.</p>
-          </div> : safariGuide && index === 1 ? <div className="mt-2">
-            <p className="flex items-center gap-2 text-sm text-zinc-200"><PlusSquare size={20} aria-hidden="true" className="shrink-0 text-amber-300" />Después, toca <span className="ml-auto rounded-lg bg-amber-400 px-3 py-2 font-bold text-black">Añadir</span></p>
-            <p className="mt-2 text-xs text-zinc-400">Si aparece «Abrir como app web», actívalo.</p>
-          </div> : <p className="mt-2 text-sm leading-relaxed text-zinc-200">{item.text}</p>}
+          <h3 className="flex items-center gap-2 text-xs font-bold text-white"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-400 text-[11px] font-black text-black" aria-hidden="true">{index + 1}</span><span className="sr-only">{index + 1}. </span><span>{item.title}</span></h3>
+          {index === 0 ? <div className="mt-2 flex items-center justify-between gap-1.5 rounded-xl border border-white/10 bg-zinc-950/90 px-2.5 py-2">
+            <span className="truncate text-[11px] font-medium text-zinc-400">rgodbeat.com</span>
+            <div className="flex items-center gap-1.5">
+              {safariGuide && <>
+                <span aria-label="Más opciones de Safari" className="flex h-9 w-11 items-center justify-center rounded-full border-2 border-amber-400 bg-amber-400/15 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.35)]"><Ellipsis size={22} aria-hidden="true" /></span>
+                <ArrowRight size={15} className="shrink-0 text-amber-300" aria-hidden="true" />
+              </>}
+              <span className="flex h-9 items-center gap-1.5 rounded-xl border-2 border-amber-400 bg-amber-400 px-2.5 text-xs font-extrabold text-black shadow-[0_0_12px_rgba(251,191,36,0.35)]"><Share size={16} aria-hidden="true" />Compartir</span>
+            </div>
+          </div> : <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-2.5 py-2">
+            <span className="flex items-center gap-2 text-xs font-bold text-white"><PlusSquare size={18} aria-hidden="true" className="shrink-0 text-amber-300" />Añadir a inicio</span>
+            <ArrowRight size={15} className="shrink-0 text-amber-300" aria-hidden="true" />
+            <span className="rounded-lg border-2 border-amber-400 bg-amber-400 px-3 py-1.5 text-xs font-extrabold text-black shadow-[0_0_12px_rgba(251,191,36,0.35)]">Añadir</span>
+          </div>}
         </li>)}
-      </ol> : <><div className="my-5 flex gap-2" aria-label={`Paso ${activeStep + 1} de ${guide.steps.length}`}>
+      </ol> : <><div className="my-3 flex gap-2" aria-label={`Paso ${activeStep + 1} de ${guide.steps.length}`}>
         {guide.steps.map((_, index) => <span key={index} className={`h-1.5 flex-1 rounded-full ${index <= activeStep ? 'bg-amber-400' : 'bg-white/10'}`} />)}
       </div>
-      <div aria-live="polite" className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4">
-        <span className="text-xs font-bold text-amber-400">PASO {activeStep + 1} / {guide.steps.length}</span>
-        <h3 className="mt-2 text-lg font-bold text-white">{step.title}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-zinc-200">{step.text}</p>
-      </div></>}
-      {guide.note && <p className="mt-3 text-xs leading-relaxed text-zinc-400">{guide.note}</p>}</>}
+      <div aria-live="polite" className="rounded-2xl border border-amber-400/25 bg-amber-400/5 p-3.5">
+        <span className="text-[11px] font-bold text-amber-400">PASO {activeStep + 1} / {guide.steps.length}</span>
+        <h3 className="mt-1 text-sm font-bold text-white">{step.title}</h3>
+        {activeStep === 0 ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+          <span className="truncate text-xs font-medium text-zinc-400">rgodbeat.com</span>
+          <div className="flex items-center gap-2">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-400/15 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.35)]"><Download size={18} aria-hidden="true" /></span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-400 text-black shadow-[0_0_12px_rgba(251,191,36,0.35)]"><MoreVertical size={18} aria-hidden="true" /></span>
+          </div>
+        </div> : activeStep === 1 ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+          <span className="flex items-center gap-2 text-xs font-bold text-white"><Smartphone size={18} className="shrink-0 text-amber-300" aria-hidden="true" />Instalar aplicación</span>
+          <ArrowRight size={15} className="shrink-0 text-amber-300" aria-hidden="true" />
+          <span className="rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-extrabold text-black">Instalar</span>
+        </div> : <div className="mt-2.5 flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-amber-400 bg-gradient-to-br from-amber-400 to-amber-500 text-xs font-black text-black shadow-[0_0_12px_rgba(251,191,36,0.35)]">RG</span>
+          <span className="text-xs font-bold text-white">RGodbeat Studio</span>
+        </div>}
+      </div></>}</>}
       <p role="status" className="mt-3 text-sm text-amber-200 empty:hidden">{installation.isPrompting ? 'Confirma en el aviso de tu navegador…' : installation.status === 'accepted' ? 'Instalación solicitada. El navegador confirmará cuando termine.' : installation.status === 'dismissed' ? 'Puedes instalarlo más tarde desde el menú del navegador.' : installation.status === 'error' ? 'No se pudo abrir la instalación. Sigue los pasos de tu navegador.' : ''}</p>
       {canPrompt && <button type="button" disabled={installation.isPrompting} onClick={() => setShowInstructions(value => !value)} className="mt-2 min-h-11 text-sm text-amber-300 underline">{showInstructions ? 'Usar instalación rápida' : 'Ver instrucciones'}</button>}
       <details className="mt-3 text-sm text-zinc-300">

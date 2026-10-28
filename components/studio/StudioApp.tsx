@@ -22,7 +22,8 @@ import {
 } from '@/lib/studio/types/audio';
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 import { analyzeBeatAudio } from '@/lib/studio/audio/beatAnalyzer';
-import { punchInClips } from '@/lib/studio/audio/wavEncoder';
+import { punchInClips, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from '@/lib/studio/audio/wavEncoder';
+import { consumePendingGalleryBeat } from '@/lib/studio/audio/pendingGalleryBeat';
 import { getTrackClips, splitClip, trimClip, withTrackClips } from '@/lib/studio/audio/clipEditing';
 import { MAIN_SCALES } from '@/lib/studio/audio/pitchCorrection';
 import {
@@ -984,6 +985,7 @@ export default function App() {
     // Restore only the open project; keep the library as lightweight metadata.
     (async () => {
       try {
+        const pendingGalleryBeat = consumePendingGalleryBeat();
         const owner = await refreshStudioAccess();
         if (cancelled) return;
         const audioCtx = await audioEngine.ensureAudioContext({ resume: false });
@@ -1010,7 +1012,7 @@ export default function App() {
             isBeatMuted: session.isBeatMuted ?? false,
           };
           const nextTime = session.currentTime ?? 0;
-          const nextView = session.activeView || 'studio';
+          const nextView = pendingGalleryBeat ? 'studio' : (session.activeView || 'studio');
           setCurrentBeat(session.beat);
           currentBeatRef.current = session.beat;
           audioEngine.setBeat(session.beat);
@@ -1031,7 +1033,7 @@ export default function App() {
           await saveStudioSession(finalTracks, session.beat, nextLoop, nextTime,
             nextMix.beatFX.volume, nextView, owner, nextMix);
           if (cancelled) return;
-          if (!session.beat) setShowLoadBeatModal(true);
+          if (!session.beat && !pendingGalleryBeat) setShowLoadBeatModal(true);
         };
 
         // Restore the verified owner's project without a startup confirmation.
@@ -1178,8 +1180,80 @@ export default function App() {
         }
 
         if (cancelled) return;
-        setNeedsFirstBeat(!hasPreviousSession);
+        setNeedsFirstBeat(!hasPreviousSession && !pendingGalleryBeat);
         setIsStartupResolved(true);
+
+        if (pendingGalleryBeat) {
+          const targetBeatId = `catalog-${pendingGalleryBeat.id}`;
+          const alreadyOpenSameBeat = currentBeatRef.current?.id === targetBeatId && Boolean(currentBeatRef.current?.buffer && currentBeatRef.current.buffer.length > 1);
+          if (!alreadyOpenSameBeat) {
+            const existingHasTakes = tracksRef.current.some(t => getTrackClips(t).length > 0);
+            if (existingHasTakes && currentBeatRef.current && currentBeatRef.current.id !== targetBeatId) {
+              const archived = await archiveSavedStudioSession(owner, true);
+              if (archived.success) {
+                setHasLocalPrevious(Boolean(archived.hasPrevious));
+                await clearActiveProjectBackup();
+                const cleanTracks = applyUserFXTemplatesToTracks(
+                  initialTracks.map(track => ({
+                    ...track,
+                    buffer: null,
+                    clips: [],
+                    duration: 0,
+                    startBeatOffset: 0,
+                    waveformSample: undefined,
+                    tunedBuffer: null,
+                  })),
+                  null,
+                  owner
+                );
+                setTracks(cleanTracks);
+                tracksRef.current = cleanTracks;
+                setCurrentTime(0);
+              }
+            }
+            const initialGalleryBeat: BeatData = {
+              id: targetBeatId,
+              catalogBeatId: pendingGalleryBeat.id,
+              title: pendingGalleryBeat.title,
+              producer: 'RGODBEAT',
+              genre: pendingGalleryBeat.genre,
+              bpm: pendingGalleryBeat.bpm || 140,
+              key: pendingGalleryBeat.key || 'C minor',
+              scale: pendingGalleryBeat.key?.toLowerCase().includes('m') && !pendingGalleryBeat.key?.toLowerCase().includes('maj') ? 'Menor' : 'Mayor',
+              duration: 0,
+              buffer: audioCtx.createBuffer(2, 1, audioCtx.sampleRate),
+              artworkGradient: 'linear-gradient(135deg, #1d102e 0%, #121018 50%, #09080d 100%)',
+              coverUrl: pendingGalleryBeat.coverUrl,
+            };
+            currentBeatRef.current = initialGalleryBeat;
+            setCurrentBeat(initialGalleryBeat);
+            const adaptedTracks = adaptTracksTonalityToBeat(tracksRef.current, initialGalleryBeat);
+            setTracks(adaptedTracks);
+            tracksRef.current = adaptedTracks;
+            if (!cancelled && pendingGalleryBeat.previewUrl) {
+              void (async () => {
+                try {
+                  const res = await fetch(pendingGalleryBeat.previewUrl!);
+                  if (!res.ok || cancelled) return;
+                  const arrayBuffer = await res.arrayBuffer();
+                  if (cancelled) return;
+                  const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                  if (cancelled) return;
+                  const waveform = extractWaveformPeaks(decodedBuffer, WAVEFORM_SAMPLE_COUNT);
+                  const galleryBeat: BeatData = {
+                    ...initialGalleryBeat,
+                    duration: decodedBuffer.duration,
+                    buffer: decodedBuffer,
+                    waveformSample: waveform,
+                  };
+                  await handleSelectBeat(galleryBeat);
+                } catch (err) {
+                  console.warn('Could not auto-load gallery beat audio:', err);
+                }
+              })();
+            }
+          }
+        }
 
         // Only lightweight library metadata lives in React state. The open
         // project's beat/voices were restored above; no unrelated audio or demos.
@@ -1601,7 +1675,7 @@ export default function App() {
 
   // Transport Handlers
   const handlePlayPause = async () => {
-    if (!engine || !currentBeat) return;
+    if (!engine || !currentBeat || !currentBeat.buffer || currentBeat.buffer.length <= 1) return;
     if (!engine.getBeat() && currentBeat) {
       engine.setBeat(currentBeat);
     }
