@@ -68,8 +68,8 @@ test('actual reconciliation uses verified publication IDs and canonical stored b
 
 test('actual YouTube parser accepts verified channel statistics and rejects missing/unsafe/fake counts',async()=>{
   const {parseYoutubeMetrics}=loadSource('lib/rg/phase2/youtube-metrics.ts');
-  const valid={id:'owned-video',snippet:{channelId:'rg-channel',publishedAt:'2026-10-01T00:00:00Z'},statistics:{viewCount:'5200',likeCount:'100'},status:{uploadStatus:'processed'}};
-  assert.deepEqual(parseYoutubeMetrics({items:[valid]},'rg-channel'),[{videoId:'owned-video',viewCount:5200,likeCount:100,publishedAt:'2026-10-01T00:00:00Z',uploadStatus:'processed'}]);
+  const valid={id:'owned-video',snippet:{channelId:'rg-channel',publishedAt:'2026-10-01T00:00:00Z'},statistics:{viewCount:'5200',likeCount:'100',commentCount:'18'},status:{uploadStatus:'processed'}};
+  assert.deepEqual(parseYoutubeMetrics({items:[valid]},'rg-channel'),[{videoId:'owned-video',viewCount:5200,likeCount:100,commentCount:18,publishedAt:'2026-10-01T00:00:00Z',uploadStatus:'processed'}]);
   for(const item of [{...valid,statistics:{}},{...valid,statistics:{viewCount:'9007199254740993'}},{...valid,statistics:{viewCount:'-1'}},{...valid,statistics:{viewCount:5200}},{...valid,snippet:{channelId:'foreign'}},{...valid,status:{uploadStatus:'failed'}}])assert.deepEqual(parseYoutubeMetrics({items:[item]},'rg-channel'),[]);
   assert.throws(()=>parseYoutubeMetrics({},'rg-channel'),/Invalid/);
 });

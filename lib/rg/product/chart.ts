@@ -33,6 +33,14 @@ export async function getRgChart(): Promise<ChartData> {
         entry.beat = { id: row.beat.id, title: row.beat.title, slug: row.beat.slug, coverUrl: getPublicStorageUrl(row.beat.cover_path) };
         entry.rankedTrackCount = source.rankings.tracks.filter(track => track.track?.beat_id === row.entityId).length;
       }
+      if ('interactions' in row && row.interactions) {
+        entry.interactions = {
+          recordedCount: Math.max(0, Number(row.interactions.recordedCount) || 0),
+          viewCount: Math.max(0, Number(row.interactions.viewCount) || 0),
+          likeCount: Math.max(0, Number(row.interactions.likeCount) || 0),
+          commentCount: Math.max(0, Number(row.interactions.commentCount) || 0),
+        };
+      }
       return entry;
     });
   }

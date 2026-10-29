@@ -1,37 +1,55 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import React from "react";
-
-const StudioApp = dynamic(
-  () => import("@/components/studio/StudioApp").then((mod) => mod.StudioApp),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center text-white space-y-4 font-mono p-4">
-        <div className="relative">
-          <div className="w-16 h-16 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-          </div>
-        </div>
-        <div className="text-center space-y-1">
-          <h2 className="text-sm tracking-[0.2em] uppercase text-amber-400 font-bold">
-            RGODBEAT STUDIO // INICIALIZANDO DSP
-          </h2>
-          <p className="text-xs text-zinc-500 font-mono">
-            Preparando grabación, efectos y edición multipista...
-          </p>
-        </div>
-      </div>
-    ),
-  }
-);
+import React, { useEffect, useState } from "react";
+import { StudioApp } from "@/components/studio/StudioApp";
 
 export default function StudioPage() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-[#09090b] text-white">
-      <StudioApp />
+    <div
+      className="min-h-screen bg-[#09090b] text-white"
+      style={{
+        minHeight: "100dvh",
+        backgroundColor: "#09090b",
+        color: "#ffffff",
+      }}
+    >
+      {mounted ? (
+        <StudioApp />
+      ) : (
+        <div
+          style={{
+            minHeight: "100dvh",
+            backgroundColor: "#09090b",
+            color: "#fbbf24",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "12px",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            padding: "16px",
+            textAlign: "center",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "12px",
+              letterSpacing: "0.18em",
+              fontWeight: 800,
+              color: "#fbbf24",
+              textTransform: "uppercase",
+            }}
+          >
+            RGODBEAT STUDIO
+          </span>
+        </div>
+      )}
     </div>
   );
 }

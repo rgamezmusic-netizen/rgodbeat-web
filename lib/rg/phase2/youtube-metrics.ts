@@ -2,6 +2,7 @@ export type YoutubeMetric = {
   videoId: string;
   viewCount: number;
   likeCount: number | null;
+  commentCount: number | null;
   publishedAt: string | null;
   uploadStatus: string;
 };
@@ -19,7 +20,7 @@ export function parseYoutubeMetrics(payload: unknown, channelId: string): Youtub
     if (!item || typeof item.id !== 'string' || item.snippet?.channelId !== channelId || item.status?.uploadStatus !== 'processed') return [];
     const viewCount = count(item.statistics?.viewCount);
     if (viewCount === null) return [];
-    return [{ videoId: item.id, viewCount, likeCount: count(item.statistics?.likeCount),
+    return [{ videoId: item.id, viewCount, likeCount: count(item.statistics?.likeCount), commentCount: count(item.statistics?.commentCount),
       publishedAt: typeof item.snippet?.publishedAt === 'string' && Number.isFinite(Date.parse(item.snippet.publishedAt)) ? item.snippet.publishedAt : null,
       uploadStatus: item.status.uploadStatus }];
   });

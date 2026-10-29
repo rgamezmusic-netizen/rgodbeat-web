@@ -38,8 +38,10 @@ function cacheable(response, policy) {
 function saveAsset(event, cache, request, response) {
   writes = writes.catch(() => {}).then(async () => {
     if (retired || !cache) return;
-    if (Number(response.headers.get('content-length')) > MAX_ASSET_BYTES) return;
-    if ((await response.clone().arrayBuffer()).byteLength > MAX_ASSET_BYTES || retired) return;
+    const declaredLength = Number(response.headers.get('content-length'));
+    if (declaredLength > MAX_ASSET_BYTES) return;
+    if (!declaredLength && (await response.clone().arrayBuffer()).byteLength > MAX_ASSET_BYTES) return;
+    if (retired) return;
     await cache.put(request, response);
     const keys = await cache.keys();
     for (const key of keys.slice(0, Math.max(0, keys.length - MAX_ENTRIES))) await cache.delete(key);

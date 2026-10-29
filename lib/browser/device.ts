@@ -31,7 +31,7 @@ export function detectDevice(signals: BrowserSignals): DeviceProfile {
     : /CrOS|Chrome OS/i.test(platform + ua) ? 'chromeos'
     : /Linux/i.test(platform + ua) ? 'linux' : 'unknown';
   const brands = signals.userAgentData?.brands?.map(item => item.brand).join(' ') ?? '';
-  const browser: BrowserName = /FBAN|FBAV|Instagram|; wv\)|WebView/i.test(ua) ? 'in-app'
+  const browser: BrowserName = /FBAN|FBAV|Instagram|Musical\.ly|BytedanceWebview|TikTok|Snapchat|Line\/|MicroMessenger|; wv\)|WebView/i.test(ua) ? 'in-app'
     : /Edg(?:e|A|iOS)?\//i.test(ua) || /Microsoft Edge/i.test(brands) ? 'edge'
     : /OPR\/|OPiOS\/|OPT\/|Opera/i.test(ua + brands) ? 'opera'
     : /SamsungBrowser\//i.test(ua) ? 'samsung'

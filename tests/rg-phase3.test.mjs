@@ -107,7 +107,7 @@ test('empty chart intentional: no invented entries, sponsors, ON FIRE or payment
 });
 test('ranking row is tappable, retains mobile movement and correctly identifies the leader',()=>{
   const {ChartRow}=loadSource('components/ranking/RgProductParts.tsx',replacements);
-  const markup=html(ChartRow,{entry,kind:'tracks'});assert.match(markup,/Fixture Track/);assert.match(markup,/↑ 3/);assert.match(markup,/LIDERA LA TEMPORADA/);assert.match(markup,new RegExp(`/rg/tracks/${ids.track}`));assert.doesNotMatch(markup,/hidden|NEVER-PUBLIC/);
+  const markup=html(ChartRow,{entry:{...entry,interactions:{recordedCount:1,viewCount:2450,likeCount:180,commentCount:32}},kind:'tracks'});assert.match(markup,/Fixture Track/);assert.match(markup,/↑ 3/);assert.match(markup,/LIDERA LA TEMPORADA/);assert.match(markup,/GRABADO/);assert.match(markup,/2,450/);assert.match(markup,/180/);assert.match(markup,/32/);assert.match(markup,new RegExp(`/rg/tracks/${ids.track}`));assert.doesNotMatch(markup,/hidden|NEVER-PUBLIC/);
 });
 test('sponsor UI hides empty area and shows only provided approved names/links',()=>{
   const {Sponsors}=loadSource('components/ranking/RgProductParts.tsx',replacements);
@@ -174,11 +174,26 @@ test('actual sponsor projection excludes pending sponsors and inactive/future/ex
 });
 test('track page renders real profile DTO, canonical discovery and public video performance only',async()=>{
   const profile={track,artist,beat:{...beat,coverUrl:null},performance:{rank:1,score:10,movement:3,isNew:false,onFire:false},seasonNumber:1,
-    publication:{url:'https://www.youtube.com/watch?v=fixture-public-video',publishedAt:'2026-10-01',viewCount:1250,observedAt:'2026-10-05T00:00:00Z',milestoneCount:1}};
+    publication:{url:'https://www.youtube.com/watch?v=fixture-public-video',publishedAt:'2026-10-01',viewCount:1250,likeCount:95,commentCount:14,observedAt:'2026-10-05T00:00:00Z',milestoneCount:1},
+    interactions:{recordedCount:1,viewCount:1250,likeCount:95,commentCount:14}};
   const page=loadSource('app/rg/tracks/[id]/page.tsx',{...replacements,'@/lib/rg/product/profiles':{getTrackProfile:async()=>profile}});
   const markup=renderToStaticMarkup(await page.default({params:Promise.resolve({id:ids.track})}));
-  assert.match(markup,/Fixture Track/);assert.match(markup,/Fixture Artist/);assert.match(markup,/\/rg\/beats\/fixture-beat/);assert.match(markup,/1,250 vistas verificadas/);assert.match(markup,/↑ 3/);assert.doesNotMatch(markup,/NEVER-PUBLIC/);
+  assert.match(markup,/Fixture Track/);assert.match(markup,/Fixture Artist/);assert.match(markup,/\/rg\/beats\/fixture-beat/);assert.match(markup,/1,250 vistas verificadas/);assert.match(markup,/SELLO STUDIO · YOUTUBE/);assert.match(markup,/95/);assert.match(markup,/14/);assert.match(markup,/↑ 3/);assert.doesNotMatch(markup,/NEVER-PUBLIC/);
   profile.publication=null;const hidden=renderToStaticMarkup(await page.default({params:Promise.resolve({id:ids.track})}));assert.doesNotMatch(hidden,/fixture-public-video|vistas verificadas/);
+});
+test('artist profile aggregates confirmed YouTube views, likes, comments and recorded tracks',async()=>{
+  const tables=baseTables();
+  tables.rg_publication_links=[{id:'pub-1',track_id:ids.track,artist_id:ids.artist,youtube_export_job_ref:'job-1',youtube_video_id:'vid-1',published_at:'2026-10-02'}];
+  tables.youtube_export_jobs=[{id:'job-1',status:'uploaded',privacy:'public',youtube_video_id:'vid-1'}];
+  tables.rg_youtube_metric_snapshots=[{publication_id:'pub-1',view_count:3400,like_count:210,comment_count:45,captured_at:'2026-10-05T00:00:00Z'}];
+  const data=await profiles(tables).getArtistProfile('fixture-artist');
+  assert.deepEqual(data.interactions,{recordedCount:1,viewCount:3400,likeCount:210,commentCount:45});
+  assert.equal(data.trackInteractions[ids.track].viewCount,3400);
+  assert.equal(data.trackInteractions[ids.track].likeCount,210);
+  assert.equal(data.trackInteractions[ids.track].commentCount,45);
+  const page=loadSource('app/rg/artists/[slug]/page.tsx',{...replacements,'@/lib/rg/product/profiles':{getArtistProfile:async()=>data},'@/components/ranking/RgMemberCard':{RgMemberCard:()=>null}});
+  const markup=renderToStaticMarkup(await page.default({params:Promise.resolve({slug:'fixture-artist'})}));
+  assert.match(markup,/SELLO STUDIO · YOUTUBE/);assert.match(markup,/1 GRABADO/);assert.match(markup,/3,400/);assert.match(markup,/210/);assert.match(markup,/45/);
 });
 test('chart read failure is visibly unavailable rather than falsely empty',async()=>{
   const page=loadSource('app/ranking/season/page.tsx',{...replacements,

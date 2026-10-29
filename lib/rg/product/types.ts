@@ -3,11 +3,18 @@ import type { RankingKind } from '@/lib/rg/phase2/engine';
 export type PublicArtist = { id: string; stage_name: string; slug: string };
 export type PublicTrack = { id: string; title: string; beat_id: string | null };
 export type PublicBeat = { id: string; title: string; slug: string; coverUrl: string | null };
+export type RgInteractionStats = {
+  recordedCount: number;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+};
 export type ChartEntry = {
   entityId: string; rank: number; score: number; previousRank: number | null;
   movement: number | null; isNew: boolean; onFire: false;
   track?: PublicTrack | null; artist?: PublicArtist | null; beat?: PublicBeat | null;
   rankedTrackCount?: number;
+  interactions?: RgInteractionStats;
 };
 export type ChartData = {
   season: { id: string; season_number: number; name: string; starts_at: string; ends_at: string; status: string };
@@ -23,13 +30,17 @@ export type ArtistProfile = {
   tracks: Array<{ id: string; title: string }>;
   history: Array<{ seasonNumber: number; rank: number; score: number }>;
   seasonNumber: number;
+  interactions?: RgInteractionStats;
+  trackInteractions?: Record<string, RgInteractionStats & { youtubeUrl?: string | null }>;
 };
 export type TrackProfile = {
   track: PublicTrack; artist: PublicArtist; beat: PublicBeat | null;
   performance: SeasonPerformance; seasonNumber: number;
-  publication: { url: string; publishedAt: string; viewCount: number | null; observedAt: string | null; milestoneCount: number } | null;
+  publication: { url: string; publishedAt: string; viewCount: number | null; likeCount?: number | null; commentCount?: number | null; observedAt: string | null; milestoneCount: number } | null;
+  interactions?: RgInteractionStats;
 };
 export type BeatProfile = {
   beat: PublicBeat; performance: SeasonPerformance; seasonNumber: number;
   tracks: ChartEntry[];
+  interactions?: RgInteractionStats;
 };

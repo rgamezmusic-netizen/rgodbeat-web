@@ -4,12 +4,12 @@ import type { Metadata, Viewport } from 'next';
 export const metadata: Metadata = {
   title: 'RGODBEAT Studio | Graba, mezcla y exporta',
   description: 'Graba voces, mezcla tus canciones y exporta tu música con RGodbeat Studio.',
-  applicationName: 'RG',
+  applicationName: 'RGodbeat',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'RG',
+    title: 'RGodbeat',
   },
   icons: {
     icon: [

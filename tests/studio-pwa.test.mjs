@@ -25,8 +25,8 @@ test('Studio keeps the existing install identity and launches inside its explici
 });
 
 test('all declared install icons have real sizes; the black RG adaptive icon keeps its mark inside the safe circle', async () => {
-  assert.equal(manifest.name, 'RG');
-  assert.equal(manifest.short_name, 'RG');
+  assert.equal(manifest.name, 'RGodbeat');
+  assert.equal(manifest.short_name, 'RGodbeat');
   assert.equal(manifest.background_color, '#000000');
   assert.equal(manifest.theme_color, '#000000');
   assert.ok(manifest.icons.some(icon => icon.sizes === '192x192'));
@@ -60,6 +60,11 @@ test('Studio provides its own title, Apple icon and accessible viewport without 
   assert.ok(studio.viewport.maximumScale >= 2);
   assert.equal(root.metadata.manifest, '/manifest.json', 'the public site can promote the scoped Studio app');
   assert.equal(root.metadata.appleWebApp, undefined);
+  assert.ok(Array.isArray(root.metadata.icons?.icon) && root.metadata.icons.icon.some(i => i.url === '/icons/icon-192.png'));
+  const faviconBytes = readFileSync('app/favicon.ico');
+  assert.equal(faviconBytes.readUInt16LE(0), 0);
+  assert.equal(faviconBytes.readUInt16LE(2), 1);
+  assert.ok(faviconBytes.readUInt16LE(4) >= 1);
 });
 
 test('installation manifest is public while auth and API middleware coverage remains intact', () => {

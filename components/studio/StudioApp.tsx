@@ -1090,8 +1090,8 @@ export default function App() {
               return null;
             }
           };
-          if (lastSession) {
-            // The verified owner's local project can open while the account reconnects.
+          if (lastSession || pendingGalleryBeat) {
+            // The verified owner's local project or selected gallery beat can open while the account reconnects.
             // Pending verification still prevents cloud writes or backup deletion.
             setIsCheckingCloud(true);
             setCloudBackupStatus('Conectando con tu cuenta…');

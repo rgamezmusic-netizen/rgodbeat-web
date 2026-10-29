@@ -4,8 +4,91 @@ import Image from 'next/image';
 import type { ReactNode } from 'react';
 import { Navbar, Footer } from '@/components/layout';
 import { formatRg, movementLabel, RG_CHART_PATH } from '@/lib/rg/product/presentation';
-import type { ChartData, ChartEntry, SeasonPerformance } from '@/lib/rg/product/types';
+import type { ChartData, ChartEntry, RgInteractionStats, SeasonPerformance } from '@/lib/rg/product/types';
 import styles from './RgProduct.module.css';
+
+function normalizeInteractions(stats?: Partial<RgInteractionStats> | null, defaultRecorded = 1): RgInteractionStats {
+  return {
+    recordedCount: stats?.recordedCount != null ? Math.max(0, Number(stats.recordedCount) || 0) : defaultRecorded,
+    viewCount: stats?.viewCount != null ? Math.max(0, Number(stats.viewCount) || 0) : 0,
+    likeCount: stats?.likeCount != null ? Math.max(0, Number(stats.likeCount) || 0) : 0,
+    commentCount: stats?.commentCount != null ? Math.max(0, Number(stats.commentCount) || 0) : 0,
+  };
+}
+
+export function InteractionStrip({
+  stats,
+  kind,
+}: {
+  stats?: Partial<RgInteractionStats> | null;
+  kind: 'tracks' | 'artists' | 'beats';
+}) {
+  const s = normalizeInteractions(stats, 1);
+  const recLabel =
+    kind === 'tracks'
+      ? 'GRABADO'
+      : `${formatRg(s.recordedCount)} ${s.recordedCount === 1 ? 'GRABADO' : 'GRABADOS'}`;
+  return (
+    <div className={styles.interactionStrip} aria-label="Interacciones de Studio y YouTube">
+      <span className={styles.recBadge}>
+        <span className={styles.recDot} />
+        {recLabel}
+      </span>
+      <span className={styles.statPill} title="Vistas en YouTube">
+        <span>▶</span> {formatRg(s.viewCount)} <small>VIEWS</small>
+      </span>
+      <span className={styles.statPill} title="Likes en YouTube">
+        <span>♥</span> {formatRg(s.likeCount)} <small>LIKES</small>
+      </span>
+      <span className={styles.statPill} title="Comentarios en YouTube">
+        <span>💬</span> {formatRg(s.commentCount)} <small>COMMENTS</small>
+      </span>
+    </div>
+  );
+}
+
+export function InteractionPanel({
+  stats,
+  mode,
+}: {
+  stats?: Partial<RgInteractionStats> | null;
+  mode: 'artist' | 'track' | 'beat';
+}) {
+  const s = normalizeInteractions(stats, mode === 'track' ? 1 : 0);
+  const recValue =
+    mode === 'track'
+      ? 'GRABADO'
+      : `${formatRg(s.recordedCount)} ${s.recordedCount === 1 ? 'GRABADO' : 'GRABADOS'}`;
+  return (
+    <section className={styles.interactionPanel} aria-label="Conteo de interacciones en Studio y YouTube">
+      <div className={styles.interactionHeader}>
+        <span className={styles.recBadge}>
+          <span className={styles.recDot} />
+          SELLO STUDIO · YOUTUBE
+        </span>
+        <span className={styles.interactionSub}>CONTEO DE INTERACCIONES CONECTADO</span>
+      </div>
+      <div className={styles.interactionGrid}>
+        <div className={`${styles.interactionCard} ${styles.interactionCardRec}`}>
+          <small>{mode === 'track' ? 'ESTADO EN STUDIO' : 'TRACKS EN STUDIO'}</small>
+          <strong>{recValue}</strong>
+        </div>
+        <div className={styles.interactionCard}>
+          <small>▶ VIEWS</small>
+          <strong>{formatRg(s.viewCount)}</strong>
+        </div>
+        <div className={styles.interactionCard}>
+          <small>♥ LIKES</small>
+          <strong>{formatRg(s.likeCount)}</strong>
+        </div>
+        <div className={styles.interactionCard}>
+          <small>💬 COMMENTS</small>
+          <strong>{formatRg(s.commentCount)}</strong>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export function Movement({ movement, isNew }: { movement: number | null; isNew: boolean }) {
   const label = movementLabel(movement, isNew);
@@ -16,9 +99,14 @@ export function ChartRow({ entry, kind }: { entry: ChartEntry; kind: 'tracks' | 
   const href = kind === 'tracks' ? `/rg/tracks/${entry.entityId}` : kind === 'artists' ? `/rg/artists/${entry.artist?.slug}` : `/rg/beats/${encodeURIComponent(entry.beat?.slug ?? '')}`;
   const detail = kind === 'tracks' ? entry.artist?.stage_name : kind === 'artists' ? 'RG ARTIST' : `RGodBeat · ${entry.rankedTrackCount ?? 0} tracks en Top 23`;
   if (!title) return null;
+  const defaultRecorded = kind === 'beats' ? Math.max(1, entry.rankedTrackCount ?? 1) : 1;
   return <Link href={href} prefetch={true} className={`${styles.row} ${entry.rank <= 3 ? styles.top : ''} ${entry.rank === 1 ? styles.champion : ''}`}>
     <span className={styles.rank}>#{String(entry.rank).padStart(2, '0')}</span>
-    <div className={styles.identity}><strong>{title}</strong><p>{entry.rank === 1 ? 'LIDERA LA TEMPORADA · ' : ''}{detail}</p></div>
+    <div className={styles.identity}>
+      <strong>{title}</strong>
+      <p>{entry.rank === 1 ? 'LIDERA LA TEMPORADA · ' : ''}{detail}</p>
+      <InteractionStrip stats={entry.interactions ?? { recordedCount: defaultRecorded, viewCount: 0, likeCount: 0, commentCount: 0 }} kind={kind} />
+    </div>
     <div className={styles.points}>{formatRg(entry.score)} <small>pts</small><Movement movement={entry.movement} isNew={entry.isNew} /></div>
   </Link>;
 }

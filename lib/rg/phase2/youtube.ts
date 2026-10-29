@@ -48,18 +48,42 @@ export async function refreshRgYoutubeMilestones(now = new Date()) {
     const response = await fetch(url, { headers: { authorization: `Bearer ${token}` }, cache: 'no-store', signal: AbortSignal.timeout(20_000) });
     const payload: unknown = await response.json();
     if (!response.ok) throw new Error(`YouTube statistics request failed (${response.status}).`);
-    const viewsByVideo = new Map(parseYoutubeMetrics(payload, channel.channel_id).map((item) => [item.videoId, item.viewCount]));
+    const metricsByVideo = new Map(parseYoutubeMetrics(payload, channel.channel_id).map((item) => [item.videoId, item]));
     for (const link of batch) {
-      const views = viewsByVideo.get(link.youtube_video_id);
+      const metric = metricsByVideo.get(link.youtube_video_id);
+      const views = metric?.viewCount;
       if (views === undefined || !Number.isSafeInteger(views) || views < 0) continue;
       const track = trackById.get(link.track_id);
       if (!track) continue;
       const observedDay = now.toISOString().slice(0, 10);
-      const { error: snapshotError } = await db.from('rg_youtube_metric_snapshots').insert({
-        publication_id: link.id, observed_day: observedDay, view_count: views, captured_at: now.toISOString(),
+      let { error: snapshotError } = await db.from('rg_youtube_metric_snapshots').insert({
+        publication_id: link.id,
+        observed_day: observedDay,
+        view_count: views,
+        like_count: metric?.likeCount ?? null,
+        comment_count: metric?.commentCount ?? null,
+        captured_at: now.toISOString(),
       });
-      if (!snapshotError) snapshots++;
-      else if (snapshotError.code !== '23505') throw new Error('YouTube metric evidence could not be persisted.');
+      if (snapshotError && (snapshotError.code === '42703' || snapshotError.code === 'PGRST204')) {
+        ({ error: snapshotError } = await db.from('rg_youtube_metric_snapshots').insert({
+          publication_id: link.id, observed_day: observedDay, view_count: views, captured_at: now.toISOString(),
+        }));
+      }
+      if (!snapshotError) {
+        snapshots++;
+      } else if (snapshotError.code === '23505') {
+        const updateAttempt = db.from('rg_youtube_metric_snapshots').update?.({
+          view_count: views,
+          like_count: metric?.likeCount ?? null,
+          comment_count: metric?.commentCount ?? null,
+          captured_at: now.toISOString(),
+        });
+        if (updateAttempt) {
+          await updateAttempt.eq('publication_id', link.id).eq('observed_day', observedDay);
+        }
+      } else {
+        throw new Error('YouTube metric evidence could not be persisted.');
+      }
       const observations: VerifiedViewObservation[] = [];
       for (let offset = 0; ; offset += 500) {
         const result = await db.from('rg_youtube_metric_snapshots').select('view_count,captured_at,observed_day')

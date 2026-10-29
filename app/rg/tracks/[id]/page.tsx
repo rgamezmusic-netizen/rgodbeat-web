@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTrackProfile } from '@/lib/rg/product/profiles';
-import { Performance, ProductFrame, ProfileUnavailable } from '@/components/ranking/RgProductParts';
+import { InteractionPanel, Performance, ProductFrame, ProfileUnavailable } from '@/components/ranking/RgProductParts';
 import { formatRg } from '@/lib/rg/product/presentation';
 import styles from '@/components/ranking/RgProduct.module.css';
 
@@ -13,7 +13,13 @@ export default async function TrackPage({ params }: { params: Promise<{ id: stri
   try { data = await getTrackProfile(id); } catch { /* Do not expose failed privacy verification or fabricate empty metrics. */ }
   if (data === undefined) return <ProfileUnavailable href={`/rg/tracks/${encodeURIComponent(id)}`} />;
   if (!data) notFound();
-  return <ProductFrame><header className={styles.section}><p className={styles.eyebrow}>RG TRACK</p><h1 className={styles.profileTitle}>{data.track.title}</h1><Link className={styles.textLink} href={`/rg/artists/${data.artist.slug}`}>{data.artist.stage_name}</Link><Performance data={data.performance} seasonNumber={data.seasonNumber} /></header>
+  const trackStats = data.interactions ?? {
+    recordedCount: 1,
+    viewCount: data.publication?.viewCount ?? 0,
+    likeCount: data.publication?.likeCount ?? 0,
+    commentCount: data.publication?.commentCount ?? 0,
+  };
+  return <ProductFrame><header className={styles.section}><p className={styles.eyebrow}>RG TRACK</p><h1 className={styles.profileTitle}>{data.track.title}</h1><Link className={styles.textLink} href={`/rg/artists/${data.artist.slug}`}>{data.artist.stage_name}</Link><Performance data={data.performance} seasonNumber={data.seasonNumber} /><InteractionPanel stats={trackStats} mode="track" /></header>
     {data.beat && <section className={styles.section}><p className={styles.eyebrow}>EL BEAT DETRÁS DEL TRACK</p><h2>{data.beat.title}</h2><p className={styles.muted}>Su actividad también mueve este beat en el chart.</p><Link className={styles.button} href={`/rg/beats/${encodeURIComponent(data.beat.slug)}`}>DESCUBRIR EL BEAT</Link></section>}
     <section className={styles.section}><p className={styles.eyebrow}>LA PUBLICACIÓN</p>{data.publication ? <><h2>Escúchalo en YouTube.</h2><a className={styles.button} href={data.publication.url} target="_blank" rel="noopener noreferrer">VER EN YOUTUBE ↗</a>{data.publication.viewCount !== null && <p className={styles.muted}>{formatRg(data.publication.viewCount)} vistas verificadas · Actualizado {new Date(data.publication.observedAt!).toLocaleDateString('es-MX', { timeZone: 'UTC' })}</p>}{data.publication.milestoneCount > 0 && <p className={styles.footnote}>{data.publication.milestoneCount} hitos de rendimiento verificados.</p>}</> : <><h2>Su música, a su tiempo.</h2><p className={styles.muted}>Todavía no hay un enlace público verificado para mostrar.</p></>}</section>
   </ProductFrame>;

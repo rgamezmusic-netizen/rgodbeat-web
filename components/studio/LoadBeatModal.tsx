@@ -32,6 +32,15 @@ function releasePreview(source: AudioBufferSourceNode | null, gain: GainNode | n
   gain?.disconnect();
 }
 
+function releaseHtmlPreview(audio: HTMLAudioElement | null) {
+  if (!audio) return;
+  audio.onended = null;
+  audio.onerror = null;
+  try { audio.pause(); } catch { /* Ignore pause errors. */ }
+  audio.removeAttribute('src');
+  try { audio.load(); } catch { /* Ignore media reset errors. */ }
+}
+
 interface LoadBeatModalProps {
   currentBeat: BeatData | null;
   savedCustomBeats: BeatSummary[];
@@ -81,6 +90,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
   const [previewingBeatId, setPreviewingBeatId] = useState<string | null>(null);
   const previewSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const previewGainRef = useRef<GainNode | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const previewRequestRef = useRef(0);
   const selectionRequestRef = useRef(0);
   const mountedRef = useRef(true);
@@ -90,8 +100,10 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
     return () => {
       mountedRef.current = false;
       releasePreview(previewSourceRef.current, previewGainRef.current);
+      releaseHtmlPreview(previewAudioRef.current);
       previewSourceRef.current = null;
       previewGainRef.current = null;
+      previewAudioRef.current = null;
     };
   }, []);
 
@@ -199,11 +211,60 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
     ++previewRequestRef.current;
     const source = previewSourceRef.current;
     const gain = previewGainRef.current;
+    const audio = previewAudioRef.current;
     previewSourceRef.current = null;
     previewGainRef.current = null;
+    previewAudioRef.current = null;
     releasePreview(source, gain);
+    releaseHtmlPreview(audio);
     setPreviewingBeatId(null);
     setLoadingBeatId(null);
+  };
+
+  const handleToggleRankingPreview = async (beat: RankingBeat, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const previewKey = `ranking-${beat.id}`;
+    if (previewingBeatId === previewKey || loadingBeatId === previewKey) {
+      stopPreview();
+      return;
+    }
+    if (!beat.previewUrl) {
+      setStatusMsg('Este beat no tiene audio disponible.');
+      return;
+    }
+    stopPreview();
+    const request = ++previewRequestRef.current;
+    setLoadingBeatId(previewKey);
+    try {
+      const audio = new Audio();
+      audio.preload = 'none';
+      audio.volume = 0.85;
+      audio.src = beat.previewUrl;
+      audio.onended = () => {
+        if (previewAudioRef.current !== audio) return;
+        previewAudioRef.current = null;
+        releaseHtmlPreview(audio);
+        if (mountedRef.current) setPreviewingBeatId(null);
+      };
+      audio.onerror = () => {
+        if (previewAudioRef.current !== audio) return;
+        stopPreview();
+        if (mountedRef.current) setStatusMsg('No se pudo escuchar el beat.');
+      };
+      previewAudioRef.current = audio;
+      await audio.play();
+      if (!mountedRef.current || request !== previewRequestRef.current) {
+        releaseHtmlPreview(audio);
+        return;
+      }
+      setLoadingBeatId(null);
+      setPreviewingBeatId(previewKey);
+    } catch {
+      if (mountedRef.current && request === previewRequestRef.current) {
+        stopPreview();
+        setStatusMsg('No se pudo escuchar el beat.');
+      }
+    }
   };
 
   const resolveSavedBeat = (beat: BeatSummary) =>
@@ -474,7 +535,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                     {/* Navigation Tabs */}
           <div className="grid grid-cols-3 gap-1.5 mt-3 pt-2 border-t border-zinc-800/80">
             <button
-              onClick={() => setActiveTab('ranking')}
+              onClick={() => { stopPreview(); setActiveTab('ranking'); }}
               className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center gap-1 ${
                 activeTab === 'ranking'
                   ? 'bg-amber-500 text-black shadow-md'
@@ -485,7 +546,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
               <span className="truncate">Top 23</span>
             </button>
             <button
-              onClick={() => setActiveTab('upload')}
+              onClick={() => { stopPreview(); setActiveTab('upload'); }}
               className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center gap-1 ${
                 activeTab === 'upload'
                   ? 'bg-amber-500 text-black shadow-md'
@@ -496,7 +557,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
               <span className="truncate">Subir Beat</span>
             </button>
             <button
-              onClick={() => setActiveTab('slots')}
+              onClick={() => { stopPreview(); setActiveTab('slots'); }}
               className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all flex items-center justify-center gap-1 ${
                 activeTab === 'slots'
                   ? 'bg-amber-500 text-black shadow-md'
@@ -545,6 +606,9 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                     const isSelected = currentBeat?.id === `catalog-${beat.id}`;
                     const hasVoted = Boolean(votedBeatIds[beat.id]);
                     const isVoting = votingBeatId === beat.id;
+                    const previewKey = `ranking-${beat.id}`;
+                    const isPreviewing = previewingBeatId === previewKey;
+                    const isLoadingPreview = loadingBeatId === previewKey;
 
                     return (
                       <div
@@ -603,7 +667,28 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                         </div>
 
                         {/* Actions */}
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                          {/* Audio Preview Button (Zero-RAM streaming preview before loading to Studio) */}
+                          <button
+                            type="button"
+                            onClick={(e) => void handleToggleRankingPreview(beat, e)}
+                            aria-label={isPreviewing ? `Detener prueba de ${beat.title}` : `Escuchar beat ${beat.title}`}
+                            title={isPreviewing ? 'Detener prueba' : 'Escuchar beat'}
+                            className={`p-1.5 rounded-lg border text-xs font-mono transition-all ${
+                              isPreviewing
+                                ? 'bg-amber-500 text-black border-amber-400 animate-pulse'
+                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                            }`}
+                          >
+                            {isLoadingPreview ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : isPreviewing ? (
+                              <Square className="w-3.5 h-3.5 fill-current" />
+                            ) : (
+                              <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                            )}
+                          </button>
+
                           {/* Vote Weekly Button */}
                           <button
                             onClick={(e) => handleVoteBeat(beat.id, e)}

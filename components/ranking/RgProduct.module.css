@@ -364,6 +364,7 @@
   border-bottom:1px solid #ffffff15;
   font-size:16px;
   font-weight:700;
+  color:#f5f3ec;
   text-decoration:none
 }
 .walletValue {
@@ -465,8 +466,148 @@
   display:flex;
   gap:26px
 }
+.interactionStrip {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+  margin-top:8px
+}
+.recBadge {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:3px 8px;
+  border-radius:999px;
+  background:#ff3b301c;
+  border:1px solid #ff453a55;
+  color:#ff8a80;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  white-space:nowrap
+}
+.recDot {
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background:#ff3b30;
+  box-shadow:0 0 8px #ff3b30cc;
+  flex-shrink:0
+}
+.statPill {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:3px 8px;
+  border-radius:6px;
+  background:#ffffff08;
+  border:1px solid #ffffff14;
+  color:#e7e5dc;
+  font-size:11px;
+  font-weight:800;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap
+}
+.statPill small {
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.06em;
+  color:#999f97
+}
+.interactionPanel {
+  margin:22px 0 26px;
+  padding:16px;
+  border-radius:14px;
+  background:linear-gradient(135deg,#14171a,#0e1012);
+  border:1px solid #e4be6338
+}
+.interactionHeader {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:14px
+}
+.interactionSub {
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.14em;
+  color:#9ea49b;
+  text-transform:uppercase
+}
+.interactionGrid {
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px
+}
+.interactionCard {
+  padding:12px 14px;
+  border-radius:10px;
+  background:#090b0c;
+  border:1px solid #ffffff14
+}
+.interactionCardRec {
+  border-color:#ff453a4d;
+  background:linear-gradient(145deg,#ff3b3012,#090b0c)
+}
+.interactionCard small {
+  display:block;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.08em;
+  color:#9ca298;
+  margin-bottom:6px
+}
+.interactionCard strong {
+  display:block;
+  font-size:clamp(16px,2.5vw,22px);
+  font-weight:900;
+  letter-spacing:-.03em;
+  color:#f5f3ec;
+  font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere
+}
+.interactionCardRec strong {
+  color:#ff8a80
+}
+.trackLinkRow {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px
+}
 @media(max-width:600px) {
   .tabButtons {
     gap:16px
+  }
+  .interactionStrip {
+    gap:4px;
+    margin-top:6px
+  }
+  .recBadge {
+    font-size:9px;
+    padding:2px 6px;
+    gap:4px
+  }
+  .statPill {
+    font-size:10px;
+    padding:2px 6px
+  }
+  .statPill small {
+    font-size:8px
+  }
+  .interactionGrid {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px
+  }
+  .interactionPanel {
+    padding:12px
+  }
+  .interactionCard {
+    padding:10px
   }
 }

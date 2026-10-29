@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ArrowRight, Download, Ellipsis, MoreVertical, PlusSquare, Share, Smartphone, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Download, Ellipsis, ExternalLink, Menu, MoreVertical, PlusSquare, Share, Smartphone, X } from 'lucide-react';
 import { useDeviceProfile } from '@/hooks/useDeviceProfile';
 import { useModalFocus } from '@/hooks/useModalFocus';
 import { useAppInstallation } from '@/hooks/useAppInstallation';
@@ -85,19 +85,46 @@ export function InstallAppModal({ isOpen, onClose }: InstallAppModalProps) {
       <div aria-live="polite" className="rounded-2xl border border-amber-400/25 bg-amber-400/5 p-3.5">
         <span className="text-[11px] font-bold text-amber-400">PASO {activeStep + 1} / {guide.steps.length}</span>
         <h3 className="mt-1 text-sm font-bold text-white">{step.title}</h3>
-        {activeStep === 0 ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
-          <span className="truncate text-xs font-medium text-zinc-400">rgodbeat.com</span>
-          <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-400/15 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.35)]"><Download size={18} aria-hidden="true" /></span>
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-400 text-black shadow-[0_0_12px_rgba(251,191,36,0.35)]"><MoreVertical size={18} aria-hidden="true" /></span>
+        {browser === 'in-app' ? (
+          activeStep === 0 ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+            <span className="flex h-9 w-11 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-400/15 text-amber-300"><Ellipsis size={20} aria-hidden="true" /></span>
+            <ArrowRight size={15} className="shrink-0 text-amber-300" aria-hidden="true" />
+            <span className="flex h-9 items-center gap-1.5 rounded-lg bg-amber-400 px-3 text-xs font-extrabold text-black"><ExternalLink size={15} aria-hidden="true" />Abrir en navegador</span>
+          </div> : <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+            <span className="truncate text-xs font-medium text-zinc-300">Safari / Chrome</span>
+            <ArrowRight size={15} className="shrink-0 text-amber-300" aria-hidden="true" />
+            <span className="rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-extrabold text-black">Instalar App</span>
           </div>
-        </div> : activeStep === 1 ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
-          <span className="flex items-center gap-2 text-xs font-bold text-white"><Smartphone size={18} className="shrink-0 text-amber-300" aria-hidden="true" />Instalar aplicación</span>
+        ) : activeStep === 0 ? (
+          os === 'macos' && browser === 'safari' ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+            <span className="rounded-lg border border-white/20 bg-zinc-800 px-2.5 py-1.5 text-xs font-bold text-white">Archivo / <Share size={13} className="inline" aria-hidden="true" /></span>
+            <ArrowRight size={15} className="shrink-0 text-amber-300" aria-hidden="true" />
+            <span className="rounded-lg border-2 border-amber-400 bg-amber-400 px-3 py-1.5 text-xs font-extrabold text-black">Añadir al Dock</span>
+          </div> : os === 'android' && browser === 'samsung' ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+            <span className="truncate text-xs font-medium text-zinc-400">Barra inferior</span>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 items-center gap-1.5 rounded-lg border-2 border-amber-400 bg-amber-400 px-3 text-xs font-extrabold text-black"><Menu size={18} aria-hidden="true" />Menú</span>
+            </div>
+          </div> : os === 'android' && browser === 'edge' ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+            <span className="truncate text-xs font-medium text-zinc-400">Barra inferior</span>
+            <span className="flex h-9 items-center gap-1.5 rounded-lg border-2 border-amber-400 bg-amber-400 px-3 text-xs font-extrabold text-black"><Ellipsis size={20} aria-hidden="true" />Menú</span>
+          </div> : os === 'android' ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+            <span className="truncate text-xs font-medium text-zinc-400">rgodbeat.com</span>
+            <span className="flex h-9 items-center gap-1 rounded-lg border-2 border-amber-400 bg-amber-400 px-2.5 text-xs font-extrabold text-black shadow-[0_0_12px_rgba(251,191,36,0.35)]"><MoreVertical size={18} aria-hidden="true" />Menú</span>
+          </div> : <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+            <span className="truncate text-xs font-medium text-zinc-400">rgodbeat.com</span>
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 items-center gap-1.5 rounded-lg border-2 border-amber-400 bg-amber-400 px-2.5 text-xs font-extrabold text-black shadow-[0_0_12px_rgba(251,191,36,0.35)]"><Download size={16} aria-hidden="true" />Instalar</span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-amber-400/60 bg-amber-400/15 text-amber-300"><MoreVertical size={18} aria-hidden="true" /></span>
+            </div>
+          </div>
+        ) : activeStep === 1 ? <div className="mt-2.5 flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
+          <span className="flex items-center gap-2 text-xs font-bold text-white"><PlusSquare size={18} className="shrink-0 text-amber-300" aria-hidden="true" />{os === 'android' && browser === 'samsung' ? 'Pantalla de inicio' : os === 'macos' && browser === 'safari' ? 'RGodbeat Studio' : 'Instalar / Añadir'}</span>
           <ArrowRight size={15} className="shrink-0 text-amber-300" aria-hidden="true" />
-          <span className="rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-extrabold text-black">Instalar</span>
+          <span className="rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-extrabold text-black">{os === 'macos' && browser === 'safari' ? 'Añadir' : 'Instalar'}</span>
         </div> : <div className="mt-2.5 flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-zinc-950/90 px-3 py-2.5">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-amber-400 bg-gradient-to-br from-amber-400 to-amber-500 text-xs font-black text-black shadow-[0_0_12px_rgba(251,191,36,0.35)]">RG</span>
-          <span className="text-xs font-bold text-white">RGodbeat Studio</span>
+          <span className="text-xs font-bold text-white">RGodbeat</span>
         </div>}
       </div></>}</>}
       <p role="status" className="mt-3 text-sm text-amber-200 empty:hidden">{installation.isPrompting ? 'Confirma en el aviso de tu navegador…' : installation.status === 'accepted' ? 'Instalación solicitada. El navegador confirmará cuando termine.' : installation.status === 'dismissed' ? 'Puedes instalarlo más tarde desde el menú del navegador.' : installation.status === 'error' ? 'No se pudo abrir la instalación. Sigue los pasos de tu navegador.' : ''}</p>

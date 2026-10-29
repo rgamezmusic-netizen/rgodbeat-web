@@ -1,6 +1,6 @@
 {
-  "name": "RG",
-  "short_name": "RG",
+  "name": "RGodbeat",
+  "short_name": "RGodbeat",
   "description": "Graba voces, mezcla tus canciones y exporta tu música con RGodbeat Studio.",
   "id": "/studio",
   "start_url": "/studio",

@@ -5,9 +5,30 @@ import { STUDIO_VISUAL_MODE_KEY } from '@/lib/browser/studio-settings';
 
 const eventName = 'rgodbeat:studio-visual-mode';
 let temporaryValue: boolean | undefined;
+
+export function isLowEndDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const nav = navigator as Navigator & {
+    deviceMemory?: number;
+    connection?: { saveData?: boolean; effectiveType?: string };
+  };
+  if (nav.connection?.saveData) return true;
+  if (nav.connection?.effectiveType === '2g' || nav.connection?.effectiveType === 'slow-2g') return true;
+  if (typeof nav.deviceMemory === 'number' && nav.deviceMemory <= 4) return true;
+  if (typeof nav.hardwareConcurrency === 'number' && nav.hardwareConcurrency > 0 && nav.hardwareConcurrency <= 4) return true;
+  return false;
+}
+
 function snapshot() {
   if (temporaryValue !== undefined) return temporaryValue;
-  try { return localStorage.getItem(STUDIO_VISUAL_MODE_KEY) === 'true'; } catch { return false; }
+  try {
+    const stored = localStorage.getItem(STUDIO_VISUAL_MODE_KEY);
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+    return isLowEndDevice();
+  } catch {
+    return isLowEndDevice();
+  }
 }
 function subscribe(listener: () => void) {
   const storage = (event: StorageEvent) => {

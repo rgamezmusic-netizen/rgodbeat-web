@@ -94,7 +94,12 @@ export async function getRgSeasonRankings(now = new Date()) {
   const artists = new Map(artistRows.map((row) => [row.id, row]));
   const beats = new Map(beatRows.map((row) => [row.id, row]));
   const primaryArtist = new Map(membershipRows.map((row) => [row.track_id, row.artist_id]));
-  const identities = {
+  type InteractionSummary = { recordedCount: number; viewCount: number; likeCount: number; commentCount: number };
+  const identities: {
+    tracks: Array<(typeof ranked.tracks)[number] & { track: TrackIdentity | null; artist: ArtistIdentity | null; interactions?: InteractionSummary }>;
+    artists: Array<(typeof ranked.artists)[number] & { artist: ArtistIdentity | null; interactions?: InteractionSummary }>;
+    beats: Array<(typeof ranked.beats)[number] & { beat: BeatIdentity | null; interactions?: InteractionSummary }>;
+  } = {
     tracks: ranked.tracks.map((row) => {
       const artistId = primaryArtist.get(row.entityId);
       return { ...row, track: tracks.get(row.entityId) ?? null, artist: artistId ? artists.get(artistId) ?? null : null };
@@ -102,6 +107,88 @@ export async function getRgSeasonRankings(now = new Date()) {
     artists: ranked.artists.map((row) => ({ ...row, artist: artists.get(row.entityId) ?? null })),
     beats: ranked.beats.map((row) => ({ ...row, beat: beats.get(row.entityId) ?? null })),
   };
+  if (trackIds.length || artistIds.length || beatIds.length) {
+    const [pubLinksResult, artistMembershipsResult] = await Promise.all([
+      db.from('rg_publication_links').select('id,track_id,artist_id,beat_id,youtube_video_id,youtube_export_job_ref').limit(500),
+      artistIds.length
+        ? db.from('rg_track_artists').select('artist_id,track_id').in('artist_id', artistIds).eq('role', 'primary').limit(500)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    const pubLinks = ((pubLinksResult.data ?? []) as Array<{
+      id: string; track_id: string; artist_id: string; beat_id?: string | null;
+      youtube_video_id: string; youtube_export_job_ref: string | null;
+    }>).filter((row) => Boolean(row.youtube_export_job_ref && row.youtube_video_id));
+    const jobIds = [...new Set(pubLinks.map((row) => row.youtube_export_job_ref as string))];
+    const jobsResult = jobIds.length
+      ? await db.from('youtube_export_jobs').select('id,status,privacy,youtube_video_id').in('id', jobIds)
+      : { data: [], error: null };
+    const publicJobs = new Map(
+      ((jobsResult.data ?? []) as Array<{ id: string; status: string; privacy: string; youtube_video_id: string }>)
+        .filter((job) => job.status === 'uploaded' && job.privacy === 'public')
+        .map((job) => [job.id, job.youtube_video_id])
+    );
+    const confirmedLinks = pubLinks.filter((link) => publicJobs.get(link.youtube_export_job_ref as string) === link.youtube_video_id);
+    const pubIds = confirmedLinks.map((link) => link.id);
+    const snapshotsResult = pubIds.length
+      ? await db.from('rg_youtube_metric_snapshots').select('*').in('publication_id', pubIds).order('captured_at', { ascending: false }).limit(1000)
+      : { data: [], error: null };
+    const latestSnapshotByPub = new Map<string, { viewCount: number; likeCount: number; commentCount: number }>();
+    for (const snap of (snapshotsResult.data ?? []) as Array<{ publication_id: string; view_count?: number | string; like_count?: number | string | null; comment_count?: number | string | null }>) {
+      if (latestSnapshotByPub.has(snap.publication_id)) continue;
+      latestSnapshotByPub.set(snap.publication_id, {
+        viewCount: Math.max(0, Number(snap.view_count ?? 0) || 0),
+        likeCount: Math.max(0, Number(snap.like_count ?? 0) || 0),
+        commentCount: Math.max(0, Number(snap.comment_count ?? 0) || 0),
+      });
+    }
+    const trackMetrics = new Map<string, { recordedCount: number; viewCount: number; likeCount: number; commentCount: number }>();
+    const artistMetrics = new Map<string, { recordedCount: number; viewCount: number; likeCount: number; commentCount: number }>();
+    const beatMetrics = new Map<string, { recordedCount: number; viewCount: number; likeCount: number; commentCount: number }>();
+    const seenTracks = new Set<string>();
+    for (const link of confirmedLinks) {
+      if (seenTracks.has(link.track_id)) continue;
+      seenTracks.add(link.track_id);
+      const snap = latestSnapshotByPub.get(link.id) ?? { viewCount: 0, likeCount: 0, commentCount: 0 };
+      trackMetrics.set(link.track_id, { recordedCount: 1, ...snap });
+      const prevArtist = artistMetrics.get(link.artist_id) ?? { recordedCount: 0, viewCount: 0, likeCount: 0, commentCount: 0 };
+      artistMetrics.set(link.artist_id, {
+        recordedCount: prevArtist.recordedCount + 1,
+        viewCount: prevArtist.viewCount + snap.viewCount,
+        likeCount: prevArtist.likeCount + snap.likeCount,
+        commentCount: prevArtist.commentCount + snap.commentCount,
+      });
+      const resolvedBeatId = link.beat_id ?? tracks.get(link.track_id)?.beat_id ?? null;
+      if (resolvedBeatId) {
+        const prevBeat = beatMetrics.get(resolvedBeatId) ?? { recordedCount: 0, viewCount: 0, likeCount: 0, commentCount: 0 };
+        beatMetrics.set(resolvedBeatId, {
+          recordedCount: prevBeat.recordedCount + 1,
+          viewCount: prevBeat.viewCount + snap.viewCount,
+          likeCount: prevBeat.likeCount + snap.likeCount,
+          commentCount: prevBeat.commentCount + snap.commentCount,
+        });
+      }
+    }
+    const artistTrackCounts = new Map<string, number>();
+    for (const row of (artistMembershipsResult.data ?? []) as Array<{ artist_id: string; track_id: string }>) {
+      artistTrackCounts.set(row.artist_id, (artistTrackCounts.get(row.artist_id) ?? 0) + 1);
+    }
+    identities.tracks = identities.tracks.map((row) => ({
+      ...row,
+      interactions: trackMetrics.get(row.entityId) ?? { recordedCount: 1, viewCount: 0, likeCount: 0, commentCount: 0 },
+    }));
+    identities.artists = identities.artists.map((row) => {
+      const m = artistMetrics.get(row.entityId) ?? { recordedCount: 0, viewCount: 0, likeCount: 0, commentCount: 0 };
+      const rankedCount = identities.tracks.filter((t) => t.artist?.id === row.entityId).length;
+      const recordedCount = Math.max(m.recordedCount, artistTrackCounts.get(row.entityId) ?? 0, rankedCount, 1);
+      return { ...row, interactions: { ...m, recordedCount } };
+    });
+    identities.beats = identities.beats.map((row) => {
+      const m = beatMetrics.get(row.entityId) ?? { recordedCount: 0, viewCount: 0, likeCount: 0, commentCount: 0 };
+      const rankedCount = identities.tracks.filter((t) => t.track?.beat_id === row.entityId).length;
+      const recordedCount = Math.max(m.recordedCount, rankedCount, 1);
+      return { ...row, interactions: { ...m, recordedCount } };
+    });
+  }
   return { season: currentSeason, rewardPoolRg: Number((poolResult.data as { pool_rg?: number | string } | null)?.pool_rg ?? 0), sponsors,
     serverTime: now.toISOString(), countdownMs: Math.max(0, new Date(currentSeason.ends_at).getTime() - now.getTime()), rankings: identities };
 }

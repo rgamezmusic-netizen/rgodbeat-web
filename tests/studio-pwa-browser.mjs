@@ -25,8 +25,8 @@ try {
   assert.match(await page.title(), /^RGODBEAT Studio/);
   assert.equal(await page.locator('link[rel="manifest"]').count(), 1);
   assert.equal(await page.locator('link[rel="manifest"]').getAttribute('href'), '/manifest.json');
-  assert.equal(await page.locator('meta[name="apple-mobile-web-app-title"]').getAttribute('content'), 'RG');
-  assert.equal(await page.locator('meta[name="application-name"]').getAttribute('content'), 'RG');
+  assert.equal(await page.locator('meta[name="apple-mobile-web-app-title"]').getAttribute('content'), 'RGodbeat');
+  assert.equal(await page.locator('meta[name="application-name"]').getAttribute('content'), 'RGodbeat');
   const viewport = await page.locator('meta[name="viewport"]').getAttribute('content');
   assert.match(viewport, /maximum-scale=5/);
   assert.match(viewport, /user-scalable=yes/);
