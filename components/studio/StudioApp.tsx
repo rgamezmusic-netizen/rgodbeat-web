@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { useInstalledApp } from '@/hooks/useAppInstallation';
 import {
   BeatAnalysisResult,
@@ -54,21 +55,12 @@ import { TopBar } from './TopBar';
 import { ArtworkPlayer } from './ArtworkPlayer';
 import { VocalTrackDropdown } from './VocalTrackDropdown';
 import { TimelineWorkspace } from './TimelineWorkspace';
-import { VocalFXModal } from './VocalFXModal';
-import { BeatFXModal } from './BeatFXModal';
-import { LoopModal } from './LoopModal';
 import { LoadBeatModal } from './LoadBeatModal';
-import { ExportModal } from './ExportModal';
 import { getCatalogBeatId } from '@/lib/studio/audio/catalogBeat';
-import { UnlockPassModal } from './UnlockPassModal';
 import { CountInOverlay } from './CountInOverlay';
-import { InstallAppModal } from './InstallAppModal';
-import { StudioSettingsModal } from './StudioSettingsModal';
 import { useStudioVisualMode } from '@/hooks/useStudioVisualMode';
 import { hasSeenInstallGuide } from '@/lib/browser/install-guide';
 import { maintainScreenWakeLock } from '@/lib/browser/screen-wake-lock';
-import { CloudProjectGalleryModal } from './CloudProjectGalleryModal';
-import { CloudProjectSaveModal } from './CloudProjectSaveModal';
 import { SignatureCollageBackdrop } from './SignatureCollageBackdrop';
 import {
   saveUserChannelFXTemplate,
@@ -98,6 +90,19 @@ import { verifyStudioAccount, shouldRetryCloud } from '@/lib/studio/accountConne
 import { prefersDeviceWork, rememberDeviceWork } from '@/lib/studio/deviceWorkingMode';
 
 import { appendRecordingCheckpoint } from '@/lib/studio/audio/recordingRecovery';
+
+// Keep both workspaces and the entry library in the initial bundle to avoid
+// a download waterfall when restoring a project or choosing the first beat.
+// Secondary dialogs load only when their existing conditions open them.
+const VocalFXModal = dynamic(() => import('./VocalFXModal').then(mod => mod.VocalFXModal));
+const BeatFXModal = dynamic(() => import('./BeatFXModal').then(mod => mod.BeatFXModal));
+const LoopModal = dynamic(() => import('./LoopModal').then(mod => mod.LoopModal));
+const ExportModal = dynamic(() => import('./ExportModal').then(mod => mod.ExportModal));
+const UnlockPassModal = dynamic(() => import('./UnlockPassModal').then(mod => mod.UnlockPassModal));
+const InstallAppModal = dynamic(() => import('./InstallAppModal').then(mod => mod.InstallAppModal));
+const StudioSettingsModal = dynamic(() => import('./StudioSettingsModal').then(mod => mod.StudioSettingsModal));
+const CloudProjectGalleryModal = dynamic(() => import('./CloudProjectGalleryModal').then(mod => mod.CloudProjectGalleryModal));
+const CloudProjectSaveModal = dynamic(() => import('./CloudProjectSaveModal').then(mod => mod.CloudProjectSaveModal));
 
 const defaultVocalFX = (): VocalFX => ({
   tune: {
@@ -289,6 +294,8 @@ export default function App() {
   const [bluetoothSyncEnabled, setBluetoothSyncEnabled] = useState<boolean>(false);
   const [bluetoothOffsetMs] = useState<number>(185);
   const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
+  const [installWasOpened, setInstallWasOpened] = useState(false);
+  if (showInstallModal && !installWasOpened) setInstallWasOpened(true);
 
   const handleToggleBluetoothSync = () => {
     if (isRecordingRef.current) return;
@@ -654,6 +661,10 @@ export default function App() {
   }, [accessStatus]);
 
   const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
+  // Preserve entered form data when closing/reopening, without loading the
+  // account dialog during startup. Render-time adjustment avoids an extra effect.
+  const [unlockWasOpened, setUnlockWasOpened] = useState(false);
+  if (isUnlockModalOpen && !unlockWasOpened) setUnlockWasOpened(true);
   const [unlockModalReason, setUnlockModalReason] = useState<'export' | 'tracks' | 'general'>('general');
 
   const accessRequestRef = useRef<Promise<string | null> | null>(null);
@@ -3243,7 +3254,7 @@ export default function App() {
         onSave={(slot, name) => void confirmCloudSave(slot, name)}
       />}
 
-      <ExportModal
+      {showExportModal && <ExportModal
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
         engine={engine}
@@ -3257,9 +3268,9 @@ export default function App() {
           setUnlockModalReason('export');
           setIsUnlockModalOpen(true);
         }}
-      />
+      />}
 
-      <UnlockPassModal
+      {unlockWasOpened && <UnlockPassModal
         isOpen={isUnlockModalOpen}
         onClose={() => setIsUnlockModalOpen(false)}
         reason={unlockModalReason}
@@ -3269,7 +3280,7 @@ export default function App() {
           await refreshStudioAccess(true);
           if (startupError) window.location.reload();
         }}
-      />
+      />}
 
       {/* Guide modal on how to install PWA on Android & iOS */}
       {showAppSettings && <StudioSettingsModal lightVisuals={lightVisuals} onChangeLightVisuals={setLightVisuals}
@@ -3278,7 +3289,7 @@ export default function App() {
           : isPlaying ? 'Pausa la reproducción antes de limpiar.'
           : isLoadingCloud || isOpeningDeviceProject || isStartingNewProject || !isStartupResolved ? 'Espera a que el proyecto esté listo antes de limpiar.' : null}
         onClose={() => setShowAppSettings(false)} />}
-      <InstallAppModal
+      {installWasOpened && <InstallAppModal
         isOpen={showInstallModal}
         onClose={() => {
           setShowInstallModal(false);
@@ -3287,7 +3298,7 @@ export default function App() {
             setShowLoadBeatModal(true);
           }
         }}
-      />
+      />}
 
     </div>
   );

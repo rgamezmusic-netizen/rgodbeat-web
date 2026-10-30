@@ -3,15 +3,19 @@
 import { Download } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { InstallAppModal } from "@/components/studio/InstallAppModal";
+import dynamic from "next/dynamic";
 import { useAppInstallation } from "@/hooks/useAppInstallation";
 import { rememberInstallGuide } from "@/lib/browser/install-guide";
 import styles from "./Hero.module.css";
+
+const InstallAppModal = dynamic(() => import("@/components/studio/InstallAppModal").then(mod => mod.InstallAppModal));
 
 export function InstallStudioButton() {
   const router = useRouter();
   const installation = useAppInstallation();
   const [showGuide, setShowGuide] = useState(false);
+  const [guideWasOpened, setGuideWasOpened] = useState(false);
+  if (showGuide && !guideWasOpened) setGuideWasOpened(true);
 
   if (installation.isInstalled) return null;
 
@@ -39,10 +43,10 @@ export function InstallStudioButton() {
         <Download aria-hidden="true" size={18} />
         <span>{installation.isPrompting ? "CONFIRMA INSTALACIÓN" : "INSTALAR STUDIO"}</span>
       </button>
-      <InstallAppModal isOpen={showGuide} onClose={() => {
+      {guideWasOpened && <InstallAppModal isOpen={showGuide} onClose={() => {
         setShowGuide(false);
         router.push('/studio');
-      }} />
+      }} />}
     </>
   );
 }
