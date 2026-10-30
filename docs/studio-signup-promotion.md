@@ -1,6 +1,7 @@
-# Promoción de nuevas cuentas: 90 días de RG Studio
+# Promoción de nuevas cuentas de RG Studio (Pausada — preparada para 14 días / 1 temporada)
 
-Activada y verificada en producción el 10 de octubre de 2026 a las 03:58:34 UTC (9 de octubre, 22:58:34 en Chicago). Cierra el 9 de noviembre de 2026 a las 03:58:34 UTC (8 de noviembre, 21:58:34 en Chicago). Aviso publicado en `https://www.rgodbeat.com/login?mode=signup`; el endpoint público devolvió `active: true` después de publicar.
+- **Estado actual (29 de octubre de 2026)**: **PAUSADA** (`enabled = false`, `active = false`, trigger `studio_signup_access` retirado mediante `supabase/migrations/20261029010000_pause_studio_signup_promotion.sql`). Las cuentas nuevas se registran sin días gratis y requieren adquirir su pase de Studio para activar el acceso completo. La columna `grant_days` quedó preconfigurada en `14` días (1 temporada) para cuando se decida reactivar en el futuro.
+- **Historial previo**: Activada originalmente por 90 días el 10 de octubre de 2026 a las 03:58:34 UTC y cerrada/pausada por instrucción del propietario el 29 de octubre de 2026 a las 23:28:19 UTC. Los accesos ya otorgados y `public.studio_signup_grants` se conservan intactos.
 
 La migración de esta promoción se aplicó individualmente con `supabase db query --linked --file …`. El historial remoto ya tenía diferencias con los archivos locales; no se ejecutó `db push --include-all` ni se reaplicaron migraciones anteriores.
 

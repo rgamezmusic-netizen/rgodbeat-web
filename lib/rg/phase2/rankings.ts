@@ -1,6 +1,7 @@
 import 'server-only';
 import { createPhase2AdminClient } from './database';
 import type { RankingKind } from './engine';
+import { syncRgYoutubeMetricsIfStale } from './youtube';
 
 type Season = { id: string; season_number: number; name: string; starts_at: string; ends_at: string; status: string; rules_version: number };
 type RankTotal = { ranking_type: RankingKind; entity_id: string; score: number | string };
@@ -109,13 +110,13 @@ export async function getRgSeasonRankings(now = new Date()) {
   };
   if (trackIds.length || artistIds.length || beatIds.length) {
     const [pubLinksResult, artistMembershipsResult] = await Promise.all([
-      db.from('rg_publication_links').select('id,track_id,artist_id,beat_id,youtube_video_id,youtube_export_job_ref').limit(500),
+      db.from('rg_publication_links').select('id,track_id,artist_id,youtube_video_id,youtube_export_job_ref').limit(500),
       artistIds.length
         ? db.from('rg_track_artists').select('artist_id,track_id').in('artist_id', artistIds).eq('role', 'primary').limit(500)
         : Promise.resolve({ data: [], error: null }),
     ]);
     const pubLinks = ((pubLinksResult.data ?? []) as Array<{
-      id: string; track_id: string; artist_id: string; beat_id?: string | null;
+      id: string; track_id: string; artist_id: string;
       youtube_video_id: string; youtube_export_job_ref: string | null;
     }>).filter((row) => Boolean(row.youtube_export_job_ref && row.youtube_video_id));
     const jobIds = [...new Set(pubLinks.map((row) => row.youtube_export_job_ref as string))];
@@ -128,14 +129,44 @@ export async function getRgSeasonRankings(now = new Date()) {
         .map((job) => [job.id, job.youtube_video_id])
     );
     const confirmedLinks = pubLinks.filter((link) => publicJobs.get(link.youtube_export_job_ref as string) === link.youtube_video_id);
+    const uncachedTrackIds = [...new Set(confirmedLinks.map((link) => link.track_id))].filter((id) => !tracks.has(id));
+    if (uncachedTrackIds.length) {
+      const extraTracks = await db.from('rg_tracks').select('id,title,beat_id').in('id', uncachedTrackIds);
+      for (const row of (extraTracks.data ?? []) as TrackIdentity[]) {
+        tracks.set(row.id, row);
+      }
+    }
     const pubIds = confirmedLinks.map((link) => link.id);
-    const snapshotsResult = pubIds.length
+    let snapshotsResult = pubIds.length
       ? await db.from('rg_youtube_metric_snapshots').select('*').in('publication_id', pubIds).order('captured_at', { ascending: false }).limit(1000)
       : { data: [], error: null };
+    type RawSnapRow = {
+      publication_id: string;
+      view_count?: number | string;
+      like_count?: number | string | null;
+      comment_count?: number | string | null;
+      captured_at?: string;
+    };
+    const buildLatestMap = (rows: RawSnapRow[]) => {
+      const map = new Map<string, RawSnapRow>();
+      for (const snap of rows) {
+        if (!map.has(snap.publication_id)) map.set(snap.publication_id, snap);
+      }
+      return map;
+    };
+    let latestRawByPub = buildLatestMap((snapshotsResult.data ?? []) as RawSnapRow[]);
+    const needsSync = pubIds.some((pubId) => {
+      const snap = latestRawByPub.get(pubId);
+      if (!snap || snap.like_count == null || snap.comment_count == null || !snap.captured_at) return true;
+      return now.getTime() - Date.parse(snap.captured_at) > 60_000;
+    });
+    if (needsSync && (await syncRgYoutubeMetricsIfStale(now))) {
+      snapshotsResult = await db.from('rg_youtube_metric_snapshots').select('*').in('publication_id', pubIds).order('captured_at', { ascending: false }).limit(1000);
+      latestRawByPub = buildLatestMap((snapshotsResult.data ?? []) as RawSnapRow[]);
+    }
     const latestSnapshotByPub = new Map<string, { viewCount: number; likeCount: number; commentCount: number }>();
-    for (const snap of (snapshotsResult.data ?? []) as Array<{ publication_id: string; view_count?: number | string; like_count?: number | string | null; comment_count?: number | string | null }>) {
-      if (latestSnapshotByPub.has(snap.publication_id)) continue;
-      latestSnapshotByPub.set(snap.publication_id, {
+    for (const [pubId, snap] of latestRawByPub.entries()) {
+      latestSnapshotByPub.set(pubId, {
         viewCount: Math.max(0, Number(snap.view_count ?? 0) || 0),
         likeCount: Math.max(0, Number(snap.like_count ?? 0) || 0),
         commentCount: Math.max(0, Number(snap.comment_count ?? 0) || 0),
@@ -157,7 +188,7 @@ export async function getRgSeasonRankings(now = new Date()) {
         likeCount: prevArtist.likeCount + snap.likeCount,
         commentCount: prevArtist.commentCount + snap.commentCount,
       });
-      const resolvedBeatId = link.beat_id ?? tracks.get(link.track_id)?.beat_id ?? null;
+      const resolvedBeatId = tracks.get(link.track_id)?.beat_id ?? null;
       if (resolvedBeatId) {
         const prevBeat = beatMetrics.get(resolvedBeatId) ?? { recordedCount: 0, viewCount: 0, likeCount: 0, commentCount: 0 };
         beatMetrics.set(resolvedBeatId, {

@@ -115,3 +115,36 @@ export async function refreshRgYoutubeMilestones(now = new Date()) {
   if (failures) throw new Error('Verified YouTube milestone Score events could not be reconciled.');
   return { checked: publicationLinks.length, viewSnapshots: snapshots, milestonesRecorded: recorded, connectionVerified: true };
 }
+
+let inFlightSync: Promise<boolean> | null = null;
+let lastSyncedAt = 0;
+
+/**
+ * Best-effort on-demand refresh when Ranking or Artist/Track/Beat profiles observe stale
+ * or missing YouTube metric snapshots (so users do not have to wait for the daily cron).
+ */
+export async function syncRgYoutubeMetricsIfStale(now = new Date(), force = false): Promise<boolean> {
+  if (!process.env.YOUTUBE_CLIENT_ID || !process.env.YOUTUBE_CLIENT_SECRET || !process.env.YOUTUBE_TOKEN_ENCRYPTION_KEY) {
+    return false;
+  }
+  const nowMs = now.getTime();
+  if (!force && nowMs - lastSyncedAt < 60_000) {
+    return false;
+  }
+  if (inFlightSync) {
+    return inFlightSync;
+  }
+  inFlightSync = (async () => {
+    try {
+      await refreshRgYoutubeMilestones(now);
+      lastSyncedAt = Date.now();
+      return true;
+    } catch (err) {
+      console.warn('[RG on-demand YouTube sync]', err instanceof Error ? err.message : 'SKIPPED');
+      return false;
+    } finally {
+      inFlightSync = null;
+    }
+  })();
+  return inFlightSync;
+}

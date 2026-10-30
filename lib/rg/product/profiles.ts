@@ -1,5 +1,6 @@
 import 'server-only';
 import { createPhase2AdminClient } from '@/lib/rg/phase2/database';
+import { syncRgYoutubeMetricsIfStale } from '@/lib/rg/phase2/youtube';
 import { getPublicStorageUrl } from '@/lib/storage/public';
 import { getRgChart } from './chart';
 import type { ArtistProfile, BeatProfile, ChartData, PublicArtist, PublicBeat, PublicTrack, RgInteractionStats, SeasonPerformance, TrackProfile } from './types';
@@ -59,17 +60,34 @@ async function collectTrackInteractions(
   }
   const pubIds = [...confirmedByTrack.values()].map((item) => item.pubId);
   if (!pubIds.length) return byTrack;
-  const snapsResult = await db.from('rg_youtube_metric_snapshots')
+  let snapsResult = await db.from('rg_youtube_metric_snapshots')
     .select('*')
     .in('publication_id', pubIds)
     .order('captured_at', { ascending: false })
     .limit(500);
-  const latestByPub = new Map<string, RawSnapshot>();
-  if (!snapsResult.error) {
-    for (const row of (snapsResult.data ?? []) as RawSnapshot[]) {
-      if (row.publication_id && !latestByPub.has(row.publication_id)) {
-        latestByPub.set(row.publication_id, row);
+  const buildMap = (rows: RawSnapshot[]) => {
+    const map = new Map<string, RawSnapshot>();
+    for (const row of rows) {
+      if (row.publication_id && !map.has(row.publication_id)) {
+        map.set(row.publication_id, row);
       }
+    }
+    return map;
+  };
+  let latestByPub = snapsResult.error ? new Map<string, RawSnapshot>() : buildMap((snapsResult.data ?? []) as RawSnapshot[]);
+  const needsSync = pubIds.some((pubId) => {
+    const snap = latestByPub.get(pubId);
+    if (!snap || snap.like_count == null || snap.comment_count == null || !snap.captured_at) return true;
+    return Date.now() - Date.parse(snap.captured_at) > 60_000;
+  });
+  if (needsSync && (await syncRgYoutubeMetricsIfStale())) {
+    snapsResult = await db.from('rg_youtube_metric_snapshots')
+      .select('*')
+      .in('publication_id', pubIds)
+      .order('captured_at', { ascending: false })
+      .limit(500);
+    if (!snapsResult.error) {
+      latestByPub = buildMap((snapsResult.data ?? []) as RawSnapshot[]);
     }
   }
   for (const [trackId, info] of confirmedByTrack.entries()) {
@@ -185,12 +203,21 @@ export async function getTrackProfile(id: string): Promise<TrackProfile | null> 
       .eq('status', 'uploaded').eq('privacy', 'public').eq('youtube_video_id', link.youtube_video_id).maybeSingle();
     if (job.error) throw new Error('Publication privacy unavailable.');
     if (!job.data) continue;
-    const [metrics, milestones] = await Promise.all([
+    let [metrics, milestones] = await Promise.all([
       db.from('rg_youtube_metric_snapshots').select('*').eq('publication_id', link.id).order('captured_at', { ascending: false }).limit(1),
       db.from('rg_score_events').select('id').eq('publication_id', link.id).eq('event_type', 'YOUTUBE_VIEW_MILESTONE').limit(100),
     ]);
     if (metrics.error || milestones.error) throw new Error('Performance unavailable.');
-    const observation = ((metrics.data ?? []) as RawSnapshot[])[0];
+    let observation = ((metrics.data ?? []) as RawSnapshot[])[0];
+    if (
+      (!observation || observation.like_count == null || observation.comment_count == null || Date.now() - Date.parse(observation.captured_at) > 60_000)
+      && (await syncRgYoutubeMetricsIfStale())
+    ) {
+      const refreshed = await db.from('rg_youtube_metric_snapshots').select('*').eq('publication_id', link.id).order('captured_at', { ascending: false }).limit(1);
+      if (!refreshed.error && refreshed.data?.[0]) {
+        observation = (refreshed.data as RawSnapshot[])[0];
+      }
+    }
     publication = {
       url: `https://www.youtube.com/watch?v=${encodeURIComponent(link.youtube_video_id)}`,
       publishedAt: link.published_at,
