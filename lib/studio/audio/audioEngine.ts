@@ -99,6 +99,9 @@ export class AudioEngine {
   private micClipTimestamp = 0;
   private micAnalyser: AnalyserNode | null = null;
   private micLevelSamples = new Float32Array(2048);
+  private monitoringHpFilter: BiquadFilterNode | null = null;
+  private monitoringPresenceFilter: BiquadFilterNode | null = null;
+  private monitoringCompressor: DynamicsCompressorNode | null = null;
   private monitoringGainNode: GainNode | null = null;
   private isMonitoringEnabled: boolean = false;
   private monitoringVolume: number = 1.0;
@@ -391,11 +394,31 @@ export class AudioEngine {
     }
   }
 
+  private getTargetBeatVolume(): number {
+    if (this.isBeatMuted) return 0;
+    const base = typeof this.beatFX?.volume === 'number' ? Math.max(0, Math.min(1.5, this.beatFX.volume)) : 1.0;
+    // BandLab-style studio recording compensation: soften the pre-mastered instrumental during active
+    // recording with monitoring enabled so the artist's vocal monitoring cuts through clearly without strain.
+    if (this.isRecording && this.isMonitoringEnabled) {
+      return base * 0.78;
+    }
+    return base;
+  }
+
+  private syncBeatVolume(timeConstant = 0.05) {
+    if (!this.ctx || !this.beatGainNode) return;
+    const vol = this.getTargetBeatVolume();
+    try {
+      this.beatGainNode.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.beatGainNode.gain.setTargetAtTime(vol, this.ctx.currentTime, timeConstant);
+    } catch {
+      this.beatGainNode.gain.value = vol;
+    }
+  }
+
   public setBeatMuted(muted: boolean) {
     this.isBeatMuted = muted;
-    if (!this.ctx || !this.beatGainNode) return;
-    const vol = muted ? 0 : (typeof this.beatFX?.volume === 'number' ? Math.max(0, Math.min(1.5, this.beatFX.volume)) : 1.0);
-    this.beatGainNode.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.03);
+    this.syncBeatVolume(0.03);
   }
 
   public setBeatFX(fx: BeatFX) {
@@ -417,8 +440,7 @@ export class AudioEngine {
       );
     }
     if (this.beatGainNode) {
-      const vol = this.isBeatMuted ? 0 : Math.max(0, Math.min(1.5, fx.volume));
-      this.beatGainNode.gain.setTargetAtTime(vol, t, 0.05);
+      this.syncBeatVolume(0.05);
     }
   }
 
@@ -645,9 +667,7 @@ export class AudioEngine {
 
     // Ensure beat gain and master gain nodes are configured and audible
     if (this.beatGainNode) {
-      const vol = this.isBeatMuted
-        ? 0
-        : (typeof this.beatFX?.volume === 'number' ? Math.max(0, Math.min(1.5, this.beatFX.volume)) : 1.0);
+      const vol = this.getTargetBeatVolume();
       try {
         this.beatGainNode.gain.cancelScheduledValues(this.ctx.currentTime);
         this.beatGainNode.gain.setValueAtTime(vol, this.ctx.currentTime);
@@ -1097,13 +1117,18 @@ export class AudioEngine {
     if (this.scriptProcessor) this.scriptProcessor.onaudioprocess = null;
     if (this.pcmRecorder) this.pcmRecorder.port.onmessage = null;
     for (const node of [this.micSource, this.micHighPassFilter, this.micInputGain,
-      this.micAnalyser, this.monitoringGainNode, this.scriptProcessor, this.pcmRecorder, this.recorderSilentGain]) {
+      this.micAnalyser, this.monitoringHpFilter, this.monitoringPresenceFilter,
+      this.monitoringCompressor, this.monitoringGainNode, this.scriptProcessor,
+      this.pcmRecorder, this.recorderSilentGain]) {
       try { node?.disconnect(); } catch { /* Already disconnected. */ }
     }
     this.micSource = null;
     this.micHighPassFilter = null;
     this.micInputGain = null;
     this.micAnalyser = null;
+    this.monitoringHpFilter = null;
+    this.monitoringPresenceFilter = null;
+    this.monitoringCompressor = null;
     this.monitoringGainNode = null;
     this.scriptProcessor = null;
     this.pcmRecorder = null;
@@ -1352,14 +1377,39 @@ export class AudioEngine {
       this.micHighPassFilter.connect(this.micInputGain);
       this.micInputGain.connect(this.micAnalyser);
 
-      // Direct Live Voice Monitoring (BandLab style zero-latency headphone feedback)
+      // Direct Live Voice Monitoring (BandLab style zero-latency headphone feedback with studio compensation)
       if (this.masterGainNode) {
+        // 1. High-pass filter at 85 Hz: clears headphone sub-rumble, wind & cable handling friction
+        this.monitoringHpFilter = this.ctx.createBiquadFilter();
+        this.monitoringHpFilter.type = 'highpass';
+        this.monitoringHpFilter.frequency.setValueAtTime(85, this.ctx.currentTime);
+        this.monitoringHpFilter.Q.setValueAtTime(0.7071, this.ctx.currentTime);
+
+        // 2. Vocal presence peaking filter at 3.2 kHz (+3.5 dB): gives immediate clarity and cuts through the beat
+        this.monitoringPresenceFilter = this.ctx.createBiquadFilter();
+        this.monitoringPresenceFilter.type = 'peaking';
+        this.monitoringPresenceFilter.frequency.setValueAtTime(3200, this.ctx.currentTime);
+        this.monitoringPresenceFilter.Q.setValueAtTime(1.0, this.ctx.currentTime);
+        this.monitoringPresenceFilter.gain.setValueAtTime(3.5, this.ctx.currentTime);
+
+        // 3. Ultra-fast studio vocal compressor: evens out vocal dynamics, lifts whispers and controls peaks (BandLab style)
+        this.monitoringCompressor = this.ctx.createDynamicsCompressor();
+        this.monitoringCompressor.threshold.setValueAtTime(-24, this.ctx.currentTime);
+        this.monitoringCompressor.knee.setValueAtTime(10, this.ctx.currentTime);
+        this.monitoringCompressor.ratio.setValueAtTime(4.0, this.ctx.currentTime);
+        this.monitoringCompressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
+        this.monitoringCompressor.release.setValueAtTime(0.14, this.ctx.currentTime);
+
+        // 4. Monitoring makeup gain & user volume node
         this.monitoringGainNode = this.ctx.createGain();
-        this.monitoringGainNode.gain.setValueAtTime(
-          this.isMonitoringEnabled ? this.monitoringVolume : 0,
-          this.ctx.currentTime
-        );
-        this.micInputGain.connect(this.monitoringGainNode);
+        const initialGain = this.isMonitoringEnabled ? this.monitoringVolume * 1.6 : 0;
+        this.monitoringGainNode.gain.setValueAtTime(initialGain, this.ctx.currentTime);
+
+        // Connect the monitoring graph in series into master output
+        this.micInputGain.connect(this.monitoringHpFilter);
+        this.monitoringHpFilter.connect(this.monitoringPresenceFilter);
+        this.monitoringPresenceFilter.connect(this.monitoringCompressor);
+        this.monitoringCompressor.connect(this.monitoringGainNode);
         this.monitoringGainNode.connect(this.masterGainNode);
       }
 
@@ -1368,6 +1418,7 @@ export class AudioEngine {
       this.clearTrackSources(trackId);
       if (!wasPlaying) await this.play(vocalTracks);
       if (!this.isPlaying) throw new Error('No se pudo reproducir el beat. Toca Play o REC para reintentar.');
+      this.syncBeatVolume(0.05);
       if (requestId !== this.recordingRequestId || !this.isRecording) return false;
       const start = Math.max(this.ctx.currentTime, this.playbackStartCtxTime + this.currentPlaybackPosition);
       this.recordingTimelineOrigin = this.playbackStartCtxTime;
@@ -1451,6 +1502,7 @@ export class AudioEngine {
       this.callbacks.onCountInBeat(0);
       const trackId = this.recordingTrackId;
       this.isRecording = false;
+      this.syncBeatVolume(0.1);
       this.pause();
       await this.flushRecorder('stop');
       this.recordingTrackId = null;
@@ -1598,13 +1650,15 @@ export class AudioEngine {
   /**
    * Toggles or updates BandLab-style direct live headphone monitoring.
    * When enabled with headphones plugged in, vocal input feeds directly into
-   * the master output graph with zero software latency so the artist hears themselves.
+   * the master output graph with zero software latency, vocal presence EQ,
+   * fast compression, and makeup gain so the artist hears themselves clearly.
    */
   public setMonitoringEnabled(enabled: boolean, volume = 1.0) {
     this.isMonitoringEnabled = enabled;
     this.monitoringVolume = Math.max(0, Math.min(2.0, volume));
     if (this.monitoringGainNode && this.ctx) {
-      const targetGain = this.isMonitoringEnabled ? this.monitoringVolume : 0;
+      // 1.6x factor (~+4.1 dB) compensates for quiet earphone/mobile mic sensitivity
+      const targetGain = this.isMonitoringEnabled ? this.monitoringVolume * 1.6 : 0;
       try {
         this.monitoringGainNode.gain.cancelScheduledValues(this.ctx.currentTime);
         this.monitoringGainNode.gain.setValueAtTime(targetGain, this.ctx.currentTime);
@@ -1612,6 +1666,7 @@ export class AudioEngine {
         this.monitoringGainNode.gain.value = targetGain;
       }
     }
+    this.syncBeatVolume(0.05);
   }
 
   public getIsMonitoringEnabled(): boolean {

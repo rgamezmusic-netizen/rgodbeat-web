@@ -646,7 +646,7 @@ export default function App() {
     }
     showToast(
       next
-        ? 'Monitoreo en vivo ACTIVO: Usa audífonos para escucharte en tiempo real sin acoples.'
+        ? 'Monitoreo compensado ACTIVO (estilo BandLab): Compresión y presencia vocal en tiempo real en audífonos.'
         : 'Monitoreo en vivo DESACTIVADO.',
       'info'
     );

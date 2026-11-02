@@ -163,8 +163,8 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                 }`}
                 title={
                   monitoringEnabled
-                    ? 'Monitoreo en vivo ACTIVO (te escuchas en audífonos al cantar)'
-                    : 'Activar monitoreo en vivo en audífonos (estilo BandLab)'
+                    ? 'Monitoreo compensado ACTIVO: Voz con compresión y presencia optimizada'
+                    : 'Activar monitoreo en vivo compensado (estilo BandLab)'
                 }
               >
                 <Headphones className="w-3.5 h-3.5" />

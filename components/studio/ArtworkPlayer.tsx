@@ -521,8 +521,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 }`}
                 title={
                   monitoringEnabled
-                    ? 'Monitoreo en vivo ACTIVO (te escuchas en los audífonos)'
-                    : 'Activar monitoreo en vivo en audífonos (estilo BandLab)'
+                    ? 'Monitoreo compensado ACTIVO: Voz con compresión y presencia optimizada'
+                    : 'Activar monitoreo en vivo compensado (estilo BandLab)'
                 }
               >
                 <Headphones className="w-4 h-4" />
