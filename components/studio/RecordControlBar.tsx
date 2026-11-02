@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Mic, Square, Timer, AlertTriangle, Headphones, Undo2, Redo2 } from 'lucide-react';
+import { Mic, Square, Timer, AlertTriangle, Headphones, Radio, Undo2, Redo2 } from 'lucide-react';
 import { VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 
 interface RecordControlBarProps {
@@ -11,6 +11,8 @@ interface RecordControlBarProps {
   bluetoothSyncEnabled?: boolean;
   bluetoothOffsetMs?: number;
   onToggleBluetoothSync?: () => void;
+  monitoringEnabled?: boolean;
+  onToggleMonitoring?: () => void;
   onStartRecord: (trackId: VocalTrackId) => void;
   onStopRecord: () => void;
   onGenerateTestTake?: (trackId: VocalTrackId) => void;
@@ -35,6 +37,8 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
   bluetoothSyncEnabled = false,
   bluetoothOffsetMs = 185,
   onToggleBluetoothSync,
+  monitoringEnabled = false,
+  onToggleMonitoring,
   onStartRecord,
   onStopRecord,
   getMicLevel,
@@ -146,8 +150,27 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
               })}
           </div>
 
-          {/* Compact utility controls: BT Sync, Count-in, Undo, Redo */}
+          {/* Compact utility controls: Monitoring, BT Sync, Count-in, Undo, Redo */}
           <div className="flex items-center gap-0.5 shrink-0">
+            {onToggleMonitoring && (
+              <button
+                type="button"
+                onClick={onToggleMonitoring}
+                className={`p-1 rounded-md text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                  monitoringEnabled
+                    ? 'bg-purple-600 text-white border border-purple-400 shadow-sm shadow-purple-500/40'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+                title={
+                  monitoringEnabled
+                    ? 'Monitoreo en vivo ACTIVO (te escuchas en audífonos al cantar)'
+                    : 'Activar monitoreo en vivo en audífonos (estilo BandLab)'
+                }
+              >
+                <Headphones className="w-3.5 h-3.5" />
+              </button>
+            )}
+
             {onToggleBluetoothSync && (
               <button
                 type="button"
@@ -163,7 +186,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                     : 'Calibrar audífonos Bluetooth (AirPods, etc.)'
                 }
               >
-                <Headphones className="w-3.5 h-3.5" />
+                <Radio className="w-3.5 h-3.5" />
               </button>
             )}
 

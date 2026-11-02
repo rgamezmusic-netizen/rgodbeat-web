@@ -11,6 +11,7 @@ import {
   Sparkles,
   Timer,
   Headphones,
+  Radio,
   AlertTriangle,
 } from 'lucide-react';
 import { BeatData, LoopSettings, MusicalKey, ScaleMode, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
@@ -46,6 +47,8 @@ interface ArtworkPlayerProps {
   bluetoothSyncEnabled?: boolean;
   bluetoothOffsetMs?: number;
   onToggleBluetoothSync?: () => void;
+  monitoringEnabled?: boolean;
+  onToggleMonitoring?: () => void;
   isRecArmed?: boolean;
   onToggleRecArmed?: () => void;
   getMicLevel?: () => number;
@@ -76,6 +79,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   bluetoothSyncEnabled = false,
   bluetoothOffsetMs = 185,
   onToggleBluetoothSync,
+  monitoringEnabled = false,
+  onToggleMonitoring,
   isRecArmed = true,
   onToggleRecArmed,
   getMicLevel,
@@ -502,9 +507,29 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
       {/* 5. Main Transport Player Controls: UNIFIED DECK (1 Play, 1 Rec) - Perfectly Centered */}
       <div className="w-full flex flex-col items-center px-2 mt-3">
         <div className="w-full flex items-center justify-between gap-1 sm:gap-2">
-          {/* Left tools: Bluetooth Sync & Rewind (2 buttons) */}
+          {/* Left tools: Monitoring, Bluetooth Sync & Rewind */}
           <div className="flex items-center justify-start gap-1 sm:gap-2 w-1/3">
-            {/* Bluetooth Latency Compensation - Discreet, symmetrical to Count-in on the right */}
+            {/* Live Headphone Monitoring (BandLab style feedback) */}
+            {onToggleMonitoring && (
+              <button
+                type="button"
+                onClick={onToggleMonitoring}
+                className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
+                  monitoringEnabled
+                    ? 'bg-purple-600 text-white border border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.5)]'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                }`}
+                title={
+                  monitoringEnabled
+                    ? 'Monitoreo en vivo ACTIVO (te escuchas en los audífonos)'
+                    : 'Activar monitoreo en vivo en audífonos (estilo BandLab)'
+                }
+              >
+                <Headphones className="w-4 h-4" />
+              </button>
+            )}
+
+            {/* Bluetooth Latency Compensation */}
             {onToggleBluetoothSync && (
               <button
                 type="button"
@@ -521,7 +546,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                     : 'Activar compensación fija para audífonos Bluetooth'
                 }
               >
-                <Headphones className="w-4 h-4" />
+                <Radio className="w-4 h-4" />
               </button>
             )}
 

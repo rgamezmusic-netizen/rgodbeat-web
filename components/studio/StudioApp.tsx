@@ -455,6 +455,7 @@ export default function App() {
   });
   const [isBeatMuted, setIsBeatMuted] = useState<boolean>(false);
   const [isRecArmed, setIsRecArmed] = useState<boolean>(true);
+  const [monitoringEnabled, setMonitoringEnabled] = useState<boolean>(false);
 
   const beatMixRef = useRef({ beatFX, isBeatMuted });
   useEffect(() => { beatMixRef.current = { beatFX, isBeatMuted }; }, [beatFX, isBeatMuted]);
@@ -636,6 +637,20 @@ export default function App() {
       setToastMessage(null);
     }, Math.min(10000, Math.max(4500, text.length * 45)));
   }, []);
+
+  const handleToggleMonitoring = useCallback(() => {
+    const next = !monitoringEnabled;
+    setMonitoringEnabled(next);
+    if (engine) {
+      engine.setMonitoringEnabled(next);
+    }
+    showToast(
+      next
+        ? 'Monitoreo en vivo ACTIVO: Usa audífonos para escucharte en tiempo real sin acoples.'
+        : 'Monitoreo en vivo DESACTIVADO.',
+      'info'
+    );
+  }, [monitoringEnabled, engine, showToast]);
 
   // Studio Access & Subscription state
   const [accessStatus, setAccessStatus] = useState<{
@@ -3038,6 +3053,8 @@ export default function App() {
               bluetoothSyncEnabled={bluetoothSyncEnabled}
               bluetoothOffsetMs={bluetoothOffsetMs}
               onToggleBluetoothSync={handleToggleBluetoothSync}
+              monitoringEnabled={monitoringEnabled}
+              onToggleMonitoring={handleToggleMonitoring}
               getMicLevel={() => (engine ? engine.getMicInputLevel() : 0)}
               getMicStatus={() => (engine ? engine.getMicInputStatus() : { level: 0, isSaturated: false, gainReductionDb: 0 })}
               onChangeBpm={(newBpm) => {

@@ -99,6 +99,9 @@ export class AudioEngine {
   private micClipTimestamp = 0;
   private micAnalyser: AnalyserNode | null = null;
   private micLevelSamples = new Float32Array(2048);
+  private monitoringGainNode: GainNode | null = null;
+  private isMonitoringEnabled: boolean = false;
+  private monitoringVolume: number = 1.0;
   private scriptProcessor: ScriptProcessorNode | null = null;
   private pcmRecorder: AudioWorkletNode | null = null;
   private recorderModule: Promise<void> | null = null;
@@ -1094,13 +1097,14 @@ export class AudioEngine {
     if (this.scriptProcessor) this.scriptProcessor.onaudioprocess = null;
     if (this.pcmRecorder) this.pcmRecorder.port.onmessage = null;
     for (const node of [this.micSource, this.micHighPassFilter, this.micInputGain,
-      this.micAnalyser, this.scriptProcessor, this.pcmRecorder, this.recorderSilentGain]) {
+      this.micAnalyser, this.monitoringGainNode, this.scriptProcessor, this.pcmRecorder, this.recorderSilentGain]) {
       try { node?.disconnect(); } catch { /* Already disconnected. */ }
     }
     this.micSource = null;
     this.micHighPassFilter = null;
     this.micInputGain = null;
     this.micAnalyser = null;
+    this.monitoringGainNode = null;
     this.scriptProcessor = null;
     this.pcmRecorder = null;
     this.recorderSilentGain = null;
@@ -1347,6 +1351,18 @@ export class AudioEngine {
       this.micSource.connect(this.micHighPassFilter);
       this.micHighPassFilter.connect(this.micInputGain);
       this.micInputGain.connect(this.micAnalyser);
+
+      // Direct Live Voice Monitoring (BandLab style zero-latency headphone feedback)
+      if (this.masterGainNode) {
+        this.monitoringGainNode = this.ctx.createGain();
+        this.monitoringGainNode.gain.setValueAtTime(
+          this.isMonitoringEnabled ? this.monitoringVolume : 0,
+          this.ctx.currentTime
+        );
+        this.micInputGain.connect(this.monitoringGainNode);
+        this.monitoringGainNode.connect(this.masterGainNode);
+      }
+
       await this.setupPCMRecorder();
       if (requestId !== this.recordingRequestId || !this.isRecording) return false;
       this.clearTrackSources(trackId);
@@ -1577,6 +1593,29 @@ export class AudioEngine {
 
   public getCurrentPlaybackPosition(): number {
     return this.readPlaybackPosition();
+  }
+
+  /**
+   * Toggles or updates BandLab-style direct live headphone monitoring.
+   * When enabled with headphones plugged in, vocal input feeds directly into
+   * the master output graph with zero software latency so the artist hears themselves.
+   */
+  public setMonitoringEnabled(enabled: boolean, volume = 1.0) {
+    this.isMonitoringEnabled = enabled;
+    this.monitoringVolume = Math.max(0, Math.min(2.0, volume));
+    if (this.monitoringGainNode && this.ctx) {
+      const targetGain = this.isMonitoringEnabled ? this.monitoringVolume : 0;
+      try {
+        this.monitoringGainNode.gain.cancelScheduledValues(this.ctx.currentTime);
+        this.monitoringGainNode.gain.setValueAtTime(targetGain, this.ctx.currentTime);
+      } catch {
+        this.monitoringGainNode.gain.value = targetGain;
+      }
+    }
+  }
+
+  public getIsMonitoringEnabled(): boolean {
+    return this.isMonitoringEnabled;
   }
 
   /** Target 48 kHz standard for video, YouTube and mobile broadcast performance. */
