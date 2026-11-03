@@ -12,6 +12,7 @@ import {
   Timer,
   Headphones,
   Radio,
+  Smartphone,
   AlertTriangle,
 } from 'lucide-react';
 import { BeatData, LoopSettings, MusicalKey, ScaleMode, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
@@ -49,6 +50,8 @@ interface ArtworkPlayerProps {
   onToggleBluetoothSync?: () => void;
   monitoringEnabled?: boolean;
   onToggleMonitoring?: () => void;
+  preferPhoneMic?: boolean;
+  onTogglePhoneMic?: () => void;
   isRecArmed?: boolean;
   onToggleRecArmed?: () => void;
   getMicLevel?: () => number;
@@ -81,6 +84,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   onToggleBluetoothSync,
   monitoringEnabled = false,
   onToggleMonitoring,
+  preferPhoneMic = false,
+  onTogglePhoneMic,
   isRecArmed = true,
   onToggleRecArmed,
   getMicLevel,
@@ -195,59 +200,82 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto flex flex-col items-center px-3 pt-1 pb-3">
-      {/* 1. FLOW IPOD: Focal Disc & Album Art (Plato Negro Carbón) */}
-      <div className="relative group w-48 h-48 sm:w-56 sm:h-56 my-2 flex items-center justify-center">
-        {/* Deep Platter Ambient Shadow */}
-        {!lightVisuals && <div data-studio-decoration="platter-shadow" className="absolute inset-0 rounded-full blur-2xl opacity-40 bg-black pointer-events-none" />}
-
-        {/* Outer Vinyl Disc (Negro Carbón) */}
-        <div
-          className={`relative w-full h-full rounded-full p-2.5 shadow-2xl border-2 border-zinc-800/90 bg-[#121216] transition-transform ${
-            isPlaying ? 'animate-vinyl-spin' : 'animate-vinyl-spin-paused'
-          }`}
-          style={{
-            boxShadow: '0 20px 45px -10px rgba(0,0,0,0.7), inset 0 0 16px rgba(0,0,0,0.95)',
-            backgroundImage: `
-              radial-gradient(circle at center, #1c1c24 0%, #121217 35%, #0d0d12 40%, #1a1a22 42%, #0a0a0e 55%, #181820 58%, #0d0d12 70%, #181820 73%, #09090d 100%),
-              repeating-radial-gradient(circle at center, rgba(255,255,255,0.02) 0, rgba(255,255,255,0.02) 1px, transparent 2px, transparent 4px)
-            `,
-          }}
-        >
-          {/* Inner Carbon Black Label */}
-          <div
-            className="w-full h-full rounded-full flex flex-col items-center justify-center relative overflow-hidden shadow-inner border border-zinc-700/50"
-            style={{
-              background: 'radial-gradient(circle at center, #22222a 0%, #141419 65%, #0c0c10 100%)',
-            }}
-          >
-            {/* Center Spindle Hole */}
-            <div className="w-7 h-7 rounded-full bg-[#0a0a0e] border-2 border-zinc-600 shadow-inner flex items-center justify-center z-10">
-              <div className="w-2.5 h-2.5 rounded-full bg-zinc-950" />
-            </div>
-
-            {/* Label Typography */}
-            <div className="absolute top-4 text-center px-4 pointer-events-none">
-              <p className="text-[9px] tracking-widest uppercase font-mono text-zinc-400 font-bold opacity-90">
-                RGODBEAT
-              </p>
-            </div>
-            <div className="absolute bottom-4 text-center px-4 pointer-events-none">
-              <p className="text-[9px] tracking-wider uppercase font-mono text-amber-400 font-extrabold drop-shadow">
-                {currentBpm} BPM
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Beat FX Floating Pill */}
+      {/* 1. FLOW IPOD: Focal Disc & Album Art flanked by Seek Buttons */}
+      <div className="relative w-full max-w-sm sm:max-w-md mx-auto flex items-center justify-between px-1 sm:px-2 my-2 select-none">
+        {/* Rewind 5s (Posicionado al lado del disco arriba) */}
         <button
           type="button"
-          onClick={onOpenBeatFX}
-          title="Ajustes de filtro y volumen del Beat"
-          className="absolute -bottom-1 -right-1 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-950 hover:bg-zinc-900 text-zinc-200 hover:text-white border border-zinc-750 shadow-xl text-[10px] font-mono backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+          onClick={() => onSeek(Math.max(0, currentTime - 5))}
+          className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700/60 shadow-md active:scale-90 transition-all cursor-pointer backdrop-blur-sm shrink-0"
+          title="Retroceder 5 segundos"
         >
-          <Sliders className="w-3 h-3 text-amber-400" />
-          <span>Beat FX</span>
+          <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
+        </button>
+
+        {/* Plato Negro Carbón Vinyl Disc */}
+        <div className="relative group w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center shrink-0">
+          {/* Deep Platter Ambient Shadow */}
+          {!lightVisuals && <div data-studio-decoration="platter-shadow" className="absolute inset-0 rounded-full blur-2xl opacity-40 bg-black pointer-events-none" />}
+
+          {/* Outer Vinyl Disc (Negro Carbón) */}
+          <div
+            className={`relative w-full h-full rounded-full p-2.5 shadow-2xl border-2 border-zinc-800/90 bg-[#121216] transition-transform ${
+              isPlaying ? 'animate-vinyl-spin' : 'animate-vinyl-spin-paused'
+            }`}
+            style={{
+              boxShadow: '0 20px 45px -10px rgba(0,0,0,0.7), inset 0 0 16px rgba(0,0,0,0.95)',
+              backgroundImage: `
+                radial-gradient(circle at center, #1c1c24 0%, #121217 35%, #0d0d12 40%, #1a1a22 42%, #0a0a0e 55%, #181820 58%, #0d0d12 70%, #181820 73%, #09090d 100%),
+                repeating-radial-gradient(circle at center, rgba(255,255,255,0.02) 0, rgba(255,255,255,0.02) 1px, transparent 2px, transparent 4px)
+              `,
+            }}
+          >
+            {/* Inner Carbon Black Label */}
+            <div
+              className="w-full h-full rounded-full flex flex-col items-center justify-center relative overflow-hidden shadow-inner border border-zinc-700/50"
+              style={{
+                background: 'radial-gradient(circle at center, #22222a 0%, #141419 65%, #0c0c10 100%)',
+              }}
+            >
+              {/* Center Spindle Hole */}
+              <div className="w-7 h-7 rounded-full bg-[#0a0a0e] border-2 border-zinc-600 shadow-inner flex items-center justify-center z-10">
+                <div className="w-2.5 h-2.5 rounded-full bg-zinc-950" />
+              </div>
+
+              {/* Label Typography */}
+              <div className="absolute top-4 text-center px-4 pointer-events-none">
+                <p className="text-[9px] tracking-widest uppercase font-mono text-zinc-400 font-bold opacity-90">
+                  RGODBEAT
+                </p>
+              </div>
+              <div className="absolute bottom-4 text-center px-4 pointer-events-none">
+                <p className="text-[9px] tracking-wider uppercase font-mono text-amber-400 font-extrabold drop-shadow">
+                  {currentBpm} BPM
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Beat FX Floating Pill */}
+          <button
+            type="button"
+            onClick={onOpenBeatFX}
+            title="Ajustes de filtro y volumen del Beat"
+            className="absolute -bottom-1 -right-1 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-950 hover:bg-zinc-900 text-zinc-200 hover:text-white border border-zinc-750 shadow-xl text-[10px] font-mono backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+          >
+            <Sliders className="w-3 h-3 text-amber-400" />
+            <span>Beat FX</span>
+          </button>
+        </div>
+
+        {/* Forward 5s (Posicionado al lado del disco arriba) */}
+        <button
+          type="button"
+          onClick={() => onSeek(Math.min(duration, currentTime + 5))}
+          className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700/60 shadow-md active:scale-90 transition-all cursor-pointer backdrop-blur-sm shrink-0"
+          title="Avanzar 5 segundos"
+        >
+          <RotateCw className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
       </div>
 
@@ -507,7 +535,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
       {/* 5. Main Transport Player Controls: UNIFIED DECK (1 Play, 1 Rec) - Perfectly Centered */}
       <div className="w-full flex flex-col items-center px-2 mt-3">
         <div className="w-full flex items-center justify-between gap-1 sm:gap-2">
-          {/* Left tools: Monitoring, Bluetooth Sync & Rewind */}
+          {/* Left tools: Monitoring & Bluetooth Sync (2 buttons) */}
           <div className="flex items-center justify-start gap-1 sm:gap-2 w-1/3">
             {/* Live Headphone Monitoring (BandLab style feedback) */}
             {onToggleMonitoring && (
@@ -549,16 +577,6 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 <Radio className="w-4 h-4" />
               </button>
             )}
-
-            {/* Rewind 5s */}
-            <button
-              type="button"
-              onClick={() => onSeek(Math.max(0, currentTime - 5))}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all cursor-pointer"
-              title="Retroceder 5 segundos"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
           </div>
 
           {/* Center: THE TWO UNIFIED BUTTONS: 1 PLAY & 1 REC (100% DEAD CENTERED) */}
@@ -626,17 +644,28 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             )}
           </div>
 
-          {/* Right tools: Forward & Count-In (2 buttons) */}
+          {/* Right tools: Phone Mic & Count-In (2 buttons) */}
           <div className="flex items-center justify-end gap-1 sm:gap-2 w-1/3">
-            {/* Forward 5s */}
-            <button
-              type="button"
-              onClick={() => onSeek(Math.min(duration, currentTime + 5))}
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 active:scale-95 transition-all cursor-pointer"
-              title="Avanzar 5 segundos"
-            >
-              <RotateCw className="w-4 h-4" />
-            </button>
+            {/* Phone Microphone Preference Toggle */}
+            {onTogglePhoneMic && (
+              <button
+                type="button"
+                onClick={onTogglePhoneMic}
+                disabled={isRecording}
+                className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
+                  preferPhoneMic
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                }`}
+                title={
+                  preferPhoneMic
+                    ? 'Micrófono del teléfono ACTIVO (canta al móvil aunque tengas audífonos)'
+                    : 'Activar micrófono del teléfono (forzar micro del móvil con audífonos puestos)'
+                }
+              >
+                <Smartphone className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Count-In Toggle (1-Bar Timer) */}
             {onToggleCountIn && (

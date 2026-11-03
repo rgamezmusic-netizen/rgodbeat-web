@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Mic, Square, Timer, AlertTriangle, Headphones, Radio, Undo2, Redo2 } from 'lucide-react';
+import { Mic, Square, Timer, AlertTriangle, Headphones, Radio, Smartphone, Undo2, Redo2 } from 'lucide-react';
 import { VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 
 interface RecordControlBarProps {
@@ -13,6 +13,8 @@ interface RecordControlBarProps {
   onToggleBluetoothSync?: () => void;
   monitoringEnabled?: boolean;
   onToggleMonitoring?: () => void;
+  preferPhoneMic?: boolean;
+  onTogglePhoneMic?: () => void;
   onStartRecord: (trackId: VocalTrackId) => void;
   onStopRecord: () => void;
   onGenerateTestTake?: (trackId: VocalTrackId) => void;
@@ -39,6 +41,8 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
   onToggleBluetoothSync,
   monitoringEnabled = false,
   onToggleMonitoring,
+  preferPhoneMic = false,
+  onTogglePhoneMic,
   onStartRecord,
   onStopRecord,
   getMicLevel,
@@ -187,6 +191,26 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                 }
               >
                 <Radio className="w-3.5 h-3.5" />
+              </button>
+            )}
+
+            {onTogglePhoneMic && (
+              <button
+                type="button"
+                onClick={onTogglePhoneMic}
+                disabled={isRecording}
+                className={`p-1 rounded-md text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                  preferPhoneMic
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+                title={
+                  preferPhoneMic
+                    ? 'Micrófono del teléfono ACTIVO (canta al móvil aunque tengas audífonos)'
+                    : 'Activar micrófono del teléfono (forzar micro del móvil con audífonos puestos)'
+                }
+              >
+                <Smartphone className="w-3.5 h-3.5" />
               </button>
             )}
 

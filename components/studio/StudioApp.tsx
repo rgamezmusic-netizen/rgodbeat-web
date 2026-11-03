@@ -451,11 +451,12 @@ export default function App() {
   const [beatFX, setBeatFX] = useState<BeatFX>({
     lowPass: 20000,
     highPass: 20,
-    volume: 1.0,
+    volume: 0.80,
   });
   const [isBeatMuted, setIsBeatMuted] = useState<boolean>(false);
   const [isRecArmed, setIsRecArmed] = useState<boolean>(true);
   const [monitoringEnabled, setMonitoringEnabled] = useState<boolean>(false);
+  const [preferPhoneMic, setPreferPhoneMic] = useState<boolean>(false);
 
   const beatMixRef = useRef({ beatFX, isBeatMuted });
   useEffect(() => { beatMixRef.current = { beatFX, isBeatMuted }; }, [beatFX, isBeatMuted]);
@@ -651,6 +652,20 @@ export default function App() {
       'info'
     );
   }, [monitoringEnabled, engine, showToast]);
+
+  const handleTogglePhoneMic = useCallback(() => {
+    const next = !preferPhoneMic;
+    setPreferPhoneMic(next);
+    if (engine) {
+      engine.setPreferPhoneMic(next);
+    }
+    showToast(
+      next
+        ? 'Modo MIC DEL TELÉFONO activo: Canta hacia la parte inferior del móvil.'
+        : 'Modo MIC DE AUDÍFONOS / AUTOMÁTICO activo.',
+      'info'
+    );
+  }, [preferPhoneMic, engine, showToast]);
 
   // Studio Access & Subscription state
   const [accessStatus, setAccessStatus] = useState<{
@@ -3055,6 +3070,8 @@ export default function App() {
               onToggleBluetoothSync={handleToggleBluetoothSync}
               monitoringEnabled={monitoringEnabled}
               onToggleMonitoring={handleToggleMonitoring}
+              preferPhoneMic={preferPhoneMic}
+              onTogglePhoneMic={handleTogglePhoneMic}
               getMicLevel={() => (engine ? engine.getMicInputLevel() : 0)}
               getMicStatus={() => (engine ? engine.getMicInputStatus() : { level: 0, isSaturated: false, gainReductionDb: 0 })}
               onChangeBpm={(newBpm) => {

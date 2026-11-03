@@ -94,7 +94,7 @@ export class AudioEngine {
   private micSource: MediaStreamAudioSourceNode | null = null;
   private micHighPassFilter: BiquadFilterNode | null = null;
   private micInputGain: GainNode | null = null;
-  private micInputGainValue = 1.0;
+  private micInputGainValue = 1.65;
   private micIsClipping = false;
   private micClipTimestamp = 0;
   private micAnalyser: AnalyserNode | null = null;
@@ -105,6 +105,7 @@ export class AudioEngine {
   private monitoringGainNode: GainNode | null = null;
   private isMonitoringEnabled: boolean = false;
   private monitoringVolume: number = 1.0;
+  private preferPhoneMic: boolean = false;
   private scriptProcessor: ScriptProcessorNode | null = null;
   private pcmRecorder: AudioWorkletNode | null = null;
   private recorderModule: Promise<void> | null = null;
@@ -141,7 +142,7 @@ export class AudioEngine {
   private beatFX: BeatFX = {
     lowPass: 20000,
     highPass: 20,
-    volume: 1.0,
+    volume: 0.80,
   };
 
   // Reverb Impulse Buffers cache
@@ -396,11 +397,11 @@ export class AudioEngine {
 
   private getTargetBeatVolume(): number {
     if (this.isBeatMuted) return 0;
-    const base = typeof this.beatFX?.volume === 'number' ? Math.max(0, Math.min(1.5, this.beatFX.volume)) : 1.0;
+    const base = typeof this.beatFX?.volume === 'number' ? Math.max(0, Math.min(1.5, this.beatFX.volume)) : 0.80;
     // BandLab-style studio recording compensation: soften the pre-mastered instrumental during active
     // recording with monitoring enabled so the artist's vocal monitoring cuts through clearly without strain.
     if (this.isRecording && this.isMonitoringEnabled) {
-      return base * 0.78;
+      return base * 0.70;
     }
     return base;
   }
@@ -629,9 +630,11 @@ export class AudioEngine {
       } else if (hasAnySolo && !track.isSolo) {
         effectiveVolume = 0;
       }
+      // Standard studio vocal calibration: balances recorded vocals naturally on top of commercial beats
+      const VOCAL_PLAYBACK_CALIBRATION = 1.50;
       // Pro vocal makeup compensation: restores dynamic presence and body lost during compression
       const compMakeupGain = 1.0 + compAmount * 0.35;
-      nodes.trackGain.gain.setTargetAtTime(effectiveVolume * compMakeupGain, t, 0.05);
+      nodes.trackGain.gain.setTargetAtTime(effectiveVolume * VOCAL_PLAYBACK_CALIBRATION * compMakeupGain, t, 0.05);
       nodes.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, track.pan ?? 0)), t, 0.05);
     } catch (err) {
       console.warn('Error in updateVocalFX, handled gracefully:', err);
@@ -1042,6 +1045,29 @@ export class AudioEngine {
     }
 
     let stream: MediaStream;
+    let targetDeviceId: string | undefined = undefined;
+    if (this.preferPhoneMic && typeof navigator !== 'undefined' && navigator.mediaDevices?.enumerateDevices) {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter((d) => d.kind === 'audioinput');
+        const builtIn = audioInputs.find((d) => {
+          const lbl = (d.label || '').toLowerCase();
+          const isExternal = lbl.includes('headset') || lbl.includes('wired') || lbl.includes('cable') ||
+                             lbl.includes('auricular') || lbl.includes('bluetooth') || lbl.includes('airpods') ||
+                             lbl.includes('external') || lbl.includes('usb');
+          const isPhone = lbl.includes('phone') || lbl.includes('iphone') || lbl.includes('built-in') ||
+                          lbl.includes('internal') || lbl.includes('integrado') || lbl.includes('dispositivo') ||
+                          lbl.includes('default');
+          return isPhone && !isExternal;
+        });
+        if (builtIn?.deviceId) {
+          targetDeviceId = builtIn.deviceId;
+        }
+      } catch (err) {
+        console.warn('Could not enumerate audio devices for built-in mic preference:', err);
+      }
+    }
+
     if (!navigator.mediaDevices?.getUserMedia) {
       const legacyGetUserMedia =
         (navigator as unknown as { getUserMedia?: (c: unknown, s: (st: MediaStream) => void, e: (er: unknown) => void) => void }).getUserMedia ||
@@ -1053,7 +1079,13 @@ export class AudioEngine {
     } else {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          audio: {
+            channelCount: 1,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            ...(targetDeviceId ? { deviceId: { ideal: targetDeviceId } } : {}),
+          },
         });
       } catch (error) {
         // Retry only unsupported constraints, never permission/hardware failures.
@@ -1294,6 +1326,22 @@ export class AudioEngine {
       offset += retained.length;
       if (offset === length) break;
     }
+
+    // Smart Vocal Auto-Compensation: If the recorded take is too quiet (peak < 0.65),
+    // automatically level it up so peak reaches ~0.78, ONLY when necessary without touching loud takes.
+    let peak = 0;
+    for (let i = 0; i < length; i++) {
+      const abs = Math.abs(output[i]);
+      if (abs > peak) peak = abs;
+    }
+    if (peak > 0.005 && peak < 0.65) {
+      const targetPeak = 0.78;
+      const autoCompensationGain = Math.min(3.5, targetPeak / peak);
+      for (let i = 0; i < length; i++) {
+        output[i] = Math.max(-0.95, Math.min(0.95, output[i] * autoCompensationGain));
+      }
+    }
+
     this.callbacks.onRecordingFinished(trackId, buffer, extractWaveformPeaks(buffer, WAVEFORM_SAMPLE_COUNT), start, takeId);
   }
 
@@ -1347,7 +1395,7 @@ export class AudioEngine {
       this.captureNextFrame = null;
       this.captureEndFrame = Infinity;
       this.captureStartFrame = Infinity;
-      this.micInputGainValue = 1;
+      this.micInputGainValue = 1.65;
       this.micIsClipping = false;
       this.micClipTimestamp = 0;
       if (withCountIn && !wasPlaying) {
@@ -1371,6 +1419,7 @@ export class AudioEngine {
       this.micHighPassFilter.frequency.value = 35;
       this.micHighPassFilter.Q.value = 0.7071;
       this.micInputGain = this.ctx.createGain();
+      this.micInputGain.gain.setValueAtTime(this.micInputGainValue, this.ctx.currentTime);
       this.micAnalyser = this.ctx.createAnalyser();
       this.micAnalyser.fftSize = 2048;
       this.micSource.connect(this.micHighPassFilter);
@@ -1673,6 +1722,18 @@ export class AudioEngine {
     return this.isMonitoringEnabled;
   }
 
+  public setPreferPhoneMic(prefer: boolean) {
+    if (this.preferPhoneMic === prefer) return;
+    this.preferPhoneMic = prefer;
+    if (!this.isRecording && this.micStream) {
+      this.releaseMicrophone();
+    }
+  }
+
+  public getPreferPhoneMic(): boolean {
+    return this.preferPhoneMic;
+  }
+
   /** Target 48 kHz standard for video, YouTube and mobile broadcast performance. */
   public getExportSampleRate(vocalTracks: VocalTrack[] = []): number {
     return 48000;
@@ -1876,9 +1937,11 @@ export class AudioEngine {
       saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
       saturation.oversample = '2x';
 
+      // Standard studio vocal calibration: balances recorded vocals naturally on top of commercial beats
+      const VOCAL_PLAYBACK_CALIBRATION = 1.50;
       const compMakeupGain = 1.0 + compAmount * 0.35;
       const trackGain = offlineCtx.createGain();
-      trackGain.gain.setValueAtTime(effectiveVol * compMakeupGain, 0);
+      trackGain.gain.setValueAtTime(effectiveVol * VOCAL_PLAYBACK_CALIBRATION * compMakeupGain, 0);
 
       lowCut.connect(lowEq);
       lowEq.connect(midEq);
