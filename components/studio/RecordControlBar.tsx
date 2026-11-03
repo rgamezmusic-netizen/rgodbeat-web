@@ -201,7 +201,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                 disabled={isRecording}
                 className={`p-1 rounded-md text-[10px] font-mono font-bold transition-all cursor-pointer ${
                   preferPhoneMic
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                    ? 'bg-purple-600 text-white border border-purple-400 shadow-sm shadow-purple-500/40'
                     : 'text-zinc-500 hover:text-zinc-300'
                 }`}
                 title={

@@ -6,6 +6,8 @@ import {
   MicOff,
   RotateCcw,
   RotateCw,
+  ChevronLeft,
+  ChevronRight,
   Sliders,
   Volume2,
   Sparkles,
@@ -199,27 +201,27 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   const doubleTimeBpm = isDoubleTime ? currentBpm : Math.round(currentBpm * 2);
 
   return (
-    <div className="w-full max-w-md mx-auto flex flex-col items-center px-3 pt-1 pb-3">
-      {/* 1. FLOW IPOD: Focal Disc & Album Art flanked by Seek Buttons */}
-      <div className="relative w-full max-w-sm sm:max-w-md mx-auto flex items-center justify-between px-1 sm:px-2 my-2 select-none">
-        {/* Rewind 5s (Posicionado al lado del disco arriba) */}
+    <div className="w-full max-w-md mx-auto flex flex-col items-center px-2 pt-0.5 pb-1">
+      {/* 1. FLOW IPOD: Focal Disc & Album Art flanked by Discreet Seek Buttons */}
+      <div className="relative w-full max-w-xs sm:max-w-md mx-auto flex items-center justify-between px-1 my-0.5 select-none">
+        {/* Rewind 5s (Discreta flecha izquierda al lado del plato) */}
         <button
           type="button"
           onClick={() => onSeek(Math.max(0, currentTime - 5))}
-          className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700/60 shadow-md active:scale-90 transition-all cursor-pointer backdrop-blur-sm shrink-0"
+          className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-zinc-600 hover:text-zinc-950 hover:bg-black/10 active:scale-90 transition-all cursor-pointer shrink-0"
           title="Retroceder 5 segundos"
         >
-          <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
+          <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
         </button>
 
         {/* Plato Negro Carbón Vinyl Disc */}
-        <div className="relative group w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center shrink-0">
+        <div className="relative group w-36 h-36 xs:w-44 xs:h-44 sm:w-52 sm:h-52 flex items-center justify-center shrink-0">
           {/* Deep Platter Ambient Shadow */}
           {!lightVisuals && <div data-studio-decoration="platter-shadow" className="absolute inset-0 rounded-full blur-2xl opacity-40 bg-black pointer-events-none" />}
 
           {/* Outer Vinyl Disc (Negro Carbón) */}
           <div
-            className={`relative w-full h-full rounded-full p-2.5 shadow-2xl border-2 border-zinc-800/90 bg-[#121216] transition-transform ${
+            className={`relative w-full h-full rounded-full p-2 sm:p-2.5 shadow-2xl border-2 border-zinc-800/90 bg-[#121216] transition-transform ${
               isPlaying ? 'animate-vinyl-spin' : 'animate-vinyl-spin-paused'
             }`}
             style={{
@@ -238,18 +240,18 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
               }}
             >
               {/* Center Spindle Hole */}
-              <div className="w-7 h-7 rounded-full bg-[#0a0a0e] border-2 border-zinc-600 shadow-inner flex items-center justify-center z-10">
-                <div className="w-2.5 h-2.5 rounded-full bg-zinc-950" />
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-[#0a0a0e] border-2 border-zinc-600 shadow-inner flex items-center justify-center z-10">
+                <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-zinc-950" />
               </div>
 
               {/* Label Typography */}
-              <div className="absolute top-4 text-center px-4 pointer-events-none">
-                <p className="text-[9px] tracking-widest uppercase font-mono text-zinc-400 font-bold opacity-90">
+              <div className="absolute top-3 sm:top-4 text-center px-4 pointer-events-none">
+                <p className="text-[8px] sm:text-[9px] tracking-widest uppercase font-mono text-zinc-400 font-bold opacity-90">
                   RGODBEAT
                 </p>
               </div>
-              <div className="absolute bottom-4 text-center px-4 pointer-events-none">
-                <p className="text-[9px] tracking-wider uppercase font-mono text-amber-400 font-extrabold drop-shadow">
+              <div className="absolute bottom-3 sm:bottom-4 text-center px-4 pointer-events-none">
+                <p className="text-[8px] sm:text-[9px] tracking-wider uppercase font-mono text-amber-400 font-extrabold drop-shadow">
                   {currentBpm} BPM
                 </p>
               </div>
@@ -261,33 +263,33 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             type="button"
             onClick={onOpenBeatFX}
             title="Ajustes de filtro y volumen del Beat"
-            className="absolute -bottom-1 -right-1 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-950 hover:bg-zinc-900 text-zinc-200 hover:text-white border border-zinc-750 shadow-xl text-[10px] font-mono backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+            className="absolute -bottom-1 -right-1 flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-zinc-950 hover:bg-zinc-900 text-zinc-200 hover:text-white border border-zinc-750 shadow-xl text-[9px] sm:text-[10px] font-mono backdrop-blur-md transition-all active:scale-95 cursor-pointer"
           >
             <Sliders className="w-3 h-3 text-amber-400" />
             <span>Beat FX</span>
           </button>
         </div>
 
-        {/* Forward 5s (Posicionado al lado del disco arriba) */}
+        {/* Forward 5s (Discreta flecha derecha al lado del plato) */}
         <button
           type="button"
           onClick={() => onSeek(Math.min(duration, currentTime + 5))}
-          className="w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700/60 shadow-md active:scale-90 transition-all cursor-pointer backdrop-blur-sm shrink-0"
+          className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-zinc-600 hover:text-zinc-950 hover:bg-black/10 active:scale-90 transition-all cursor-pointer shrink-0"
           title="Avanzar 5 segundos"
         >
-          <RotateCw className="w-4 h-4 sm:w-5 sm:h-5" />
+          <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
         </button>
       </div>
 
       {/* 2. Beat Title */}
-      <div className="w-full text-center mt-2 mb-1 px-4">
-        <h2 className="text-lg sm:text-xl font-black tracking-tight text-zinc-950 truncate drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)]">
+      <div className="w-full text-center my-0.5 px-4">
+        <h2 className="text-sm sm:text-base md:text-lg font-black tracking-tight text-zinc-950 truncate drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)]">
           {beat ? beat.title : 'Selecciona un Beat'}
         </h2>
       </div>
 
       {/* 3. THE "TEMPO & ESCALAS" HUD CARD (Simple, crystal-clear, functional) */}
-      <div className="w-full bg-[#0e0e14]/95 border border-zinc-800 rounded-2xl p-3 my-2 shadow-2xl backdrop-blur-md">
+      <div className="w-full bg-[#0e0e14]/95 border border-zinc-800 rounded-xl p-2 my-1 shadow-xl backdrop-blur-md">
         <div className="grid grid-cols-2 gap-2 divide-x divide-zinc-800/80">
           {/* LEFT: TEMPO (BPM) WITH SMOOTH DRAGGABLE SLIDER */}
           <div className="flex flex-col items-center justify-center px-1 space-y-1.5">
@@ -533,7 +535,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
       </div>
 
       {/* 5. Main Transport Player Controls: UNIFIED DECK (1 Play, 1 Rec) - Perfectly Centered */}
-      <div className="w-full flex flex-col items-center px-2 mt-3">
+      <div className="w-full flex flex-col items-center px-1 mt-1.5">
         <div className="w-full flex items-center justify-between gap-1 sm:gap-2">
           {/* Left tools: Monitoring & Bluetooth Sync (2 buttons) */}
           <div className="flex items-center justify-start gap-1 sm:gap-2 w-1/3">
@@ -654,7 +656,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 disabled={isRecording}
                 className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all cursor-pointer active:scale-90 ${
                   preferPhoneMic
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                    ? 'bg-purple-600 text-white border border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.5)]'
                     : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
                 }`}
                 title={

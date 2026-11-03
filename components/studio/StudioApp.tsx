@@ -645,13 +645,22 @@ export default function App() {
     if (engine) {
       engine.setMonitoringEnabled(next);
     }
-    showToast(
-      next
-        ? 'Monitoreo compensado ACTIVO (estilo BandLab): Compresión y presencia vocal en tiempo real en audífonos.'
-        : 'Monitoreo en vivo DESACTIVADO.',
-      'info'
-    );
-  }, [monitoringEnabled, engine, showToast]);
+    if (next) {
+      if (bluetoothSyncEnabled) {
+        showToast(
+          'Monitoreo ACTIVO. Aviso: Audífonos inalámbricos (Bluetooth) tienen ~180ms de retraso por antena. Para escucharte sin retraso usa audífonos de CABLE.',
+          'info'
+        );
+      } else {
+        showToast(
+          'Monitoreo compensado ACTIVO (estilo BandLab): Compresión y presencia vocal en tiempo real en audífonos.',
+          'info'
+        );
+      }
+    } else {
+      showToast('Monitoreo en vivo DESACTIVADO.', 'info');
+    }
+  }, [monitoringEnabled, bluetoothSyncEnabled, engine, showToast]);
 
   const handleTogglePhoneMic = useCallback(() => {
     const next = !preferPhoneMic;
@@ -2871,7 +2880,7 @@ export default function App() {
     <div data-studio-visual-mode={lightVisuals ? 'light' : 'standard'} data-studio-ready={isStartupResolved && !startupError ? 'true' : 'false'} className={`w-full max-w-[100vw] ${
       activeView === 'editor'
         ? 'bg-[#09090b] text-white h-dvh max-h-dvh overflow-hidden'
-        : 'bg-[#fbbf24] text-zinc-950 min-h-screen overflow-x-hidden justify-between'
+        : 'bg-[#fbbf24] text-zinc-950 h-dvh max-h-dvh overflow-hidden justify-between'
     } flex flex-col selection:bg-amber-500/30 selection:text-amber-200 transition-colors duration-200`}>
       {/* 1-Bar Count In Metronome Visual Overlay */}
       <CountInOverlay beatNumber={countInBeat} onCancel={handleCancelCountIn} />
@@ -3037,10 +3046,10 @@ export default function App() {
       <main className={`flex-1 min-h-0 flex flex-col items-center w-full mx-auto ${
         activeView === 'editor'
           ? 'overflow-y-auto px-1 sm:px-4 pb-1 pt-1 bg-[#09090b]'
-          : 'pb-8 pt-1 bg-gradient-to-b from-[#fcd34d] via-[#fbbf24] to-[#f59e0b]'
+          : 'overflow-hidden px-2 pb-1 pt-0.5 bg-gradient-to-b from-[#fcd34d] via-[#fbbf24] to-[#f59e0b] justify-between'
       }`}>
         {activeView === 'studio' ? (
-          <div className="w-full max-w-xl flex flex-col items-center">
+          <div className="w-full max-w-xl flex-1 min-h-0 flex flex-col items-center justify-between">
             {/* Core Artwork & Unified Transport Player (1 Play, 1 Rec, Tempo & Escalas) */}
             <ArtworkPlayer
               lightVisuals={lightVisuals}
@@ -3164,7 +3173,7 @@ export default function App() {
       </main>
 
       {/* Bottom Screen Export Action Dock: Spacious, easy to reach on mobile & desktop */}
-      <footer className="sticky bottom-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800/80 px-4 py-2.5 flex items-center justify-between pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-2xl">
+      <footer className="shrink-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-zinc-800/80 px-4 py-2 flex items-center justify-between pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-2xl">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
           <div className="flex flex-col min-w-0">
