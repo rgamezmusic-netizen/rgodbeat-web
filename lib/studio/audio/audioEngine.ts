@@ -31,6 +31,21 @@ export interface AudioEngineCallbacks {
 const SILENT_WAV_DATA_URI =
   'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
 
+/**
+ * Analog Tape-Style Soft-Knee Saturation (mathematically prevents digital square-wave clipping).
+ * - Linear pass-through (|x| <= 0.78) ensures 100% bit-exact recording for normal dynamics.
+ * - C1-continuous hyperbolic tangent smooth knee above 0.78 curves loud transients smoothly.
+ * - Strict asymptotic ceiling at 0.94 (-0.54 dBFS) guarantees zero digital distortion / harsh crackling.
+ */
+function softSaturateSample(val: number): number {
+  if (val >= -0.78 && val <= 0.78) return val;
+  const sign = val < 0 ? -1 : 1;
+  const abs = Math.abs(val);
+  const knee = 0.78;
+  const headroom = 0.16;
+  return sign * (knee + headroom * Math.tanh((abs - knee) / headroom));
+}
+
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private silentAudioEl: HTMLAudioElement | null = null;
@@ -1216,18 +1231,41 @@ export class AudioEngine {
     }
     this.captureNextFrame = to;
     let peak = 0;
-    for (const value of samples) peak = Math.max(peak, Math.abs(value));
-    if (peak >= 0.88) {
+    for (const value of samples) {
+      const abs = Math.abs(value);
+      if (abs > peak) peak = abs;
+    }
+    if (peak >= 0.85) {
       this.micIsClipping = true;
       this.micClipTimestamp = Date.now();
-      const target = Math.max(0.32, this.micInputGainValue * (peak > 0.98 ? 0.78 : 0.85));
+      // Fast attack limiter: prevent overdrive while recording
+      const target = Math.max(0.38, this.micInputGainValue * (peak > 0.96 ? 0.75 : 0.86));
       this.micInputGainValue = target;
-      this.micInputGain?.gain.setTargetAtTime(target, this.ctx.currentTime, 0.015);
-    } else if (Date.now() - this.micClipTimestamp > 1200) {
+      this.micInputGain?.gain.setTargetAtTime(target, this.ctx.currentTime, 0.008);
+    } else if (Date.now() - this.micClipTimestamp > 1400) {
       this.micIsClipping = false;
+      // Gentle, smooth optical release recovery: if the vocal level has subsided and gain was reduced,
+      // slowly recover towards nominal sensitivity (1.50) without pumping or abrupt steps
+      if (peak < 0.50 && this.micInputGainValue < 1.48) {
+        const nominal = 1.50;
+        const target = Math.min(nominal, this.micInputGainValue + 0.04);
+        this.micInputGainValue = target;
+        this.micInputGain?.gain.setTargetAtTime(target, this.ctx.currentTime, 0.6);
+      }
     }
-    // Store the captured PCM unchanged; hardware clipping cannot be repaired by a soft clipper.
-    this.appendPCMChunk(samples);
+    // Anti-Saturation Soft-Knee Saturation:
+    // If incoming audio exceeds 0.78, apply analog tape-style soft saturation.
+    // Transients approaching full scale are smoothly rounded into warm harmonic saturation
+    // rather than nasty, buzzy digital square-wave distortion.
+    if (peak > 0.78) {
+      const saturated = new Float32Array(samples.length);
+      for (let i = 0; i < samples.length; i++) {
+        saturated[i] = softSaturateSample(samples[i]);
+      }
+      this.appendPCMChunk(saturated);
+    } else {
+      this.appendPCMChunk(samples);
+    }
   }
 
   private appendPCMChunk(samples: Float32Array) {
@@ -1327,18 +1365,25 @@ export class AudioEngine {
       if (offset === length) break;
     }
 
-    // Smart Vocal Auto-Compensation: If the recorded take is too quiet (peak < 0.65),
-    // automatically level it up so peak reaches ~0.78, ONLY when necessary without touching loud takes.
+    // Smart Vocal Auto-Compensation & True-Peak Protection:
+    // 1. If the recorded take is genuinely quiet (peak between 0.005 and 0.35, e.g. whisper or distant mic),
+    // automatically level it up to ~0.75 so the vocals sit clearly against the beat without manual boosting.
+    // Takes that are already well-balanced (peak >= 0.35) are left untouched.
     let peak = 0;
     for (let i = 0; i < length; i++) {
       const abs = Math.abs(output[i]);
       if (abs > peak) peak = abs;
     }
-    if (peak > 0.005 && peak < 0.65) {
-      const targetPeak = 0.78;
-      const autoCompensationGain = Math.min(3.5, targetPeak / peak);
+    if (peak > 0.005 && peak < 0.35) {
+      const targetPeak = 0.75;
+      const autoCompensationGain = Math.min(3.0, targetPeak / peak);
       for (let i = 0; i < length; i++) {
-        output[i] = Math.max(-0.95, Math.min(0.95, output[i] * autoCompensationGain));
+        output[i] = softSaturateSample(output[i] * autoCompensationGain);
+      }
+    } else if (peak > 0.92) {
+      // 2. If the take had extreme peaks, ensure absolute safety margin under -0.5 dBFS
+      for (let i = 0; i < length; i++) {
+        output[i] = softSaturateSample(output[i]);
       }
     }
 
@@ -1730,8 +1775,87 @@ export class AudioEngine {
     }
   }
 
+  private dolbyStatusCache: { configured: boolean; checkedAt: number } | null = null;
+  private lastExportDolbyEnhanced = false;
+
   public getPreferPhoneMic(): boolean {
     return this.preferPhoneMic;
+  }
+
+  public wasLastExportDolbyEnhanced(): boolean {
+    return this.lastExportDolbyEnhanced;
+  }
+
+  private async isDolbyServerAvailable(): Promise<boolean> {
+    if (typeof window === 'undefined' || typeof fetch === 'undefined') return false;
+    const now = Date.now();
+    if (this.dolbyStatusCache && now - this.dolbyStatusCache.checkedAt < 60_000) {
+      return this.dolbyStatusCache.configured;
+    }
+    try {
+      const res = await fetch('/api/studio/audio/enhance', {
+        method: 'GET',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) {
+        this.dolbyStatusCache = { configured: false, checkedAt: now };
+        return false;
+      }
+      const data = (await res.json()) as { configured?: boolean };
+      const configured = Boolean(data?.configured);
+      this.dolbyStatusCache = { configured, checkedAt: now };
+      return configured;
+    } catch {
+      this.dolbyStatusCache = { configured: false, checkedAt: now };
+      return false;
+    }
+  }
+
+  /**
+   * Optimal Signal Chain Position for Dolby.io Media Enhance:
+   * Takes the pitch-corrected (Auto-Tuned) vocal clips for a track and cleans them via Dolby.io
+   * BEFORE the studio EQ, Compressor, Saturation, Delay, Reverb, and Beat Sidechain Mix.
+   * This prevents room noise from being amplified by compression/reverb and keeps the Beat 100% untouched.
+   */
+  private async enhanceVocalStemViaDolby(
+    resolvedClips: Array<{ startSec: number; buffer: AudioBuffer }>,
+    duration: number,
+    sampleRate: number,
+    decodeCtx: BaseAudioContext
+  ): Promise<AudioBuffer | null> {
+    if (!resolvedClips.length) return null;
+    try {
+      const length = Math.max(1, Math.ceil(sampleRate * duration));
+      const stemCtx = new OfflineAudioContext(1, length, sampleRate);
+      for (const item of resolvedClips) {
+        const src = stemCtx.createBufferSource();
+        src.buffer = item.buffer;
+        src.connect(stemCtx.destination);
+        src.start(item.startSec);
+      }
+      const dryStemBuffer = await stemCtx.startRendering();
+      const wavBlob = audioBufferToWav(dryStemBuffer, 16);
+
+      const response = await fetch('/api/studio/audio/enhance?mode=vocal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'audio/wav' },
+        body: wavBlob,
+        cache: 'no-store',
+        signal: AbortSignal.timeout(55_000),
+      });
+
+      if (response.status !== 200 || response.headers.get('X-Dolby-Enhanced') !== 'true') {
+        return null;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      if (arrayBuffer.byteLength < 1024) return null;
+
+      return await decodeCtx.decodeAudioData(arrayBuffer.slice(0));
+    } catch {
+      return null;
+    }
   }
 
   /** Target 48 kHz standard for video, YouTube and mobile broadcast performance. */
@@ -1741,11 +1865,18 @@ export class AudioEngine {
 
   public async exportMix(
     vocalTracks: VocalTrack[],
-    options?: { sidechainDb?: number; enableSidechain?: boolean }
+    options?: {
+      sidechainDb?: number;
+      enableSidechain?: boolean;
+      enableDolbyEnhance?: boolean;
+      onStageChange?: (label: string) => void;
+    }
   ): Promise<Blob> {
     if (!this.beatData) {
       throw new Error('No hay beat cargado para exportar');
     }
+
+    this.lastExportDolbyEnhanced = false;
 
     // Standard 48 kHz / 16-bit PCM master for maximum performance, mobile stability and headroom
     const TARGET_SAMPLE_RATE = 48000;
@@ -2003,8 +2134,9 @@ export class AudioEngine {
         trackGain.connect(masterGain);
       }
 
-      // Render all clips on this track line
+      // Render all clips on this track line (1. Pitch Correction -> 2. Dolby.io Vocal Stem Enhance -> 3. EQ/Comp/Sat/Reverb/Delay)
       const clips = getTrackClips(track);
+      const resolvedClips: Array<{ startSec: number; buffer: AudioBuffer }> = [];
 
       for (const clip of clips) {
         if (!clip.buffer) continue;
@@ -2020,11 +2152,33 @@ export class AudioEngine {
             }
           }
         }
+        resolvedClips.push({ startSec: Math.max(0, clip.startBeatOffset), buffer: playBuffer });
+      }
 
+      let enhancedTrackStem: AudioBuffer | null = null;
+      if (resolvedClips.length > 0 && options?.enableDolbyEnhance !== false && (await this.isDolbyServerAvailable())) {
+        options?.onStageChange?.('Mejorando tu voz con IA Dolby.io…');
+        enhancedTrackStem = await this.enhanceVocalStemViaDolby(
+          resolvedClips,
+          duration,
+          TARGET_SAMPLE_RATE,
+          this.ctx || offlineCtx
+        );
+      }
+
+      if (enhancedTrackStem) {
+        this.lastExportDolbyEnhanced = true;
         const vSource = offlineCtx.createBufferSource();
-        vSource.buffer = playBuffer;
+        vSource.buffer = enhancedTrackStem;
         vSource.connect(lowCut);
-        vSource.start(Math.max(0, clip.startBeatOffset));
+        vSource.start(0);
+      } else {
+        for (const item of resolvedClips) {
+          const vSource = offlineCtx.createBufferSource();
+          vSource.buffer = item.buffer;
+          vSource.connect(lowCut);
+          vSource.start(item.startSec);
+        }
       }
     }
 

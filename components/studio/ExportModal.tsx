@@ -86,7 +86,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
   const [artistNameOverride, setArtistName] = useState<string | null>(null);
   const [youtubeTitleOverride, setYoutubeTitle] = useState<string | null>(null);
   const [youtubeDescriptionOverride, setYoutubeDescription] = useState<string | null>(null);
-  const [youtubePrivacy, setYoutubePrivacy] = useState<'unlisted' | 'public'>('unlisted');
+  const [youtubePrivacy, setYoutubePrivacy] = useState<'unlisted' | 'public'>('public');
   const [madeForKids, setMadeForKids] = useState(false);
   const [hasRights, setHasRights] = useState(false);
   const [coverImage, setCoverImage] = useState<File | null>(null);
@@ -241,6 +241,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
 
       const blob = await engine.exportMix(tracks, {
         enableSidechain: true,
+        onStageChange: (label) => onShowToast(label, 'info'),
       });
 
       const filename = `RGODBEAT_${cleanBeatTitle}.wav`;
@@ -278,7 +279,11 @@ const ExportDialog: React.FC<ExportModalProps> = ({
       setYoutubeProgress({ stage: 'participation', label: 'Preparando tu participación…' });
       const rgLink = await prepareParticipation();
       setYoutubeProgress({ stage: 'render', label: 'Preparando tu canción…' });
-      const blob = await engine.exportMix(tracks, { enableSidechain: true });
+      const blob = await engine.exportMix(tracks, {
+        enableSidechain: true,
+        onStageChange: (label) => setYoutubeProgress({ stage: 'render', label }),
+      });
+      const dolbyEnhanced = engine.wasLastExportDolbyEnhanced();
       if (blob.size > (youtubeStatus.maxMasterBytes || 256_000_000)) throw new Error('El master supera el tamaño máximo permitido para publicarlo.');
 
       if (coverImage) {
@@ -318,7 +323,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
       const response = await fetch('/api/studio/youtube/publish', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ uploadId, artistName: artistName.trim(), videoTitle: youtubeTitle.trim(), videoDescription: youtubeDescription.trim(), beatTitle: beat.title, beatGenre: beat.genre, beatBpm: beat.bpm, beatKey: beat.key, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null,
-          rgLink }),
+          rgLink, dolbyEnhanced }),
       });
       const result = await response.json();
       if (!response.ok || result.success !== true || !result.videoId || !result.videoUrl) {
@@ -548,7 +553,10 @@ const ExportDialog: React.FC<ExportModalProps> = ({
               <input value={youtubeTitle} maxLength={100} onChange={event => setYoutubeTitle(event.target.value)} disabled={isBusy} placeholder={beat?.title || 'Tu canción'} className={inputClass} />
             </label>
             <label className="block text-sm text-zinc-300">Visibilidad
-              <select aria-label="Visibilidad" value={youtubePrivacy} onChange={event => setYoutubePrivacy(event.target.value as 'unlisted' | 'public')} disabled={isBusy} className={`${inputClass} bg-[#17171c]`}><option value="unlisted">No listado · solo con enlace</option><option value="public">Público · visible para todos</option></select>
+              <select aria-label="Visibilidad" value={youtubePrivacy} onChange={event => setYoutubePrivacy(event.target.value as 'unlisted' | 'public')} disabled={isBusy} className={`${inputClass} bg-[#17171c]`}>
+                <option value="public">Público · visible para todos</option>
+                <option value="unlisted">No listado · solo con enlace</option>
+              </select>
             </label>
             <details className="rounded-xl border border-white/10 bg-white/[0.02]">
               <summary className="cursor-pointer px-3 py-3 text-sm text-zinc-400">Portada y más opciones</summary>
@@ -574,15 +582,16 @@ const ExportDialog: React.FC<ExportModalProps> = ({
                 {compatibleTracks.length > 0 && <label className="block text-sm text-zinc-300">Canción en el Top
                   <select value={rgTrackId} onChange={event => setRgTrackId(event.target.value)} disabled={isBusy} className={`${inputClass} bg-[#17171c]`}><option value="">Registrar como nueva canción</option>{compatibleTracks.map(track => <option key={track.id} value={track.id}>{track.title}</option>)}</select>
                 </label>}
+                <fieldset disabled={isBusy} className="text-xs text-zinc-300">
+                  <legend>Audiencia</legend>
+                  <p className="mt-0.5 text-[11px] text-zinc-400">Contenido para público general / adultos (no dirigido a niños).</p>
+                  <div className="mt-2 flex gap-5">
+                    <label className="flex min-h-11 items-center gap-2"><input type="radio" name="youtubeKids" checked={!madeForKids} onChange={() => setMadeForKids(false)} className="h-4 w-4 accent-amber-400" /> No es para niños</label>
+                    <label className="flex min-h-11 items-center gap-2"><input type="radio" name="youtubeKids" checked={madeForKids} onChange={() => setMadeForKids(true)} className="h-4 w-4 accent-amber-400" /> Sí, es para niños</label>
+                  </div>
+                </fieldset>
               </div>
             </details>
-            <fieldset disabled={isBusy} className="text-xs text-zinc-300">
-              <legend>¿El vídeo está hecho para niños?</legend>
-              <div className="mt-1 flex gap-5">
-                <label className="flex min-h-11 items-center gap-2"><input type="radio" name="youtubeKids" checked={!madeForKids} onChange={() => setMadeForKids(false)} className="h-4 w-4 accent-amber-400" /> No</label>
-                <label className="flex min-h-11 items-center gap-2"><input type="radio" name="youtubeKids" checked={madeForKids} onChange={() => setMadeForKids(true)} className="h-4 w-4 accent-amber-400" /> Sí</label>
-              </div>
-            </fieldset>
             <label className="flex min-h-11 items-start gap-2.5 text-xs leading-relaxed text-zinc-300"><input type="checkbox" checked={hasRights} onChange={event => setHasRights(event.target.checked)} disabled={isBusy} required className="mt-0.5 h-4 w-4 shrink-0 accent-amber-400" />Tengo los derechos del audio y la imagen para publicar en YouTube.</label>
           </form> : view === 'advanced' ? <div className="space-y-3">
             <h3 tabIndex={-1} className="mb-4 text-sm text-zinc-400 outline-none">Descarga tus pistas o envíalas a mezclar.</h3>

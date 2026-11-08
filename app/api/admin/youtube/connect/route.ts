@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const google = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   google.search = new URLSearchParams({
     client_id: config.clientId!, redirect_uri: config.redirectUri!, response_type: "code", access_type: "offline",
-    prompt: "consent", include_granted_scopes: "true", scope: "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly", state,
+    prompt: "consent select_account", include_granted_scopes: "true", scope: "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly", state,
   }).toString();
 
   const response = NextResponse.redirect(google);
