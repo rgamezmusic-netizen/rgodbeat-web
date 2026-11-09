@@ -71,9 +71,13 @@ export class AudioEngine {
     VocalTrackId,
     {
       lowCut: BiquadFilterNode;
+      mudCut: BiquadFilterNode;
       lowEq: BiquadFilterNode;
       midEq: BiquadFilterNode;
+      presenceBoost: BiquadFilterNode;
+      deEsser: BiquadFilterNode;
       highEq: BiquadFilterNode;
+      airSheen: BiquadFilterNode;
       compressor: DynamicsCompressorNode;
       saturation: WaveShaperNode;
       delay: DelayNode;
@@ -460,19 +464,16 @@ export class AudioEngine {
     }
   }
 
-  private makeSaturationCurve(amount: number): Float32Array<ArrayBuffer> | null {
-    if (amount <= 0) return null;
-    const k = amount * 18;
+  private makeSaturationCurve(amount: number): Float32Array<ArrayBuffer> {
+    // Base k=0.15 provides subtle analog tape warmth even when amount is 0;
+    // higher slider values dial in thicker tube drive and harmonic density.
+    const k = 0.15 + Math.max(0, amount) * 18;
     const n = 4096;
     const curve = new Float32Array(n);
     const deg = Math.PI / 180;
     for (let i = 0; i < n; ++i) {
       const x = (i * 2) / n - 1;
-      if (k === 0) {
-        curve[i] = x;
-      } else {
-        curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
-      }
+      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
     }
     return curve;
   }
@@ -489,6 +490,14 @@ export class AudioEngine {
       if (!nodes) {
         const lowCut = this.ctx.createBiquadFilter();
         lowCut.type = 'highpass';
+        lowCut.Q.setValueAtTime(0.7071, t);
+
+        // Studio Mud Cleanup: clears cardboard/boxiness bedroom resonances
+        const mudCut = this.ctx.createBiquadFilter();
+        mudCut.type = 'peaking';
+        mudCut.frequency.setValueAtTime(380, t);
+        mudCut.Q.setValueAtTime(1.4, t);
+        mudCut.gain.setValueAtTime(-1.8, t);
 
         const lowEq = this.ctx.createBiquadFilter();
         lowEq.type = 'lowshelf';
@@ -499,12 +508,33 @@ export class AudioEngine {
         midEq.frequency.setValueAtTime(2500, t);
         midEq.Q.setValueAtTime(1.0, t);
 
+        // Vocal Articulation & Presence Boost: guarantees vocals cut clearly through the beat
+        const presenceBoost = this.ctx.createBiquadFilter();
+        presenceBoost.type = 'peaking';
+        presenceBoost.frequency.setValueAtTime(3200, t);
+        presenceBoost.Q.setValueAtTime(1.1, t);
+        presenceBoost.gain.setValueAtTime(2.2, t);
+
+        // Transparent De-Esser: tames harsh sibilance ('s', 'z', 'ch') on phone & USB mics
+        const deEsser = this.ctx.createBiquadFilter();
+        deEsser.type = 'peaking';
+        deEsser.frequency.setValueAtTime(6800, t);
+        deEsser.Q.setValueAtTime(2.2, t);
+        deEsser.gain.setValueAtTime(-3.2, t);
+
         const highEq = this.ctx.createBiquadFilter();
         highEq.type = 'highshelf';
         highEq.frequency.setValueAtTime(10000, t);
 
+        // High-end Air Sheen: adds crystalline, modern studio sparkle
+        const airSheen = this.ctx.createBiquadFilter();
+        airSheen.type = 'highshelf';
+        airSheen.frequency.setValueAtTime(11500, t);
+        airSheen.gain.setValueAtTime(1.8, t);
+
         const compressor = this.ctx.createDynamicsCompressor();
-        compressor.attack.setValueAtTime(0.015, t);
+        compressor.knee.setValueAtTime(8, t);
+        compressor.attack.setValueAtTime(0.012, t);
         compressor.release.setValueAtTime(0.12, t);
 
         const saturation = this.ctx.createWaveShaper();
@@ -544,10 +574,14 @@ export class AudioEngine {
         const trackGain = this.ctx.createGain();
         const panner = this.ctx.createStereoPanner();
 
-        lowCut.connect(lowEq);
+        lowCut.connect(mudCut);
+        mudCut.connect(lowEq);
         lowEq.connect(midEq);
-        midEq.connect(highEq);
-        highEq.connect(compressor);
+        midEq.connect(presenceBoost);
+        presenceBoost.connect(deEsser);
+        deEsser.connect(highEq);
+        highEq.connect(airSheen);
+        airSheen.connect(compressor);
         compressor.connect(saturation);
 
         saturation.connect(trackGain);
@@ -561,9 +595,13 @@ export class AudioEngine {
 
         nodes = {
           lowCut,
+          mudCut,
           lowEq,
           midEq,
+          presenceBoost,
+          deEsser,
           highEq,
+          airSheen,
           compressor,
           saturation,
           delay,
@@ -580,7 +618,7 @@ export class AudioEngine {
       }
 
       nodes.lowCut.frequency.setTargetAtTime(
-        track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 20,
+        track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 80,
         t,
         0.05
       );
@@ -589,8 +627,9 @@ export class AudioEngine {
       nodes.highEq.gain.setTargetAtTime(track.fx.eq.high, t, 0.05);
 
       const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
-      nodes.compressor.threshold.setTargetAtTime(compAmount > 0 ? -10 - compAmount * 24 : 0, t, 0.05);
-      nodes.compressor.ratio.setTargetAtTime(compAmount > 0 ? 1.5 + compAmount * 6 : 1, t, 0.05);
+      // Baseline studio leveling compressor ensures vocal stays present and level on top of the beat
+      nodes.compressor.threshold.setTargetAtTime(-16 - compAmount * 20, t, 0.05);
+      nodes.compressor.ratio.setTargetAtTime(2.2 + compAmount * 5.0, t, 0.05);
 
       nodes.saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
 
@@ -648,7 +687,7 @@ export class AudioEngine {
       // Standard studio vocal calibration: balances recorded vocals naturally on top of commercial beats
       const VOCAL_PLAYBACK_CALIBRATION = 1.50;
       // Pro vocal makeup compensation: restores dynamic presence and body lost during compression
-      const compMakeupGain = 1.0 + compAmount * 0.35;
+      const compMakeupGain = 1.15 + compAmount * 0.40;
       nodes.trackGain.gain.setTargetAtTime(effectiveVolume * VOCAL_PLAYBACK_CALIBRATION * compMakeupGain, t, 0.05);
       nodes.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, track.pan ?? 0)), t, 0.05);
     } catch (err) {
@@ -1787,29 +1826,7 @@ export class AudioEngine {
   }
 
   private async isDolbyServerAvailable(): Promise<boolean> {
-    if (typeof window === 'undefined' || typeof fetch === 'undefined') return false;
-    const now = Date.now();
-    if (this.dolbyStatusCache && now - this.dolbyStatusCache.checkedAt < 60_000) {
-      return this.dolbyStatusCache.configured;
-    }
-    try {
-      const res = await fetch('/api/studio/audio/enhance', {
-        method: 'GET',
-        cache: 'no-store',
-        signal: AbortSignal.timeout(3000),
-      });
-      if (!res.ok) {
-        this.dolbyStatusCache = { configured: false, checkedAt: now };
-        return false;
-      }
-      const data = (await res.json()) as { configured?: boolean };
-      const configured = Boolean(data?.configured);
-      this.dolbyStatusCache = { configured, checkedAt: now };
-      return configured;
-    } catch {
-      this.dolbyStatusCache = { configured: false, checkedAt: now };
-      return false;
-    }
+    return false;
   }
 
   /**
@@ -1885,16 +1902,24 @@ export class AudioEngine {
 
     const offlineCtx = new OfflineAudioContext(2, length, TARGET_SAMPLE_RATE);
 
-    // 1. Master Gain
+    // 1. Master Gain, Sub-bass DC Cut & True-Peak Studio Limiter
     const masterGain = offlineCtx.createGain();
     masterGain.gain.setValueAtTime(0.92, 0);
+
+    // Sub-audio filter: cuts inaudible DC/sub rumble (< 28 Hz) to preserve maximum headroom
+    const masterSubCut = offlineCtx.createBiquadFilter();
+    masterSubCut.type = 'highpass';
+    masterSubCut.frequency.setValueAtTime(28, 0);
+    masterSubCut.Q.setValueAtTime(0.7071, 0);
+
     const limiter = offlineCtx.createDynamicsCompressor();
-    limiter.threshold.value = -1.8;
-    limiter.knee.value = 4;
-    limiter.ratio.value = 8;
-    limiter.attack.value = 0.002;
-    limiter.release.value = 0.045;
-    masterGain.connect(limiter);
+    limiter.threshold.value = -1.2;
+    limiter.knee.value = 3;
+    limiter.ratio.value = 12;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.040;
+    masterGain.connect(masterSubCut);
+    masterSubCut.connect(limiter);
     limiter.connect(offlineCtx.destination);
 
     // 2. Beat Chain with Frequency Crossover:
@@ -2040,7 +2065,15 @@ export class AudioEngine {
 
       const lowCut = offlineCtx.createBiquadFilter();
       lowCut.type = 'highpass';
-      lowCut.frequency.setValueAtTime(track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 20, 0);
+      lowCut.frequency.setValueAtTime(track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 80, 0);
+      lowCut.Q.setValueAtTime(0.7071, 0);
+
+      // Studio Mud Cleanup: clears cardboard/boxiness room resonances
+      const mudCut = offlineCtx.createBiquadFilter();
+      mudCut.type = 'peaking';
+      mudCut.frequency.setValueAtTime(380, 0);
+      mudCut.Q.setValueAtTime(1.4, 0);
+      mudCut.gain.setValueAtTime(-1.8, 0);
 
       const lowEq = offlineCtx.createBiquadFilter();
       lowEq.type = 'lowshelf';
@@ -2052,16 +2085,37 @@ export class AudioEngine {
       midEq.frequency.setValueAtTime(2500, 0);
       midEq.gain.setValueAtTime(track.fx.eq.mid, 0);
 
+      // Vocal Articulation & Presence Boost: guarantees vocals cut clearly through the beat
+      const presenceBoost = offlineCtx.createBiquadFilter();
+      presenceBoost.type = 'peaking';
+      presenceBoost.frequency.setValueAtTime(3200, 0);
+      presenceBoost.Q.setValueAtTime(1.1, 0);
+      presenceBoost.gain.setValueAtTime(2.2, 0);
+
+      // Transparent De-Esser: tames harsh sibilants ('s', 'z', 'ch')
+      const deEsser = offlineCtx.createBiquadFilter();
+      deEsser.type = 'peaking';
+      deEsser.frequency.setValueAtTime(6800, 0);
+      deEsser.Q.setValueAtTime(2.2, 0);
+      deEsser.gain.setValueAtTime(-3.2, 0);
+
       const highEq = offlineCtx.createBiquadFilter();
       highEq.type = 'highshelf';
       highEq.frequency.setValueAtTime(10000, 0);
       highEq.gain.setValueAtTime(track.fx.eq.high, 0);
 
+      // High-end Air Sheen: adds crystalline, modern studio sparkle
+      const airSheen = offlineCtx.createBiquadFilter();
+      airSheen.type = 'highshelf';
+      airSheen.frequency.setValueAtTime(11500, 0);
+      airSheen.gain.setValueAtTime(1.8, 0);
+
       const compressor = offlineCtx.createDynamicsCompressor();
       const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
-      compressor.threshold.setValueAtTime(compAmount > 0 ? -10 - compAmount * 24 : 0, 0);
-      compressor.ratio.setValueAtTime(compAmount > 0 ? 1.5 + compAmount * 6 : 1, 0);
-      compressor.attack.setValueAtTime(0.015, 0);
+      compressor.threshold.setValueAtTime(-16 - compAmount * 20, 0);
+      compressor.ratio.setValueAtTime(2.2 + compAmount * 5.0, 0);
+      compressor.knee.setValueAtTime(8, 0);
+      compressor.attack.setValueAtTime(0.012, 0);
       compressor.release.setValueAtTime(0.12, 0);
 
       const saturation = offlineCtx.createWaveShaper();
@@ -2070,14 +2124,18 @@ export class AudioEngine {
 
       // Standard studio vocal calibration: balances recorded vocals naturally on top of commercial beats
       const VOCAL_PLAYBACK_CALIBRATION = 1.50;
-      const compMakeupGain = 1.0 + compAmount * 0.35;
+      const compMakeupGain = 1.15 + compAmount * 0.40;
       const trackGain = offlineCtx.createGain();
       trackGain.gain.setValueAtTime(effectiveVol * VOCAL_PLAYBACK_CALIBRATION * compMakeupGain, 0);
 
-      lowCut.connect(lowEq);
+      lowCut.connect(mudCut);
+      mudCut.connect(lowEq);
       lowEq.connect(midEq);
-      midEq.connect(highEq);
-      highEq.connect(compressor);
+      midEq.connect(presenceBoost);
+      presenceBoost.connect(deEsser);
+      deEsser.connect(highEq);
+      highEq.connect(airSheen);
+      airSheen.connect(compressor);
       compressor.connect(saturation);
       saturation.connect(trackGain);
 
@@ -2280,7 +2338,14 @@ export class AudioEngine {
       // Vocal FX chain
       const lowCut = offlineCtx.createBiquadFilter();
       lowCut.type = 'highpass';
-      lowCut.frequency.setValueAtTime(track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 20, 0);
+      lowCut.frequency.setValueAtTime(track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 80, 0);
+      lowCut.Q.setValueAtTime(0.7071, 0);
+
+      const mudCut = offlineCtx.createBiquadFilter();
+      mudCut.type = 'peaking';
+      mudCut.frequency.setValueAtTime(380, 0);
+      mudCut.Q.setValueAtTime(1.4, 0);
+      mudCut.gain.setValueAtTime(-1.8, 0);
 
       const lowEq = offlineCtx.createBiquadFilter();
       lowEq.type = 'lowshelf';
@@ -2292,30 +2357,52 @@ export class AudioEngine {
       midEq.frequency.setValueAtTime(2500, 0);
       midEq.gain.setValueAtTime(track.fx.eq.mid, 0);
 
+      const presenceBoost = offlineCtx.createBiquadFilter();
+      presenceBoost.type = 'peaking';
+      presenceBoost.frequency.setValueAtTime(3200, 0);
+      presenceBoost.Q.setValueAtTime(1.1, 0);
+      presenceBoost.gain.setValueAtTime(2.2, 0);
+
+      const deEsser = offlineCtx.createBiquadFilter();
+      deEsser.type = 'peaking';
+      deEsser.frequency.setValueAtTime(6800, 0);
+      deEsser.Q.setValueAtTime(2.2, 0);
+      deEsser.gain.setValueAtTime(-3.2, 0);
+
       const highEq = offlineCtx.createBiquadFilter();
       highEq.type = 'highshelf';
       highEq.frequency.setValueAtTime(10000, 0);
       highEq.gain.setValueAtTime(track.fx.eq.high, 0);
 
+      const airSheen = offlineCtx.createBiquadFilter();
+      airSheen.type = 'highshelf';
+      airSheen.frequency.setValueAtTime(11500, 0);
+      airSheen.gain.setValueAtTime(1.8, 0);
+
       const compressor = offlineCtx.createDynamicsCompressor();
       const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
-      compressor.threshold.setValueAtTime(compAmount > 0 ? -10 - compAmount * 24 : 0, 0);
-      compressor.ratio.setValueAtTime(compAmount > 0 ? 1.5 + compAmount * 6 : 1, 0);
-      compressor.attack.setValueAtTime(0.015, 0);
+      compressor.threshold.setValueAtTime(-16 - compAmount * 20, 0);
+      compressor.ratio.setValueAtTime(2.2 + compAmount * 5.0, 0);
+      compressor.knee.setValueAtTime(8, 0);
+      compressor.attack.setValueAtTime(0.012, 0);
       compressor.release.setValueAtTime(0.12, 0);
 
       const saturation = offlineCtx.createWaveShaper();
       saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
       saturation.oversample = '2x';
 
-      const compMakeupGain = 1.0 + compAmount * 0.35;
+      const compMakeupGain = 1.15 + compAmount * 0.40;
       const trackGain = offlineCtx.createGain();
       trackGain.gain.setValueAtTime(track.volume * compMakeupGain, 0);
 
-      lowCut.connect(lowEq);
+      lowCut.connect(mudCut);
+      mudCut.connect(lowEq);
       lowEq.connect(midEq);
-      midEq.connect(highEq);
-      highEq.connect(compressor);
+      midEq.connect(presenceBoost);
+      presenceBoost.connect(deEsser);
+      deEsser.connect(highEq);
+      highEq.connect(airSheen);
+      airSheen.connect(compressor);
       compressor.connect(saturation);
       saturation.connect(trackGain);
 

@@ -19,7 +19,6 @@ import { youtubeConfig } from "@/lib/youtube/config";
 import { studioVideoMetadata } from "@/lib/youtube/metadata";
 import { getYouTubeFfmpegPath, isYouTubeFfmpegReady } from "@/lib/youtube/ffmpeg";
 import { clearYouTubeR2, getYouTubeR2Bucket, getYouTubeR2Client, headYouTubeR2, isYouTubeR2Configured, readYouTubeR2 } from "@/lib/youtube/storage";
-import { enhanceAudioFileOnDisk } from "@/lib/studio/server/dolbyEnhance";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -189,9 +188,6 @@ export async function POST(request: NextRequest) {
     const audioHash = createHash('sha256');
     for await (const chunk of createReadStream(audioPath)) audioHash.update(chunk);
     const audioSha256 = audioHash.digest('hex');
-    if (input.dolbyEnhanced !== true) {
-      await enhanceAudioFileOnDisk(audioPath, 'master');
-    }
     stage = 'cover'; fallback = 'coverUnavailable';
     const customCover = await readYouTubeR2(`${prefix}cover`);
     const cover = customCover?.length ? customCover : await loadDefaultCover(input.coverUrl || null);
@@ -201,10 +197,14 @@ export async function POST(request: NextRequest) {
     const coverPath = join(directory, `cover.${extension}`);
     await writeFile(coverPath, cover, { mode: 0o600, flag: "wx" });
     stage = 'render'; fallback = 'renderFailed';
+    // Native studio mastering for YouTube: EBU R128 Loudnorm (Target -14 LUFS, True-Peak -1.0 dBFS, LRA 11) + 256k AAC
     await runFfmpeg([
       "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", "2", "-i", coverPath,
-      "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0", "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-      "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-crf", "23", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart", "-shortest", videoPath,
+      "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0",
+      "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+      "-af", "loudnorm=I=-14:TP=-1.0:LRA=11",
+      "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-crf", "23",
+      "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart", "-shortest", videoPath,
     ], directory);
     const video = await readFile(videoPath);
     stage = 'upload'; fallback = 'uploadFailed';

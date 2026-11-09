@@ -12,8 +12,12 @@ export const maxDuration = 60;
 const MAX_ENHANCE_BYTES = 64 * 1024 * 1024; // 64 MB max WAV payload
 
 export async function GET() {
+  const provider = isDolbyEnhanceConfigured() ? 'dolby' : null;
   return NextResponse.json(
-    { configured: isDolbyEnhanceConfigured() },
+    {
+      configured: Boolean(provider),
+      provider,
+    },
     { headers: { 'Cache-Control': 'private, no-store' } }
   );
 }

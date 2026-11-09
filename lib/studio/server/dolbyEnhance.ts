@@ -16,6 +16,7 @@ export type DolbyEnhanceMode = 'vocal' | 'master';
  * or a direct API key / Bearer token (DOLBY_API_KEY).
  */
 export function isDolbyEnhanceConfigured(): boolean {
+  if (process.env.ENABLE_DOLBY_ENHANCE !== 'true') return false;
   const appKey = process.env.DOLBY_APP_KEY?.trim();
   const appSecret = process.env.DOLBY_APP_SECRET?.trim();
   const apiKey = process.env.DOLBY_API_KEY?.trim();
