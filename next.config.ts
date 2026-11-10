@@ -39,7 +39,11 @@ const nextConfig: NextConfig = {
     // well as executed in the publish route. Trace it in each server bundle.
     "/admin/youtube": ["./node_modules/ffmpeg-static/ffmpeg"],
     "/api/studio/youtube/status": ["./node_modules/ffmpeg-static/ffmpeg"],
-    "/api/studio/youtube/publish": ["./node_modules/ffmpeg-static/ffmpeg", "./public/images/rgodbeat-studio-logo.png"],
+    "/api/studio/youtube/publish": [
+      "./node_modules/ffmpeg-static/ffmpeg",
+      "./public/images/rgodbeat-studio-logo.png",
+      "./public/images/studio-stage-background.jpg"
+    ],
   },
   experimental: {
     // Keep completed page payloads when navigating away and back.
