@@ -2309,6 +2309,7 @@ export class AudioEngine {
     return stems;
   }
 
+
   /**
    * Exports processed vocal stems as float WAV to preserve FX headroom at the recorded rate.
    */
@@ -2496,6 +2497,7 @@ export class AudioEngine {
     return stems;
   }
 
+
   /**
    * Exports the isolated beat with active FX as float WAV at the project rate.
    */
@@ -2560,5 +2562,42 @@ export class AudioEngine {
 
   public setLatencyCompensation(ms: number) {
     this.recordingLatencyCompensation = ms / 1000;
+  }
+
+  /**
+   * Renders a lightweight, high-speech-intelligibility mono 16kHz WAV buffer
+   * containing all active vocal takes combined (isolated from the beat).
+   * Perfectly optimized for Google Gemini / AI speech-to-text lyric transcription.
+   */
+  public async exportVocalTranscriptionStem(vocalTracks: VocalTrack[]): Promise<Blob | null> {
+    if (!this.beatData) return null;
+    const activeTracks = vocalTracks.filter((t) => !t.isMuted && (t.buffer || (t.clips && t.clips.length > 0)));
+    if (activeTracks.length === 0) return null;
+
+    const sampleRate = 16000; // 16 kHz is the standard for speech AI models
+    const duration = getRenderDuration(this.beatData.duration, vocalTracks, this.beatData.bpm);
+    const length = Math.max(1, Math.ceil(sampleRate * duration));
+
+    const offlineCtx = new OfflineAudioContext(1, length, sampleRate);
+    const mixGain = offlineCtx.createGain();
+    mixGain.gain.setValueAtTime(1.0, 0);
+    mixGain.connect(offlineCtx.destination);
+
+    let hasAnyClip = false;
+    for (const track of activeTracks) {
+      const clips = getTrackClips(track);
+      for (const clip of clips) {
+        if (!clip.buffer) continue;
+        const source = offlineCtx.createBufferSource();
+        source.buffer = clip.buffer;
+        source.connect(mixGain);
+        source.start(Math.max(0, clip.startBeatOffset));
+        hasAnyClip = true;
+      }
+    }
+
+    if (!hasAnyClip) return null;
+    const rendered = await offlineCtx.startRendering();
+    return audioBufferToWav(rendered, 16);
   }
 }

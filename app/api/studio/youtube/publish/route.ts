@@ -25,7 +25,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type PublishInput = { uploadId?: string; artistName?: string; videoTitle?: string; videoDescription?: string; beatTitle?: string; beatGenre?: string; beatBpm?: number; beatKey?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null; rgLink?: { artistId?: unknown; trackId?: unknown; beatId?: unknown }; dolbyEnhanced?: boolean };
+type PublishInput = { uploadId?: string; artistName?: string; videoTitle?: string; videoDescription?: string; beatTitle?: string; beatGenre?: string; beatBpm?: number; beatKey?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null; rgLink?: { artistId?: unknown; trackId?: unknown; beatId?: unknown }; dolbyEnhanced?: boolean; useStageBackground?: boolean; lyricsText?: string };
 type YouTubeInsertResponse = { id?: string; status?: { privacyStatus?: "private" | "unlisted" | "public" }; error?: { errors?: Array<{ reason?: string }> } };
 
 function jobsTable() { return createAdminClient().from("youtube_export_jobs"); }
@@ -88,10 +88,19 @@ function imageExtension(bytes: Buffer): "jpg" | "png" | "webp" | null {
   return null;
 }
 
-async function loadDefaultCover(url: string | null): Promise<Buffer> {
+async function loadDefaultCover(url: string | null, preferStage = false): Promise<Buffer> {
+  if (preferStage) {
+    const stage = resolve(process.cwd(), "public/images/studio-stage-background.jpg");
+    try { return await readFile(stage); } catch { /* fallback to default */ }
+  }
   if (!url) {
-    const logo = resolve(process.cwd(), "public/images/rgodbeat-studio-logo.png");
-    return readFile(logo);
+    const stage = resolve(process.cwd(), "public/images/studio-stage-background.jpg");
+    try {
+      return await readFile(stage);
+    } catch {
+      const logo = resolve(process.cwd(), "public/images/rgodbeat-studio-logo.png");
+      return readFile(logo);
+    }
   }
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   if (!base) throw new Error("coverUnavailable");
@@ -127,7 +136,14 @@ export async function POST(request: NextRequest) {
   const artistName = cleanMetadataText(input.artistName || "", 80);
   const beatTitle = cleanMetadataText(input.beatTitle || "Beat RGODBEAT", 100) || "Beat RGODBEAT";
   const requestedTitle = cleanMetadataText(input.videoTitle || "", 200);
-  const videoDescription = (input.videoDescription || "").replace(/[<>]/g, "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
+  let videoDescription = (input.videoDescription || "").replace(/[<>]/g, "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
+  if (input.lyricsText && input.lyricsText.trim().length > 0) {
+    const cleanLyrics = input.lyricsText.trim().slice(0, 3200);
+    const lyricsBlock = `\n\n--- LETRA / LYRICS ---\n${cleanLyrics}\n\nGrabado y masterizado en RGodbeat Studio: https://rgodbeat.com`;
+    if (Buffer.byteLength(videoDescription + lyricsBlock, "utf8") <= 4900) {
+      videoDescription = `${videoDescription}${lyricsBlock}`.trim();
+    }
+  }
   const videoDescriptionBytes = Buffer.byteLength(videoDescription, "utf8");
   const beatGenre = cleanMetadataText(input.beatGenre || "", 40);
   const beatBpm = Number.isInteger(input.beatBpm) && input.beatBpm! >= 30 && input.beatBpm! <= 300 ? input.beatBpm! : 0;
@@ -190,7 +206,8 @@ export async function POST(request: NextRequest) {
     const audioSha256 = audioHash.digest('hex');
     stage = 'cover'; fallback = 'coverUnavailable';
     const customCover = await readYouTubeR2(`${prefix}cover`);
-    const cover = customCover?.length ? customCover : await loadDefaultCover(input.coverUrl || null);
+    const preferStage = input.useStageBackground === true || (!customCover?.length && !input.coverUrl);
+    const cover = customCover?.length ? customCover : await loadDefaultCover(input.coverUrl || null, preferStage);
     if (cover.length > 4_000_000) throw new Error("coverTooLarge");
     const extension = imageExtension(cover);
     if (!extension) throw new Error("coverUnavailable");

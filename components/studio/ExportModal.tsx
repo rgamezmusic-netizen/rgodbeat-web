@@ -99,6 +99,10 @@ const ExportDialog: React.FC<ExportModalProps> = ({
   const [rgIdentityReady, setRgIdentityReady] = useState(false);
   const [connectionCheck, setConnectionCheck] = useState(0);
   const [publishError, setPublishError] = useState('');
+  const [useStageBackground, setUseStageBackground] = useState(true);
+  const [isGeneratingLyrics, setIsGeneratingLyrics] = useState(false);
+  const [lyricsText, setLyricsText] = useState('');
+  const [showLyricsBox, setShowLyricsBox] = useState(false);
   const dialog = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const artistName = artistNameOverride ?? rgArtist?.stage_name ?? accountArtistName;
@@ -106,7 +110,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
   const youtubeTitle = youtubeTitleOverride ?? automaticMetadata.title;
   const youtubeDescription = youtubeDescriptionOverride ?? automaticMetadata.description;
 
-  const isBusy = isSendingStems || isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null || youtubeLoading || rgLoading;
+  const isBusy = isSendingStems || isExportingMaster || isExportingRawStems || isExportingWetStems || isExportingBeatStem || downloadingStemId !== null || youtubeLoading || rgLoading || isGeneratingLyrics;
   const handleClose = useCallback(() => { if (!isBusy) onClose(); }, [isBusy, onClose]);
   useModalFocus(isOpen, dialog, handleClose);
 
@@ -257,6 +261,48 @@ const ExportDialog: React.FC<ExportModalProps> = ({
     }
   };
 
+  const handleGenerateLyrics = async () => {
+    if (!engine || !tracks.some(t => t.buffer || (t.clips && t.clips.length > 0))) {
+      onShowToast('Graba una toma de voz antes de transcribir la letra.', 'info');
+      return;
+    }
+    setIsGeneratingLyrics(true);
+    try {
+      onShowToast('Extrayendo pista vocal para Gemini…', 'info');
+      const vocalBlob = await engine.exportVocalTranscriptionStem(tracks);
+      if (!vocalBlob) {
+        throw new Error('No se encontraron tomas vocales activas para transcribir.');
+      }
+      onShowToast('Gemini está escuchando tu voz y transcribiendo la letra…', 'info');
+      const formData = new FormData();
+      formData.append('file', vocalBlob, 'vocal.wav');
+      if (artistName) formData.append('artistName', artistName);
+      if (beat?.title) formData.append('beatTitle', beat.title);
+      if (beat?.genre) formData.append('beatGenre', beat.genre);
+
+      const res = await fetch('/api/studio/lyrics', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'No se pudo transcribir la lírica.');
+      }
+      if (data.fullLyrics || (data.segments && data.segments.length > 0)) {
+        const text = data.fullLyrics || data.segments.map((s: any) => s.text).join('\n');
+        setLyricsText(text);
+        setShowLyricsBox(true);
+        onShowToast('¡Letra sincronizada con éxito con Gemini!', 'success');
+      } else {
+        throw new Error('No se detectó letra clara en la pista vocal.');
+      }
+    } catch (err: any) {
+      onShowToast(err?.message || 'Error al transcribir con Gemini.', 'error');
+    } finally {
+      setIsGeneratingLyrics(false);
+    }
+  };
+
   const handlePublishToYouTube = async () => {
     if (!engine || !beat) {
       onShowToast('Carga un beat antes de publicar.', 'error');
@@ -323,7 +369,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
       const response = await fetch('/api/studio/youtube/publish', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ uploadId, artistName: artistName.trim(), videoTitle: youtubeTitle.trim(), videoDescription: youtubeDescription.trim(), beatTitle: beat.title, beatGenre: beat.genre, beatBpm: beat.bpm, beatKey: beat.key, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null,
-          rgLink, dolbyEnhanced }),
+          rgLink, dolbyEnhanced, useStageBackground, lyricsText: lyricsText.trim() }),
       });
       const result = await response.json();
       if (!response.ok || result.success !== true || !result.videoId || !result.videoUrl) {
@@ -558,22 +604,103 @@ const ExportDialog: React.FC<ExportModalProps> = ({
                 <option value="unlisted">No listado · solo con enlace</option>
               </select>
             </label>
-            <details className="rounded-xl border border-white/10 bg-white/[0.02]">
-              <summary className="cursor-pointer px-3 py-3 text-sm text-zinc-400">Portada y más opciones</summary>
+            <details open className="rounded-xl border border-white/10 bg-white/[0.02]">
+              <summary className="cursor-pointer px-3 py-3 text-sm font-semibold text-zinc-300">Escenario y Lírica (IA Gemini)</summary>
               <div className="space-y-4 border-t border-white/[0.07] p-3">
-                <p className="text-xs text-zinc-400">{coverImage ? coverImage.name : 'Usaremos la portada del beat o de RGODBEAT.'}</p>
-                <label className={`${buttonClass} cursor-pointer border border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10`}><ImagePlus size={18} /> Cambiar portada
-                  <input aria-label="Cambiar portada" type="file" accept="image/jpeg,image/png,image/webp" disabled={isBusy} className="sr-only" onChange={event => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    if (file.size > 4_000_000 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-                      onShowToast('Elige una imagen JPG, PNG o WebP de menos de 4 MB.', 'error');
-                      event.target.value = ''; return;
-                    }
-                    setCoverImage(file);
-                  }} />
-                </label>
-                {coverImage && <button type="button" disabled={isBusy} onClick={() => setCoverImage(null)} className="min-h-11 text-xs text-zinc-400 underline">Usar portada original</button>}
+                {/* Visual Style: RGodbeat Stage Background */}
+                <div className="rounded-xl border border-white/10 bg-black/30 p-3 space-y-2.5">
+                  <label className="flex items-center justify-between text-xs font-medium text-zinc-200 cursor-pointer">
+                    <span>Escenario Oficial RGodbeat</span>
+                    <input
+                      type="checkbox"
+                      checked={useStageBackground}
+                      onChange={(e) => setUseStageBackground(e.target.checked)}
+                      disabled={isBusy}
+                      className="h-4 w-4 accent-amber-400"
+                    />
+                  </label>
+                  {useStageBackground && (
+                    <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
+                      <img
+                        src="/images/studio-stage-background.jpg"
+                        alt="Escenario RGodbeat"
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-2">
+                        <span className="text-[10px] font-bold tracking-wider text-amber-300 uppercase">
+                          Tarima Urbana RGodbeat · Video Lyric
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Gemini AI Lyrics Transcription */}
+                <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                      <Sparkles size={15} /> Letra de la Canción (Gemini)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateLyrics()}
+                      disabled={isBusy || !hasRecordings}
+                      className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-2.5 py-1 text-xs font-semibold text-black hover:bg-amber-300 disabled:opacity-50"
+                    >
+                      {isGeneratingLyrics ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                      {isGeneratingLyrics ? 'Escuchando…' : lyricsText ? 'Volver a leer' : 'Transcribir voz'}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    Gemini lee tu pista vocal limpia para extraer la letra y sincronizarla en el video.
+                  </p>
+
+                  {lyricsText && (
+                    <div className="space-y-1.5 pt-1">
+                      <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                        <span>Revisa y corrige la letra si lo deseas:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!youtubeDescription.includes(lyricsText)) {
+                              setYoutubeDescription(prev => `${prev}\n\n--- LETRA / LYRICS ---\n${lyricsText}`.trim());
+                              onShowToast('Letra agregada a la descripción de YouTube.', 'success');
+                            }
+                          }}
+                          className="text-amber-300 underline hover:text-amber-200"
+                        >
+                          + Pegar en descripción
+                        </button>
+                      </div>
+                      <textarea
+                        aria-label="Letra de la canción"
+                        value={lyricsText}
+                        rows={4}
+                        onChange={(e) => setLyricsText(e.target.value)}
+                        disabled={isBusy}
+                        className={`${inputClass} mt-0 text-xs font-mono resize-y`}
+                        placeholder="La letra transcrita aparecerá aquí..."
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 pt-1 border-t border-white/[0.07]">
+                  <p className="text-xs text-zinc-400">{coverImage ? coverImage.name : 'O puedes cambiar la portada si prefieres una imagen fija.'}</p>
+                  <label className={`${buttonClass} cursor-pointer border border-white/15 bg-white/5 text-zinc-200 hover:bg-white/10`}><ImagePlus size={18} /> Cambiar portada
+                    <input aria-label="Cambiar portada" type="file" accept="image/jpeg,image/png,image/webp" disabled={isBusy} className="sr-only" onChange={event => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 4_000_000 || !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+                        onShowToast('Elige una imagen JPG, PNG o WebP de menos de 4 MB.', 'error');
+                        event.target.value = ''; return;
+                      }
+                      setCoverImage(file);
+                    }} />
+                  </label>
+                  {coverImage && <button type="button" disabled={isBusy} onClick={() => setCoverImage(null)} className="min-h-11 text-xs text-zinc-400 underline">Usar escenario original</button>}
+                </div>
+
                 <label className="block text-sm text-zinc-300">Descripción del vídeo
                   <textarea aria-label="Descripción del vídeo" value={youtubeDescription} maxLength={5000} rows={5} onChange={event => setYoutubeDescription(event.target.value)} disabled={isBusy} className={`${inputClass} resize-y`} />
                 </label>
