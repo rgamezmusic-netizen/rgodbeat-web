@@ -25,7 +25,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type PublishInput = { uploadId?: string; artistName?: string; videoTitle?: string; videoDescription?: string; beatTitle?: string; beatGenre?: string; beatBpm?: number; beatKey?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null; rgLink?: { artistId?: unknown; trackId?: unknown; beatId?: unknown }; dolbyEnhanced?: boolean; useStageBackground?: boolean; lyricsText?: string };
+type PublishInput = { uploadId?: string; artistName?: string; videoTitle?: string; videoDescription?: string; beatTitle?: string; beatGenre?: string; beatBpm?: number; beatKey?: string; privacy?: "unlisted" | "public"; madeForKids?: boolean; hasRights?: boolean; coverUrl?: string | null; rgLink?: { artistId?: unknown; trackId?: unknown; beatId?: unknown }; dolbyEnhanced?: boolean; useStageBackground?: boolean; lyricsSrt?: string; lyricsText?: string };
 type YouTubeInsertResponse = { id?: string; status?: { privacyStatus?: "private" | "unlisted" | "public" }; error?: { errors?: Array<{ reason?: string }> } };
 
 function jobsTable() { return createAdminClient().from("youtube_export_jobs"); }
@@ -214,12 +214,24 @@ export async function POST(request: NextRequest) {
     const coverPath = join(directory, `cover.${extension}`);
     await writeFile(coverPath, cover, { mode: 0o600, flag: "wx" });
     stage = 'render'; fallback = 'renderFailed';
-    // Native studio mastering for YouTube: EBU R128 Loudnorm (Target -14 LUFS, True-Peak -1.0 dBFS, LRA 11) + 256k AAC
+    let videoFilter = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p";
+
+    // If SRT subtitles were provided for video lyrics, burn them directly into the video frames
+    if (input.lyricsSrt && typeof input.lyricsSrt === "string" && input.lyricsSrt.trim().length > 10) {
+      try {
+        const srtPath = join(directory, "lyrics.srt");
+        await writeFile(srtPath, input.lyricsSrt.trim(), "utf8");
+        // Styled urban yellow subtitles with drop shadow & outline for maximum readability on the stage
+        videoFilter = `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,subtitles=${srtPath}:force_style='Fontname=Arial,Fontsize=22,PrimaryColour=&H0000FFFF,OutlineColour=&H80000000,BorderStyle=3,Outline=2,Alignment=2,MarginV=60',format=yuv420p`;
+      } catch (srtErr) {
+        console.warn("[YouTube publish] No se pudo escribir lyrics.srt, continuando sin subtítulos quemados:", srtErr);
+      }
+    }
+
     await runFfmpeg([
       "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", "2", "-i", coverPath,
       "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0",
-      "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-      "-af", "loudnorm=I=-14:TP=-1.0:LRA=11",
+      "-vf", videoFilter,
       "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-crf", "23",
       "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart", "-shortest", videoPath,
     ], directory);

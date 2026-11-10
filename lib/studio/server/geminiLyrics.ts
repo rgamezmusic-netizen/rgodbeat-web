@@ -69,10 +69,10 @@ export async function transcribeLyricsWithGemini(
   const base64Audio = audioBuffer.toString('base64');
 
   const modelsToTry = [
-    'gemini-3.8-flash',
-    'gemini-3.5-flash',
-    'gemini-2.5-flash-lite',
+    'gemini-flash-lite-latest',
     'gemini-flash-latest',
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash-lite',
   ];
 
   const prompt = `Eres el transcriptor profesional de líricas de RGodbeat Studio.
@@ -96,7 +96,10 @@ REGLAS OBLIGATORIAS:
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify({
           contents: [
             {
@@ -131,12 +134,15 @@ REGLAS OBLIGATORIAS:
 
       // Clean possible Markdown fence blocks
       const cleanJson = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-      const parsed = JSON.parse(cleanJson);
-
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        console.warn('[GeminiLyrics] Respuesta JSON no contiene segmentos válidos');
+      let parsed: any[] = [];
+      try {
+        parsed = JSON.parse(cleanJson);
+      } catch {
+        console.warn(`[GeminiLyrics] Respuesta no fue JSON válido en ${model}:`, rawText.slice(0, 150));
         continue;
       }
+
+      if (!Array.isArray(parsed)) continue;
 
       const segments: LyricSegment[] = parsed
         .map((item: any) => ({
@@ -145,8 +151,6 @@ REGLAS OBLIGATORIAS:
           text: String(item.text || '').trim(),
         }))
         .filter((s) => s.text.length > 0 && s.end >= s.start);
-
-      if (segments.length === 0) continue;
 
       const fullLyrics = segments.map((s) => s.text).join('\n');
       const srtContent = segmentsToSrt(segments);
