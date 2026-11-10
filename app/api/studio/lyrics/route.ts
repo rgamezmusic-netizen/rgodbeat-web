@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
     let artistName: string | undefined;
     let beatTitle: string | undefined;
     let beatGenre: string | undefined;
+    let startOffsetSec = 0;
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
       artistName = formData.get('artistName')?.toString();
       beatTitle = formData.get('beatTitle')?.toString();
       beatGenre = formData.get('beatGenre')?.toString();
+      startOffsetSec = Number(formData.get('startOffsetSec')) || 0;
     } else {
       const arrayBuffer = await request.arrayBuffer();
       audioBuffer = Buffer.from(arrayBuffer);
@@ -55,6 +57,7 @@ export async function POST(request: NextRequest) {
       artistName = request.headers.get('x-artist-name') || undefined;
       beatTitle = request.headers.get('x-beat-title') || undefined;
       beatGenre = request.headers.get('x-beat-genre') || undefined;
+      startOffsetSec = Number(request.headers.get('x-start-offset-sec')) || 0;
     }
 
     if (audioBuffer.byteLength < 1000) {
@@ -68,11 +71,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await transcribeLyricsWithGemini(audioBuffer, mimeType, {
-      artistName,
-      beatTitle,
-      beatGenre,
-    });
+    const result = await transcribeLyricsWithGemini(
+      audioBuffer,
+      mimeType,
+      {
+        artistName,
+        beatTitle,
+        beatGenre,
+      },
+      startOffsetSec
+    );
 
     if (!result || result.segments.length === 0) {
       return NextResponse.json(

@@ -42,7 +42,8 @@ const nextConfig: NextConfig = {
     "/api/studio/youtube/publish": [
       "./node_modules/ffmpeg-static/ffmpeg",
       "./public/images/rgodbeat-studio-logo.png",
-      "./public/images/studio-stage-background.jpg"
+      "./public/images/studio-stage-background.jpg",
+      "./public/fonts/LyricFont.ttf"
     ],
   },
   experimental: {

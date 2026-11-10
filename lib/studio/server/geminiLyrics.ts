@@ -46,13 +46,14 @@ export function segmentsToSrt(segments: LyricSegment[]): string {
 }
 
 /**
- * Transcribes audio via Google Gemini 3.8 Flash (with fallback to gemini-flash-latest).
+ * Transcribes audio via Google Gemini 3.5 Flash Lite (with fallbacks to 3.5 Flash and 3 Flash Preview).
  * Accepts raw audio buffer (WAV, MP3, AAC, M4A) and returns synced lyrics segments.
  */
 export async function transcribeLyricsWithGemini(
   audioBuffer: Buffer,
   mimeType: string = 'audio/wav',
-  contextHint?: { beatTitle?: string; beatGenre?: string; artistName?: string }
+  contextHint?: { beatTitle?: string; beatGenre?: string; artistName?: string },
+  startOffsetSec: number = 0
 ): Promise<LyricsTranscriptionResult | null> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
@@ -70,8 +71,8 @@ export async function transcribeLyricsWithGemini(
 
   const modelsToTry = [
     'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
     'gemini-3-flash-preview',
-    'gemini-3.8-flash',
   ];
 
   const prompt = `Eres el transcriptor profesional de líricas de RGodbeat Studio.
@@ -128,7 +129,10 @@ REGLAS OBLIGATORIAS:
       }
 
       const data = await response.json();
-      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      const textPart = data.candidates?.[0]?.content?.parts?.find(
+        (p: any) => typeof p.text === 'string' && p.text.trim().length > 0
+      );
+      const rawText = textPart?.text?.trim();
       if (!rawText) continue;
 
       // Clean possible Markdown fence blocks
@@ -143,10 +147,11 @@ REGLAS OBLIGATORIAS:
 
       if (!Array.isArray(parsed)) continue;
 
+      const safeOffset = Math.max(0, startOffsetSec || 0);
       const segments: LyricSegment[] = parsed
         .map((item: any) => ({
-          start: Math.max(0, Number(item.start) || 0),
-          end: Math.max(0, Number(item.end) || 0),
+          start: Math.max(0, (Number(item.start) || 0) + safeOffset),
+          end: Math.max(0, (Number(item.end) || 0) + safeOffset),
           text: String(item.text || '').trim(),
         }))
         .filter((s) => s.text.length > 0 && s.end >= s.start);

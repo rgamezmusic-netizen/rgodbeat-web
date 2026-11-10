@@ -286,25 +286,31 @@ const ExportDialog: React.FC<ExportModalProps> = ({
       if (includeLyrics && tracks.some((t) => t.buffer || (t.clips && t.clips.length > 0))) {
         setYoutubeProgress({ stage: 'render', label: 'Escuchando voz y transcribiendo letra…' });
         try {
-          const vocalBlob = await engine.exportVocalTranscriptionStem(tracks);
-          if (vocalBlob) {
+          const vocalData = await engine.exportVocalTranscriptionStem(tracks);
+          if (vocalData) {
             const formData = new FormData();
-            formData.append('file', vocalBlob, 'vocal.wav');
+            formData.append('file', vocalData.blob, 'vocal.wav');
+            formData.append('startOffsetSec', String(vocalData.startOffsetSec));
             if (artistName) formData.append('artistName', artistName);
             if (beat?.title) formData.append('beatTitle', beat.title);
             if (beat?.genre) formData.append('beatGenre', beat.genre);
             const res = await fetch('/api/studio/lyrics', { method: 'POST', body: formData });
-            const data = await res.json();
-            if (res.ok && data.srtContent) {
+            const data = await res.json().catch(() => null);
+            if (res.ok && data?.srtContent) {
               lyricsSrt = data.srtContent;
               lyricsText = data.fullLyrics || '';
               onShowToast('¡Letra detectada y sincronizada en el video!', 'success');
             } else if (!res.ok && data?.error) {
               console.warn('[ExportModal] Aviso de letra:', data.error);
+              onShowToast(`Letra: ${data.error}. Publicando video sin subtítulos.`, 'info');
+            } else if (!res.ok) {
+              console.warn('[ExportModal] Error en API de letra:', res.status);
+              onShowToast(`No se pudo sincronizar la letra (código ${res.status}). Publicando sin subtítulos.`, 'info');
             }
           }
         } catch (err) {
           console.warn('Transcripción automática omitida:', err);
+          onShowToast('No se pudo procesar la letra. Publicando sin subtítulos.', 'info');
         }
       }
 

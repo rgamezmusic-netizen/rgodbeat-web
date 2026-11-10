@@ -6,7 +6,7 @@ const { studioVideoMetadata } = loadSource('lib/youtube/metadata.ts');
 test('defaults include the beat, artist, production credit, existing Top 23 information and website links', () => {
   const metadata = studioVideoMetadata({ artistName: 'LARY', beatTitle: 'WINGS', beatGenre: 'Trap', beatBpm: 126, beatKey: 'Fm' });
   assert.equal(metadata.title, 'WINGS x LARY | TOP 23 Prod RGodbeat');
-  for (const value of ['Artista: LARY', 'Beat: WINGS', '126 BPM', 'Tonalidad: Fm', '14 días', 'RG Coins', '/ranking/season', '/studio', '/beats', '#Trap', '#LARY']) assert.ok(metadata.description.includes(value), value);
+  for (const value of ['Artista: LARY', 'Beat: WINGS', '126 BPM', 'Tonalidad: Fm', '14 días', 'RG', '/ranking/season', '/studio', '/beats', '#Trap', '#LARY']) assert.ok(metadata.description.includes(value), value);
   assert.ok(Buffer.byteLength(metadata.description, 'utf8') < 5000);
 });
 

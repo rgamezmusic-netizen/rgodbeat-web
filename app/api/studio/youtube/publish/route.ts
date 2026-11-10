@@ -1,6 +1,6 @@
 import { createReadStream, createWriteStream } from "node:fs";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
@@ -214,25 +214,34 @@ export async function POST(request: NextRequest) {
     const coverPath = join(directory, `cover.${extension}`);
     await writeFile(coverPath, cover, { mode: 0o600, flag: "wx" });
     stage = 'render'; fallback = 'renderFailed';
-    let videoFilter = "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p";
 
-    // If SRT subtitles were provided for video lyrics, burn them directly into the video frames
+    // Animated stage background: smooth gimbal camera sway + concert spotlight pulse
+    const baseStageFilter = preferStage
+      ? "scale=1380:776:force_original_aspect_ratio=increase,crop=1280:720:'(iw-1280)/2+sin(t*0.55)*46':'(ih-720)/2+cos(t*0.38)*26',eq=brightness='0.03*sin(t*1.8)':contrast='1+0.04*sin(t*0.9)':eval=frame,setsar=1"
+      : "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1";
+
+    let videoFilter = `${baseStageFilter},format=yuv420p`;
+
+    // If SRT subtitles were provided for video lyrics, embed bundled font and burn into frames
     if (input.lyricsSrt && typeof input.lyricsSrt === "string" && input.lyricsSrt.trim().length > 10) {
       try {
         const srtPath = join(directory, "lyrics.srt");
         await writeFile(srtPath, input.lyricsSrt.trim(), "utf8");
-        // Styled urban yellow subtitles with drop shadow & outline for maximum readability on the stage
-        videoFilter = `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,subtitles=lyrics.srt:force_style='Fontsize=22,PrimaryColour=&H0000FFFF,OutlineColour=&H80000000,BorderStyle=3,Outline=2,Alignment=2,MarginV=60',format=yuv420p`;
+        const fontsDir = join(directory, "fonts");
+        await mkdir(fontsDir, { recursive: true });
+        await copyFile(resolve(process.cwd(), "public/fonts/LyricFont.ttf"), join(fontsDir, "LyricFont.ttf"));
+        // Styled urban yellow subtitles with embedded font, drop shadow & outline for maximum readability
+        videoFilter = `${baseStageFilter},subtitles=lyrics.srt:fontsdir=fonts:force_style='Fontname=Geist,Fontsize=24,Bold=1,PrimaryColour=&H0000FFFF,OutlineColour=&H80000000,BorderStyle=3,Outline=2,Alignment=2,MarginV=55',format=yuv420p`;
       } catch (srtErr) {
-        console.warn("[YouTube publish] No se pudo escribir lyrics.srt, continuando sin subtítulos quemados:", srtErr);
+        console.warn("[YouTube publish] No se pudo preparar lyrics.srt o fuente, continuando sin subtítulos quemados:", srtErr);
       }
     }
 
     await runFfmpeg([
-      "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", "2", "-i", coverPath,
+      "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", "20", "-i", coverPath,
       "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0",
       "-vf", videoFilter,
-      "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-crf", "23",
+      "-r", "20", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
       "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart", "-shortest", videoPath,
     ], directory);
     const video = await readFile(videoPath);

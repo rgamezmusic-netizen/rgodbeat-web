@@ -2,6 +2,7 @@ import {
   BeatData,
   BeatFX,
   LoopSettings,
+  VocalClip,
   VocalTrack,
   VocalTrackId,
 } from '../types/audio';
@@ -2737,39 +2738,73 @@ export class AudioEngine {
   }
 
   /**
-   * Renders a lightweight, high-speech-intelligibility mono 16kHz WAV buffer
-   * containing all active vocal takes combined (isolated from the beat).
-   * Perfectly optimized for Google Gemini / AI speech-to-text lyric transcription.
+   * Renders a lightweight, high-speech-intelligibility mono WAV buffer
+   * containing all active vocal takes combined (isolated from the beat),
+   * trimmed to the active singing bounds to eliminate silence and prevent
+   * Vercel 4.5MB serverless payload limit rejections.
+   * Perfectly optimized for Google Gemini AI speech-to-text lyric transcription.
    */
-  public async exportVocalTranscriptionStem(vocalTracks: VocalTrack[]): Promise<Blob | null> {
+  public async exportVocalTranscriptionStem(vocalTracks: VocalTrack[]): Promise<{ blob: Blob; startOffsetSec: number } | null> {
     if (!this.beatData) return null;
     const activeTracks = vocalTracks.filter((t) => !t.isMuted && (t.buffer || (t.clips && t.clips.length > 0)));
     if (activeTracks.length === 0) return null;
 
-    const sampleRate = 16000; // 16 kHz is the standard for speech AI models
-    const duration = getRenderDuration(this.beatData.duration, vocalTracks, this.beatData.bpm);
-    const length = Math.max(1, Math.ceil(sampleRate * duration));
+    // 1. Gather all active clips across tracks
+    const allClips: { clip: VocalClip; track: VocalTrack }[] = [];
+    for (const track of activeTracks) {
+      for (const clip of getTrackClips(track)) {
+        if (clip.buffer) allClips.push({ clip, track });
+      }
+    }
+    if (allClips.length === 0) return null;
 
+    // 2. Compute bounding timeline range where vocals actually occur
+    let minStart = Infinity;
+    let maxEnd = 0;
+    for (const { clip } of allClips) {
+      const start = Math.max(0, clip.startBeatOffset);
+      const dur = clip.duration || clip.buffer!.duration;
+      const end = start + dur;
+      if (start < minStart) minStart = start;
+      if (end > maxEnd) maxEnd = end;
+    }
+    if (!isFinite(minStart) || maxEnd <= minStart) return null;
+
+    // Start 0.25s before first phrase to preserve attack transient, and end 0.5s after
+    const startOffsetSec = Math.max(0, minStart - 0.25);
+    const renderDuration = Math.max(0.5, maxEnd - startOffsetSec + 0.5);
+
+    // Keep payload well under Vercel serverless 4.5 MB body limit:
+    // <= 100s -> 16 kHz mono 16-bit (~3.2 MB max)
+    // <= 160s -> 12 kHz mono 16-bit (~3.8 MB max)
+    // > 160s  -> 8 kHz mono 16-bit  (~2.8 MB max for a full 3min take)
+    let sampleRate = 16000;
+    if (renderDuration > 160) {
+      sampleRate = 8000;
+    } else if (renderDuration > 100) {
+      sampleRate = 12000;
+    }
+
+    const length = Math.max(1, Math.ceil(sampleRate * renderDuration));
     const offlineCtx = new OfflineAudioContext(1, length, sampleRate);
     const mixGain = offlineCtx.createGain();
     mixGain.gain.setValueAtTime(1.0, 0);
     mixGain.connect(offlineCtx.destination);
 
     let hasAnyClip = false;
-    for (const track of activeTracks) {
-      const clips = getTrackClips(track);
-      for (const clip of clips) {
-        if (!clip.buffer) continue;
-        const source = offlineCtx.createBufferSource();
-        source.buffer = clip.buffer;
-        source.connect(mixGain);
-        source.start(Math.max(0, clip.startBeatOffset));
-        hasAnyClip = true;
-      }
+    for (const { clip } of allClips) {
+      if (!clip.buffer) continue;
+      const source = offlineCtx.createBufferSource();
+      source.buffer = clip.buffer;
+      source.connect(mixGain);
+      const relativeStart = Math.max(0, clip.startBeatOffset - startOffsetSec);
+      source.start(relativeStart);
+      hasAnyClip = true;
     }
 
     if (!hasAnyClip) return null;
     const rendered = await offlineCtx.startRendering();
-    return audioBufferToWav(rendered, 16);
+    const blob = audioBufferToWav(rendered, 16);
+    return { blob, startOffsetSec };
   }
 }
