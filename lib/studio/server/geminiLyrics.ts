@@ -69,10 +69,9 @@ export async function transcribeLyricsWithGemini(
   const base64Audio = audioBuffer.toString('base64');
 
   const modelsToTry = [
-    'gemini-flash-lite-latest',
-    'gemini-flash-latest',
+    'gemini-3.5-flash-lite',
     'gemini-3-flash-preview',
-    'gemini-2.5-flash-lite',
+    'gemini-3.8-flash',
   ];
 
   const prompt = `Eres el transcriptor profesional de líricas de RGodbeat Studio.

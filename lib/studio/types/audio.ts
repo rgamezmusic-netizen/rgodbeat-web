@@ -70,7 +70,7 @@ export interface VocalFX {
     amount: number;     // 0 to 1 (Clean -> Warm -> Drive)
   };
   delay: {
-    division: 'OFF' | '1/8' | '1/4' | '1/2' | '1 BAR';
+    division: 'OFF' | 'SLAP' | '1/8' | '1/4' | '1/2' | '1 BAR';
     mix: number;        // 0 to 1
     feedback: number;   // 0 to 0.8
   };

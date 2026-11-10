@@ -46,8 +46,9 @@ export const VocalFXModal: React.FC<VocalFXModalProps> = ({
     onChangeFX(updater(fx));
   };
 
-  const delayDivisions: Array<'OFF' | '1/8' | '1/4' | '1/2' | '1 BAR'> = [
+  const delayDivisions: Array<'OFF' | 'SLAP' | '1/8' | '1/4' | '1/2' | '1 BAR'> = [
     'OFF',
+    'SLAP',
     '1/8',
     '1/4',
     '1/2',
@@ -447,7 +448,7 @@ export const VocalFXModal: React.FC<VocalFXModalProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-5 gap-1.5 mb-2">
+            <div className="grid grid-cols-6 gap-1.5 mb-2">
               {delayDivisions.map((div) => (
                 <button
                   key={div}

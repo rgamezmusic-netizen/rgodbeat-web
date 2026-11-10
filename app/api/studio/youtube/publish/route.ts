@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
         const srtPath = join(directory, "lyrics.srt");
         await writeFile(srtPath, input.lyricsSrt.trim(), "utf8");
         // Styled urban yellow subtitles with drop shadow & outline for maximum readability on the stage
-        videoFilter = `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,subtitles=${srtPath}:force_style='Fontname=Arial,Fontsize=22,PrimaryColour=&H0000FFFF,OutlineColour=&H80000000,BorderStyle=3,Outline=2,Alignment=2,MarginV=60',format=yuv420p`;
+        videoFilter = `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,subtitles=lyrics.srt:force_style='Fontsize=22,PrimaryColour=&H0000FFFF,OutlineColour=&H80000000,BorderStyle=3,Outline=2,Alignment=2,MarginV=60',format=yuv420p`;
       } catch (srtErr) {
         console.warn("[YouTube publish] No se pudo escribir lyrics.srt, continuando sin subtítulos quemados:", srtErr);
       }

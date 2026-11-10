@@ -71,7 +71,7 @@ export function getRenderDuration(beatDuration: number, tracks: VocalTrack[], bp
     if (!clips.length) return end;
     const reverbTail = track.fx.reverb.mix > 0
       ? { ROOM: 0.9, PLATE: 1.9, HALL: 3 }[track.fx.reverb.preset] : 0;
-    const division = { OFF: 0, '1/8': 0.5, '1/4': 1, '1/2': 2, '1 BAR': 4 }[track.fx.delay.division];
+    const division = { OFF: 0, SLAP: 0.125, '1/8': 0.5, '1/4': 1, '1/2': 2, '1 BAR': 4 }[track.fx.delay.division];
     const feedback = Math.max(0, Math.min(0.75, track.fx.delay.feedback));
     const repeats = feedback > 0 ? Math.ceil(Math.log(0.001) / Math.log(feedback)) : 1;
     const delayTail = track.fx.delay.mix > 0 ? Math.min(20, division * 60 / Math.max(30, bpm) * repeats) : 0;
