@@ -3,6 +3,7 @@ import {
   BeatFX,
   LoopSettings,
   VocalClip,
+  VocalFX,
   VocalTrack,
   VocalTrackId,
 } from '../types/audio';
@@ -93,6 +94,7 @@ export class AudioEngine {
       deEsser2: BiquadFilterNode;
       highEq: BiquadFilterNode;
       airSheen: BiquadFilterNode;
+      highCut: BiquadFilterNode;
       compressor: DynamicsCompressorNode;
       levelerCompressor: DynamicsCompressorNode;
       saturation: WaveShaperNode;
@@ -546,6 +548,23 @@ export class AudioEngine {
     return curve;
   }
 
+  private resolveVocalBandpass(fx: VocalFX, sampleRate: number) {
+    const lowCutFreq = fx.eq.lowCut ? Math.max(40, Math.min(2000, fx.eq.lowCutFreq || 120)) : 80;
+    const nyquistSafe = Math.max(8000, Math.min(19500, sampleRate * 0.45));
+    const hasHighCut = Boolean(fx.eq.highCut);
+    const highCutFreq = hasHighCut
+      ? Math.max(800, Math.min(nyquistSafe, fx.eq.highCutFreq || 3100))
+      : nyquistSafe;
+    const isBandLimited = hasHighCut && highCutFreq <= 5000;
+    return {
+      lowCutFreq,
+      lowCutQ: lowCutFreq >= 300 ? 0.9 : 0.7071,
+      highCutFreq,
+      highCutQ: isBandLimited ? 1.05 : 0.7071,
+      airSheenDb: isBandLimited ? 0 : 2.2,
+    };
+  }
+
   public updateVocalFX(track: VocalTrack, allTracks: VocalTrack[]) {
     if (!this.ctx || !this.masterGainNode) return;
     try {
@@ -612,6 +631,12 @@ export class AudioEngine {
         airSheen.type = 'highshelf';
         airSheen.frequency.setValueAtTime(12000, t);
         airSheen.gain.setValueAtTime(2.2, t);
+
+        // Optional High-Cut (Low-Pass) filter for Radio / Telephone / Vintage Tape warmth
+        const highCut = this.ctx.createBiquadFilter();
+        highCut.type = 'lowpass';
+        highCut.Q.setValueAtTime(0.7071, t);
+        highCut.frequency.setValueAtTime(Math.min(19500, this.ctx.sampleRate * 0.45), t);
 
         // Two-Stage Serial Vocal Compression:
         // Stage 1: Fast FET-style transient catcher
@@ -692,7 +717,8 @@ export class AudioEngine {
         deEsser.connect(deEsser2);
         deEsser2.connect(highEq);
         highEq.connect(airSheen);
-        airSheen.connect(compressor);
+        airSheen.connect(highCut);
+        highCut.connect(compressor);
         compressor.connect(levelerCompressor);
         levelerCompressor.connect(saturation);
 
@@ -716,6 +742,7 @@ export class AudioEngine {
           deEsser2,
           highEq,
           airSheen,
+          highCut,
           compressor,
           levelerCompressor,
           saturation,
@@ -735,11 +762,12 @@ export class AudioEngine {
         this.vocalNodes.set(track.id, nodes);
       }
 
-      nodes.lowCut.frequency.setTargetAtTime(
-        track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 80,
-        t,
-        0.05
-      );
+      const bp = this.resolveVocalBandpass(track.fx, this.ctx.sampleRate);
+      nodes.lowCut.frequency.setTargetAtTime(bp.lowCutFreq, t, 0.05);
+      nodes.lowCut.Q.setTargetAtTime(bp.lowCutQ, t, 0.05);
+      nodes.highCut.frequency.setTargetAtTime(bp.highCutFreq, t, 0.05);
+      nodes.highCut.Q.setTargetAtTime(bp.highCutQ, t, 0.05);
+      nodes.airSheen.gain.setTargetAtTime(bp.airSheenDb, t, 0.05);
       nodes.lowEq.gain.setTargetAtTime(track.fx.eq.low, t, 0.05);
       nodes.midEq.gain.setTargetAtTime(track.fx.eq.mid, t, 0.05);
       nodes.highEq.gain.setTargetAtTime(track.fx.eq.high, t, 0.05);
@@ -2341,10 +2369,12 @@ export class AudioEngine {
     for (const prepared of preparedTracks) {
       const { track, effectiveVol, deEsser6800Db, deEsser8200Db, clips } = prepared;
 
+      const bp = this.resolveVocalBandpass(track.fx, offlineCtx.sampleRate);
+
       const lowCut = offlineCtx.createBiquadFilter();
       lowCut.type = 'highpass';
-      lowCut.frequency.setValueAtTime(track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 100, 0);
-      lowCut.Q.setValueAtTime(0.7071, 0);
+      lowCut.frequency.setValueAtTime(track.fx.eq.lowCut ? bp.lowCutFreq : 100, 0);
+      lowCut.Q.setValueAtTime(bp.lowCutQ, 0);
 
       const mudCut = offlineCtx.createBiquadFilter();
       mudCut.type = 'peaking';
@@ -2394,7 +2424,12 @@ export class AudioEngine {
       const airSheen = offlineCtx.createBiquadFilter();
       airSheen.type = 'highshelf';
       airSheen.frequency.setValueAtTime(12000, 0);
-      airSheen.gain.setValueAtTime(2.2, 0);
+      airSheen.gain.setValueAtTime(bp.airSheenDb, 0);
+
+      const highCut = offlineCtx.createBiquadFilter();
+      highCut.type = 'lowpass';
+      highCut.frequency.setValueAtTime(bp.highCutFreq, 0);
+      highCut.Q.setValueAtTime(bp.highCutQ, 0);
 
       const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
 
@@ -2433,7 +2468,8 @@ export class AudioEngine {
       deEsser.connect(deEsser2);
       deEsser2.connect(highEq);
       highEq.connect(airSheen);
-      airSheen.connect(compressor);
+      airSheen.connect(highCut);
+      highCut.connect(compressor);
       compressor.connect(levelerCompressor);
       levelerCompressor.connect(saturation);
       saturation.connect(trackGain);
@@ -2636,10 +2672,12 @@ export class AudioEngine {
       masterGain.connect(offlineCtx.destination);
 
       // Vocal FX chain
+      const bp = this.resolveVocalBandpass(track.fx, sampleRate);
+
       const lowCut = offlineCtx.createBiquadFilter();
       lowCut.type = 'highpass';
-      lowCut.frequency.setValueAtTime(track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 100, 0);
-      lowCut.Q.setValueAtTime(0.7071, 0);
+      lowCut.frequency.setValueAtTime(track.fx.eq.lowCut ? bp.lowCutFreq : 100, 0);
+      lowCut.Q.setValueAtTime(bp.lowCutQ, 0);
 
       const mudCut = offlineCtx.createBiquadFilter();
       mudCut.type = 'peaking';
@@ -2684,7 +2722,12 @@ export class AudioEngine {
       const airSheen = offlineCtx.createBiquadFilter();
       airSheen.type = 'highshelf';
       airSheen.frequency.setValueAtTime(12000, 0);
-      airSheen.gain.setValueAtTime(2.0, 0);
+      airSheen.gain.setValueAtTime(bp.airSheenDb, 0);
+
+      const highCut = offlineCtx.createBiquadFilter();
+      highCut.type = 'lowpass';
+      highCut.frequency.setValueAtTime(bp.highCutFreq, 0);
+      highCut.Q.setValueAtTime(bp.highCutQ, 0);
 
       const compressor = offlineCtx.createDynamicsCompressor();
       const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
@@ -2710,7 +2753,8 @@ export class AudioEngine {
       deEsser.connect(deEsser2);
       deEsser2.connect(highEq);
       highEq.connect(airSheen);
-      airSheen.connect(compressor);
+      airSheen.connect(highCut);
+      highCut.connect(compressor);
       compressor.connect(saturation);
       saturation.connect(trackGain);
 

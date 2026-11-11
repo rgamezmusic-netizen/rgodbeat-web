@@ -18,10 +18,12 @@ import {
   ScaleMode,
   VocalClip,
   VocalFX,
+  VocalPresetId,
   VocalTrack,
   VocalTrackId,
 } from '@/lib/studio/types/audio';
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
+import { applyVocalPreset, resetVocalFXToNatural } from '@/lib/studio/audio/vocalPresets';
 import { analyzeBeatAudio } from '@/lib/studio/audio/beatAnalyzer';
 import { punchInClips, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from '@/lib/studio/audio/wavEncoder';
 import { consumePendingGalleryBeat } from '@/lib/studio/audio/pendingGalleryBeat';
@@ -103,6 +105,7 @@ import { appendRecordingCheckpoint } from '@/lib/studio/audio/recordingRecovery'
 // a download waterfall when restoring a project or choosing the first beat.
 // Secondary dialogs load only when their existing conditions open them.
 const VocalFXModal = dynamic(() => import('./VocalFXModal').then(mod => mod.VocalFXModal));
+const VocalPresetModal = dynamic(() => import('./VocalPresetMenu').then(mod => mod.VocalPresetModal));
 const BeatFXModal = dynamic(() => import('./BeatFXModal').then(mod => mod.BeatFXModal));
 const LoopModal = dynamic(() => import('./LoopModal').then(mod => mod.LoopModal));
 const ExportModal = dynamic(() => import('./ExportModal').then(mod => mod.ExportModal));
@@ -980,6 +983,7 @@ export default function App() {
 
   // Modals state
   const [activeFXTrackId, setActiveFXTrackId] = useState<VocalTrackId | null>(null);
+  const [activePresetTrackId, setActivePresetTrackId] = useState<VocalTrackId | null>(null);
   const [showBeatFXModal, setShowBeatFXModal] = useState<boolean>(false);
   const [showLoopModal, setShowLoopModal] = useState<boolean>(false);
   const [showLoadBeatModal, setShowLoadBeatModal] = useState<boolean>(false);
@@ -2054,7 +2058,7 @@ export default function App() {
     const handleTransportKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       if (target.closest('input, textarea, select, button, a, [contenteditable="true"]') ||
-        document.querySelector('[role="dialog"]') || showLoadBeatModal || showExportModal || activeFXTrackId || showBeatFXModal) return;
+        document.querySelector('[role="dialog"]') || showLoadBeatModal || showExportModal || activeFXTrackId || activePresetTrackId || showBeatFXModal) return;
       if (event.code === 'Space' && !event.repeat) { event.preventDefault(); void handlePlayPause(); }
     };
     window.addEventListener('keydown', handleTransportKey);
@@ -2572,19 +2576,37 @@ export default function App() {
   };
 
   // Update Vocal FX (including Pitch Tune) and persist channel template
-  const handleChangeVocalFX = (newFX: VocalFX) => {
-    if (!activeFXTrackId) return;
-    saveUserChannelFXTemplate(activeFXTrackId, newFX, accessStatus.email);
-    const updated = tracksRef.current.map(track => {
-      if (track.id !== activeFXTrackId) return track;
-      const tuneChanged = tuneKey(track) !== JSON.stringify(newFX.tune);
-      return { ...track, fx: newFX,
+  const applyTrackFXUpdate = (
+    targetTrackId: VocalTrackId,
+    transform: (prevFX: VocalFX) => VocalFX
+  ) => {
+    const updated = tracksRef.current.map((track) => {
+      if (track.id !== targetTrackId) return track;
+      const nextFX = transform(track.fx);
+      saveUserChannelFXTemplate(targetTrackId, nextFX, accessStatus.email);
+      const tuneChanged = tuneKey(track) !== JSON.stringify(nextFX.tune);
+      return {
+        ...track,
+        fx: nextFX,
         tunedBuffer: tuneChanged ? null : track.tunedBuffer,
-        clips: tuneChanged ? track.clips?.map(clip => ({ ...clip, tunedBuffer: null })) : track.clips,
+        clips: tuneChanged ? track.clips?.map((clip) => ({ ...clip, tunedBuffer: null })) : track.clips,
       };
     });
     tracksRef.current = updated;
     setTracks(updated);
+  };
+
+  const handleChangeVocalFX = (newFX: VocalFX) => {
+    if (!activeFXTrackId) return;
+    applyTrackFXUpdate(activeFXTrackId, () => newFX);
+  };
+
+  const handleApplyVocalPreset = (trackId: VocalTrackId, presetId: VocalPresetId) => {
+    applyTrackFXUpdate(trackId, (prevFX) => applyVocalPreset(prevFX, presetId));
+  };
+
+  const handleResetVocalPreset = (trackId: VocalTrackId) => {
+    applyTrackFXUpdate(trackId, (prevFX) => resetVocalFXToNatural(prevFX));
   };
 
   // Toggle Lock Beat status (Prevents beat from ever changing accidentally)
@@ -3126,6 +3148,7 @@ export default function App() {
 
   const selectedTrack = tracks.find((t) => t.id === selectedTrackId) || tracks[0];
   const activeFXTrack = tracks.find((t) => t.id === activeFXTrackId) || null;
+  const activePresetTrack = tracks.find((t) => t.id === activePresetTrackId) || null;
   const hasRecordings = tracks.some((t) => t.buffer !== null);
   const currentBeatSlotIndex = currentBeat?.isCustomUpload
     ? Math.max(1, savedCustomBeats.findIndex((b) => b.id === currentBeat.id) + 1)
@@ -3377,6 +3400,7 @@ export default function App() {
               onChangeVolume={handleChangeTrackVolume}
               onChangePan={handleChangeTrackPan}
               onOpenFX={(trackId) => setActiveFXTrackId(trackId)}
+              onOpenPresets={(trackId) => setActivePresetTrackId(trackId)}
               onAddBackingTrack={handleAddBackingTrack}
               canAddMoreTracks={canAddMoreTracks}
               isRecording={isRecording}
@@ -3419,6 +3443,7 @@ export default function App() {
               canAddMoreTracks={canAddMoreTracks}
               onDeleteTrack={handleDeleteCustomTrack}
               onOpenFX={(trackId) => setActiveFXTrackId(trackId)}
+              onOpenPresets={(trackId) => setActivePresetTrackId(trackId)}
               selectedTrackId={selectedTrackId}
               onSelectTrack={handleSelectTrack}
               canUndo={!isRecording && undoStack.length > 0}
@@ -3501,6 +3526,16 @@ export default function App() {
           onChangeFX={handleChangeVocalFX}
           onChangePan={(pan) => activeFXTrackId && handleChangeTrackPan(activeFXTrackId, pan)}
           audioCtx={engine ? engine.getAudioContext() : null}
+        />
+      )}
+
+      {/* Channel Presets Quick Picker Modal */}
+      {activePresetTrackId && (
+        <VocalPresetModal
+          track={activePresetTrack}
+          onClose={() => setActivePresetTrackId(null)}
+          onSelectPreset={(presetId) => handleApplyVocalPreset(activePresetTrackId, presetId)}
+          onResetNatural={() => handleResetVocalPreset(activePresetTrackId)}
         />
       )}
 

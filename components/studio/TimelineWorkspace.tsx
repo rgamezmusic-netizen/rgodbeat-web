@@ -22,13 +22,15 @@ import {
   Lock,
   Unlock,
   Zap,
+  Sparkles,
 } from 'lucide-react';
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
+import { getVocalPresetById } from '@/lib/studio/audio/vocalPresets';
 import { ClipWaveform } from './ClipWaveform';
 import { resampleWaveformPeaks } from '@/lib/studio/audio/waveform';
 
-const BASE_TRACK_HEADER_WIDTH = 120; // px (clean compact default with ample breathing room)
+const BASE_TRACK_HEADER_WIDTH = 136; // px (clean compact default with channel preset button)
 const EXPANDED_TRACK_HEADER_WIDTH = 192; // px (full mixer with faders and pan)
 const TIMELINE_GUTTER = 20; // px (lead-in margin so Bar 1 & waveforms never touch or bleed behind track headers)
 
@@ -67,6 +69,7 @@ interface TimelineWorkspaceProps {
   canAddMoreTracks?: boolean;
   onDeleteTrack?: (trackId: VocalTrackId) => void;
   onOpenFX: (trackId: VocalTrackId) => void;
+  onOpenPresets?: (trackId: VocalTrackId) => void;
   selectedTrackId: VocalTrackId;
   onSelectTrack: (trackId: VocalTrackId) => void;
   canUndo?: boolean;
@@ -117,6 +120,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   canAddMoreTracks = false,
   onDeleteTrack,
   onOpenFX,
+  onOpenPresets,
   selectedTrackId,
   onSelectTrack,
   canUndo = false,
@@ -1360,6 +1364,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             const isSelected = selectedTrackId === track.id;
             const isArmed = selectedTrackId === track.id;
             const isThisRecording = isRecording && activeRecordingTrackId === track.id;
+            const activePreset = getVocalPresetById(track.fx?.presetId);
 
             return (
               <div
@@ -1417,15 +1422,33 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                             </button>
                           )}
                         </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenFX(track.id);
-                          }}
-                          className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 shrink-0"
-                        >
-                          FX
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenPresets?.(track.id);
+                            }}
+                            title={activePreset ? `Preset: ${activePreset.label}` : 'Elegir preset vocal'}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-mono border flex items-center gap-0.5 transition-colors cursor-pointer ${
+                              activePreset
+                                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 font-bold'
+                                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                            }`}
+                          >
+                            <Sparkles className="w-2.5 h-2.5 shrink-0" />
+                            <span>{activePreset ? activePreset.badge : 'Preset'}</span>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenFX(track.id);
+                            }}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-zinc-700 shrink-0"
+                          >
+                            FX
+                          </button>
+                        </div>
                       </div>
 
                       {/* Row 2: Mute [MUTE] */}
@@ -1541,25 +1564,40 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       </div>
 
                       <div className="flex items-center justify-between gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => onToggleMute(track.id)}
+                            className={`w-5 h-5 rounded text-[9px] font-mono font-bold flex items-center justify-center transition-all cursor-pointer ${
+                              track.isMuted
+                                ? 'bg-red-500 text-white shadow-sm'
+                                : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
+                            }`}
+                            title={track.isMuted ? 'Desmutear' : 'Silenciar (Mute)'}
+                          >
+                            M
+                          </button>
+                          <button type="button" onClick={() => onToggleSolo(track.id)} aria-pressed={track.isSolo}
+                            title={`Escuchar ${track.name} en solo`}
+                            className={`w-5 h-5 rounded text-[9px] font-mono font-bold border flex items-center justify-center ${track.isSolo ? 'bg-amber-400 text-black border-amber-300' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>S</button>
+                        </div>
                         <button
-                          onClick={() => onToggleMute(track.id)}
-                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                            track.isMuted
-                              ? 'bg-red-500 text-white shadow-sm'
-                              : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60'
+                          type="button"
+                          onClick={() => onOpenPresets?.(track.id)}
+                          title={activePreset ? `Preset: ${activePreset.label}` : 'Elegir preset vocal'}
+                          className={`flex-1 min-w-0 px-1.5 py-0.5 rounded text-[8.5px] font-mono border flex items-center justify-center gap-0.5 truncate transition-colors cursor-pointer ${
+                            activePreset
+                              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 font-bold'
+                              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
                           }`}
-                          title={track.isMuted ? 'Desmutear' : 'Silenciar'}
                         >
-                          {track.isMuted ? <VolumeX className="w-2.5 h-2.5" /> : <Volume2 className="w-2.5 h-2.5" />}
-                          <span>{track.isMuted ? 'MUT' : 'MUTE'}</span>
+                          <Sparkles className="w-2.5 h-2.5 shrink-0" />
+                          <span className="truncate">{activePreset ? activePreset.badge : 'Preset'}</span>
                         </button>
-                        <button type="button" onClick={() => onToggleSolo(track.id)} aria-pressed={track.isSolo}
-                          title={`Escuchar ${track.name} en solo`}
-                          className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border ${track.isSolo ? 'bg-amber-400 text-black border-amber-300' : 'bg-zinc-800 text-zinc-400 border-zinc-700'}`}>SOLO</button>
                         {isArmed && (
-                          <span className="text-[7.5px] font-mono font-bold text-red-300 px-1 py-0.2 rounded bg-red-500/20 border border-red-500/30 truncate">
-                            REC
-                          </span>
+                          <span
+                            className="w-2 h-2 rounded-full bg-red-500 shrink-0 animate-pulse"
+                            title="Pista armada para grabar"
+                          />
                         )}
                       </div>
                     </>

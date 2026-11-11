@@ -9,8 +9,10 @@ import {
   Redo2,
   Music2,
   ChevronDown,
+  Sparkles,
 } from 'lucide-react';
 import { VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
+import { getVocalPresetById } from '@/lib/studio/audio/vocalPresets';
 
 interface VocalTrackDropdownProps {
   tracks: VocalTrack[];
@@ -21,6 +23,7 @@ interface VocalTrackDropdownProps {
   onChangeVolume: (trackId: VocalTrackId, volume: number) => void;
   onChangePan?: (trackId: VocalTrackId, pan: number) => void;
   onOpenFX: (trackId: VocalTrackId) => void;
+  onOpenPresets?: (trackId: VocalTrackId) => void;
   onAddBackingTrack?: () => void;
   canAddMoreTracks?: boolean;
   isRecording?: boolean;
@@ -39,6 +42,7 @@ export const VocalTrackDropdown: React.FC<VocalTrackDropdownProps> = ({
   onToggleSolo,
   onChangeVolume,
   onOpenFX,
+  onOpenPresets,
   onAddBackingTrack,
   canAddMoreTracks = false,
   isRecording = false,
@@ -61,8 +65,11 @@ export const VocalTrackDropdown: React.FC<VocalTrackDropdownProps> = ({
   const isTuneActive =
     currentTrack.fx.tune?.enabled && currentTrack.fx.tune.speed > 0.01;
 
+  const activePreset = getVocalPresetById(currentTrack.fx.presetId);
   const hasFXApplied =
     isTuneActive ||
+    Boolean(activePreset) ||
+    Boolean(currentTrack.fx.eq.highCut) ||
     currentTrack.fx.comp.amount > 0 ||
     currentTrack.fx.saturation.amount > 0 ||
     currentTrack.fx.delay.mix > 0 ||
@@ -109,7 +116,21 @@ export const VocalTrackDropdown: React.FC<VocalTrackDropdownProps> = ({
             </div>
           </div>
 
-          {/* 2. FX / Auto-Tune Button */}
+          {/* 2. Channel Presets + FX / Auto-Tune Buttons */}
+          <button
+            type="button"
+            onClick={() => onOpenPresets?.(currentTrack.id)}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer active:scale-95 shrink-0 ${
+              activePreset
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm shadow-cyan-500/15'
+                : 'bg-zinc-850 hover:bg-zinc-800 text-zinc-300 hover:text-amber-300 border border-zinc-750'
+            }`}
+            title={activePreset ? `Preset: ${activePreset.label}` : 'Elegir preset vocal (Radio, Voz Pro, etc.)'}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>{activePreset ? activePreset.badge : 'Preset'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => onOpenFX(currentTrack.id)}

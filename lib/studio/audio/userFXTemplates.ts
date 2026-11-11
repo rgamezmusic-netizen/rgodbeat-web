@@ -12,6 +12,7 @@ export function saveUserChannelFXTemplate(trackId: VocalTrackId, fx: VocalFX, us
   if (typeof window === 'undefined') return;
   try {
     const templateToSave = {
+      presetId: fx.presetId,
       tune: {
         enabled: Boolean(fx.tune?.enabled),
         speed: fx.tune?.speed ?? 0,
@@ -62,6 +63,7 @@ export function loadUserChannelFXTemplate(
     const tonalityId = fallbackFX.tune?.tonalityId || 'Am_C';
 
     return {
+      presetId: parsed.presetId ?? fallbackFX.presetId,
       tune: {
         enabled: parsed.tune?.enabled ?? fallbackFX.tune?.enabled ?? false,
         speed: parsed.tune?.speed ?? fallbackFX.tune?.speed ?? 0,
@@ -73,6 +75,8 @@ export function loadUserChannelFXTemplate(
       eq: {
         lowCut: parsed.eq?.lowCut ?? fallbackFX.eq.lowCut,
         lowCutFreq: parsed.eq?.lowCutFreq ?? fallbackFX.eq.lowCutFreq,
+        highCut: parsed.eq?.highCut ?? fallbackFX.eq.highCut ?? false,
+        highCutFreq: parsed.eq?.highCutFreq ?? fallbackFX.eq.highCutFreq ?? 18000,
         low: parsed.eq?.low ?? fallbackFX.eq.low,
         mid: parsed.eq?.mid ?? fallbackFX.eq.mid,
         high: parsed.eq?.high ?? fallbackFX.eq.high,

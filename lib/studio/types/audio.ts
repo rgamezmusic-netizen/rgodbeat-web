@@ -54,11 +54,21 @@ export interface VocalTuneFX {
   tonalityId?: PopularTonalityId; // legacy support
 }
 
+export type VocalPresetId =
+  | 'lead_pro'
+  | 'urban_air'
+  | 'radio'
+  | 'space_hall'
+  | 'slap_tape';
+
 export interface VocalFX {
+  presetId?: VocalPresetId;
   tune: VocalTuneFX;
   eq: {
     lowCut: boolean;
     lowCutFreq: number; // e.g. 100 Hz
+    highCut?: boolean;  // e.g. true for telephone / radio band-pass
+    highCutFreq?: number; // e.g. 3100 Hz
     low: number;        // -12 to +12 dB
     mid: number;        // -12 to +12 dB
     high: number;       // -12 to +12 dB
