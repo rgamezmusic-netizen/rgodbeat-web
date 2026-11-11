@@ -16,9 +16,6 @@ export function Footer() {
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
             </div>
-            <p className="text-zinc-500 text-xs max-w-sm leading-relaxed">
-              An independent creative platform built around music, sound, and artistic identity.
-            </p>
             <div className="pt-2 text-[11px] font-mono text-zinc-500 space-y-1">
               <div>Austin, TX • Global Delivery</div>
               <div className="pt-1">

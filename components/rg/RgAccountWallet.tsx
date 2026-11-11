@@ -22,7 +22,6 @@ export function RgAccountWallet({ wallet }: { wallet: Wallet | null }) {
           <Link href={wallet?.walletV3 ? "/beats" : "/rg/market"} className="rounded-lg border border-white/10 px-4 py-3 text-xs font-mono font-bold text-zinc-300 hover:bg-white/5">{wallet?.walletV3 ? "ELEGIR BEATS →" : "RG MARKET →"}</Link>
         </div>
       </div>
-      {wallet && !wallet.walletV3 && <p className="mt-5 text-xs leading-relaxed text-zinc-400">Al canjear RG por un Beat Pass, esos RG se descuentan del saldo y el pase queda disponible hasta que lo uses en una compra elegible.</p>}
     </section>
   );
 }

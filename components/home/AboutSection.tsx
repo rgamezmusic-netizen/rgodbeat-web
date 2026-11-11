@@ -35,17 +35,20 @@ export function AboutSection({ standalone = false }: { standalone?: boolean }) {
               <span className="text-zinc-400">{BIOGRAPHY.headline[1]}</span>
             </StoryHeading>
             <div className="space-y-5 text-sm font-normal leading-relaxed text-zinc-300 sm:text-base">
-              {BIOGRAPHY.paragraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}
+              {(standalone ? BIOGRAPHY.paragraphs : BIOGRAPHY.paragraphs.slice(0, 1)).map(paragraph => <p key={paragraph}>{paragraph}</p>)}
             </div>
-            <div className="space-y-3 border-t border-white/10 pt-7">
+            {standalone && <div className="space-y-3 border-t border-white/10 pt-7">
               <VisionHeading className="text-[11px] font-mono font-semibold tracking-[0.2em] text-purple-300">
                 {BIOGRAPHY.visionTitle}
               </VisionHeading>
               <p className="text-sm leading-relaxed text-zinc-300 sm:text-base">{BIOGRAPHY.vision}</p>
-            </div>
+            </div>}
             <blockquote className="border-l-2 border-purple-400 pl-5 text-sm italic leading-relaxed text-zinc-400 sm:text-base">
               {BIOGRAPHY.quote}
             </blockquote>
+            {!standalone && <Link href="/about" className="inline-flex min-h-10 items-center text-xs font-mono font-semibold tracking-widest text-purple-300 hover:text-purple-200 underline underline-offset-4">
+              VER BIOGRAFÍA COMPLETA →
+            </Link>}
             {standalone && <Link href="/beats" className="inline-flex min-h-11 items-center justify-center rounded-xl border border-purple-400/30 bg-purple-500/10 px-6 py-3 text-xs font-semibold tracking-widest text-purple-200 transition-colors hover:bg-purple-500/20 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-purple-300">
               EXPLORAR BEATS
             </Link>}

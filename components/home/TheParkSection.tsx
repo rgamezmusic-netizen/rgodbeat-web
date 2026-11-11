@@ -27,57 +27,14 @@ export function TheParkSection() {
               <span className="text-zinc-400 font-light">UN ECOSISTEMA ARTÍSTICO.</span>
             </h2>
 
-            <p className="text-base sm:text-lg text-zinc-300 font-normal leading-relaxed">
-              {service.description}
-            </p>
-
             <StudioOptions />
-
-            {/* Benefit Highlights */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1.5">
-                <div className="text-xs font-mono text-purple-300 flex items-center gap-1.5">
-                  <span>01</span>
-                  <span>/ CATÁLOGO PRIVADO</span>
-                </div>
-                <div className="text-sm font-semibold text-white">Bancos de sonido</div>
-                <p className="text-xs text-zinc-400">Acceso a bibliotecas de samples, drum kits y stems de proyectos.</p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1.5">
-                <div className="text-xs font-mono text-blue-300 flex items-center gap-1.5">
-                  <span>02</span>
-                  <span>/ ESTUDIO</span>
-                </div>
-                <div className="text-sm font-semibold text-white">Sesiones de producción</div>
-                <p className="text-xs text-zinc-400">Grabación, mezcla y arreglos con sesiones coordinadas cada mes.</p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1.5">
-                <div className="text-xs font-mono text-purple-300 flex items-center gap-1.5">
-                  <span>03</span>
-                  <span>/ FEEDBACK</span>
-                </div>
-                <div className="text-sm font-semibold text-white">Dirección creativa</div>
-                <p className="text-xs text-zinc-400">Revisión de interpretación vocal, ritmo y arreglos.</p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-1.5">
-                <div className="text-xs font-mono text-blue-300 flex items-center gap-1.5">
-                  <span>04</span>
-                  <span>/ COMUNIDAD</span>
-                </div>
-                <div className="text-sm font-semibold text-white">Red de artistas</div>
-                <p className="text-xs text-zinc-400">Comunidad en Discord para colaborar y preparar lanzamientos.</p>
-              </div>
-            </div>
 
             <div className="pt-4 flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <ContactButton subject={`Consulta: ${service.title}`} message={serviceInquiryMessage(service)} variant="primary" size="md">
                 CONSULTAR DESARROLLO ARTÍSTICO
               </ContactButton>
               <span className="text-xs text-zinc-500 font-mono">
-                Presencial en Austin y a distancia
+                Austin, TX & Online
               </span>
             </div>
           </div>
@@ -109,8 +66,7 @@ export function TheParkSection() {
                   </li>)}
                 </ul>
 
-                <div className="pt-6 border-t border-white/[0.08] space-y-3">
-                  <p className="text-xs text-zinc-400">El alcance y las sesiones se confirman antes de contratar.</p>
+                <div className="pt-6 border-t border-white/[0.08]">
                   <ContactButton subject={`Consulta: ${service.title}`} message={serviceInquiryMessage(service)} variant="outline" className="w-full">COMUNICARME →</ContactButton>
                 </div>
               </div>

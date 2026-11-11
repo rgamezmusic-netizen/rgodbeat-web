@@ -116,13 +116,10 @@ export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientPro
           <div className="relative overflow-hidden p-6 rounded-2xl border border-cyan-500/30 bg-cyan-950/20 shadow-[0_0_30px_rgba(6,182,212,0.1)] flex flex-col justify-between group">
             <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="relative z-10">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-black text-white tracking-tight">{ARTIST_DEVELOPMENT.title}</h3>
                 <span className="px-2.5 py-1 text-[10px] font-mono font-bold bg-amber-500 text-black rounded uppercase shrink-0">OFERTA</span>
               </div>
-              <p className="text-sm text-zinc-400 mb-6 max-w-sm">
-                {ARTIST_DEVELOPMENT.description}
-              </p>
             </div>
             <div className="relative z-10 flex flex-wrap gap-4 items-end justify-between mt-auto">
               <div className="flex flex-wrap items-baseline gap-x-2">
@@ -137,13 +134,10 @@ export function BeatsShopClient({ initialBeats, categories }: BeatsShopClientPro
           <div className="relative overflow-hidden p-6 rounded-2xl border border-purple-500/30 bg-purple-950/20 shadow-[0_0_30px_rgba(168,85,247,0.1)] flex flex-col justify-between group">
             <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="relative z-10">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-4">
                 <h3 className="text-2xl font-black text-white uppercase tracking-tight">Studio Pro</h3>
                 <span className="px-2.5 py-1 text-[10px] font-mono font-bold bg-amber-500 text-black rounded uppercase">50% OFF</span>
               </div>
-              <p className="text-sm text-zinc-400 mb-6 max-w-sm">
-                Desbloquea 30 días de acceso total a RGODBEAT Studio. Graba con Autotune directo desde tu navegador.
-              </p>
             </div>
             <div className="relative z-10 flex items-end justify-between mt-auto">
               <div className="flex flex-wrap items-baseline gap-x-2">

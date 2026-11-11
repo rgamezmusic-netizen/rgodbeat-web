@@ -140,31 +140,17 @@ export default async function AccountPage() {
         <LegalNameForm initialName={getLegalName(user) || ''} />
         <RgAccountWallet wallet={wallet} />
 
-        {/* Studio Pass / App VIP Banner */}
-        <div className="p-6 rounded-2xl bg-gradient-to-r from-purple-950/40 via-[#0e0e14] to-[#0e0e14] border border-purple-500/20 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-          <div className="space-y-1.5 max-w-xl">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-mono font-bold uppercase">
-                STUDIO PASS
-              </span>
-              <span className="text-xs font-mono text-zinc-400">Acceso a App de Grabación Móvil</span>
-            </div>
-            <h2 className="text-lg font-bold text-white font-sans">
-              Graba tus voces directamente desde tu teléfono celular
-            </h2>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Cada compra de beat en RGODBEAT desbloquea 30 días de acceso a nuestra App Móvil para grabar maquetas y temas con tus audífonos sin necesidad de PC.
-            </p>
-          </div>
-
-          <div className="shrink-0 px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.08] text-center">
-            <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">
-              ESTADO DEL PASE
+        {/* Studio Pass Compact Status */}
+        <div className="px-5 py-4 rounded-2xl bg-gradient-to-r from-purple-950/35 via-[#0e0e14] to-[#0e0e14] border border-purple-500/20 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="px-2.5 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-mono font-bold uppercase">
+              STUDIO PASS
             </span>
-            <span className={`text-sm font-mono font-bold ${hasPurchases ? "text-emerald-400" : "text-amber-400"}`}>
-              {hasPurchases ? "ACTIVO (30 DÍAS)" : "DISPONIBLE CON TU PRIMER BEAT"}
-            </span>
+            <span className="text-xs font-mono text-zinc-300">App Móvil & Grabación</span>
           </div>
+          <span className={`text-xs sm:text-sm font-mono font-bold ${hasPurchases ? "text-emerald-400" : "text-amber-400"}`}>
+            {hasPurchases ? "ACTIVO (30 DÍAS)" : "INCLUIDO AL COMPRAR UN BEAT"}
+          </span>
         </div>
 
         <GiftStatusList />
@@ -173,14 +159,9 @@ export default async function AccountPage() {
         {/* Purchases Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
-            <div>
-              <h2 className="text-lg font-extrabold tracking-tight text-white uppercase font-sans">
-                Mi biblioteca: compras y licencias
-              </h2>
-              <p className="text-xs text-zinc-400">
-                Tus licencias reclamadas, compras, descargas y contratos oficiales en un solo lugar.
-              </p>
-            </div>
+            <h2 className="text-lg font-extrabold tracking-tight text-white uppercase font-sans">
+              Mis compras y licencias
+            </h2>
             <span className="text-xs font-mono px-2.5 py-1 rounded-md bg-white/[0.04] text-zinc-300 border border-white/[0.08]">
               {purchases.length} {purchases.length === 1 ? "BEAT" : "BEATS"}
             </span>

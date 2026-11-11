@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
-import { Check, CheckCircle2, ChevronDown, HardDrive, Headphones, Leaf, Loader2, Settings2, Sparkles, Trash2, X } from 'lucide-react';
+import { Check, CheckCircle2, HardDrive, Leaf, Loader2, Settings2, Sparkles, Trash2, X } from 'lucide-react';
 import { useModalFocus } from '@/hooks/useModalFocus';
 import { clearStudioUICache } from '@/lib/browser/studio-settings';
 
@@ -78,13 +78,12 @@ export function StudioSettingsModal({ lightVisuals, onChangeLightVisuals, busyRe
       </header>
 
       <div className="studio-settings-body min-h-0 overflow-y-auto overscroll-contain px-5 py-5">
-        <fieldset aria-describedby={`${modeId}-help`}>
+        <fieldset>
           <legend className="text-sm font-semibold text-zinc-100">Rendimiento visual</legend>
-          <p className="mt-1 text-xs leading-relaxed text-zinc-400">Elige cómo se ve Studio en este dispositivo.</p>
           <div className="mt-3 grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr))' }}>
             {[
-              { value: false, title: 'Estándar', text: 'Animaciones y fondos completos.', Icon: Sparkles },
-              { value: true, title: 'Ligero', text: 'Menos sombras, fondos y animaciones.', Icon: Leaf },
+              { value: false, title: 'Estándar', text: 'Completo', Icon: Sparkles },
+              { value: true, title: 'Ligero', text: 'Mínimo', Icon: Leaf },
             ].map(({ value, title, text, Icon }) => {
               const selected = lightVisuals === value;
               return <label key={title} className={`relative flex cursor-pointer flex-col rounded-2xl border p-3.5 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-amber-300 ${selected ? 'border-amber-400/70 bg-amber-400/[0.07]' : 'border-zinc-700 bg-zinc-900/50 hover:border-zinc-500'}`}>
@@ -95,14 +94,12 @@ export function StudioSettingsModal({ lightVisuals, onChangeLightVisuals, busyRe
               </label>;
             })}
           </div>
-          <p id={`${modeId}-help`} className="mt-3 flex items-start gap-2 text-xs leading-relaxed text-zinc-400"><Headphones size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-zinc-500" />El audio, tus efectos y la calidad de exportación se mantienen.</p>
         </fieldset>
 
         <section aria-labelledby="studio-cache-title" className="studio-settings-storage mt-5 border-t border-white/10 pt-5">
           <div className="flex items-center gap-2"><HardDrive size={17} aria-hidden="true" className="text-zinc-500" /><h3 id="studio-cache-title" className="text-sm font-semibold">Almacenamiento</h3></div>
           <div className="mt-3 rounded-2xl border border-zinc-700 bg-zinc-900/40 p-3.5">
             <h4 className="text-sm font-medium text-zinc-200">Caché de la interfaz</h4>
-            <p className="mt-1 text-xs leading-relaxed text-zinc-400">Elimina archivos temporales de la app. Tus proyectos, beats, grabaciones y sesión se conservan.</p>
             <button type="button" onClick={() => void clearCache()} disabled={Boolean(busyReason) || clearing} aria-describedby={busyReason ? 'studio-cache-busy' : undefined}
               className="mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-zinc-600/80 bg-zinc-800 px-3 py-2 text-sm font-semibold text-zinc-200 hover:border-zinc-500 hover:bg-zinc-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-45">
               {clearing ? <Loader2 size={16} aria-hidden="true" className="animate-spin" /> : <Trash2 size={16} aria-hidden="true" />}{clearing ? 'Limpiando…' : 'Limpiar caché'}
@@ -110,10 +107,6 @@ export function StudioSettingsModal({ lightVisuals, onChangeLightVisuals, busyRe
             {busyReason && <p id="studio-cache-busy" className="mt-2 text-xs leading-relaxed text-amber-200">{busyReason}</p>}
             <p role={cacheError ? 'alert' : 'status'} aria-atomic="true" className={`mt-2 text-xs leading-relaxed empty:hidden ${cacheError ? 'text-red-300' : 'text-emerald-300'}`}>{cacheNotice}</p>
           </div>
-          <details className="group mt-1 text-xs text-zinc-400">
-            <summary className="flex min-h-11 cursor-pointer items-center gap-2 py-2 text-zinc-300 focus-visible:outline-2 focus-visible:outline-amber-300"><ChevronDown size={14} aria-hidden="true" className="shrink-0 group-open:rotate-180" />¿Cuándo conviene limpiarla?</summary>
-            <p className="pb-1 leading-relaxed">Úsala si la interfaz muestra errores de carga. Los archivos temporales se descargarán de nuevo cuando hagan falta.</p>
-          </details>
         </section>
       </div>
 

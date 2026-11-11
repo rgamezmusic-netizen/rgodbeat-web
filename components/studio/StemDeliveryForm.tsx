@@ -128,8 +128,7 @@ export function StemDeliveryForm({ engine, beat, tracks, disabled, onBusyChange 
     finally { lock.current = false; setBusy(false); onBusyChange(false); setProgress(''); }
   };
   return <div className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4">
-    <div><h3 className="flex items-center gap-2 text-base font-bold text-white"><Send className="h-4 w-4 text-amber-400" /> Enviar voces a RGODBEAT</h3>
-      <p className="mt-1 text-xs text-zinc-400">Entrega privada para mezcla. Las voces se envían sin Auto-Tune ni efectos, alineadas desde 0:00.</p></div>
+    <div><h3 className="flex items-center gap-2 text-base font-bold text-white"><Send className="h-4 w-4 text-amber-400" /> Enviar voces a RGODBEAT</h3></div>
     {receipt ? <div role="status" className="space-y-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">
       <p className="flex items-center gap-2 font-semibold"><Check className="h-4 w-4" /> Voces recibidas en la bandeja privada de RGODBEAT.</p>
       <p className="break-all font-mono">Comprobante: {receipt.id}</p>
@@ -142,15 +141,14 @@ export function StemDeliveryForm({ engine, beat, tracks, disabled, onBusyChange 
       {status?.contactEmail && <p className="text-xs text-zinc-400">Contacto de la entrega: <span className="text-zinc-200">{status.contactEmail}</span></p>}
       <div className="rounded-lg border border-zinc-800 bg-black/30 p-3 text-xs text-zinc-300">
         <p className="font-semibold text-amber-200">{beat.bpm} BPM · {beat.key || 'Tono sin definir'} · {beat.scale || 'Escala sin definir'}</p>
-        <p className="mt-1">Se incluyen estos valores del proyecto, la duración y la afinación configurada por pista en una ficha descargable. Revisa el tono y el tempo antes de enviar.</p>
       </div>
-      <fieldset disabled={!editable} className="space-y-1"><legend className="mb-2 text-xs text-zinc-400">Selecciona las pistas que quieres enviar</legend>
+      <fieldset disabled={!editable} className="space-y-1"><legend className="mb-2 text-xs text-zinc-400">Pistas</legend>
         {recorded.map(track => <label key={track.id} className="flex items-center gap-2 rounded-lg bg-zinc-900/60 px-3 py-2 text-xs text-zinc-200">
           <input type="checkbox" checked={selected.includes(track.id)} onChange={event => setSelected(current => event.target.checked ? [...current, track.id] : current.filter(id => id !== track.id))} className="accent-amber-400" />{track.name}
         </label>)}
       </fieldset>
-      <label className="block space-y-1 text-xs text-zinc-300">Mensaje para RGODBEAT (opcional)<textarea value={message} onChange={event => setMessage(event.target.value)} maxLength={2000} rows={2} disabled={!editable} className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white" /></label>
-      <p className="text-[11px] text-zinc-400">{selectedTracks.length} {selectedTracks.length === 1 ? 'pista' : 'pistas'} · Aproximadamente {bytesLabel(estimatedBytes.reduce((sum, bytes) => sum + bytes, 0))}. Mantén la app abierta durante el envío. RAW conserva el ruido de la grabación.</p>
+      <label className="block space-y-1 text-xs text-zinc-300">Mensaje (opcional)<textarea value={message} onChange={event => setMessage(event.target.value)} maxLength={2000} rows={2} disabled={!editable} className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white" /></label>
+      <p className="text-[11px] text-zinc-400">{selectedTracks.length} {selectedTracks.length === 1 ? 'pista' : 'pistas'} · {bytesLabel(estimatedBytes.reduce((sum, bytes) => sum + bytes, 0))}</p>
       {oversized && <p role="alert" className="text-xs text-amber-200">Máximo 128 MB por pista y 768 MB por entrega. Selecciona menos pistas o acorta el proyecto.</p>}
       {status && !status.available && <p className="text-xs text-amber-200">El almacenamiento de entregas aún no está configurado.</p>}
       {status?.available && !status.emailNotifications && <p className="text-[11px] text-zinc-400">La entrega llegará al panel privado. El aviso por correo está pendiente de configuración.</p>}

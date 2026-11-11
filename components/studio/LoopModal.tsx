@@ -69,11 +69,8 @@ export const LoopModal: React.FC<LoopModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold font-mono uppercase tracking-wider text-zinc-100">
-                CONFIGURACIÓN DE LOOP (BARS)
+                LOOP (BARS)
               </h3>
-              <p className="text-[10px] font-mono text-zinc-400">
-                Repetición automática por compases para ensayo y grabación
-              </p>
             </div>
           </div>
           <button

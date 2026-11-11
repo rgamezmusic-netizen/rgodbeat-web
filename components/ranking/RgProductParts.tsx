@@ -278,7 +278,7 @@ export function ChartRow({ entry, kind }: { entry: ChartEntry; kind: 'tracks' | 
     <div className={styles.points}>{formatRg(entry.score)} <small>pts</small><Movement movement={entry.movement} isNew={entry.isNew} /></div>
   </Link>;
 }
-export function ArtistRewards({ rewards, tail }: { rewards: ChartData['rewards']; tail?: ChartData['rewardTail'] }) {
+export function ArtistRewards({ rewards }: { rewards: ChartData['rewards']; tail?: ChartData['rewardTail'] }) {
   return <section aria-label="Premios del Top 3 de artistas"><p className={styles.eyebrow}>TOP 3 ARTISTS · PREMIOS DE TEMPORADA</p><div className={styles.rewardGrid}>
     {rewards.map(reward => {
       const isTop3 = reward.place === 1 || reward.place === 2 || reward.place === 3;
@@ -294,7 +294,7 @@ export function ArtistRewards({ rewards, tail }: { rewards: ChartData['rewards']
         </article>
       );
     })}
-  </div>{tail && <p className={styles.muted}>#{tail.firstPlace}–#{tail.lastPlace} comparten el reward pool restante, con peso descendente por posición. El pool real varía por temporada.</p>}</section>;
+  </div></section>;
 }
 
 export function HallOfFame({
@@ -320,9 +320,6 @@ export function HallOfFame({
           <p className={styles.eyebrow}>SALÓN DE LA FAMA · MEDALLERO INFINITO</p>
           <h2>LOS CAMPEONES QUEDAN PARA SIEMPRE.</h2>
         </div>
-        <p className={styles.muted}>
-          El RG Top 23 se reinicia cada 14 días, pero cada Trofeo Pieza de RG Studio (#1), Medalla de Plata (#2) y Medalla de Bronce (#3) se acumula aquí sin límite.
-        </p>
       </div>
 
       {/* Showcase of the 3 Official RG Studio Pieces */}
@@ -332,7 +329,6 @@ export function HallOfFame({
           <div>
             <span className={styles.eyebrow}>1.ER PUESTO · #1</span>
             <strong>Trofeo Pieza de RG Studio</strong>
-            <small>Micrófono de Condensador RG en Oro 24K sobre pedestal de vinilo oficial.</small>
           </div>
         </div>
         <div className={`${styles.hofPieceCard} ${styles.hofPieceSilver}`}>
@@ -340,7 +336,6 @@ export function HallOfFame({
           <div>
             <span className={styles.eyebrow}>2.º PUESTO · #2</span>
             <strong>Medalla de Plata RG Studio</strong>
-            <small>Disco de estudio en plata pulida para el subcampeón de temporada.</small>
           </div>
         </div>
         <div className={`${styles.hofPieceCard} ${styles.hofPieceBronze}`}>
@@ -348,7 +343,6 @@ export function HallOfFame({
           <div>
             <span className={styles.eyebrow}>3.ER PUESTO · #3</span>
             <strong>Medalla de Bronce RG Studio</strong>
-            <small>Relieve acústico en bronce para el tercer lugar oficial del podio.</small>
           </div>
         </div>
       </div>
@@ -358,7 +352,6 @@ export function HallOfFame({
         <div className={styles.hofLiveBox}>
           <div className={styles.hofSubHeader}>
             <span className={styles.eyebrow}>PODIO EN DISPUTA · SEASON {String(seasonNumber).padStart(2, '0')}</span>
-            <span className={styles.hofSubNote}>Posiciones actuales rumbo al Salón de la Fama</span>
           </div>
           <div className={styles.hofPodiumGrid}>
             {livePodium.map(contender => {
@@ -393,7 +386,6 @@ export function HallOfFame({
       <div className={styles.hofBoard}>
         <div className={styles.hofSubHeader}>
           <span className={styles.eyebrow}>TOP HISTÓRICO DE MEDALLAS (ACUMULATIVO INFINITO)</span>
-          <span className={styles.hofSubNote}>Se suma al cierre de cada temporada</span>
         </div>
         {entries.length > 0 ? (
           <div className={styles.hofList}>
@@ -432,9 +424,7 @@ export function HallOfFame({
           </div>
         ) : (
           <div className={styles.hofEmpty}>
-            <p>
-              Al finalizar la temporada actual, el <strong>#1 (Trofeo Pieza de RG Studio)</strong>, <strong>#2 (Medalla de Plata)</strong> y <strong>#3 (Medalla de Bronce)</strong> quedarán registrados aquí permanentemente y sumarán medallas temporada tras temporada.
-            </p>
+            <p>El Top 3 de cada temporada cerrada acumula sus medallas aquí.</p>
           </div>
         )}
       </div>
@@ -460,11 +450,11 @@ export function ArtistTrophyShowcase({
     <section className={styles.trophyShowcase} aria-label="Vitrina de Trofeos y Medallas RG Studio">
       <div className={styles.interactionHeader}>
         <span className={styles.eyebrow}>VITRINA DE HONOR · SALÓN DE LA FAMA RG STUDIO</span>
-        <span className={styles.interactionSub}>
-          {resolved.total > 0
-            ? `${formatRg(resolved.total)} ${resolved.total === 1 ? 'GALARDÓN OFICIAL' : 'GALARDONES OFICIALES'}`
-            : 'COLECCIÓN ACUMULATIVA DE TEMPORADAS'}
-        </span>
+        {resolved.total > 0 && (
+          <span className={styles.interactionSub}>
+            {`${formatRg(resolved.total)} ${resolved.total === 1 ? 'GALARDÓN OFICIAL' : 'GALARDONES OFICIALES'}`}
+          </span>
+        )}
       </div>
 
       {isLiveTop3 && (
@@ -527,10 +517,10 @@ export function Sponsors({ sponsors }: { sponsors: ChartData['sponsors'] }) {
   })}</div></section>;
 }
 export function HowToCompete() {
-  return <section className={styles.section}><p className={styles.eyebrow}>TU MÚSICA. TU TEMPORADA.</p><h2>GRABA. PUBLICA. GANA.</h2><div className={styles.learnGrid}>
-    <div><span className={styles.eyebrow}>01 / GRABA</span><h3>Empieza en Studio.</h3><p>Elige tu beat favorito del catálogo de RGodbeat y graba tus voces directamente en Studio.</p></div>
-    <div><span className={styles.eyebrow}>02 / PUBLICA</span><h3>Llega a YouTube y suma puntos.</h3><p>Publica tu tema desde Studio en el canal oficial. Las tres primeras canciones de cada bloque de 12 horas suman 23, 7 y 4 puntos, y la misma cantidad en RG. Un mismo audio recibe una sola recompensa.</p></div>
-    <div><span className={styles.eyebrow}>03 / GANA</span><h3>Compite por el Top 3.</h3><p>Los tres primeros artistas ganan días Premium y parte del Reward Pool. Cada 14 días, una nueva oportunidad.</p></div>
+  return <section className={styles.section}><h2>GRABA. PUBLICA. GANA.</h2><div className={styles.learnGrid}>
+    <div><span className={styles.eyebrow}>01 / GRABA</span><h3>Empieza en Studio.</h3></div>
+    <div><span className={styles.eyebrow}>02 / PUBLICA</span><h3>23, 7 y 4 pts + RG en YouTube.</h3></div>
+    <div><span className={styles.eyebrow}>03 / GANA</span><h3>Top 3 cada 14 días + Medallas.</h3></div>
   </div><div className={styles.links}><Link className={styles.button} href="/studio">PUBLICAR EN RGODBEAT STUDIO</Link></div></section>;
 }
 export function Performance({ data, seasonNumber }: { data: SeasonPerformance; seasonNumber: number }) {

@@ -10,7 +10,6 @@ export function ServicesSection() {
       <SectionHeading
         tag="SERVICIOS // PRODUCCIÓN Y SONIDO"
         title="Servicios para tu música"
-        description="Producción, mix y master, desarrollo artístico y proyectos audiovisuales. Consulta el alcance de tu proyecto antes de contratar."
         action={
           <ContactButton subject="Consulta de servicios" variant="outline" size="sm">
             CONSULTAR MI PROYECTO
@@ -51,10 +50,6 @@ export function ServicesSection() {
                   )}
                 </div>
               </div>
-
-              <p className="text-sm text-zinc-400 font-normal leading-relaxed mb-6">
-                {service.description}
-              </p>
 
               <div className="space-y-2 pt-4 border-t border-white/[0.06]">
                 {service.features.map((feat: string, idx: number) => (

@@ -25,8 +25,8 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
           <InteractionStrip stats={tStats} kind="tracks" />
         </div>
       </Link>;
-    }) : <p className={styles.muted}>Su próximo track todavía está por llegar.</p>}<p className={styles.footnote}>Hasta 24 tracks publicados. Los borradores son privados.</p></section>
-    <section className={styles.section}><p className={styles.eyebrow}>SU HISTORIA EN EL CHART</p><h2>Cada temporada deja huella.</h2>{data.history.length ? data.history.map(row => {
+    }) : <p className={styles.muted}>Todavía sin tracks publicados.</p>}</section>
+    <section className={styles.section}><p className={styles.eyebrow}>SU HISTORIA EN EL CHART</p><h2>Temporadas completadas</h2>{data.history.length ? data.history.map(row => {
       const isTop3 = row.rank === 1 || row.rank === 2 || row.rank === 3;
       return (
         <p key={row.seasonNumber} className={`${styles.trackLink} ${styles.historyRow}`}>
@@ -39,6 +39,6 @@ export default async function ArtistPage({ params }: { params: Promise<{ slug: s
           )}
         </p>
       );
-    }) : <p className={styles.muted}>Todavía no hay posiciones de temporadas completadas.</p>}<p className={styles.footnote}>Resultados históricos de temporadas completadas y medallas acumuladas.</p></section><RgMemberCard />
+    }) : <p className={styles.muted}>Sin temporadas cerradas todavía.</p>}</section><RgMemberCard />
   </ProductFrame>;
 }

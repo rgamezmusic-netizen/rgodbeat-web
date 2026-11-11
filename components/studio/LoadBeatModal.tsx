@@ -8,7 +8,6 @@ import {
   Sparkles,
   Check,
   Trash2,
-  ShieldCheck,
   Database,
   Play,
   Square,
@@ -494,7 +493,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                   </span>
                 </h3>
                 <p className="text-[11px] font-mono text-zinc-400">
-                  Infraestructura permanente en tu dispositivo • {savedCustomBeats.length} / {MAX_SAVED_BEATS} ocupados
+                  {savedCustomBeats.length} / {MAX_SAVED_BEATS} ocupados
                 </p>
               </div>
             </div>
@@ -516,10 +515,10 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
             <div className="flex items-center justify-between text-[10px] font-mono mb-1">
               <span className="text-zinc-400 flex items-center gap-1">
                 <Database className="w-3 h-3 text-amber-400" />
-                <span>Capacidad Fija: 23 Slots Físicos</span>
+                <span>Slots</span>
               </span>
               <span className={`font-bold ${isStorageFull ? 'text-rose-400' : 'text-amber-400'}`}>
-                {savedCustomBeats.length} de {MAX_SAVED_BEATS} guardados
+                {savedCustomBeats.length} / {MAX_SAVED_BEATS}
               </span>
             </div>
             <div className="w-full h-2 rounded-full bg-zinc-800 overflow-hidden flex">
@@ -577,17 +576,12 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
             <div className="space-y-3">
               {statusMsg && <p role="status" className="text-xs font-mono text-amber-300 bg-amber-950/40 p-2 rounded-lg border border-amber-500/30">{statusMsg}</p>}
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xs font-bold font-mono text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
-                    TOP 23 RANKING SEMANAL EN VIVO
-                  </h3>
-                  <p className="text-[10px] text-zinc-400 font-mono">
-                    Reproduce, vota por tus favoritos (1 voto semanal) o carga el beat al estudio.
-                  </p>
-                </div>
+                <h3 className="text-xs font-bold font-mono text-zinc-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
+                  TOP 23 SEMANAL
+                </h3>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 shrink-0">
-                  {rankingBeats.length} Beats Activos
+                  {rankingBeats.length} Beats
                 </span>
               </div>
 
@@ -737,11 +731,7 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
               {statusMsg && <p role="status" className="text-sm text-amber-300">{statusMsg}</p>}
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold font-mono text-zinc-300 uppercase tracking-wider">
-                  RACK FÍSICO (23 SLOTS INDIVIDUALES)
-                </span>
-                <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" />
-                  Almacenamiento Local Seguro
+                  23 SLOTS
                 </span>
               </div>
 
@@ -927,14 +917,9 @@ export const LoadBeatModal: React.FC<LoadBeatModalProps> = ({
                 </p>
                 <p className="text-xs text-zinc-400 mt-1">
                   {isStorageFull
-                    ? 'Debes eliminar una pista en la pestaña "Mis 23 Slots" para liberar un slot.'
-                    : 'Compatible con WAV, MP3, FLAC, M4A • Se guarda de forma permanente en tu dispositivo'}
+                    ? 'Elimina un beat en Slots para liberar espacio.'
+                    : 'WAV, MP3, FLAC, M4A'}
                 </p>
-
-                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] font-mono text-emerald-300">
-                  <Database className="w-3 h-3 text-emerald-400" />
-                  <span>Persistencia IndexedDB + Detección de Tonalidad, Relativa y BPM</span>
-                </div>
 
                 {statusMsg && (
                   <p className="text-xs font-mono text-amber-300 mt-2 font-medium bg-amber-950/40 p-2 rounded-lg border border-amber-500/30">

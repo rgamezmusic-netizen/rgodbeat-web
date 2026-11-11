@@ -37,12 +37,9 @@ export const BeatFXModal: React.FC<BeatFXModalProps> = ({
           {/* LOW PASS FILTER */}
           <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800">
             <div className="flex items-center justify-between mb-2">
-              <div>
-                <p className="text-xs font-bold font-mono uppercase tracking-wider text-amber-300">
-                  LOW PASS FILTER
-                </p>
-                <p className="text-[10px] text-zinc-500">Muffled / underwater club effect</p>
-              </div>
+              <p className="text-xs font-bold font-mono uppercase tracking-wider text-amber-300">
+                LOW PASS FILTER
+              </p>
               <span className="text-[11px] font-mono text-zinc-400 tabular-nums">
                 {fx.lowPass >= 19000 ? 'OPEN' : `${Math.round(fx.lowPass)} Hz`}
               </span>
@@ -67,12 +64,9 @@ export const BeatFXModal: React.FC<BeatFXModalProps> = ({
           {/* HIGH PASS FILTER */}
           <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800">
             <div className="flex items-center justify-between mb-2">
-              <div>
-                <p className="text-xs font-bold font-mono uppercase tracking-wider text-amber-300">
-                  HIGH PASS FILTER
-                </p>
-                <p className="text-[10px] text-zinc-500">Cuts sub bass & 808 for vocal room</p>
-              </div>
+              <p className="text-xs font-bold font-mono uppercase tracking-wider text-amber-300">
+                HIGH PASS FILTER
+              </p>
               <span className="text-[11px] font-mono text-zinc-400 tabular-nums">
                 {fx.highPass <= 25 ? 'FLAT' : `${Math.round(fx.highPass)} Hz`}
               </span>

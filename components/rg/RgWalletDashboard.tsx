@@ -133,9 +133,7 @@ export function RgWalletDashboard({ initialWallet }: { initialWallet: RgWalletSu
     <header className="rounded-3xl border border-amber-300/20 bg-gradient-to-br from-amber-300/[0.08] to-black/30 p-6 sm:p-9">
       <p className="text-xs font-mono tracking-[0.2em] text-amber-200">MI RG WALLET</p>
       <h1 className="mt-3 text-5xl font-extrabold tracking-tight tabular-nums sm:text-6xl">{number(wallet.balanceRg)} <span className="text-xl text-amber-200">RG</span></h1>
-      <p className="mt-4 text-sm text-zinc-300">{wallet.redemptionEnabled ? '100 RG = US$1 en licencias de beats.' : 'Tus RG se conservan en tu wallet entre temporadas.'}</p>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">{wallet.purchasesEnabled || wallet.transfersEnabled ? 'Gana RG publicando, compra saldo o apoya a un artista.' : 'Gana RG publicando tus canciones desde Studio.'} El saldo se conserva entre temporadas; los puntos del Top compiten por separado.</p>
-      {!wallet.redemptionEnabled && <p className="mt-3 text-xs text-zinc-400">El canje de RG por licencias todavía no está disponible.</p>}
+      {wallet.redemptionEnabled && <p className="mt-3 text-sm text-zinc-300">100 RG = US$1</p>}
       <Link href="/beats" className={`${button} mt-6 inline-block`}>ELEGIR UN BEAT →</Link>
     </header>
     <div aria-live="polite" className="space-y-3">
@@ -147,22 +145,20 @@ export function RgWalletDashboard({ initialWallet }: { initialWallet: RgWalletSu
     {status && <section className="rounded-2xl border border-white/10 bg-white/[0.025] p-6">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-bold">Publica y gana</h2><span className="text-sm text-zinc-400">Temporada {status.seasonNumber} · {number(status.seasonPoints)} puntos</span></div>
       <div className="mt-5 grid grid-cols-3 gap-3">{[23, 7, 4].map((amount, i) => <div key={amount} className={`rounded-xl border p-4 text-center ${i < status.rewarded ? 'border-emerald-400/25 bg-emerald-400/5' : 'border-amber-300/20 bg-amber-300/5'}`}><p className="text-xs text-zinc-400">CANCIÓN {i + 1}</p><p className="mt-2 text-2xl font-bold">{amount} <span className="text-xs text-amber-200">RG</span></p><p className="mt-1 text-xs text-zinc-400">+{amount} puntos {i < status.rewarded ? '✓' : ''}</p></div>)}</div>
-      <p suppressHydrationWarning className="mt-4 text-sm text-zinc-300">{status.remaining > 0 ? `${status.remaining} premios disponibles en este bloque.` : 'Ya recibiste los tres premios de este bloque.'} Se renuevan en {countdown}.</p>
-      <p className="mt-2 text-xs leading-relaxed text-zinc-500">Tres canciones distintas por cuenta en cada bloque fijo de 12 horas. Hasta 68 RG y 68 puntos en los dos bloques del día de recompensas. Volver a subir el mismo archivo no genera otro premio.</p>
+      <p suppressHydrationWarning className="mt-4 text-sm text-zinc-300">{status.remaining > 0 ? `${status.remaining} disponibles en este bloque.` : 'Bloque completado.'} Renueva en {countdown}.</p>
       <Link href="/studio" className="mt-4 inline-block text-sm font-bold text-amber-200">ABRIR STUDIO →</Link>
     </section>}
     <div className="grid gap-6 lg:grid-cols-2">
-      <section className="rounded-2xl border border-white/10 p-6"><h2 className="text-lg font-bold">Comprar RG</h2><p className="mt-2 text-sm text-zinc-400">{wallet.purchasesEnabled ? 'Elige la cantidad. Comprar RG no suma puntos al Top.' : 'Comprar RG no suma puntos al Top.'}</p>
+      <section className="rounded-2xl border border-white/10 p-6"><h2 className="text-lg font-bold">Comprar RG</h2>
         {!wallet.purchasesEnabled && <p role="status" className="mt-5 rounded-xl border border-white/10 p-4 text-sm text-zinc-400">La compra de RG todavía no está disponible.</p>}
         <fieldset disabled={!wallet.purchasesEnabled} className={!wallet.purchasesEnabled ? 'hidden' : undefined}>
         <div className="mt-5 grid grid-cols-2 gap-2">{[500, 1000, 2000, 5000].map(n => <button key={n} disabled={busy} onClick={() => setBuyAmount(String(n))} aria-pressed={buyAmount === String(n)} className={`rounded-xl border px-3 py-3 text-left ${buyAmount === String(n) ? 'border-amber-300/60 bg-amber-300/10' : 'border-white/10 hover:border-white/30'}`}><strong className="block text-sm">{number(n)} RG</strong><span className="text-xs text-zinc-400">US${n / 100}</span></button>)}</div>
         <label className="mt-5 block text-sm text-zinc-300">Cantidad de RG<input className={input} type="number" inputMode="numeric" min="500" max="1000000" step="1" value={buyAmount} onChange={e => setBuyAmount(e.target.value)} disabled={busy} /></label>
         <p className="mt-3 text-sm text-amber-100">Total: US${Number.isFinite(Number(buyAmount)) ? (Number(buyAmount) / 100).toFixed(2) : '—'}</p>
         <button className={`${button} mt-5 w-full`} disabled={busy || !wallet.purchasesEnabled || !Number.isSafeInteger(Number(buyAmount)) || Number(buyAmount) < 500 || Number(buyAmount) > 1000000} onClick={() => void buy()}>{busy ? 'PROCESANDO…' : 'CONTINUAR AL PAGO SEGURO'}</button>
-        <p className="mt-3 text-xs leading-relaxed text-zinc-500">Compra mínima: US$5. RG es saldo interno de RGodbeat para licencias. No se retira como dinero ni se negocia fuera de la plataforma.</p>
         </fieldset>
       </section>
-      <section className="rounded-2xl border border-white/10 p-6"><h2 className="text-lg font-bold">Apoyar a un artista</h2><p className="mt-2 text-sm text-zinc-400">{wallet.transfersEnabled ? 'Envía RG a su wallet para que pueda elegir sus beats. El envío no cambia el Top.' : 'El apoyo con RG no cambia las posiciones del Top.'}</p>
+      <section className="rounded-2xl border border-white/10 p-6"><h2 className="text-lg font-bold">Apoyar a un artista</h2>
         {!wallet.transfersEnabled && <p role="status" className="mt-5 rounded-xl border border-white/10 p-4 text-sm text-zinc-400">Los envíos de RG todavía no están disponibles.</p>}
         <fieldset disabled={!wallet.transfersEnabled} className={!wallet.transfersEnabled ? 'hidden' : undefined}>
         <label className="mt-5 block text-sm text-zinc-300">Buscar artista<input className={input} value={query} maxLength={60} disabled={busy} placeholder="Nombre o @artista" onChange={e => { setQuery(e.target.value); setArtist(null); setArtists([]); setConfirmSend(false); }} /></label>

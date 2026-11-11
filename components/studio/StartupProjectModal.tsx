@@ -96,9 +96,6 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
                   <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
                     Continuar Sesión
                   </h3>
-                  <p className="text-[10px] font-mono text-zinc-400">
-                    Proyecto RG guardado en tu memoria
-                  </p>
                 </div>
               </div>
               <span className="text-xs text-amber-400 font-mono font-bold group-hover:translate-x-0.5 transition-transform">
@@ -148,9 +145,6 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
                         .rgodbeat
                       </span>
                     </h3>
-                    <p className="text-[10px] font-mono text-zinc-400">
-                      Cargar paquete completo con vinilo RG
-                    </p>
                   </div>
                 </div>
                 <span className="text-xs text-purple-400 group-hover:text-purple-300 font-mono font-bold group-hover:translate-x-0.5 transition-transform">

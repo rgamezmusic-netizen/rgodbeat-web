@@ -18,11 +18,6 @@ export function CtaSection() {
             Ready to record your next breakthrough?
           </h2>
 
-          <p className="text-sm sm:text-base text-zinc-400 font-normal leading-relaxed">
-            Browse high-definition instrumentals ready for immediate digital delivery, 
-            or get in touch for custom production and executive album direction.
-          </p>
-
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button href="/beats" variant="primary" size="lg" className="w-full sm:w-auto">
               EXPLORE BEAT CATALOG

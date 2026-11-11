@@ -1945,9 +1945,9 @@ export default function App() {
     if (!next) {
       await handleStopRecord();
       engine?.releaseMicrophone();
-      showToast('Modo Escucha Hi-Fi activado: Micrófono desconectado para reproducir sin filtros de llamada.', 'info');
+      showToast('Micrófono en reposo', 'info');
     } else {
-      showToast('Botón REC reactivado: Listo para grabar nuevas tomas.', 'info');
+      showToast('REC listo', 'info');
     }
   };
 
@@ -3151,7 +3151,7 @@ export default function App() {
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm"
           role="dialog" aria-modal="true" aria-label="Abriendo proyecto" aria-busy="true">
           <p className="rounded-2xl border border-amber-500/40 bg-zinc-950 p-6 text-white" role="status">
-            Abriendo proyecto… Espera a que se carguen el beat y las voces.
+            Abriendo proyecto…
           </p>
         </div>
       )}
@@ -3233,7 +3233,6 @@ export default function App() {
                 className="underline underline-offset-2 text-zinc-400 disabled:opacity-50 cursor-pointer"
                 onClick={handleRestoreLocalPrevious}>Recuperar anterior local</button>}
             </div>
-            <p className="text-zinc-500">Nube: 2 proyectos. Guarda archivos .rgodbeat en tu dispositivo para conservar más proyectos.</p>
             {startupError && <p className="text-amber-300">{startupError} <button className="underline cursor-pointer" onClick={() => window.location.reload()}>Reintentar</button></p>}
           </div>
         </details>
@@ -3248,11 +3247,10 @@ export default function App() {
             <div className="flex items-center gap-2.5 min-w-0">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
               <span className="truncate sm:whitespace-normal font-sans">
-                <strong>Atención:</strong> Tu suscripción al Studio vence en{' '}
+                Tu pase vence en{' '}
                 <span className="text-amber-300 font-bold underline font-mono">
                   {accessStatus.daysRemaining} {accessStatus.daysRemaining === 1 ? 'día' : 'días'}
                 </span>
-                . Renueva para mantener las funciones premium. Tu respaldo no se borra al vencer el pase.
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0 ml-3">

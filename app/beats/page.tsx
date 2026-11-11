@@ -50,11 +50,6 @@ export default async function BeatsPage() {
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white uppercase">
             BEATS
           </h1>
-
-          <p className="text-base sm:text-lg text-zinc-400 font-normal leading-relaxed">
-            Production-ready sounds and pristine sonic textures designed for your signature sound.
-            All instrumentals are mixed, mastered, and delivered with uncompressed stems.
-          </p>
         </div>
 
         {fetchError ? (

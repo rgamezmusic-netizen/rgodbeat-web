@@ -184,11 +184,6 @@ export const UnlockPassModal: React.FC<UnlockPassModalProps> = ({
                 ? 'DESBLOQUEA LAS 4 PISTAS VOCALES'
                 : 'ACTIVA TU ACCESO COMPLETO AL STUDIO'}
             </h2>
-            <p className="text-xs text-zinc-400">
-              {activeTab === 'login' || activeTab === 'signup'
-                ? 'Inicia sesión para sincronizar tus pases de 30 días, pases regalados y guardar tu progreso.'
-                : 'Disfruta de multipista vocal, grabación con cualquier beat y exportación sin pérdidas.'}
-            </p>
           </div>
 
           <button

@@ -681,7 +681,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
             </details>
             <label className="flex min-h-11 items-start gap-2.5 text-xs leading-relaxed text-zinc-300"><input type="checkbox" checked={hasRights} onChange={event => setHasRights(event.target.checked)} disabled={isBusy} required className="mt-0.5 h-4 w-4 shrink-0 accent-amber-400" />Tengo los derechos del audio y la imagen para publicar en YouTube.</label>
           </form> : view === 'advanced' ? <div className="space-y-3">
-            <h3 tabIndex={-1} className="mb-4 text-sm text-zinc-400 outline-none">Descarga tus pistas o envíalas a mezclar.</h3>
+            <h3 tabIndex={-1} className="sr-only outline-none">Más opciones</h3>
             <button type="button" onClick={() => void handleExportAllRawStems()} disabled={!beat || !hasRecordings || isBusy} className={`${buttonClass} justify-start border border-white/10 bg-white/5 hover:bg-white/10`}><Mic size={18} className="text-blue-300" />{isExportingRawStems ? 'Preparando voces…' : 'Voces sin efectos'}</button>
             <button type="button" onClick={() => void handleExportAllWetStems()} disabled={!beat || !hasRecordings || isBusy} className={`${buttonClass} justify-start border border-white/10 bg-white/5 hover:bg-white/10`}><Sliders size={18} className="text-purple-300" />{isExportingWetStems ? 'Preparando voces…' : 'Voces con efectos'}</button>
             <button type="button" onClick={() => void handleExportBeatStem()} disabled={!beat || isBusy} className={`${buttonClass} justify-start border border-white/10 bg-white/5 hover:bg-white/10`}><Music size={18} className="text-amber-300" />{isExportingBeatStem ? 'Preparando instrumental…' : 'Solo instrumental'}</button>

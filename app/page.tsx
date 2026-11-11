@@ -16,7 +16,6 @@ function ExploreByFlow() {
           <SectionHeading
             tag="CURATED SOUNDS // GENRES"
             title="Explore By Flow"
-            description="Find the exact atmospheric cadence and tempo pocket tailored for your next record."
           />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
