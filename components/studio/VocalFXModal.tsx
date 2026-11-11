@@ -308,11 +308,11 @@ export const VocalFXModal: React.FC<VocalFXModalProps> = ({
             </div>
           </div>
 
-          {/* SECTION 2: EQUALIZER */}
+          {/* SECTION 2: POST-FX 3-BAND BALANCE */}
           <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold font-mono uppercase tracking-wider text-amber-300">
-                2. EQUALIZER
+                2. BALANCE 3 BANDAS (POST-FX)
               </span>
               <div className="flex items-center gap-1.5">
                 {fx.eq.highCut && (
