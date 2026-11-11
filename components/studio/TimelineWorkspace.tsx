@@ -441,7 +441,14 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   ) => {
     if (isScrubbingPlayhead || isRecording) return;
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('input')) return;
+    if (
+      target.closest('button') ||
+      target.closest('input') ||
+      target.closest('[data-resize-handle]') ||
+      target.closest('[data-fade-handle]')
+    ) {
+      return;
+    }
 
     e.stopPropagation();
     if (!('touches' in e)) {
@@ -455,22 +462,28 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       return;
     }
 
+    // Safety edge zone: If the user clicked within 20px of either edge,
+    // they are in the trim/resize grab zone. Never initiate clip dragging here!
+    const clipElem = e.currentTarget as HTMLElement;
+    if (clipElem && clipElem.getBoundingClientRect) {
+      const rect = clipElem.getBoundingClientRect();
+      const clickX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const distFromLeft = clickX - rect.left;
+      const distFromRight = rect.right - clickX;
+      if (distFromLeft <= 20 || distFromRight <= 20) {
+        return;
+      }
+    }
+
     const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const initialScrollLeft = containerRef.current?.scrollLeft ?? 0;
     const initialOffset = clip.startBeatOffset;
     const minOffset = -Math.max(0, (clip.buffer?.duration || clip.duration || 0) - 0.05);
     const activeTrackId = track.id;
     const activeClipId = clip.id;
+    let isDragActive = false;
     let moved = false;
     let latestOffset = initialOffset;
-
-    setIsDraggingClip(true);
-    setDragClipId(activeClipId);
-    setDragPreviewOffset(initialOffset);
-
-    if (onStartDragMove) {
-      onStartDragMove();
-    }
 
     const handleMove = (moveEvt: MouseEvent | TouchEvent) => {
       if ('touches' in moveEvt && moveEvt.cancelable) {
@@ -481,9 +494,23 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
         : moveEvt.clientX;
       const currentScrollLeft = containerRef.current?.scrollLeft ?? initialScrollLeft;
       const deltaPx = (clientX - startX) + (currentScrollLeft - initialScrollLeft);
-      if (Math.abs(deltaPx) >= 1) {
+
+      // 6-pixel deadzone: prevents accidental small gestures or taps from moving the take!
+      if (!isDragActive) {
+        if (Math.abs(deltaPx) < 6) {
+          return;
+        }
+        isDragActive = true;
         moved = true;
+        setIsDraggingClip(true);
+        setDragClipId(activeClipId);
+        setDragPreviewOffset(initialOffset);
+        if (onStartDragMove) {
+          onStartDragMove();
+        }
       }
+
+      moved = true;
       const deltaSec = deltaPx / basePixelsPerSecRef.current;
       const rawOffset = Math.max(minOffset, initialOffset + deltaSec);
       const beatSec = secPerBeatRef.current;
@@ -507,11 +534,13 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       window.removeEventListener('touchend', handleEnd);
       window.removeEventListener('touchcancel', handleEnd);
 
-      setIsDraggingClip(false);
-      setDragClipId(null);
-      setDragPreviewOffset(null);
+      if (isDragActive) {
+        setIsDraggingClip(false);
+        setDragClipId(null);
+        setDragPreviewOffset(null);
+      }
 
-      if (moved) {
+      if (moved && isDragActive) {
         justDraggedRef.current = true;
         setTimeout(() => {
           justDraggedRef.current = false;
@@ -522,11 +551,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           activeClipId,
           false
         );
+        if (onCommitDragMoveRef.current) {
+          onCommitDragMoveRef.current(activeTrackId, initialOffset, activeClipId);
+        }
       }
 
-      if (onCommitDragMoveRef.current) {
-        onCommitDragMoveRef.current(activeTrackId, initialOffset, activeClipId);
-      }
       if (isPlayingRef.current) {
         onSeekRef.current(currentTimeRef.current);
       }
@@ -544,19 +573,6 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const activeSelectedClip = selectedTrackClips.find((c) => c.id === selectedClipId) || selectedTrackClips[selectedTrackClips.length - 1];
   const canCutSelectedClip = Boolean(activeSelectedClip && !isRecording &&
     currentTime > activeSelectedClip.startBeatOffset && currentTime < activeSelectedClip.startBeatOffset + activeSelectedClip.duration);
-
-  // Nudge adjustment (supports shifting both forward and backward/earlier in time)
-  const handleNudge = (deltaSec: number) => {
-    if (!selectedClipTrack || !activeSelectedClip || activeSelectedClip.isLocked || isRecording) return;
-    const minOffset = -Math.max(0, (activeSelectedClip.buffer?.duration || activeSelectedClip.duration || 0) - 0.05);
-    const newOffset = Math.max(minOffset, activeSelectedClip.startBeatOffset + deltaSec);
-    onMoveTake(selectedClipTrack.id, Math.round(newOffset * 1000) / 1000, activeSelectedClip.id, true);
-  };
-
-  const handleSnapToPlayhead = () => {
-    if (!selectedClipTrack || !activeSelectedClip || activeSelectedClip.isLocked || isRecording) return;
-    onMoveTake(selectedClipTrack.id, Math.max(0, currentTime), activeSelectedClip.id, true);
-  };
 
   // Generate Musical Grid ticks: Downbeats (Tiempos Fuertes) & Sub-beats (2, 3, 4)
   interface GridBeatTick {
@@ -1460,34 +1476,41 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                         {/* Fade In Handle (Top-left handle) */}
                         {!clip.isLocked && onSetClipFades && (
                           <div
+                            data-fade-handle="in"
                             onMouseDown={(e) => handleFadeHandleMouseDown(e, track, clip, 'in')}
                             onTouchStart={(e) => handleFadeHandleMouseDown(e, track, clip, 'in')}
-                            className="absolute top-0 z-30 w-3.5 h-3.5 -translate-x-1.5 -translate-y-0.5 rounded-full bg-amber-400 hover:bg-amber-300 border border-black shadow cursor-ew-resize opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-opacity"
-                            style={{ left: `${Math.max(2, (clip.fadeInSec || 0) * basePixelsPerSec)}px` }}
+                            className="absolute top-0 z-30 w-4 h-4 -translate-x-2 -translate-y-1 rounded-full bg-amber-400 hover:bg-amber-300 border-2 border-black shadow cursor-ew-resize opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-opacity select-none touch-none flex items-center justify-center"
+                            style={{ left: `${Math.max(4, (clip.fadeInSec || 0) * basePixelsPerSec)}px` }}
                             title={`Fundido entrada: ${(clip.fadeInSec || 0).toFixed(2)}s (Arrastra horizontalmente)`}
-                          />
+                          >
+                            <div className="w-1 h-1 rounded-full bg-black/70" />
+                          </div>
                         )}
 
                         {/* Fade Out Handle (Top-right handle) */}
                         {!clip.isLocked && onSetClipFades && (
                           <div
+                            data-fade-handle="out"
                             onMouseDown={(e) => handleFadeHandleMouseDown(e, track, clip, 'out')}
                             onTouchStart={(e) => handleFadeHandleMouseDown(e, track, clip, 'out')}
-                            className="absolute top-0 z-30 w-3.5 h-3.5 translate-x-1.5 -translate-y-0.5 rounded-full bg-amber-400 hover:bg-amber-300 border border-black shadow cursor-ew-resize opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-opacity"
-                            style={{ right: `${Math.max(2, (clip.fadeOutSec || 0) * basePixelsPerSec)}px` }}
+                            className="absolute top-0 z-30 w-4 h-4 translate-x-2 -translate-y-1 rounded-full bg-amber-400 hover:bg-amber-300 border-2 border-black shadow cursor-ew-resize opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-opacity select-none touch-none flex items-center justify-center"
+                            style={{ right: `${Math.max(4, (clip.fadeOutSec || 0) * basePixelsPerSec)}px` }}
                             title={`Fundido salida: ${(clip.fadeOutSec || 0).toFixed(2)}s (Arrastra horizontalmente)`}
-                          />
+                          >
+                            <div className="w-1 h-1 rounded-full bg-black/70" />
+                          </div>
                         )}
 
                         {/* Left Edge Resize Handle (Trim / Stretch) */}
                         {!clip.isLocked && onResizeClipEdge && (
                           <div
+                            data-resize-handle="start"
                             onMouseDown={(e) => handleEdgeMouseDown(e, track, clip, 'start')}
                             onTouchStart={(e) => handleEdgeMouseDown(e, track, clip, 'start')}
-                            className={`absolute left-0 top-0 bottom-0 w-2.5 z-30 cursor-col-resize flex items-center justify-center transition-colors group/edge ${
+                            className={`absolute left-0 top-0 bottom-0 w-5 z-30 cursor-col-resize flex items-center justify-center transition-colors group/edge select-none touch-none ${
                               isAltPressed || activeEditTool === 'stretch'
-                                ? 'hover:bg-amber-400/50 bg-amber-400/20'
-                                : 'hover:bg-emerald-400/50 bg-emerald-500/10'
+                                ? 'hover:bg-amber-400/50 bg-amber-400/25 ring-1 ring-amber-400/60'
+                                : 'hover:bg-emerald-400/50 bg-emerald-500/15'
                             }`}
                             title={
                               isAltPressed || activeEditTool === 'stretch'
@@ -1495,19 +1518,20 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                                 : 'RECORTAR / EXTENDER (Trim): Arrastra para recortar o revelar audio (Mantén Alt para estirar)'
                             }
                           >
-                            <div className="w-0.5 h-4 bg-zinc-200/70 rounded group-hover/edge:bg-white" />
+                            <div className="w-1 h-5 bg-zinc-100 rounded-sm group-hover/edge:bg-white shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
                           </div>
                         )}
 
                         {/* Right Edge Resize Handle (Trim / Stretch) */}
                         {!clip.isLocked && onResizeClipEdge && (
                           <div
+                            data-resize-handle="end"
                             onMouseDown={(e) => handleEdgeMouseDown(e, track, clip, 'end')}
                             onTouchStart={(e) => handleEdgeMouseDown(e, track, clip, 'end')}
-                            className={`absolute right-0 top-0 bottom-0 w-2.5 z-30 cursor-col-resize flex items-center justify-center transition-colors group/edge ${
+                            className={`absolute right-0 top-0 bottom-0 w-5 z-30 cursor-col-resize flex items-center justify-center transition-colors group/edge select-none touch-none ${
                               isAltPressed || activeEditTool === 'stretch'
-                                ? 'hover:bg-amber-400/50 bg-amber-400/20'
-                                : 'hover:bg-emerald-400/50 bg-emerald-500/10'
+                                ? 'hover:bg-amber-400/50 bg-amber-400/25 ring-1 ring-amber-400/60'
+                                : 'hover:bg-emerald-400/50 bg-emerald-500/15'
                             }`}
                             title={
                               isAltPressed || activeEditTool === 'stretch'
@@ -1515,7 +1539,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                                 : 'RECORTAR / EXTENDER (Trim): Arrastra para recortar o revelar audio (Mantén Alt para estirar)'
                             }
                           >
-                            <div className="w-0.5 h-4 bg-zinc-200/70 rounded group-hover/edge:bg-white" />
+                            <div className="w-1 h-5 bg-zinc-100 rounded-sm group-hover/edge:bg-white shadow-[0_0_4px_rgba(0,0,0,0.8)]" />
                           </div>
                         )}
 
@@ -1622,454 +1646,6 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
           })}
         </div>
       </div>
-
-      {/* Clip Editing & Fine Nudge Control Panel (Only visible when a take is selected) */}
-      {selectedClipTrack && activeSelectedClip && (
-        <div className="mt-2.5 p-2.5 bg-zinc-900/90 rounded-2xl border border-zinc-800 shadow-xl backdrop-blur-md">
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-zinc-800">
-            {/* Selected Take Info */}
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                {selectedClipTrack.name.toUpperCase()}
-              </span>
-
-              {activeSelectedClip ? (
-                <div className="flex flex-wrap items-center gap-2 min-w-0">
-                  <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-zinc-800 text-amber-300 border border-zinc-700">
-                    {activeSelectedClip.name || 'Toma'}
-                  </span>
-                  <span className="text-xs font-mono text-zinc-300 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>
-                      <strong>{formatTime(activeSelectedClip.startBeatOffset)}</strong> ({formatBarTime(activeSelectedClip.startBeatOffset)}) · <strong>{activeSelectedClip.duration.toFixed(1)}s</strong>
-                    </span>
-                  </span>
-                </div>
-              ) : null}
-            </div>
-
-            {/* Quick Actions: Duplicate, Move & Delete */}
-            {activeSelectedClip && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Tool Mode: Trim vs Stretch */}
-                {onResizeClipEdge && (
-                  <div className="flex items-center rounded-lg bg-black/60 p-0.5 border border-zinc-800">
-                    <button
-                      type="button"
-                      onClick={() => setActiveEditTool('trim')}
-                      className={`px-2 py-1 rounded text-[11px] font-mono font-semibold transition-all ${
-                        activeEditTool === 'trim'
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                          : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
-                      title="Modo Recortar/Extender: Arrastra bordes para recortar u ocultar/revelar audio"
-                    >
-                      ✂️ Recortar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveEditTool('stretch')}
-                      className={`px-2 py-1 rounded text-[11px] font-mono font-semibold transition-all flex items-center gap-1 ${
-                        activeEditTool === 'stretch'
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                          : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
-                      title="Modo Time Stretch: Arrastra bordes para acelerar/desacelerar preservando el tono (WSOLA)"
-                    >
-                      <Zap className="w-3 h-3 text-amber-400" />
-                      Estirar
-                    </button>
-                  </div>
-                )}
-
-                {/* Move to another track dropdown */}
-                {onMoveClipToTrack && (
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] font-mono text-zinc-400">Mover a:</span>
-                    <select
-                      aria-label="Mover toma a otra pista"
-                      disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          onMoveClipToTrack(selectedClipTrack.id, e.target.value as VocalTrackId, activeSelectedClip.id);
-                          e.target.value = '';
-                        }
-                      }}
-                      defaultValue=""
-                      className="bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-amber-400 disabled:opacity-40"
-                    >
-                      <option value="" disabled>
-                        Elegir pista...
-                      </option>
-                      {tracks
-                        .filter((t) => t.id !== selectedClipTrack.id)
-                        .map((t) => (
-                          <option key={t.id} value={t.id}>
-                            {t.name}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Duplicate to another track dropdown */}
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-mono text-zinc-400">Duplicar a:</span>
-                  <select
-                    aria-label="Duplicar toma a otra pista"
-                    disabled={isRecording}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        onDuplicateTake(selectedClipTrack.id, e.target.value as VocalTrackId, activeSelectedClip.id);
-                        e.target.value = '';
-                      }
-                    }}
-                    defaultValue=""
-                    className="bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-amber-400"
-                  >
-                    <option value="" disabled>
-                      Elegir pista...
-                    </option>
-                    {tracks
-                      .filter((t) => t.id !== selectedClipTrack.id)
-                      .map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                {onTrimTake && (
-                  <>
-                    <button type="button" disabled={!canCutSelectedClip} onClick={() => onTrimTake(selectedClipTrack.id, activeSelectedClip.id, 'start')}
-                      className="px-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-mono text-zinc-200 disabled:opacity-40"
-                      title="Eliminar el audio anterior al cabezal en esta toma">Recortar inicio</button>
-                    <button type="button" disabled={!canCutSelectedClip} onClick={() => onTrimTake(selectedClipTrack.id, activeSelectedClip.id, 'end')}
-                      className="px-2 py-1.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-mono text-zinc-200 disabled:opacity-40"
-                      title="Eliminar el audio posterior al cabezal en esta toma">Recortar final</button>
-                  </>
-                )}
-                {/* Split / Cut Button */}
-                {onSplitTake && (
-                  <button
-                    onClick={() => onSplitTake(selectedClipTrack.id, activeSelectedClip.id, currentTime)}
-                    disabled={!canCutSelectedClip}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-mono font-bold transition-all active:scale-95 cursor-pointer shadow-sm shadow-amber-500/10 disabled:opacity-40"
-                    title={`Cortar / Dividir esta toma exactamente en el cabezal (${formatTime(currentTime)})`}
-                  >
-                    <Scissors className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Cortar en Cabezal ({formatTime(currentTime)})</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={() => onDeleteTake(selectedClipTrack.id, activeSelectedClip.id)}
-                  disabled={isRecording}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-950/50 hover:bg-red-900/70 text-red-300 hover:text-red-100 border border-red-500/50 hover:border-red-400 text-xs font-mono font-bold transition-all active:scale-95 shadow-sm shadow-red-950/40 cursor-pointer"
-                  title={`Eliminar únicamente el pedazo seleccionado (${activeSelectedClip.name || 'Pedazo'}) sin alterar el resto de la pista`}
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                  <span>Borrar Pedazo Seleccionado</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Micro-timing / Nudge Controls */}
-          {activeSelectedClip && (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {/* Hold/Seguro toggle in fine-nudge panel */}
-                <button
-                  onClick={() => {
-                    if (onToggleLockTake && selectedClipTrack) {
-                      onToggleLockTake(selectedClipTrack.id, activeSelectedClip.id);
-                    }
-                  }}
-                  disabled={isRecording}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-bold border transition-all active:scale-95 ${
-                    activeSelectedClip.isLocked
-                      ? 'bg-amber-400 text-black border-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.6)]'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
-                  }`}
-                  title={activeSelectedClip.isLocked ? 'Seguro ACTIVO: Clic para desbloquear' : 'Clic para activar seguro (Hold)'}
-                >
-                  {activeSelectedClip.isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                  <span>{activeSelectedClip.isLocked ? 'DESBLOQUEAR PARA MOVER' : 'BLOQUEAR POSICIÓN'}</span>
-                </button>
-
-                <div className="h-4 w-px bg-zinc-700 mx-1" />
-
-                <label className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-400">
-                  Inicio (s)
-                  <input key={`${activeSelectedClip.id}-${activeSelectedClip.startBeatOffset}`} type="number" step={0.001}
-                    defaultValue={activeSelectedClip.startBeatOffset.toFixed(3)}
-                    disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                    onBlur={event => {
-                      const value = event.currentTarget.valueAsNumber;
-                      if (Number.isFinite(value) && value !== activeSelectedClip.startBeatOffset)
-                        onMoveTake(selectedClipTrack.id, value, activeSelectedClip.id, true);
-                    }}
-                    onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
-                    className="w-24 px-2 py-1 rounded bg-black/50 border border-zinc-700 text-zinc-100 disabled:opacity-40" />
-                </label>
-
-                <button
-                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                  onClick={() => handleNudge(-1 * secPerBar)}
-                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
-                    activeSelectedClip.isLocked
-                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
-                  }`}
-                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Retroceder 1 Bar entero'}
-                >
-                  -1 Bar
-                </button>
-                <button
-                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                  onClick={() => handleNudge(-0.1)}
-                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
-                    activeSelectedClip.isLocked
-                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
-                  }`}
-                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Retroceder 100ms'}
-                >
-                  -100ms
-                </button>
-                <button
-                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                  onClick={() => handleNudge(-0.02)}
-                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
-                    activeSelectedClip.isLocked
-                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
-                  }`}
-                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Retroceder 20ms (ajuste fino)'}
-                >
-                  -20ms
-                </button>
-
-                <div className="h-4 w-px bg-zinc-700 mx-1" />
-
-                <button
-                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                  onClick={() => handleNudge(0.02)}
-                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
-                    activeSelectedClip.isLocked
-                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
-                  }`}
-                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Avanzar 20ms'}
-                >
-                  +20ms
-                </button>
-                <button
-                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                  onClick={() => handleNudge(0.1)}
-                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
-                    activeSelectedClip.isLocked
-                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
-                  }`}
-                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Avanzar 100ms'}
-                >
-                  +100ms
-                </button>
-                <button
-                  disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                  onClick={() => handleNudge(1 * secPerBar)}
-                  className={`px-2 py-1 rounded text-xs font-mono font-medium border active:scale-95 transition-all ${
-                    activeSelectedClip.isLocked
-                      ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
-                  }`}
-                  title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : 'Avanzar 1 Bar entero'}
-                >
-                  +1 Bar
-                </button>
-              </div>
-
-              {/* Snap to Playhead button */}
-              <button
-                disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                onClick={handleSnapToPlayhead}
-                className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all active:scale-95 ${
-                  activeSelectedClip.isLocked
-                    ? 'bg-zinc-850 text-zinc-600 border border-zinc-800 cursor-not-allowed'
-                    : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
-                }`}
-                title={activeSelectedClip.isLocked ? 'Toma con seguro: desbloquea para mover' : `Alinear al cabezal actual (${formatTime(currentTime)})`}
-              >
-                Mover al Cabezal ({formatTime(currentTime)})
-              </button>
-            </div>
-          )}
-
-          {/* Non-Destructive Editing Row: Fades & Time Stretch Controls */}
-          {activeSelectedClip && (
-            <div className="mt-2.5 pt-2 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-              {/* Fades Group */}
-              <div className="flex items-center gap-3 flex-wrap">
-                {/* Fade In */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-zinc-400 text-[11px]">Fade In:</span>
-                  <input
-                    key={`fade-in-${activeSelectedClip.id}-${activeSelectedClip.fadeInSec}`}
-                    type="number"
-                    step={0.01}
-                    min={0}
-                    max={activeSelectedClip.duration * 0.48}
-                    defaultValue={(activeSelectedClip.fadeInSec || 0).toFixed(2)}
-                    disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                    onBlur={(e) => {
-                      const val = Math.max(0, parseFloat(e.currentTarget.value) || 0);
-                      if (onSetClipFades && selectedClipTrack) {
-                        onSetClipFades(selectedClipTrack.id, activeSelectedClip.id, val, activeSelectedClip.fadeOutSec || 0);
-                      }
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    className="w-16 px-1.5 py-0.5 rounded bg-black/50 border border-zinc-700 text-zinc-100 text-xs disabled:opacity-40"
-                  />
-                  <div className="flex items-center gap-0.5">
-                    {[0, 0.05, 0.2].map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                        onClick={() => {
-                          if (onSetClipFades && selectedClipTrack) {
-                            onSetClipFades(selectedClipTrack.id, activeSelectedClip.id, f, activeSelectedClip.fadeOutSec || 0);
-                          }
-                        }}
-                        className={`px-1 py-0.5 rounded text-[10px] border ${
-                          Math.abs((activeSelectedClip.fadeInSec || 0) - f) < 0.005
-                            ? 'bg-amber-400 text-black border-amber-300 font-bold'
-                            : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-                        }`}
-                      >
-                        {f === 0 ? '0s' : `${f}s`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="h-4 w-px bg-zinc-800" />
-
-                {/* Fade Out */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-zinc-400 text-[11px]">Fade Out:</span>
-                  <input
-                    key={`fade-out-${activeSelectedClip.id}-${activeSelectedClip.fadeOutSec}`}
-                    type="number"
-                    step={0.01}
-                    min={0}
-                    max={activeSelectedClip.duration * 0.48}
-                    defaultValue={(activeSelectedClip.fadeOutSec || 0).toFixed(2)}
-                    disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                    onBlur={(e) => {
-                      const val = Math.max(0, parseFloat(e.currentTarget.value) || 0);
-                      if (onSetClipFades && selectedClipTrack) {
-                        onSetClipFades(selectedClipTrack.id, activeSelectedClip.id, activeSelectedClip.fadeInSec || 0, val);
-                      }
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    className="w-16 px-1.5 py-0.5 rounded bg-black/50 border border-zinc-700 text-zinc-100 text-xs disabled:opacity-40"
-                  />
-                  <div className="flex items-center gap-0.5">
-                    {[0, 0.05, 0.2].map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                        onClick={() => {
-                          if (onSetClipFades && selectedClipTrack) {
-                            onSetClipFades(selectedClipTrack.id, activeSelectedClip.id, activeSelectedClip.fadeInSec || 0, f);
-                          }
-                        }}
-                        className={`px-1 py-0.5 rounded text-[10px] border ${
-                          Math.abs((activeSelectedClip.fadeOutSec || 0) - f) < 0.005
-                            ? 'bg-amber-400 text-black border-amber-300 font-bold'
-                            : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-                        }`}
-                      >
-                        {f === 0 ? '0s' : `${f}s`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="h-4 w-px bg-zinc-800" />
-
-                {/* Time Stretch Group */}
-                <div className="flex items-center gap-1.5">
-                  <span className="text-zinc-400 text-[11px] flex items-center gap-1">
-                    <Zap className="w-3 h-3 text-amber-400" />
-                    Stretch:
-                  </span>
-                  <input
-                    key={`stretch-${activeSelectedClip.id}-${activeSelectedClip.timeStretchRatio}`}
-                    type="number"
-                    step={0.05}
-                    min={0.25}
-                    max={4.0}
-                    defaultValue={(activeSelectedClip.timeStretchRatio || 1.0).toFixed(2)}
-                    disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                    onBlur={(e) => {
-                      const val = Math.max(0.25, Math.min(4.0, parseFloat(e.currentTarget.value) || 1.0));
-                      if (onSetClipStretch && selectedClipTrack) {
-                        onSetClipStretch(selectedClipTrack.id, activeSelectedClip.id, val);
-                      }
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    className="w-16 px-1.5 py-0.5 rounded bg-black/50 border border-zinc-700 text-zinc-100 text-xs disabled:opacity-40"
-                  />
-                  <div className="flex items-center gap-0.5">
-                    {[0.9, 1.0, 1.1].map((r) => (
-                      <button
-                        key={r}
-                        type="button"
-                        disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
-                        onClick={() => {
-                          if (onSetClipStretch && selectedClipTrack) {
-                            onSetClipStretch(selectedClipTrack.id, activeSelectedClip.id, r);
-                          }
-                        }}
-                        className={`px-1 py-0.5 rounded text-[10px] border ${
-                          Math.abs((activeSelectedClip.timeStretchRatio || 1.0) - r) < 0.005
-                            ? 'bg-amber-400 text-black border-amber-300 font-bold'
-                            : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-                        }`}
-                      >
-                        {r === 1.0 ? '1x' : `${r}x`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Source info (non-destructive status) */}
-              <div className="text-[10px] text-zinc-400 flex items-center gap-1.5">
-                <span className="text-zinc-500">Audio original:</span>
-                <span className="text-zinc-300">
-                  {(activeSelectedClip.sourceDurationSec || activeSelectedClip.duration).toFixed(1)}s
-                </span>
-                {(activeSelectedClip.sourceOffsetSec || 0) > 0.001 && (
-                  <>
-                    <span className="text-zinc-500">· Offset:</span>
-                    <span className="text-zinc-300">
-                      {(activeSelectedClip.sourceOffsetSec || 0).toFixed(2)}s
-                    </span>
-                  </>
-                )}
-                <span className="text-emerald-400/80 font-semibold">(No destructivo)</span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };
