@@ -138,10 +138,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [isDraggingClip, setIsDraggingClip] = useState<boolean>(false);
-  const [dragTrackId, setDragTrackId] = useState<VocalTrackId | null>(null);
   const [dragClipId, setDragClipId] = useState<string | null>(null);
-  const [dragStartX, setDragStartX] = useState<number>(0);
-  const [dragInitialOffset, setDragInitialOffset] = useState<number>(0);
+  const [dragPreviewOffset, setDragPreviewOffset] = useState<number | null>(null);
 
   const duration = getProjectDuration(beat?.duration || 60, tracks);
   const bpm = Math.max(30, beat?.bpm || 140);
@@ -156,15 +154,42 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   // Leave room for the playhead through effect tails beyond the recorded audio.
   const timelineWidth = Math.max(500, Math.max(duration, currentTime) * basePixelsPerSec);
 
-  // Time format helper
+  // Refs to keep drag listeners stable and synchronous across re-renders
+  const onMoveTakeRef = useRef(onMoveTake);
+  const onCommitDragMoveRef = useRef(onCommitDragMove);
+  const onSeekRef = useRef(onSeek);
+  const snapToBeatRef = useRef(snapToBeat);
+  const secPerBeatRef = useRef(secPerBeat);
+  const basePixelsPerSecRef = useRef(basePixelsPerSec);
+  const isPlayingRef = useRef(isPlaying);
+  const currentTimeRef = useRef(currentTime);
+  const justDraggedRef = useRef(false);
+
+  useEffect(() => {
+    onMoveTakeRef.current = onMoveTake;
+    onCommitDragMoveRef.current = onCommitDragMove;
+    onSeekRef.current = onSeek;
+    snapToBeatRef.current = snapToBeat;
+    secPerBeatRef.current = secPerBeat;
+    basePixelsPerSecRef.current = basePixelsPerSec;
+    isPlayingRef.current = isPlaying;
+    currentTimeRef.current = currentTime;
+  }, [onMoveTake, onCommitDragMove, onSeek, snapToBeat, secPerBeat, basePixelsPerSec, isPlaying, currentTime]);
+
+  // Time format helper (supports negative lead-in offsets cleanly)
   const formatTime = (sec: number) => {
-    const mins = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    const ms = Math.floor((sec % 1) * 10);
-    return `${mins}:${s.toString().padStart(2, '0')}.${ms}`;
+    const sign = sec < 0 ? '-' : '';
+    const abs = Math.abs(sec);
+    const mins = Math.floor(abs / 60);
+    const s = Math.floor(abs % 60);
+    const ms = Math.floor((abs % 1) * 10);
+    return `${sign}${mins}:${s.toString().padStart(2, '0')}.${ms}`;
   };
 
   const formatBarTime = (sec: number) => {
+    if (sec < 0) {
+      return `${sec.toFixed(2)}s`;
+    }
     const bar = Math.floor(sec / secPerBar) + 1;
     const beatInBar = Math.floor((sec % secPerBar) / secPerBeat) + 1;
     return `Bar ${bar}.${beatInBar}`;
@@ -267,8 +292,8 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
   // Safe lane clicking: Sets playhead without triggering clip dragging or channel movement
   const handleLaneClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Only allow setting playhead position when playback is stopped
-    if (isRecording || isDraggingClip || isScrubbingPlayhead) return;
+    // Only allow setting playhead position when playback is stopped and not finishing a drag
+    if (isRecording || isDraggingClip || isScrubbingPlayhead || justDraggedRef.current) return;
     const target = e.target as HTMLElement;
     if (target.closest('[data-clip-item]') || target.closest('button') || target.closest('input')) {
       return;
@@ -279,7 +304,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     onSeek(Math.round(newTime * 1000) / 1000);
   };
 
-  // Dragging logic for moving takes / clips
+  // Synchronous, zero-drop dragging logic for moving takes / clips
   const handleClipMouseDown = (
     e: React.MouseEvent | React.TouchEvent,
     track: VocalTrack,
@@ -290,6 +315,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     if (target.closest('button') || target.closest('input')) return;
 
     e.stopPropagation();
+    if (!('touches' in e)) {
+      e.preventDefault();
+    }
     setSelectedClipId(clip.id);
     onSelectTrack(track.id);
 
@@ -298,64 +326,89 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
       return;
     }
 
+    const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const initialScrollLeft = containerRef.current?.scrollLeft ?? 0;
+    const initialOffset = clip.startBeatOffset;
+    const minOffset = -Math.max(0, (clip.buffer?.duration || clip.duration || 0) - 0.05);
+    const activeTrackId = track.id;
+    const activeClipId = clip.id;
+    let moved = false;
+    let latestOffset = initialOffset;
+
     setIsDraggingClip(true);
-    setDragTrackId(track.id);
-    setDragClipId(clip.id);
+    setDragClipId(activeClipId);
+    setDragPreviewOffset(initialOffset);
 
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    setDragStartX(clientX);
-    setDragInitialOffset(clip.startBeatOffset);
-
-    // Save snapshot of state before user moves the sample
     if (onStartDragMove) {
       onStartDragMove();
     }
-  };
 
-  useEffect(() => {
-    const handleMove = (e: MouseEvent | TouchEvent) => {
-      if (!isDraggingClip || !dragTrackId) return;
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-      const deltaPx = clientX - dragStartX;
-      if ('touches' in e && e.cancelable) e.preventDefault();
-      const deltaSec = deltaPx / basePixelsPerSec;
-      const rawOffset = Math.max(0, dragInitialOffset + deltaSec);
-      const newOffset = snapToBeat ? Math.round(rawOffset / secPerBeat) * secPerBeat : rawOffset;
-      // Move smoothly without pushing to undo stack on intermediate drag frames
-      onMoveTake(dragTrackId, Math.round(newOffset * 1000) / 1000, dragClipId || undefined, false);
+    const handleMove = (moveEvt: MouseEvent | TouchEvent) => {
+      if ('touches' in moveEvt && moveEvt.cancelable) {
+        moveEvt.preventDefault();
+      }
+      const clientX = 'touches' in moveEvt
+        ? (moveEvt.touches[0]?.clientX ?? startX)
+        : moveEvt.clientX;
+      const currentScrollLeft = containerRef.current?.scrollLeft ?? initialScrollLeft;
+      const deltaPx = (clientX - startX) + (currentScrollLeft - initialScrollLeft);
+      if (Math.abs(deltaPx) >= 1) {
+        moved = true;
+      }
+      const deltaSec = deltaPx / basePixelsPerSecRef.current;
+      const rawOffset = Math.max(minOffset, initialOffset + deltaSec);
+      const beatSec = secPerBeatRef.current;
+      const newOffset = snapToBeatRef.current
+        ? Math.round(rawOffset / beatSec) * beatSec
+        : rawOffset;
+      latestOffset = Math.round(Math.max(minOffset, newOffset) * 1000) / 1000;
+      setDragPreviewOffset(latestOffset);
+      onMoveTakeRef.current(
+        activeTrackId,
+        latestOffset,
+        activeClipId,
+        false
+      );
     };
 
     const handleEnd = () => {
-      if (isDraggingClip) {
-        setIsDraggingClip(false);
-        // Commit drag action to undo history so Undo and Redo work reliably
-        if (onCommitDragMove && dragTrackId) {
-          onCommitDragMove(dragTrackId, dragInitialOffset, dragClipId || undefined);
-        }
-        setDragTrackId(null);
-        setDragClipId(null);
-        if (isPlaying) {
-          onSeek(currentTime);
-        }
-      }
-    };
-
-    if (isDraggingClip) {
-      window.addEventListener('mousemove', handleMove);
-      window.addEventListener('mouseup', handleEnd);
-      window.addEventListener('touchmove', handleMove, { passive: false });
-      window.addEventListener('touchend', handleEnd);
-      window.addEventListener('touchcancel', handleEnd);
-    }
-
-    return () => {
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleEnd);
       window.removeEventListener('touchmove', handleMove);
       window.removeEventListener('touchend', handleEnd);
       window.removeEventListener('touchcancel', handleEnd);
+
+      setIsDraggingClip(false);
+      setDragClipId(null);
+      setDragPreviewOffset(null);
+
+      if (moved) {
+        justDraggedRef.current = true;
+        setTimeout(() => {
+          justDraggedRef.current = false;
+        }, 80);
+        onMoveTakeRef.current(
+          activeTrackId,
+          latestOffset,
+          activeClipId,
+          false
+        );
+      }
+
+      if (onCommitDragMoveRef.current) {
+        onCommitDragMoveRef.current(activeTrackId, initialOffset, activeClipId);
+      }
+      if (isPlayingRef.current) {
+        onSeekRef.current(currentTimeRef.current);
+      }
     };
-  }, [isDraggingClip, dragTrackId, dragClipId, dragStartX, dragInitialOffset, basePixelsPerSec, duration, onMoveTake, isPlaying, currentTime, onSeek, onCommitDragMove, snapToBeat, secPerBeat]);
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEnd);
+    window.addEventListener('touchcancel', handleEnd);
+  };
 
   const selectedClipTrack = tracks.find((t) => t.id === selectedTrackId);
   const selectedTrackClips = selectedClipTrack ? getTrackClips(selectedClipTrack) : [];
@@ -363,10 +416,11 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const canCutSelectedClip = Boolean(activeSelectedClip && !isRecording &&
     currentTime > activeSelectedClip.startBeatOffset && currentTime < activeSelectedClip.startBeatOffset + activeSelectedClip.duration);
 
-  // Nudge adjustment
+  // Nudge adjustment (supports shifting both forward and backward/earlier in time)
   const handleNudge = (deltaSec: number) => {
     if (!selectedClipTrack || !activeSelectedClip || activeSelectedClip.isLocked || isRecording) return;
-    const newOffset = Math.max(0, activeSelectedClip.startBeatOffset + deltaSec);
+    const minOffset = -Math.max(0, (activeSelectedClip.buffer?.duration || activeSelectedClip.duration || 0) - 0.05);
+    const newOffset = Math.max(minOffset, activeSelectedClip.startBeatOffset + deltaSec);
     onMoveTake(selectedClipTrack.id, Math.round(newOffset * 1000) / 1000, activeSelectedClip.id, true);
   };
 
@@ -417,14 +471,9 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             className="h-6 sm:h-7 w-auto object-contain filter brightness-125 drop-shadow-[0_0_8px_rgba(251,191,36,0.35)] shrink-0"
           />
           <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-          <div>
-            <h3 className="text-xs sm:text-sm font-bold font-display uppercase tracking-wider text-zinc-100 flex items-center gap-1.5">
-              <span>EDICIÓN MULTIPISTA</span>
-            </h3>
-            <p className="text-[10px] sm:text-[11px] font-mono text-zinc-400">
-              Organiza, recorta y sincroniza tus tomas vocales en tiempo real.
-            </p>
-          </div>
+          <h3 className="text-xs sm:text-sm font-bold font-display uppercase tracking-wider text-zinc-100 flex items-center gap-1.5">
+            <span>MIXER</span>
+          </h3>
         </div>
 
         {/* Action Controls & Zoom */}
@@ -1219,13 +1268,18 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       isSelected &&
                       activeSelectedClip?.id === clip.id;
                     const isTargetOfDrag = isDraggingClip && dragClipId === clip.id;
-                    const clipStartPx = clip.startBeatOffset * basePixelsPerSec;
+                    const effectiveOffset = isTargetOfDrag && dragPreviewOffset !== null
+                      ? dragPreviewOffset
+                      : clip.startBeatOffset;
+                    const clipStartPx = effectiveOffset * basePixelsPerSec;
                     const clipWidthPx = clip.buffer.duration * basePixelsPerSec;
 
                     return (
                       <div
                         key={clip.id}
                         data-clip-item="true"
+                        draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
                         onMouseDown={(e) => {
                           if (isScrubbingPlayhead) return;
                           handleClipMouseDown(e, track, clip);
@@ -1237,7 +1291,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                         className={`absolute top-2 bottom-2 rounded-sm outline outline-1 -outline-offset-1 flex items-center transition-shadow select-none shadow-lg z-10 ${
                           clip.isLocked
                             ? 'cursor-pointer'
-                            : 'cursor-grab active:cursor-grabbing'
+                            : 'cursor-grab active:cursor-grabbing touch-none'
                         } ${
                           isClipSelected
                             ? 'bg-gradient-to-r from-emerald-600/50 to-teal-500/40 outline-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
@@ -1348,37 +1402,27 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
       {/* Clip Editing & Fine Nudge Control Panel (Only visible when a take is selected) */}
       {selectedClipTrack && activeSelectedClip && (
-        <div className="mt-3 p-3 bg-zinc-900/90 rounded-2xl border border-zinc-800 shadow-xl backdrop-blur-md">
-          <p className="mb-3 text-xs leading-relaxed text-zinc-400">
-            Selecciona una toma y coloca el cabezal dentro para cortar o recortar. Desbloquea la toma para moverla. Puedes deshacer los cambios.
-          </p>
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-zinc-800">
+        <div className="mt-2.5 p-2.5 bg-zinc-900/90 rounded-2xl border border-zinc-800 shadow-xl backdrop-blur-md">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-zinc-800">
             {/* Selected Take Info */}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 font-semibold">
-                EDICIÓN DE TOMA:
-              </span>
               <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
                 {selectedClipTrack.name.toUpperCase()}
               </span>
 
               {activeSelectedClip ? (
-                <div className="flex flex-wrap items-center gap-2 ml-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
                   <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-zinc-800 text-amber-300 border border-zinc-700">
                     {activeSelectedClip.name || 'Toma'}
                   </span>
                   <span className="text-xs font-mono text-zinc-300 flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-amber-400" />
                     <span>
-                      Inicio: <strong>{formatTime(activeSelectedClip.startBeatOffset)}</strong> ({formatBarTime(activeSelectedClip.startBeatOffset)}) · Duración: <strong>{activeSelectedClip.duration.toFixed(1)}s</strong>
+                      <strong>{formatTime(activeSelectedClip.startBeatOffset)}</strong> ({formatBarTime(activeSelectedClip.startBeatOffset)}) · <strong>{activeSelectedClip.duration.toFixed(1)}s</strong>
                     </span>
                   </span>
                 </div>
-              ) : (
-                <span className="text-xs font-mono text-zinc-500">
-                  (Pista sin tomas grabadas)
-                </span>
-              )}
+              ) : null}
             </div>
 
             {/* Quick Actions: Duplicate & Delete */}
@@ -1475,12 +1519,12 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
 
                 <label className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-400">
                   Inicio (s)
-                  <input key={`${activeSelectedClip.id}-${activeSelectedClip.startBeatOffset}`} type="number" min={0} step={0.001}
+                  <input key={`${activeSelectedClip.id}-${activeSelectedClip.startBeatOffset}`} type="number" step={0.001}
                     defaultValue={activeSelectedClip.startBeatOffset.toFixed(3)}
                     disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
                     onBlur={event => {
                       const value = event.currentTarget.valueAsNumber;
-                      if (Number.isFinite(value) && value >= 0 && value !== activeSelectedClip.startBeatOffset)
+                      if (Number.isFinite(value) && value !== activeSelectedClip.startBeatOffset)
                         onMoveTake(selectedClipTrack.id, value, activeSelectedClip.id, true);
                     }}
                     onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}

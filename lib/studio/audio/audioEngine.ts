@@ -2079,8 +2079,8 @@ export class AudioEngine {
           if (!c.buffer) continue;
           activeClips.push({
             isLead,
-            startSec: Math.max(0, c.startBeatOffset),
-            endSec: Math.max(0, c.startBeatOffset) + c.duration,
+            startSec: c.startBeatOffset,
+            endSec: c.startBeatOffset + c.duration,
             buffer: c.buffer,
           });
         }
@@ -2357,7 +2357,7 @@ export class AudioEngine {
             }
           }
         }
-        resolvedClips.push({ startSec: Math.max(0, clip.startBeatOffset), buffer: playBuffer });
+        resolvedClips.push({ startSec: clip.startBeatOffset, buffer: playBuffer });
       }
 
       let enhancedTrackStem: AudioBuffer | null = null;
@@ -2382,7 +2382,14 @@ export class AudioEngine {
           const vSource = offlineCtx.createBufferSource();
           vSource.buffer = item.buffer;
           vSource.connect(lowCut);
-          vSource.start(item.startSec);
+          if (item.startSec < 0) {
+            const offsetInClip = -item.startSec;
+            if (offsetInClip < item.buffer.duration) {
+              vSource.start(0, offsetInClip);
+            }
+          } else {
+            vSource.start(item.startSec);
+          }
         }
       }
     }
@@ -2437,7 +2444,14 @@ export class AudioEngine {
         const source = offlineCtx.createBufferSource();
         source.buffer = clip.buffer;
         source.connect(stemGain);
-        source.start(Math.max(0, clip.startBeatOffset));
+        if (clip.startBeatOffset < 0) {
+          const offsetInClip = -clip.startBeatOffset;
+          if (offsetInClip < clip.buffer.duration) {
+            source.start(0, offsetInClip);
+          }
+        } else {
+          source.start(clip.startBeatOffset);
+        }
       }
 
       const renderedBuffer = await offlineCtx.startRendering();
@@ -2651,7 +2665,14 @@ export class AudioEngine {
         const vSource = offlineCtx.createBufferSource();
         vSource.buffer = playBuffer;
         vSource.connect(lowCut);
-        vSource.start(Math.max(0, clip.startBeatOffset));
+        if (clip.startBeatOffset < 0) {
+          const offsetInClip = -clip.startBeatOffset;
+          if (offsetInClip < playBuffer.duration) {
+            vSource.start(0, offsetInClip);
+          }
+        } else {
+          vSource.start(clip.startBeatOffset);
+        }
       }
 
       const renderedBuffer = await offlineCtx.startRendering();
@@ -2797,9 +2818,17 @@ export class AudioEngine {
       const source = offlineCtx.createBufferSource();
       source.buffer = clip.buffer;
       source.connect(mixGain);
-      const relativeStart = Math.max(0, clip.startBeatOffset - startOffsetSec);
-      source.start(relativeStart);
-      hasAnyClip = true;
+      const relativeStart = clip.startBeatOffset - startOffsetSec;
+      if (relativeStart < 0) {
+        const offsetInClip = -relativeStart;
+        if (offsetInClip < clip.buffer.duration) {
+          source.start(0, offsetInClip);
+          hasAnyClip = true;
+        }
+      } else {
+        source.start(relativeStart);
+        hasAnyClip = true;
+      }
     }
 
     if (!hasAnyClip) return null;

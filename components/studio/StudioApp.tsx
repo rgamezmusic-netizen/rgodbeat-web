@@ -356,7 +356,7 @@ export default function App() {
     const clip = currentTrack?.clips?.find((c) => !clipId || c.id === clipId);
     const currentOffset = clip ? clip.startBeatOffset : currentTrack?.startBeatOffset || 0;
 
-    // Only commit if the clip actually moved more than 20ms
+    // Only commit if the clip actually moved more than 0.5ms
     if (Math.abs(currentOffset - initialOffset) >= 0.0005) {
       const snapshot = preDragTracksSnapshotRef.current;
       setUndoStack((prev) => [
@@ -364,6 +364,18 @@ export default function App() {
         { tracks: snapshot, description: 'Mover toma' },
       ]);
       setRedoStack([]); // Reset redo stack on new action
+      const settings = sessionSettingsRef.current;
+      void saveStudioSession(
+        tracksRef.current,
+        currentBeatRef.current,
+        settings.loopSettings,
+        settings.currentTime,
+        settings.beatVolume,
+        activeViewRef.current
+      );
+      if (engine?.getIsPlaying()) {
+        engine.seek(engine.getCurrentPlaybackPosition(), tracksRef.current);
+      }
     }
     preDragTracksSnapshotRef.current = null;
   };
@@ -947,8 +959,11 @@ export default function App() {
     currentBeatRef.current = currentBeat;
     activeViewRef.current = activeView;
     isRecordingRef.current = isRecording;
+  }, [loopSettings, currentTime, beatFX.volume, currentBeat, activeView, isRecording]);
+
+  useEffect(() => {
     tracksRef.current = tracks;
-  }, [loopSettings, currentTime, beatFX.volume, currentBeat, activeView, isRecording, tracks]);
+  }, [tracks]);
 
   useEffect(() => {
     let cancelled = false;
@@ -988,7 +1003,7 @@ export default function App() {
         const clip: VocalClip = {
           id: takeId || `clip-${trackId}-${crypto.randomUUID()}`, buffer, tunedBuffer: null,
           startBeatOffset: start, duration: buffer.duration, waveformSample: waveform,
-          name: 'Toma', isLocked: true,
+          name: 'Toma', isLocked: false,
         };
         const updated = tracksRef.current.map(track => track.id === trackId
           ? withTrackClips(track, punchInClips(ctx, getTrackClips(track), clip)) : track);
@@ -1890,7 +1905,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleTransportKey);
   });
 
-  // Move / Edit take position along timeline
+  // Move / Edit take position along timeline (supports both positive and negative lead-in offsets)
   const handleMoveTake = (
     trackId: VocalTrackId,
     newOffsetSec: number,
@@ -1903,50 +1918,28 @@ export default function App() {
     if (recordHistory) {
       pushUndoSnapshot('Mover toma');
     }
-    const clampedOffset = Math.max(0, newOffsetSec);
     const updated = tracksRef.current.map((t) => {
       if (t.id !== trackId) return t;
-
-      let currentClips = t.clips && t.clips.length > 0 ? [...t.clips] : [];
-      if (currentClips.length === 0 && t.buffer) {
-        currentClips = [
-          {
-            id: clipId || `clip-${t.id}-init`,
-            buffer: t.buffer,
-            tunedBuffer: t.tunedBuffer,
-            startBeatOffset: clampedOffset,
-            duration: t.duration,
-            waveformSample: t.waveformSample,
-            name: 'Toma 1',
-          },
-        ];
-      } else {
-        currentClips = currentClips.map((c) =>
-          !clipId || c.id === clipId ? { ...c, startBeatOffset: clampedOffset } : c
-        );
-      }
-
-      const maxDuration =
-        currentClips.length > 0
-          ? Math.max(...currentClips.map((c) => c.startBeatOffset + c.duration))
-          : t.duration;
-      const activeClip = clipId ? currentClips.find((c) => c.id === clipId) : currentClips[currentClips.length - 1];
-
-      return {
-        ...t,
-        clips: currentClips,
-        startBeatOffset: activeClip ? activeClip.startBeatOffset : clampedOffset,
-        duration: maxDuration,
-      };
+      const existingClips = getTrackClips(t);
+      if (existingClips.length === 0) return t;
+      const nextClips = existingClips.map((c) => {
+        if (!clipId || c.id === clipId) {
+          const minOffset = -Math.max(0, (c.buffer?.duration || c.duration || 0) - 0.05);
+          const clampedOffset = Math.max(minOffset, newOffsetSec);
+          return { ...c, startBeatOffset: clampedOffset };
+        }
+        return c;
+      });
+      return withTrackClips(t, nextClips);
     });
 
-    setTracks(updated);
     tracksRef.current = updated;
+    setTracks(updated);
     if (recordHistory) {
-      saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
-    }
-    if (engine && isPlaying && recordHistory) {
-      engine.seek(engine.getCurrentPlaybackPosition(), updated);
+      void saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
+      if (engine?.getIsPlaying()) {
+        engine.seek(engine.getCurrentPlaybackPosition(), updated);
+      }
     }
   };
 
@@ -1993,7 +1986,7 @@ export default function App() {
       duration: targetClip.duration,
       waveformSample: targetClip.waveformSample ? [...targetClip.waveformSample] : undefined,
       name: `${targetClip.name || 'Toma'} (Copia)`,
-      isLocked: true,
+      isLocked: false,
     };
 
     const target = tracksRef.current.find((t) => t.id === targetTrackId);
@@ -2048,7 +2041,7 @@ export default function App() {
         duration: buffer.duration,
         waveformSample: waveform,
         name: 'Toma de Prueba',
-        isLocked: true,
+        isLocked: false,
       };
       setTracks((prev) => {
         const next = prev.map((t) =>
@@ -2069,7 +2062,7 @@ export default function App() {
         // The shared tuning effect applies results only to clips that still exist.
         return next;
       });
-      const targetName = tracks.find((t) => t.id === trackId)?.name || trackId;
+      const targetName = tracksRef.current.find((t) => t.id === trackId)?.name || trackId;
       showToast(`¡Toma de prueba generada en ${targetName}! Presiona PLAY para escuchar.`, 'success');
     } catch (e) {
       console.error(e);
@@ -2079,9 +2072,10 @@ export default function App() {
 
   // Track Mixer actions
   const handleToggleMute = (trackId: VocalTrackId) => {
-    const updated = tracks.map((t) =>
+    const updated = tracksRef.current.map((t) =>
       t.id === trackId ? { ...t, isMuted: !t.isMuted } : t
     );
+    tracksRef.current = updated;
     setTracks(updated);
     if (engine) {
       const target = updated.find((t) => t.id === trackId);
@@ -2090,9 +2084,10 @@ export default function App() {
   };
 
   const handleToggleSolo = (trackId: VocalTrackId) => {
-    const updated = tracks.map((t) =>
+    const updated = tracksRef.current.map((t) =>
       t.id === trackId ? { ...t, isSolo: !t.isSolo } : t
     );
+    tracksRef.current = updated;
     setTracks(updated);
     if (engine) {
       updated.forEach((t) => engine.updateVocalFX(t, updated));
@@ -2100,9 +2095,10 @@ export default function App() {
   };
 
   const handleChangeTrackVolume = (trackId: VocalTrackId, volume: number) => {
-    const updated = tracks.map((t) =>
+    const updated = tracksRef.current.map((t) =>
       t.id === trackId ? { ...t, volume } : t
     );
+    tracksRef.current = updated;
     setTracks(updated);
     if (engine) {
       const target = updated.find((t) => t.id === trackId);
@@ -2112,11 +2108,11 @@ export default function App() {
 
   const handleChangeTrackPan = (trackId: VocalTrackId, pan: number) => {
     const clampedPan = Math.max(-1, Math.min(1, pan));
-    const updated = tracks.map((t) =>
+    const updated = tracksRef.current.map((t) =>
       t.id === trackId ? { ...t, pan: clampedPan } : t
     );
-    setTracks(updated);
     tracksRef.current = updated;
+    setTracks(updated);
     if (engine) {
       const target = updated.find((t) => t.id === trackId);
       if (target) engine.updateVocalFX(target, updated);
@@ -2229,50 +2225,29 @@ export default function App() {
   // Toggle Lock/Hold on a specific vocal take to prevent accidental drag or displacement
   const handleToggleLockTake = (trackId: VocalTrackId, clipId?: string) => {
     let nowLocked = false;
-    const updated = tracks.map((t) => {
+    const updated = tracksRef.current.map((t) => {
       if (t.id !== trackId) return t;
-
-      if (t.clips && t.clips.length > 0) {
-        const updatedClips = t.clips.map((c) => {
+      const existingClips = getTrackClips(t);
+      if (existingClips.length > 0) {
+        const updatedClips = existingClips.map((c) => {
           if (!clipId || c.id === clipId) {
             nowLocked = !c.isLocked;
             return { ...c, isLocked: !c.isLocked };
           }
           return c;
         });
-        return {
-          ...t,
-          clips: updatedClips,
-        };
+        return withTrackClips(t, updatedClips);
       }
-
-      if (t.buffer) {
-        nowLocked = true;
-        return {
-          ...t,
-          clips: [{
-            id: `clip-${t.id}-init`,
-            buffer: t.buffer,
-            tunedBuffer: t.tunedBuffer,
-            startBeatOffset: t.startBeatOffset,
-            duration: t.duration,
-            waveformSample: t.waveformSample,
-            name: 'Toma 1',
-            isLocked: true,
-          }],
-        };
-      }
-
       return t;
     });
 
-    setTracks(updated);
     tracksRef.current = updated;
-    saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
+    setTracks(updated);
+    void saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
     showToast(
       nowLocked
-        ? '🔒 Seguro activado (Hold): Toma protegida contra desplazamientos accidentales.'
-        : '🔓 Seguro desactivado: Ya puedes mover o desplazar la toma libremente.',
+        ? 'Seguro activado (Hold)'
+        : 'Seguro desactivado: puedes mover la toma',
       'info'
     );
   };

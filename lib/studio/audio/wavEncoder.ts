@@ -223,7 +223,7 @@ export function punchInClips(
           startBeatOffset: cStart,
           duration: leftBuffer.duration,
           waveformSample: extractWaveformPeaks(leftBuffer, WAVEFORM_SAMPLE_COUNT),
-          isLocked: true,
+          isLocked: Boolean(c.isLocked),
         });
       }
     }
@@ -242,7 +242,7 @@ export function punchInClips(
           startBeatOffset: newEnd,
           duration: rightBuffer.duration,
           waveformSample: extractWaveformPeaks(rightBuffer, WAVEFORM_SAMPLE_COUNT),
-          isLocked: true,
+          isLocked: Boolean(c.isLocked),
         });
       }
     }
