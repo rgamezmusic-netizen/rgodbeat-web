@@ -611,3 +611,396 @@
     padding:10px
   }
 }
+.rank {
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px
+}
+.runnerUp {
+  border-color:#cbd5e144;
+  background:linear-gradient(110deg,#94a3b812,#111315)
+}
+.thirdPlace {
+  border-color:#d9770644;
+  background:linear-gradient(110deg,#d9770612,#111315)
+}
+.trophyIconWrap {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+  line-height:0
+}
+.trophyGold {
+  filter:drop-shadow(0 0 8px #e4be634d)
+}
+.trophySilver {
+  filter:drop-shadow(0 0 6px #cbd5e13b)
+}
+.trophyBronze {
+  filter:drop-shadow(0 0 6px #d977063b)
+}
+.medalStrip {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+  margin-top:7px
+}
+.medalBadge {
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  padding:3px 9px 3px 5px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  white-space:nowrap
+}
+.medalBadgeGold {
+  background:linear-gradient(135deg,#e4be6329,#b8892817);
+  border:1px solid #e4be637a;
+  color:#ffe7a3
+}
+.medalBadgeSilver {
+  background:linear-gradient(135deg,#cbd5e124,#64748b17);
+  border:1px solid #cbd5e166;
+  color:#e2e8f0
+}
+.medalBadgeBronze {
+  background:linear-gradient(135deg,#f59e0b24,#7c2d1217);
+  border:1px solid #f59e0b66;
+  color:#fed7aa
+}
+.rewardHead {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:6px
+}
+.rewardMedalTitle {
+  display:block;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.1em;
+  color:#e4be63;
+  text-transform:uppercase
+}
+.hofHeader {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:20px
+}
+.hofHeader p {
+  max-width:460px;
+  font-size:13px;
+  margin:0
+}
+.hofPiecesGrid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:12px;
+  margin-bottom:24px
+}
+.hofPieceCard {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:16px;
+  border-radius:14px;
+  background:#101214;
+  border:1px solid #ffffff17
+}
+.hofPieceCard strong {
+  display:block;
+  font-size:14px;
+  margin:4px 0
+}
+.hofPieceCard small {
+  display:block;
+  font-size:11px;
+  line-height:1.45;
+  color:#a3a8a0
+}
+.hofPieceGold {
+  border-color:#e4be6366;
+  background:linear-gradient(135deg,#e4be631c,#101214)
+}
+.hofPieceSilver {
+  border-color:#cbd5e14d;
+  background:linear-gradient(135deg,#94a3b817,#101214)
+}
+.hofPieceBronze {
+  border-color:#d977064d;
+  background:linear-gradient(135deg,#d9770617,#101214)
+}
+.hofLiveBox {
+  padding:18px;
+  border-radius:14px;
+  background:#0d0f11;
+  border:1px solid #e4be6336;
+  margin-bottom:22px
+}
+.hofSubHeader {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:14px
+}
+.hofSubNote {
+  font-size:11px;
+  color:#9ca298
+}
+.hofPodiumGrid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px
+}
+.hofPodiumCard {
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:8px;
+  padding:14px;
+  border-radius:12px;
+  background:#121518;
+  border:1px solid #ffffff14;
+  color:inherit;
+  text-decoration:none;
+  transition:border-color .18s,background .18s
+}
+.hofPodiumCard:hover {
+  border-color:#e4be6377;
+  background:#171b1f
+}
+.hofPodiumGold {
+  border-color:#e4be6366;
+  background:linear-gradient(145deg,#e4be631a,#121518)
+}
+.hofPodiumSilver {
+  border-color:#cbd5e144
+}
+.hofPodiumBronze {
+  border-color:#d9770644
+}
+.hofPodiumTop {
+  display:flex;
+  align-items:center;
+  gap:8px
+}
+.hofPlaceTag {
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.08em;
+  color:#e4be63;
+  text-transform:uppercase
+}
+.hofArtistName {
+  font-size:16px;
+  font-weight:850;
+  overflow-wrap:anywhere
+}
+.hofTrackHint {
+  font-size:11px;
+  color:#9ea49b
+}
+.hofScoreRow {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font-size:12px;
+  font-weight:800;
+  color:#d9d6ce;
+  margin-top:4px
+}
+.hofBoard {
+  padding:18px;
+  border-radius:14px;
+  background:#0e1012;
+  border:1px solid #ffffff17
+}
+.hofList {
+  display:grid;
+  gap:8px
+}
+.hofRow {
+  display:grid;
+  grid-template-columns:46px minmax(0,1fr) auto;
+  align-items:center;
+  gap:14px;
+  padding:14px 16px;
+  border-radius:11px;
+  background:#131619;
+  border:1px solid #ffffff12;
+  color:inherit;
+  text-decoration:none;
+  transition:border-color .18s,background .18s
+}
+.hofRow:hover {
+  border-color:#e4be6366;
+  background:#191d21
+}
+.hofRowLeader {
+  border-color:#e4be6377;
+  background:linear-gradient(110deg,#e4be631a,#131619)
+}
+.hofRank {
+  font-size:20px;
+  font-weight:900;
+  color:#e4be63;
+  font-variant-numeric:tabular-nums
+}
+.hofIdentity {
+  min-width:0
+}
+.hofIdentity strong {
+  display:block;
+  font-size:16px;
+  overflow-wrap:anywhere
+}
+.hofSeasonTags {
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  margin-top:5px
+}
+.hofSeasonChip {
+  padding:2px 6px;
+  border-radius:5px;
+  background:#ffffff0d;
+  border:1px solid #ffffff1a;
+  font-size:10px;
+  font-weight:800;
+  color:#c5c8c1
+}
+.hofCounters {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px
+}
+.hofCountPill {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:3px 8px 3px 5px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums
+}
+.hofTotalPill {
+  padding:4px 9px;
+  border-radius:8px;
+  background:#ffffff0d;
+  border:1px solid #ffffff1c;
+  font-size:12px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums
+}
+.hofTotalPill small {
+  font-size:9px;
+  color:#9ea49b;
+  margin-left:3px
+}
+.hofEmpty {
+  padding:22px 16px;
+  border-radius:10px;
+  border:1px dashed #ffffff24;
+  text-align:center;
+  color:#a7aba3;
+  font-size:13px;
+  line-height:1.6
+}
+.trophyShowcase {
+  margin:22px 0;
+  padding:18px;
+  border-radius:14px;
+  background:linear-gradient(135deg,#15181c,#0c0e10);
+  border:1px solid #e4be634d
+}
+.liveMedalBanner {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border-radius:11px;
+  background:linear-gradient(120deg,#e4be6321,#111315);
+  border:1px solid #e4be6366;
+  margin-bottom:14px
+}
+.liveMedalBanner strong {
+  display:block;
+  font-size:13px;
+  margin-top:2px
+}
+.trophyCabinetGrid {
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px
+}
+.trophyCabinetCard {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border-radius:11px;
+  background:#090b0c;
+  border:1px solid #ffffff14
+}
+.trophyCabinetCard small {
+  display:block;
+  font-size:9px;
+  font-weight:800;
+  letter-spacing:.08em;
+  color:#a2a79e;
+  margin-bottom:4px
+}
+.trophyCabinetCard strong {
+  display:block;
+  font-size:22px;
+  font-weight:900;
+  font-variant-numeric:tabular-nums
+}
+.awardChipsWrap {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px solid #ffffff14
+}
+.historyRow {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px
+}
+@media(max-width:680px) {
+  .hofPiecesGrid,
+  .hofPodiumGrid,
+  .trophyCabinetGrid {
+    grid-template-columns:1fr
+  }
+  .hofRow {
+    grid-template-columns:36px minmax(0,1fr);
+    gap:10px
+  }
+  .hofCounters {
+    grid-column:1 / -1;
+    justify-content:flex-start
+  }
+}

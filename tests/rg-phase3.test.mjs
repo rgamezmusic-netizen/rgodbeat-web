@@ -236,3 +236,89 @@ test('authenticated wallet and member sections keep read outages distinct from a
   const {RgMemberCard}=loadSource('components/ranking/RgMemberCard.tsx',mocks);
   assert.match(renderToStaticMarkup(await RgMemberCard()),/Tu saldo no está disponible/);
 });
+
+test('Hall of Fame accumulates RG Studio Trophy (#1), Silver (#2) and Bronze (#3) infinitely across finalized seasons and displays medals in ranking & artist profile',async()=>{
+  const artist2={id:'44444444-4444-4444-8444-444444444444',stage_name:'Second Legend',slug:'second-legend',bio:null,status:'active'};
+  const source={...chart,rankings:{tracks:[entry],artists:[{...entry,entityId:ids.artist,artist},{...entry,entityId:artist2.id,rank:2,score:8,artist:artist2}],beats:[]},sponsors:[]};
+  const db=database({
+    rg_rule_versions:[{version:1,reward_distribution:{1:40,2:25,3:15,premium_days:{1:30,2:15,3:15}}}],
+    rg_season_finalizations:[
+      {season_id:'s1',rank_run_id:'run1',finalized_at:'2026-09-15'},
+      {season_id:'s2',rank_run_id:'run2',finalized_at:'2026-09-30'},
+      {season_id:'s3',rank_run_id:'run3',finalized_at:'2026-10-15'},
+    ],
+    rg_seasons:[
+      {id:'s1',season_number:1,status:'finalized'},
+      {id:'s2',season_number:2,status:'finalized'},
+      {id:'s3',season_number:3,status:'finalized'},
+    ],
+    rg_rank_snapshots:[
+      {season_id:'s1',run_id:'run1',ranking_type:'artists',entity_id:ids.artist,rank:1,score:120},
+      {season_id:'s2',run_id:'run2',ranking_type:'artists',entity_id:ids.artist,rank:1,score:95},
+      {season_id:'s3',run_id:'run3',ranking_type:'artists',entity_id:ids.artist,rank:3,score:60},
+      {season_id:'s1',run_id:'run1',ranking_type:'artists',entity_id:artist2.id,rank:2,score:80},
+    ],
+    rg_artists:[artist,artist2],
+    rg_tracks:[track],
+    beats:[beat],
+    rg_track_artists:[{track_id:ids.track,artist_id:ids.artist,role:'primary',rg_tracks:track}],
+  });
+  const {getRgChart}=loadSource('lib/rg/product/chart.ts',{
+    '@/lib/rg/phase2/rankings':{getRgSeasonRankings:async()=>source},
+    '@/lib/rg/phase2/database':{createPhase2AdminClient:()=>db},
+  });
+  const data=await getRgChart();
+  assert.equal(data.hallOfFame.length,2);
+  assert.equal(data.hallOfFame[0].artist.stage_name,'Fixture Artist');
+  assert.equal(data.hallOfFame[0].medals.gold,2);
+  assert.equal(data.hallOfFame[0].medals.silver,0);
+  assert.equal(data.hallOfFame[0].medals.bronze,1);
+  assert.equal(data.hallOfFame[0].medals.total,3);
+  assert.equal(data.hallOfFame[1].artist.stage_name,'Second Legend');
+  assert.equal(data.hallOfFame[1].medals.silver,1);
+  assert.equal(data.rankings.tracks[0].medals.gold,2);
+  assert.equal(data.rankings.artists[0].medals.total,3);
+
+  const {RgSeasonRankingClient}=loadSource('components/ranking/RgSeasonRankingClient.tsx',replacements);
+  const rankingMarkup=html(RgSeasonRankingClient,{data});
+  assert.match(rankingMarkup,/SALÓN DE LA FAMA · MEDALLERO INFINITO/);
+  assert.match(rankingMarkup,/Trofeo Pieza de RG Studio/);
+  assert.match(rankingMarkup,/Medalla de Plata RG Studio/);
+  assert.match(rankingMarkup,/Medalla de Bronce RG Studio/);
+  assert.match(rankingMarkup,/×2 TROFEO RG/);
+  assert.match(rankingMarkup,/×1 BRONCE/);
+  assert.match(rankingMarkup,/Second Legend/);
+
+  const profileData=await profiles({
+    rg_artists:[artist],
+    rg_tracks:[track],
+    beats:[beat],
+    rg_track_artists:[{track_id:ids.track,artist_id:ids.artist,role:'primary',rg_tracks:track}],
+    rg_season_finalizations:[
+      {season_id:'s1',rank_run_id:'run1',finalized_at:'2026-09-15'},
+      {season_id:'s2',rank_run_id:'run2',finalized_at:'2026-09-30'},
+    ],
+    rg_seasons:[
+      {id:'s1',season_number:1,status:'finalized'},
+      {id:'s2',season_number:2,status:'finalized'},
+    ],
+    rg_rank_snapshots:[
+      {season_id:'s1',run_id:'run1',ranking_type:'artists',entity_id:ids.artist,rank:1,score:120},
+      {season_id:'s2',run_id:'run2',ranking_type:'artists',entity_id:ids.artist,rank:2,score:90},
+    ],
+  },data).getArtistProfile('fixture-artist');
+  assert.equal(profileData.medals.gold,1);
+  assert.equal(profileData.medals.silver,1);
+  assert.equal(profileData.medals.total,2);
+
+  const page=loadSource('app/rg/artists/[slug]/page.tsx',{
+    ...replacements,
+    '@/lib/rg/product/profiles':{getArtistProfile:async()=>profileData},
+    '@/components/ranking/RgMemberCard':{RgMemberCard:()=>null},
+  });
+  const profileMarkup=renderToStaticMarkup(await page.default({params:Promise.resolve({slug:'fixture-artist'})}));
+  assert.match(profileMarkup,/VITRINA DE HONOR · SALÓN DE LA FAMA RG STUDIO/);
+  assert.match(profileMarkup,/2 GALARDONES OFICIALES/);
+  assert.match(profileMarkup,/TROFEO PIEZA RG STUDIO/);
+  assert.match(profileMarkup,/MEDALLA DE PLATA/);
+});

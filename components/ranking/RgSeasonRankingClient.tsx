@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { ChartData } from '@/lib/rg/product/types';
 import { emptyRanking, formatRg, seasonCountdown } from '@/lib/rg/product/presentation';
-import { ArtistRewards, ChartRow, HowToCompete, Sponsors } from './RgProductParts';
+import { ArtistRewards, ChartRow, HallOfFame, HowToCompete, Sponsors } from './RgProductParts';
 import styles from './RgProduct.module.css';
 import { useBrowsePreferences } from '@/lib/browser/browse-preferences';
 import { navigationServerTime } from '@/lib/browser/navigation-clock';
@@ -67,6 +67,12 @@ export function RgSeasonRankingClient({ data }: { data: ChartData }) {
     <div className={styles.tabs}><div role="tablist" aria-label="Clasificaciones RG" className={styles.tabButtons}>{kinds.map(tab => <button type="button" className={styles.tab} key={tab} id={`tab-${tab}`} role="tab" tabIndex={kind === tab ? 0 : -1} aria-selected={kind === tab} aria-controls="rg-chart" onClick={() => setKind(tab)} onKeyDown={navigateTabs}>{tab.toUpperCase()}</button>)}</div><button type="button" className={styles.refresh} disabled={pending} onClick={() => startTransition(() => router.refresh())} aria-label="Actualizar clasificación">{pending ? 'Actualizando…' : 'Actualizar'}</button></div>
     <section id="rg-chart" role="tabpanel" aria-labelledby={`tab-${kind}`} className={styles.list}>{entries.length ? entries.map(entry => <ChartRow key={entry.entityId} entry={entry} kind={kind} />) : <div className={styles.empty}><span className={styles.eyebrow}>SEASON {String(data.season.season_number).padStart(2, '0')} · {kind.toUpperCase()}</span><h2>{empty.title}</h2><p>{empty.detail}</p><Link className={styles.button} href={empty.href}>{empty.cta}</Link></div>}</section>
     <div className={styles.section}><ArtistRewards rewards={data.rewards} tail={data.rewardTail} /></div>
+    <HallOfFame
+      entries={data.hallOfFame}
+      currentArtists={data.rankings.artists}
+      currentTracks={data.rankings.tracks}
+      seasonNumber={data.season.season_number}
+    />
     <Sponsors sponsors={data.sponsors} /><HowToCompete />
   </>;
 }

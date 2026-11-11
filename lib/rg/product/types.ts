@@ -9,12 +9,33 @@ export type RgInteractionStats = {
   likeCount: number;
   commentCount: number;
 };
+export type RgMedalPlace = 1 | 2 | 3;
+export type RgSeasonMedalAward = {
+  seasonNumber: number;
+  place: RgMedalPlace;
+  score: number;
+};
+export type RgArtistMedalTally = {
+  gold: number;
+  silver: number;
+  bronze: number;
+  total: number;
+  totalPoints: number;
+  awards: RgSeasonMedalAward[];
+};
+export type RgHallOfFameEntry = {
+  rank: number;
+  artist: PublicArtist;
+  medals: RgArtistMedalTally;
+  currentSeasonRank?: number | null;
+};
 export type ChartEntry = {
   entityId: string; rank: number; score: number; previousRank: number | null;
   movement: number | null; isNew: boolean; onFire: false;
   track?: PublicTrack | null; artist?: PublicArtist | null; beat?: PublicBeat | null;
   rankedTrackCount?: number;
   interactions?: RgInteractionStats;
+  medals?: RgArtistMedalTally;
 };
 export type ChartData = {
   season: { id: string; season_number: number; name: string; starts_at: string; ends_at: string; status: string };
@@ -23,6 +44,7 @@ export type ChartData = {
   rewardTail?: { firstPlace: number; lastPlace: number; poolSharePercent: number };
   sponsors: Array<{ name: string; websiteUrl: string | null; logoUrl: string | null; tier: string }>;
   rankings: Record<RankingKind, ChartEntry[]>;
+  hallOfFame?: RgHallOfFameEntry[];
 };
 export type SeasonPerformance = { rank: number | null; score: number; movement: number | null; isNew: boolean; onFire: false };
 export type ArtistProfile = {
@@ -32,6 +54,7 @@ export type ArtistProfile = {
   seasonNumber: number;
   interactions?: RgInteractionStats;
   trackInteractions?: Record<string, RgInteractionStats & { youtubeUrl?: string | null }>;
+  medals?: RgArtistMedalTally;
 };
 export type TrackProfile = {
   track: PublicTrack; artist: PublicArtist; beat: PublicBeat | null;

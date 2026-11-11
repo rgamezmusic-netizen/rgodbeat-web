@@ -3,6 +3,7 @@ import { createPhase2AdminClient } from '@/lib/rg/phase2/database';
 import { syncRgYoutubeMetricsIfStale } from '@/lib/rg/phase2/youtube';
 import { getPublicStorageUrl } from '@/lib/storage/public';
 import { getRgChart } from './chart';
+import { computeArtistMedalTally } from './presentation';
 import type { ArtistProfile, BeatProfile, ChartData, PublicArtist, PublicBeat, PublicTrack, RgInteractionStats, SeasonPerformance, TrackProfile } from './types';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -133,7 +134,7 @@ export async function getArtistProfile(value: string): Promise<ArtistProfile | n
     getRgChart(),
     db.from('rg_track_artists').select('track_id,rg_tracks!inner(id,title,status,created_at)')
       .eq('artist_id', artist.id).eq('role', 'primary').eq('rg_tracks.status', 'published').order('track_id').limit(24),
-    db.from('rg_season_finalizations').select('season_id,rank_run_id').order('finalized_at', { ascending: false }).limit(6),
+    db.from('rg_season_finalizations').select('season_id,rank_run_id').order('finalized_at', { ascending: false }).limit(500),
   ]);
   if (memberships.error || finals.error) throw new Error('Artist performance unavailable.');
   const tracks = ((memberships.data ?? []) as Array<{ rg_tracks: { id: string; title: string; status: string } | Array<{ id: string; title: string; status: string }> }>).flatMap(row => {
@@ -155,6 +156,7 @@ export async function getArtistProfile(value: string): Promise<ArtistProfile | n
     }
     history.sort((a, b) => b.seasonNumber - a.seasonNumber);
   }
+  const medals = computeArtistMedalTally(history);
   const trackInteractions = await collectTrackInteractions(db, tracks.map(t => t.id), artist.id);
   const interactions: RgInteractionStats = {
     recordedCount: tracks.length,
@@ -163,7 +165,7 @@ export async function getArtistProfile(value: string): Promise<ArtistProfile | n
     commentCount: Object.values(trackInteractions).reduce((sum, item) => sum + item.commentCount, 0),
   };
   return { artist: { id: artist.id, stage_name: artist.stage_name, slug: artist.slug, bio: artist.bio },
-    tracks, history, performance: await performance(chart, 'artists', artist.id), seasonNumber: chart.season.season_number,
+    tracks, history, medals, performance: await performance(chart, 'artists', artist.id), seasonNumber: chart.season.season_number,
     interactions, trackInteractions };
 }
 
