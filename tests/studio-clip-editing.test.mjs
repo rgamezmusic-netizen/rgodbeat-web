@@ -6,6 +6,7 @@ const {
   renderNonDestructiveClip,
   splitClip,
   trimClip,
+  computeClipEdgeResizePreview,
   resizeClipEdge,
   setClipFades,
   setClipTimeStretch,
@@ -300,5 +301,37 @@ test('7. Persistence: verifies non-destructive metadata payload fields', () => {
   assert.equal(restored.fadeInSec, 0.25);
   assert.equal(restored.fadeOutSec, 0.4);
   assert.equal(restored.isLocked, true);
+});
+
+test('8. Live 60fps edge preview geometry matches committed resizeClipEdge exactly (zero jump on release)', () => {
+  const sampleRate = 48000;
+  const audio = createMockAudioBuffer(1, sampleRate * 4, sampleRate);
+  const clip = {
+    id: 'take-preview',
+    buffer: audio,
+    sourceBuffer: audio,
+    sourceOffsetSec: 0.5,
+    sourceDurationSec: 3.0,
+    timeStretchRatio: 1.0,
+    startBeatOffset: 2.0,
+    duration: 3.0,
+    fadeInSec: 0.2,
+    fadeOutSec: 0.2,
+  };
+
+  // Trim start edge by +0.75s
+  const previewTrimStart = computeClipEdgeResizePreview(clip, 'start', 0.75, 'trim');
+  const committedTrimStart = resizeClipEdge(mockCtx, clip, 'start', 0.75, 'trim');
+  assert.ok(previewTrimStart && committedTrimStart);
+  assert.ok(Math.abs(previewTrimStart.startBeatOffset - committedTrimStart.startBeatOffset) < 1e-4);
+  assert.ok(Math.abs(previewTrimStart.duration - committedTrimStart.duration) < 1e-3);
+  assert.ok(Math.abs(previewTrimStart.sourceOffsetSec - committedTrimStart.sourceOffsetSec) < 1e-4);
+
+  // Stretch end edge by +1.5s (3.0s -> 4.5s, 1.5x stretch)
+  const previewStretchEnd = computeClipEdgeResizePreview(clip, 'end', 1.5, 'stretch');
+  const committedStretchEnd = resizeClipEdge(mockCtx, clip, 'end', 1.5, 'stretch');
+  assert.ok(previewStretchEnd && committedStretchEnd);
+  assert.ok(Math.abs(previewStretchEnd.timeStretchRatio - committedStretchEnd.timeStretchRatio) < 1e-4);
+  assert.ok(Math.abs(previewStretchEnd.duration - committedStretchEnd.duration) < 1e-2);
 });
 

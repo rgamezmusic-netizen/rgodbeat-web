@@ -4,8 +4,16 @@ const BLOCK_SIZE = 128;
 const envelopes = new WeakMap<AudioBuffer, { blocks: Float32Array; maximum: number }>();
 
 /** Peak envelope of the actual PCM, in equal time windows, including stereo. */
-export function getBufferWaveform(buffer: AudioBuffer, requestedPoints: number): number[] {
-  const points = Math.max(1, Math.min(buffer.length, Math.ceil(requestedPoints)));
+export function getBufferWaveform(
+  buffer: AudioBuffer,
+  requestedPoints: number,
+  startRatio = 0,
+  endRatio = 1
+): number[] {
+  const rangeStart = startRatio <= 0 ? 0 : Math.max(0, Math.min(buffer.length - 1, Math.floor(startRatio * buffer.length)));
+  const rangeEnd = endRatio >= 1 ? buffer.length : Math.max(rangeStart + 1, Math.min(buffer.length, Math.ceil(endRatio * buffer.length)));
+  const rangeLength = Math.max(1, rangeEnd - rangeStart);
+  const points = Math.max(1, Math.min(rangeLength, Math.ceil(requestedPoints)));
   let envelope = envelopes.get(buffer);
   const channels = Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch));
   if (!envelope) {
@@ -25,8 +33,8 @@ export function getBufferWaveform(buffer: AudioBuffer, requestedPoints: number):
   const { blocks, maximum } = envelope;
   if (!maximum) return Array(points).fill(0);
   return Array.from({ length: points }, (_, point) => {
-    const start = Math.floor(point * buffer.length / points);
-    const end = Math.floor((point + 1) * buffer.length / points);
+    const start = rangeStart + Math.floor(point * rangeLength / points);
+    const end = rangeStart + Math.floor((point + 1) * rangeLength / points);
     const firstBlock = Math.ceil(start / BLOCK_SIZE);
     const lastBlock = Math.floor(end / BLOCK_SIZE);
     let peak = 0;

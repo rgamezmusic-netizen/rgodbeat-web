@@ -139,6 +139,90 @@ export function trimClip(
   return renderNonDestructiveClip(ctx, candidate);
 }
 
+export interface ClipEdgeResizeGeometry {
+  startBeatOffset: number;
+  duration: number;
+  sourceOffsetSec: number;
+  sourceDurationSec: number;
+  timeStretchRatio: number;
+  fadeInSec: number;
+  fadeOutSec: number;
+}
+
+/**
+ * Pure, synchronous geometry calculation for live 60/120fps edge resizing preview
+ * and final non-destructive DSP rendering.
+ */
+export function computeClipEdgeResizePreview(
+  clip: VocalClip,
+  edge: 'start' | 'end',
+  deltaTimelineSec: number,
+  mode: 'trim' | 'stretch' = 'trim'
+): ClipEdgeResizeGeometry {
+  const sourceBuffer = clip.sourceBuffer || clip.buffer;
+  const sourceTotalDuration = clip.sourceDurationSec || sourceBuffer.duration;
+  const currentStretch = clip.timeStretchRatio || 1.0;
+  const currentSourceOffset = clip.sourceOffsetSec || 0;
+
+  if (mode === 'stretch') {
+    const maxSourceAvailable = Math.max(0.01, sourceTotalDuration - currentSourceOffset);
+    const currentSourceUsed = Math.min(maxSourceAvailable, Math.max(0.01, clip.duration / currentStretch));
+    const rawDuration = edge === 'start'
+      ? Math.max(0.05, clip.duration - deltaTimelineSec)
+      : Math.max(0.05, clip.duration + deltaTimelineSec);
+    const newRatio = Math.max(0.25, Math.min(4.0, rawDuration / currentSourceUsed));
+    const actualNewDuration = currentSourceUsed * newRatio;
+    const newStartOffset = edge === 'start'
+      ? (clip.startBeatOffset + clip.duration) - actualNewDuration
+      : clip.startBeatOffset;
+
+    return {
+      startBeatOffset: newStartOffset,
+      duration: actualNewDuration,
+      sourceOffsetSec: currentSourceOffset,
+      sourceDurationSec: sourceTotalDuration,
+      timeStretchRatio: newRatio,
+      fadeInSec: Math.min(clip.fadeInSec || 0, actualNewDuration * 0.48),
+      fadeOutSec: Math.min(clip.fadeOutSec || 0, actualNewDuration * 0.48),
+    };
+  }
+
+  // Mode: 'trim' (extend or shorten visible region)
+  if (edge === 'start') {
+    const maxExtendLeftSec = currentSourceOffset * currentStretch;
+    const clampedDelta = Math.max(-maxExtendLeftSec, Math.min(clip.duration - 0.05, deltaTimelineSec));
+    const newStart = clip.startBeatOffset + clampedDelta;
+    const newSourceOffset = Math.max(0, currentSourceOffset + clampedDelta / currentStretch);
+    const maxRemainingTimeline = Math.max(0.05, (sourceTotalDuration - newSourceOffset) * currentStretch);
+    const newDuration = Math.min(maxRemainingTimeline, clip.duration - clampedDelta);
+
+    return {
+      startBeatOffset: newStart,
+      duration: newDuration,
+      sourceOffsetSec: newSourceOffset,
+      sourceDurationSec: sourceTotalDuration,
+      timeStretchRatio: currentStretch,
+      fadeInSec: Math.min(clip.fadeInSec || 0, newDuration * 0.45),
+      fadeOutSec: Math.min(clip.fadeOutSec || 0, newDuration * 0.45),
+    };
+  }
+
+  // Edge: 'end' in 'trim' mode
+  const sourceAvailableAfterIn = Math.max(0, sourceTotalDuration - currentSourceOffset);
+  const maxPossibleDuration = sourceAvailableAfterIn * currentStretch;
+  const newDuration = Math.max(0.05, Math.min(maxPossibleDuration, clip.duration + deltaTimelineSec));
+
+  return {
+    startBeatOffset: clip.startBeatOffset,
+    duration: newDuration,
+    sourceOffsetSec: currentSourceOffset,
+    sourceDurationSec: sourceTotalDuration,
+    timeStretchRatio: currentStretch,
+    fadeInSec: Math.min(clip.fadeInSec || 0, newDuration * 0.45),
+    fadeOutSec: Math.min(clip.fadeOutSec || 0, newDuration * 0.45),
+  };
+}
+
 /**
  * Resizes a clip's left or right edge:
  * - In 'trim' mode: extends or trims revealing hidden source audio or hiding audio.
@@ -152,77 +236,18 @@ export function resizeClipEdge(
   mode: 'trim' | 'stretch' = 'trim'
 ): VocalClip | null {
   const sourceBuffer = clip.sourceBuffer || clip.buffer;
-  const sourceTotalDuration = clip.sourceDurationSec || sourceBuffer.duration;
-  const currentStretch = clip.timeStretchRatio || 1.0;
-  const currentSourceOffset = clip.sourceOffsetSec || 0;
-
-  if (mode === 'stretch') {
-    let newDuration = clip.duration;
-    let newStartOffset = clip.startBeatOffset;
-
-    if (edge === 'start') {
-      newDuration = Math.max(0.08, clip.duration - deltaTimelineSec);
-      newStartOffset = clip.startBeatOffset + (clip.duration - newDuration);
-    } else {
-      newDuration = Math.max(0.08, clip.duration + deltaTimelineSec);
-    }
-
-    const currentSourceUsed = clip.duration / currentStretch;
-    const newRatio = Math.max(0.25, Math.min(4.0, newDuration / currentSourceUsed));
-
-    const candidate: VocalClip = {
-      ...clip,
-      sourceBuffer,
-      sourceOffsetSec: currentSourceOffset,
-      sourceDurationSec: sourceTotalDuration,
-      startBeatOffset: newStartOffset,
-      duration: currentSourceUsed * newRatio,
-      timeStretchRatio: newRatio,
-    };
-
-    return renderNonDestructiveClip(ctx, candidate);
-  }
-
-  // Mode: 'trim' (extend or shorten visible region)
-  if (edge === 'start') {
-    // Dragging left (negative delta) reveals audio before current in-point
-    // Dragging right (positive delta) hides audio from start
-    const maxExtendLeftSec = currentSourceOffset * currentStretch;
-    const clampedDelta = Math.max(-maxExtendLeftSec, Math.min(clip.duration - 0.05, deltaTimelineSec));
-    const newStart = clip.startBeatOffset + clampedDelta;
-    const newDuration = clip.duration - clampedDelta;
-    const newSourceOffset = Math.max(0, currentSourceOffset + clampedDelta / currentStretch);
-
-    const candidate: VocalClip = {
-      ...clip,
-      sourceBuffer,
-      sourceOffsetSec: newSourceOffset,
-      sourceDurationSec: sourceTotalDuration,
-      startBeatOffset: newStart,
-      duration: newDuration,
-      timeStretchRatio: currentStretch,
-      fadeInSec: Math.min(clip.fadeInSec || 0, newDuration * 0.45),
-      fadeOutSec: Math.min(clip.fadeOutSec || 0, newDuration * 0.45),
-    };
-
-    return renderNonDestructiveClip(ctx, candidate);
-  }
-
-  // Edge: 'end'
-  const sourceAvailableAfterIn = Math.max(0, sourceTotalDuration - currentSourceOffset);
-  const maxPossibleDuration = sourceAvailableAfterIn * currentStretch;
-  const newDuration = Math.max(0.05, Math.min(maxPossibleDuration, clip.duration + deltaTimelineSec));
+  const geo = computeClipEdgeResizePreview(clip, edge, deltaTimelineSec, mode);
 
   const candidate: VocalClip = {
     ...clip,
     sourceBuffer,
-    sourceOffsetSec: currentSourceOffset,
-    sourceDurationSec: sourceTotalDuration,
-    startBeatOffset: clip.startBeatOffset,
-    duration: newDuration,
-    timeStretchRatio: currentStretch,
-    fadeInSec: Math.min(clip.fadeInSec || 0, newDuration * 0.45),
-    fadeOutSec: Math.min(clip.fadeOutSec || 0, newDuration * 0.45),
+    sourceOffsetSec: geo.sourceOffsetSec,
+    sourceDurationSec: geo.sourceDurationSec,
+    startBeatOffset: geo.startBeatOffset,
+    duration: geo.duration,
+    timeStretchRatio: geo.timeStretchRatio,
+    fadeInSec: geo.fadeInSec,
+    fadeOutSec: geo.fadeOutSec,
   };
 
   return renderNonDestructiveClip(ctx, candidate);

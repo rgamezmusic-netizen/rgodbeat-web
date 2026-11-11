@@ -33,7 +33,12 @@ const EXPANDED_TRACK_HEADER_WIDTH = 192; // px (full mixer with faders and pan)
 const TIMELINE_GUTTER = 20; // px (lead-in margin so Bar 1 & waveforms never touch or bleed behind track headers)
 
 export { getTrackClips } from '@/lib/studio/audio/clipEditing';
-import { getProjectDuration, getTrackClips } from '@/lib/studio/audio/clipEditing';
+import {
+  getProjectDuration,
+  getTrackClips,
+  computeClipEdgeResizePreview,
+  ClipEdgeResizeGeometry,
+} from '@/lib/studio/audio/clipEditing';
 
 // Retain the public helper for existing consumers; use PCM for timeline takes.
 export const getInterpolatedWaveform = resampleWaveformPeaks;
@@ -177,6 +182,22 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const [activeEditTool, setActiveEditTool] = useState<'trim' | 'stretch'>('trim');
   const [isAltPressed, setIsAltPressed] = useState(false);
 
+  const [edgePreview, setEdgePreview] = useState<{
+    trackId: VocalTrackId;
+    clipId: string;
+    edge: 'start' | 'end';
+    mode: 'trim' | 'stretch';
+    geometry: ClipEdgeResizeGeometry;
+  } | null>(null);
+
+  const [fadePreview, setFadePreview] = useState<{
+    trackId: VocalTrackId;
+    clipId: string;
+    type: 'in' | 'out';
+    fadeInSec: number;
+    fadeOutSec: number;
+  } | null>(null);
+
   const onResizeClipEdgeRef = useRef(onResizeClipEdge);
   const onSetClipFadesRef = useRef(onSetClipFades);
   const onSetClipStretchRef = useRef(onSetClipStretch);
@@ -213,33 +234,108 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     e.stopPropagation();
     if (!('touches' in e)) e.preventDefault();
     if (clip.isLocked || isRecording) return;
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const mode = isAltPressed || activeEditTool === 'stretch' ? 'stretch' : 'trim';
+    const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const initialScrollLeft = containerRef.current?.scrollLeft ?? 0;
+    const initialMode: 'trim' | 'stretch' =
+      (('altKey' in e && e.altKey) || isAltPressed || activeEditTool === 'stretch')
+        ? 'stretch'
+        : 'trim';
     const trackId = track.id;
     const clipId = clip.id;
 
     setSelectedClipId(clipId);
     onSelectTrack(trackId);
+    setIsDraggingClip(true);
+
+    let latestDeltaSec = 0;
+    let latestMode: 'trim' | 'stretch' = initialMode;
+    let moved = false;
+    let rafId: number | null = null;
+
+    setEdgePreview({
+      trackId,
+      clipId,
+      edge,
+      mode: initialMode,
+      geometry: computeClipEdgeResizePreview(clip, edge, 0, initialMode),
+    });
 
     const onMove = (moveEvt: MouseEvent | TouchEvent) => {
       if ('touches' in moveEvt && moveEvt.cancelable) moveEvt.preventDefault();
+      const currentX = 'touches' in moveEvt
+        ? (moveEvt.touches[0]?.clientX ?? startX)
+        : moveEvt.clientX;
+      const currentScrollLeft = containerRef.current?.scrollLeft ?? initialScrollLeft;
+      const rawDeltaPx = (currentX - startX) + (currentScrollLeft - initialScrollLeft);
+
+      if (Math.abs(rawDeltaPx) >= 1) {
+        moved = true;
+      }
+
+      // Fine-precision damping when holding Shift (0.25x speed)
+      const precisionFactor = ('shiftKey' in moveEvt && moveEvt.shiftKey) ? 0.25 : 1.0;
+      const effectiveDeltaPx = rawDeltaPx * precisionFactor;
+
+      // Dynamically respect Alt key during drag
+      const dynamicAlt = 'altKey' in moveEvt ? moveEvt.altKey : isAltPressed;
+      latestMode = (dynamicAlt || activeEditTool === 'stretch') ? 'stretch' : 'trim';
+
+      let deltaSec = effectiveDeltaPx / basePixelsPerSecRef.current;
+
+      // Optional musical grid snapping when Snap to Beat is enabled (unless holding Shift)
+      if (snapToBeatRef.current && !('shiftKey' in moveEvt && moveEvt.shiftKey)) {
+        const subBeat = secPerBeatRef.current * 0.5;
+        if (edge === 'start') {
+          const targetStart = clip.startBeatOffset + deltaSec;
+          const snappedStart = Math.round(targetStart / subBeat) * subBeat;
+          deltaSec = snappedStart - clip.startBeatOffset;
+        } else {
+          const targetEnd = clip.startBeatOffset + clip.duration + deltaSec;
+          const snappedEnd = Math.round(targetEnd / subBeat) * subBeat;
+          deltaSec = snappedEnd - (clip.startBeatOffset + clip.duration);
+        }
+      }
+
+      latestDeltaSec = deltaSec;
+
+      if (rafId === null) {
+        rafId = window.requestAnimationFrame(() => {
+          rafId = null;
+          const geo = computeClipEdgeResizePreview(clip, edge, latestDeltaSec, latestMode);
+          setEdgePreview({
+            trackId,
+            clipId,
+            edge,
+            mode: latestMode,
+            geometry: geo,
+          });
+        });
+      }
     };
 
-    const onEnd = (upEvt: MouseEvent | TouchEvent) => {
+    const onEnd = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onEnd);
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);
       window.removeEventListener('touchcancel', onEnd);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        rafId = null;
+      }
 
-      const endX = 'changedTouches' in upEvt
-        ? upEvt.changedTouches[0].clientX
-        : (upEvt as MouseEvent).clientX;
-      const deltaPx = endX - clientX;
-      const deltaSec = deltaPx / basePixelsPerSecRef.current;
+      setIsDraggingClip(false);
+      setEdgePreview(null);
 
-      if (Math.abs(deltaPx) >= 2 && onResizeClipEdgeRef.current) {
-        onResizeClipEdgeRef.current(trackId, clipId, edge, deltaSec, mode);
+      if (moved) {
+        justDraggedRef.current = true;
+        setTimeout(() => {
+          justDraggedRef.current = false;
+        }, 80);
+
+        if (Math.abs(latestDeltaSec) >= 0.002 && onResizeClipEdgeRef.current) {
+          onResizeClipEdgeRef.current(trackId, clipId, edge, latestDeltaSec, latestMode);
+        }
       }
     };
 
@@ -259,37 +355,91 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
     e.stopPropagation();
     if (!('touches' in e)) e.preventDefault();
     if (clip.isLocked || isRecording) return;
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const initialScrollLeft = containerRef.current?.scrollLeft ?? 0;
     const initialFade = type === 'in' ? (clip.fadeInSec || 0) : (clip.fadeOutSec || 0);
+    const otherFade = type === 'in' ? (clip.fadeOutSec || 0) : (clip.fadeInSec || 0);
     const trackId = track.id;
     const clipId = clip.id;
     const maxFade = clip.duration * 0.48;
 
     setSelectedClipId(clipId);
     onSelectTrack(trackId);
+    setIsDraggingClip(true);
 
-    const onEnd = (upEvt: MouseEvent | TouchEvent) => {
+    let latestFade = initialFade;
+    let moved = false;
+    let rafId: number | null = null;
+
+    setFadePreview({
+      trackId,
+      clipId,
+      type,
+      fadeInSec: type === 'in' ? initialFade : otherFade,
+      fadeOutSec: type === 'out' ? initialFade : otherFade,
+    });
+
+    const onMove = (moveEvt: MouseEvent | TouchEvent) => {
+      if ('touches' in moveEvt && moveEvt.cancelable) moveEvt.preventDefault();
+      const currentX = 'touches' in moveEvt
+        ? (moveEvt.touches[0]?.clientX ?? startX)
+        : moveEvt.clientX;
+      const currentScrollLeft = containerRef.current?.scrollLeft ?? initialScrollLeft;
+      const rawDeltaPx = (currentX - startX) + (currentScrollLeft - initialScrollLeft);
+      if (Math.abs(rawDeltaPx) >= 1) {
+        moved = true;
+      }
+      const signedDeltaPx = type === 'in' ? rawDeltaPx : -rawDeltaPx;
+      const deltaSec = signedDeltaPx / basePixelsPerSecRef.current;
+      latestFade = Math.max(0, Math.min(maxFade, initialFade + deltaSec));
+
+      if (rafId === null) {
+        rafId = window.requestAnimationFrame(() => {
+          rafId = null;
+          setFadePreview({
+            trackId,
+            clipId,
+            type,
+            fadeInSec: type === 'in' ? latestFade : otherFade,
+            fadeOutSec: type === 'out' ? latestFade : otherFade,
+          });
+        });
+      }
+    };
+
+    const onEnd = () => {
+      window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);
       window.removeEventListener('touchcancel', onEnd);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        rafId = null;
+      }
 
-      const endX = 'changedTouches' in upEvt
-        ? upEvt.changedTouches[0].clientX
-        : (upEvt as MouseEvent).clientX;
-      const deltaPx = type === 'in' ? (endX - clientX) : (clientX - endX);
-      const deltaSec = deltaPx / basePixelsPerSecRef.current;
-      const newFade = Math.max(0, Math.min(maxFade, initialFade + deltaSec));
+      setIsDraggingClip(false);
+      setFadePreview(null);
 
-      if (Math.abs(deltaPx) >= 2 && onSetClipFadesRef.current) {
-        if (type === 'in') {
-          onSetClipFadesRef.current(trackId, clipId, newFade, clip.fadeOutSec || 0);
-        } else {
-          onSetClipFadesRef.current(trackId, clipId, clip.fadeInSec || 0, newFade);
+      if (moved) {
+        justDraggedRef.current = true;
+        setTimeout(() => {
+          justDraggedRef.current = false;
+        }, 80);
+
+        if (Math.abs(latestFade - initialFade) >= 0.002 && onSetClipFadesRef.current) {
+          if (type === 'in') {
+            onSetClipFadesRef.current(trackId, clipId, latestFade, otherFade);
+          } else {
+            onSetClipFadesRef.current(trackId, clipId, otherFade, latestFade);
+          }
         }
       }
     };
 
+    window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('touchend', onEnd);
     window.addEventListener('touchcancel', onEnd);
   };
@@ -774,6 +924,36 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
             >
               <Scissors className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline">CORTAR</span>
+            </button>
+          )}
+
+          {/* 1-Tap Edge Mode Toggle: Trim (Recortar) vs Time-Stretch (Estirar) */}
+          {onResizeClipEdge && (
+            <button
+              type="button"
+              onClick={() => setActiveEditTool((prev) => (prev === 'trim' ? 'stretch' : 'trim'))}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-mono text-xs font-bold transition-all border cursor-pointer active:scale-95 ${
+                isAltPressed || activeEditTool === 'stretch'
+                  ? 'bg-amber-400/20 text-amber-300 border-amber-400/60 shadow-[0_0_10px_rgba(251,191,36,0.25)]'
+                  : 'bg-zinc-800 hover:bg-zinc-700 text-emerald-300 border-zinc-700'
+              }`}
+              title={
+                isAltPressed || activeEditTool === 'stretch'
+                  ? 'Modo Bordes: ESTIRAR TEMPO (Time-Stretch WSOLA sin cambiar tono). Toca para volver a Recortar'
+                  : 'Modo Bordes: RECORTAR / EXTENDER. Toca para cambiar a Estirar Tempo (o mantén Alt)'
+              }
+            >
+              {isAltPressed || activeEditTool === 'stretch' ? (
+                <>
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">ESTIRAR</span>
+                </>
+              ) : (
+                <>
+                  <MoveHorizontal className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">RECORTAR</span>
+                </>
+              )}
             </button>
           )}
 
@@ -1413,11 +1593,55 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                       isSelected &&
                       activeSelectedClip?.id === clip.id;
                     const isTargetOfDrag = isDraggingClip && dragClipId === clip.id;
-                    const effectiveOffset = isTargetOfDrag && dragPreviewOffset !== null
+                    const isTargetOfEdgeResize = edgePreview?.clipId === clip.id;
+                    const isTargetOfFade = fadePreview?.clipId === clip.id;
+
+                    const effectiveOffset = isTargetOfEdgeResize
+                      ? edgePreview.geometry.startBeatOffset
+                      : isTargetOfDrag && dragPreviewOffset !== null
                       ? dragPreviewOffset
                       : clip.startBeatOffset;
+                    const effectiveDuration = isTargetOfEdgeResize
+                      ? edgePreview.geometry.duration
+                      : clip.buffer.duration;
+                    const effectiveStretchRatio = isTargetOfEdgeResize
+                      ? edgePreview.geometry.timeStretchRatio
+                      : clip.timeStretchRatio || 1;
+                    const effectiveSourceOffset = isTargetOfEdgeResize
+                      ? edgePreview.geometry.sourceOffsetSec
+                      : clip.sourceOffsetSec || 0;
+                    const effectiveSourceWindowSec = Math.max(
+                      0.01,
+                      effectiveDuration / Math.max(0.25, effectiveStretchRatio)
+                    );
+                    const effectiveFadeIn = isTargetOfFade
+                      ? fadePreview.fadeInSec
+                      : isTargetOfEdgeResize
+                      ? edgePreview.geometry.fadeInSec
+                      : clip.fadeInSec || 0;
+                    const effectiveFadeOut = isTargetOfFade
+                      ? fadePreview.fadeOutSec
+                      : isTargetOfEdgeResize
+                      ? edgePreview.geometry.fadeOutSec
+                      : clip.fadeOutSec || 0;
+
                     const clipStartPx = effectiveOffset * basePixelsPerSec;
-                    const clipWidthPx = clip.buffer.duration * basePixelsPerSec;
+                    const clipWidthPx = effectiveDuration * basePixelsPerSec;
+
+                    const rawSourceBuffer = clip.sourceBuffer || clip.buffer;
+                    const rawSourceDur = Math.max(0.001, rawSourceBuffer.duration);
+                    const useSourceWindowPreview =
+                      isTargetOfEdgeResize &&
+                      edgePreview.mode === 'trim' &&
+                      Math.abs(effectiveStretchRatio - 1.0) < 0.01 &&
+                      Boolean(clip.sourceBuffer);
+                    const waveformBuffer = useSourceWindowPreview ? rawSourceBuffer : clip.buffer;
+                    const waveformStartRatio = useSourceWindowPreview
+                      ? Math.max(0, Math.min(1, effectiveSourceOffset / rawSourceDur))
+                      : 0;
+                    const waveformEndRatio = useSourceWindowPreview
+                      ? Math.max(waveformStartRatio, Math.min(1, (effectiveSourceOffset + effectiveSourceWindowSec) / rawSourceDur))
+                      : 1;
 
                     return (
                       <div
@@ -1438,20 +1662,52 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                             ? 'cursor-pointer'
                             : 'cursor-grab active:cursor-grabbing touch-none'
                         } ${
-                          isClipSelected
+                          isTargetOfEdgeResize
+                            ? edgePreview.mode === 'stretch'
+                              ? 'bg-gradient-to-r from-amber-600/45 to-amber-500/35 outline-amber-300 ring-2 ring-amber-400/70 shadow-[0_0_20px_rgba(251,191,36,0.45)] z-20'
+                              : 'bg-gradient-to-r from-emerald-600/55 to-teal-500/45 outline-emerald-300 ring-2 ring-emerald-300/70 shadow-[0_0_20px_rgba(16,185,129,0.5)] z-20'
+                            : isClipSelected
                             ? 'bg-gradient-to-r from-emerald-600/50 to-teal-500/40 outline-emerald-400 ring-2 ring-emerald-400/50 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
                             : 'bg-gradient-to-r from-emerald-700/25 to-teal-800/20 outline-emerald-500/50 hover:outline-emerald-400'
-                        } ${isTargetOfDrag ? 'shadow-[0_0_20px_rgba(16,185,129,0.6)]' : ''}`}
+                        } ${isTargetOfDrag ? 'shadow-[0_0_20px_rgba(16,185,129,0.6)] z-20' : ''}`}
                         style={{
                           left: `${TIMELINE_GUTTER + clipStartPx}px`,
                           width: `${clipWidthPx}px`,
+                          willChange: isTargetOfEdgeResize || isTargetOfDrag ? 'left, width' : undefined,
                         }}
                       >
+                        {/* Live 60fps Telemetry HUD Badge while Resizing / Stretching / Fading */}
+                        {(isTargetOfEdgeResize || isTargetOfFade) && (
+                          <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded bg-zinc-950/95 border border-amber-400/60 text-[10px] font-mono font-bold text-amber-300 whitespace-nowrap shadow-lg pointer-events-none z-40 flex items-center gap-1.5">
+                            {isTargetOfEdgeResize ? (
+                              edgePreview.mode === 'stretch' ? (
+                                <>
+                                  <Zap className="w-3 h-3 text-amber-400" />
+                                  <span>{effectiveStretchRatio.toFixed(2)}x</span>
+                                  <span className="text-zinc-500">·</span>
+                                  <span className="text-zinc-200">{effectiveDuration.toFixed(2)}s</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-emerald-300">RECORTAR</span>
+                                  <span className="text-zinc-500">·</span>
+                                  <span className="text-zinc-200">{effectiveDuration.toFixed(2)}s</span>
+                                </>
+                              )
+                            ) : (
+                              <span>
+                                FADE {fadePreview?.type === 'in' ? 'IN' : 'OUT'}:{' '}
+                                {(fadePreview?.type === 'in' ? effectiveFadeIn : effectiveFadeOut).toFixed(2)}s
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         {/* Fade In Shading & Curve Overlay */}
-                        {clip.fadeInSec && clip.fadeInSec > 0.01 ? (
+                        {effectiveFadeIn > 0.01 ? (
                           <div
                             className="absolute top-0 bottom-0 left-0 pointer-events-none z-10 overflow-hidden"
-                            style={{ width: `${Math.min(clipWidthPx, clip.fadeInSec * basePixelsPerSec)}px` }}
+                            style={{ width: `${Math.min(clipWidthPx, effectiveFadeIn * basePixelsPerSec)}px` }}
                           >
                             <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
                               <path d="M 0 100 Q 50 10 100 0 L 0 0 Z" fill="rgba(0,0,0,0.35)" />
@@ -1461,10 +1717,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                         ) : null}
 
                         {/* Fade Out Shading & Curve Overlay */}
-                        {clip.fadeOutSec && clip.fadeOutSec > 0.01 ? (
+                        {effectiveFadeOut > 0.01 ? (
                           <div
                             className="absolute top-0 bottom-0 right-0 pointer-events-none z-10 overflow-hidden"
-                            style={{ width: `${Math.min(clipWidthPx, clip.fadeOutSec * basePixelsPerSec)}px` }}
+                            style={{ width: `${Math.min(clipWidthPx, effectiveFadeOut * basePixelsPerSec)}px` }}
                           >
                             <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
                               <path d="M 0 0 Q 50 10 100 100 L 100 0 Z" fill="rgba(0,0,0,0.35)" />
@@ -1479,9 +1735,13 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                             data-fade-handle="in"
                             onMouseDown={(e) => handleFadeHandleMouseDown(e, track, clip, 'in')}
                             onTouchStart={(e) => handleFadeHandleMouseDown(e, track, clip, 'in')}
-                            className="absolute top-0 z-30 w-4 h-4 -translate-x-2 -translate-y-1 rounded-full bg-amber-400 hover:bg-amber-300 border-2 border-black shadow cursor-ew-resize opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-opacity select-none touch-none flex items-center justify-center"
-                            style={{ left: `${Math.max(4, (clip.fadeInSec || 0) * basePixelsPerSec)}px` }}
-                            title={`Fundido entrada: ${(clip.fadeInSec || 0).toFixed(2)}s (Arrastra horizontalmente)`}
+                            className={`absolute top-0 z-30 w-4 h-4 -translate-x-2 -translate-y-1 rounded-full bg-amber-400 hover:bg-amber-300 border-2 border-black shadow cursor-ew-resize transition-opacity select-none touch-none flex items-center justify-center ${
+                              isTargetOfFade && fadePreview.type === 'in'
+                                ? 'opacity-100 scale-125'
+                                : 'opacity-0 group-hover:opacity-100 hover:!opacity-100'
+                            }`}
+                            style={{ left: `${Math.max(4, effectiveFadeIn * basePixelsPerSec)}px` }}
+                            title={`Fundido entrada: ${effectiveFadeIn.toFixed(2)}s (Arrastra horizontalmente)`}
                           >
                             <div className="w-1 h-1 rounded-full bg-black/70" />
                           </div>
@@ -1493,9 +1753,13 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                             data-fade-handle="out"
                             onMouseDown={(e) => handleFadeHandleMouseDown(e, track, clip, 'out')}
                             onTouchStart={(e) => handleFadeHandleMouseDown(e, track, clip, 'out')}
-                            className="absolute top-0 z-30 w-4 h-4 translate-x-2 -translate-y-1 rounded-full bg-amber-400 hover:bg-amber-300 border-2 border-black shadow cursor-ew-resize opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-opacity select-none touch-none flex items-center justify-center"
-                            style={{ right: `${Math.max(4, (clip.fadeOutSec || 0) * basePixelsPerSec)}px` }}
-                            title={`Fundido salida: ${(clip.fadeOutSec || 0).toFixed(2)}s (Arrastra horizontalmente)`}
+                            className={`absolute top-0 z-30 w-4 h-4 translate-x-2 -translate-y-1 rounded-full bg-amber-400 hover:bg-amber-300 border-2 border-black shadow cursor-ew-resize transition-opacity select-none touch-none flex items-center justify-center ${
+                              isTargetOfFade && fadePreview.type === 'out'
+                                ? 'opacity-100 scale-125'
+                                : 'opacity-0 group-hover:opacity-100 hover:!opacity-100'
+                            }`}
+                            style={{ right: `${Math.max(4, effectiveFadeOut * basePixelsPerSec)}px` }}
+                            title={`Fundido salida: ${effectiveFadeOut.toFixed(2)}s (Arrastra horizontalmente)`}
                           >
                             <div className="w-1 h-1 rounded-full bg-black/70" />
                           </div>
@@ -1508,7 +1772,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                             onMouseDown={(e) => handleEdgeMouseDown(e, track, clip, 'start')}
                             onTouchStart={(e) => handleEdgeMouseDown(e, track, clip, 'start')}
                             className={`absolute left-0 top-0 bottom-0 w-5 z-30 cursor-col-resize flex items-center justify-center transition-colors group/edge select-none touch-none ${
-                              isAltPressed || activeEditTool === 'stretch'
+                              isAltPressed || activeEditTool === 'stretch' || (isTargetOfEdgeResize && edgePreview.mode === 'stretch')
                                 ? 'hover:bg-amber-400/50 bg-amber-400/25 ring-1 ring-amber-400/60'
                                 : 'hover:bg-emerald-400/50 bg-emerald-500/15'
                             }`}
@@ -1529,7 +1793,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                             onMouseDown={(e) => handleEdgeMouseDown(e, track, clip, 'end')}
                             onTouchStart={(e) => handleEdgeMouseDown(e, track, clip, 'end')}
                             className={`absolute right-0 top-0 bottom-0 w-5 z-30 cursor-col-resize flex items-center justify-center transition-colors group/edge select-none touch-none ${
-                              isAltPressed || activeEditTool === 'stretch'
+                              isAltPressed || activeEditTool === 'stretch' || (isTargetOfEdgeResize && edgePreview.mode === 'stretch')
                                 ? 'hover:bg-amber-400/50 bg-amber-400/25 ring-1 ring-amber-400/60'
                                 : 'hover:bg-emerald-400/50 bg-emerald-500/15'
                             }`}
@@ -1555,7 +1819,13 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           )}
                         </div>
 
-                        <ClipWaveform buffer={clip.buffer} width={clipWidthPx} locked={clip.isLocked} />
+                        <ClipWaveform
+                          buffer={waveformBuffer}
+                          width={clipWidthPx}
+                          locked={clip.isLocked}
+                          startRatio={waveformStartRatio}
+                          endRatio={waveformEndRatio}
+                        />
                         <div className="flex-1 min-w-0" />
 
                         {/* Clip Meta Tag: Truncated to avoid overlapping action buttons */}
@@ -1569,15 +1839,15 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                                 HOLD
                               </span>
                             )}
-                            {clip.timeStretchRatio && Math.abs(clip.timeStretchRatio - 1.0) >= 0.01 && (
+                            {Math.abs(effectiveStretchRatio - 1.0) >= 0.01 && (
                               <span className="px-1 py-0.2 rounded bg-amber-500/30 text-amber-300 text-[7px] border border-amber-500/40 font-mono font-bold flex items-center gap-0.5">
                                 <Zap className="w-2 h-2" />
-                                {clip.timeStretchRatio.toFixed(2)}x
+                                {effectiveStretchRatio.toFixed(2)}x
                               </span>
                             )}
                           </span>
                           <span className="text-[8px] font-mono text-zinc-300 truncate hidden xs:inline">
-                            {formatTime(clip.startBeatOffset)}
+                            {formatTime(effectiveOffset)}
                           </span>
                         </div>
 
