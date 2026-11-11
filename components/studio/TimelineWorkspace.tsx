@@ -21,6 +21,7 @@ import {
   Scissors,
   Lock,
   Unlock,
+  Zap,
 } from 'lucide-react';
 import { BeatData, LoopSettings, VocalClip, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative } from '@/lib/studio/audio/beatAnalyzer';
@@ -81,6 +82,10 @@ interface TimelineWorkspaceProps {
   onSplitTake?: (trackId: VocalTrackId, clipId?: string, splitTimeSec?: number) => void;
   onTrimTake?: (trackId: VocalTrackId, clipId: string, edge: 'start' | 'end') => void;
   onToggleLockTake?: (trackId: VocalTrackId, clipId?: string) => void;
+  onResizeClipEdge?: (trackId: VocalTrackId, clipId: string, edge: 'start' | 'end', deltaSec: number, mode: 'trim' | 'stretch') => void;
+  onSetClipFades?: (trackId: VocalTrackId, clipId: string, fadeInSec?: number, fadeOutSec?: number) => void;
+  onSetClipStretch?: (trackId: VocalTrackId, clipId: string, ratio: number) => void;
+  onMoveClipToTrack?: (sourceTrackId: VocalTrackId, targetTrackId: VocalTrackId, clipId: string, newOffsetSec?: number) => void;
 }
 
 export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
@@ -127,6 +132,10 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   onSplitTake,
   onToggleLockTake,
   onTrimTake,
+  onResizeClipEdge,
+  onSetClipFades,
+  onSetClipStretch,
+  onMoveClipToTrack,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const timelineContentRef = useRef<HTMLDivElement>(null);
@@ -164,6 +173,126 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
   const isPlayingRef = useRef(isPlaying);
   const currentTimeRef = useRef(currentTime);
   const justDraggedRef = useRef(false);
+
+  const [activeEditTool, setActiveEditTool] = useState<'trim' | 'stretch'>('trim');
+  const [isAltPressed, setIsAltPressed] = useState(false);
+
+  const onResizeClipEdgeRef = useRef(onResizeClipEdge);
+  const onSetClipFadesRef = useRef(onSetClipFades);
+  const onSetClipStretchRef = useRef(onSetClipStretch);
+  const onMoveClipToTrackRef = useRef(onMoveClipToTrack);
+
+  useEffect(() => {
+    onResizeClipEdgeRef.current = onResizeClipEdge;
+    onSetClipFadesRef.current = onSetClipFades;
+    onSetClipStretchRef.current = onSetClipStretch;
+    onMoveClipToTrackRef.current = onMoveClipToTrack;
+  }, [onResizeClipEdge, onSetClipFades, onSetClipStretch, onMoveClipToTrack]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey) setIsAltPressed(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (!e.altKey) setIsAltPressed(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  const handleEdgeMouseDown = (
+    e: React.MouseEvent | React.TouchEvent,
+    track: VocalTrack,
+    clip: VocalClip,
+    edge: 'start' | 'end'
+  ) => {
+    e.stopPropagation();
+    if (!('touches' in e)) e.preventDefault();
+    if (clip.isLocked || isRecording) return;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const mode = isAltPressed || activeEditTool === 'stretch' ? 'stretch' : 'trim';
+    const trackId = track.id;
+    const clipId = clip.id;
+
+    setSelectedClipId(clipId);
+    onSelectTrack(trackId);
+
+    const onMove = (moveEvt: MouseEvent | TouchEvent) => {
+      if ('touches' in moveEvt && moveEvt.cancelable) moveEvt.preventDefault();
+    };
+
+    const onEnd = (upEvt: MouseEvent | TouchEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', onEnd);
+
+      const endX = 'changedTouches' in upEvt
+        ? upEvt.changedTouches[0].clientX
+        : (upEvt as MouseEvent).clientX;
+      const deltaPx = endX - clientX;
+      const deltaSec = deltaPx / basePixelsPerSecRef.current;
+
+      if (Math.abs(deltaPx) >= 2 && onResizeClipEdgeRef.current) {
+        onResizeClipEdgeRef.current(trackId, clipId, edge, deltaSec, mode);
+      }
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('touchend', onEnd);
+    window.addEventListener('touchcancel', onEnd);
+  };
+
+  const handleFadeHandleMouseDown = (
+    e: React.MouseEvent | React.TouchEvent,
+    track: VocalTrack,
+    clip: VocalClip,
+    type: 'in' | 'out'
+  ) => {
+    e.stopPropagation();
+    if (!('touches' in e)) e.preventDefault();
+    if (clip.isLocked || isRecording) return;
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const initialFade = type === 'in' ? (clip.fadeInSec || 0) : (clip.fadeOutSec || 0);
+    const trackId = track.id;
+    const clipId = clip.id;
+    const maxFade = clip.duration * 0.48;
+
+    setSelectedClipId(clipId);
+    onSelectTrack(trackId);
+
+    const onEnd = (upEvt: MouseEvent | TouchEvent) => {
+      window.removeEventListener('mouseup', onEnd);
+      window.removeEventListener('touchend', onEnd);
+      window.removeEventListener('touchcancel', onEnd);
+
+      const endX = 'changedTouches' in upEvt
+        ? upEvt.changedTouches[0].clientX
+        : (upEvt as MouseEvent).clientX;
+      const deltaPx = type === 'in' ? (endX - clientX) : (clientX - endX);
+      const deltaSec = deltaPx / basePixelsPerSecRef.current;
+      const newFade = Math.max(0, Math.min(maxFade, initialFade + deltaSec));
+
+      if (Math.abs(deltaPx) >= 2 && onSetClipFadesRef.current) {
+        if (type === 'in') {
+          onSetClipFadesRef.current(trackId, clipId, newFade, clip.fadeOutSec || 0);
+        } else {
+          onSetClipFadesRef.current(trackId, clipId, clip.fadeInSec || 0, newFade);
+        }
+      }
+    };
+
+    window.addEventListener('mouseup', onEnd);
+    window.addEventListener('touchend', onEnd);
+    window.addEventListener('touchcancel', onEnd);
+  };
 
   useEffect(() => {
     onMoveTakeRef.current = onMoveTake;
@@ -1288,7 +1417,7 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           if (isScrubbingPlayhead) return;
                           handleClipMouseDown(e, track, clip);
                         }}
-                        className={`absolute top-2 bottom-2 rounded-sm outline outline-1 -outline-offset-1 flex items-center transition-shadow select-none shadow-lg z-10 ${
+                        className={`group absolute top-2 bottom-2 rounded-sm outline outline-1 -outline-offset-1 flex items-center transition-shadow select-none shadow-lg z-10 ${
                           clip.isLocked
                             ? 'cursor-pointer'
                             : 'cursor-grab active:cursor-grabbing touch-none'
@@ -1302,9 +1431,97 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                           width: `${clipWidthPx}px`,
                         }}
                       >
+                        {/* Fade In Shading & Curve Overlay */}
+                        {clip.fadeInSec && clip.fadeInSec > 0.01 ? (
+                          <div
+                            className="absolute top-0 bottom-0 left-0 pointer-events-none z-10 overflow-hidden"
+                            style={{ width: `${Math.min(clipWidthPx, clip.fadeInSec * basePixelsPerSec)}px` }}
+                          >
+                            <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                              <path d="M 0 100 Q 50 10 100 0 L 0 0 Z" fill="rgba(0,0,0,0.35)" />
+                              <path d="M 0 100 Q 50 10 100 0" stroke="rgba(251,191,36,0.8)" strokeWidth="3" fill="none" />
+                            </svg>
+                          </div>
+                        ) : null}
+
+                        {/* Fade Out Shading & Curve Overlay */}
+                        {clip.fadeOutSec && clip.fadeOutSec > 0.01 ? (
+                          <div
+                            className="absolute top-0 bottom-0 right-0 pointer-events-none z-10 overflow-hidden"
+                            style={{ width: `${Math.min(clipWidthPx, clip.fadeOutSec * basePixelsPerSec)}px` }}
+                          >
+                            <svg className="w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                              <path d="M 0 0 Q 50 10 100 100 L 100 0 Z" fill="rgba(0,0,0,0.35)" />
+                              <path d="M 0 0 Q 50 10 100 100" stroke="rgba(251,191,36,0.8)" strokeWidth="3" fill="none" />
+                            </svg>
+                          </div>
+                        ) : null}
+
+                        {/* Fade In Handle (Top-left handle) */}
+                        {!clip.isLocked && onSetClipFades && (
+                          <div
+                            onMouseDown={(e) => handleFadeHandleMouseDown(e, track, clip, 'in')}
+                            onTouchStart={(e) => handleFadeHandleMouseDown(e, track, clip, 'in')}
+                            className="absolute top-0 z-30 w-3.5 h-3.5 -translate-x-1.5 -translate-y-0.5 rounded-full bg-amber-400 hover:bg-amber-300 border border-black shadow cursor-ew-resize opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-opacity"
+                            style={{ left: `${Math.max(2, (clip.fadeInSec || 0) * basePixelsPerSec)}px` }}
+                            title={`Fundido entrada: ${(clip.fadeInSec || 0).toFixed(2)}s (Arrastra horizontalmente)`}
+                          />
+                        )}
+
+                        {/* Fade Out Handle (Top-right handle) */}
+                        {!clip.isLocked && onSetClipFades && (
+                          <div
+                            onMouseDown={(e) => handleFadeHandleMouseDown(e, track, clip, 'out')}
+                            onTouchStart={(e) => handleFadeHandleMouseDown(e, track, clip, 'out')}
+                            className="absolute top-0 z-30 w-3.5 h-3.5 translate-x-1.5 -translate-y-0.5 rounded-full bg-amber-400 hover:bg-amber-300 border border-black shadow cursor-ew-resize opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-opacity"
+                            style={{ right: `${Math.max(2, (clip.fadeOutSec || 0) * basePixelsPerSec)}px` }}
+                            title={`Fundido salida: ${(clip.fadeOutSec || 0).toFixed(2)}s (Arrastra horizontalmente)`}
+                          />
+                        )}
+
+                        {/* Left Edge Resize Handle (Trim / Stretch) */}
+                        {!clip.isLocked && onResizeClipEdge && (
+                          <div
+                            onMouseDown={(e) => handleEdgeMouseDown(e, track, clip, 'start')}
+                            onTouchStart={(e) => handleEdgeMouseDown(e, track, clip, 'start')}
+                            className={`absolute left-0 top-0 bottom-0 w-2.5 z-30 cursor-col-resize flex items-center justify-center transition-colors group/edge ${
+                              isAltPressed || activeEditTool === 'stretch'
+                                ? 'hover:bg-amber-400/50 bg-amber-400/20'
+                                : 'hover:bg-emerald-400/50 bg-emerald-500/10'
+                            }`}
+                            title={
+                              isAltPressed || activeEditTool === 'stretch'
+                                ? 'ESTIRAR / COMPRIMIR (Time Stretch): Arrastra para cambiar tempo sin cambiar tono'
+                                : 'RECORTAR / EXTENDER (Trim): Arrastra para recortar o revelar audio (Mantén Alt para estirar)'
+                            }
+                          >
+                            <div className="w-0.5 h-4 bg-zinc-200/70 rounded group-hover/edge:bg-white" />
+                          </div>
+                        )}
+
+                        {/* Right Edge Resize Handle (Trim / Stretch) */}
+                        {!clip.isLocked && onResizeClipEdge && (
+                          <div
+                            onMouseDown={(e) => handleEdgeMouseDown(e, track, clip, 'end')}
+                            onTouchStart={(e) => handleEdgeMouseDown(e, track, clip, 'end')}
+                            className={`absolute right-0 top-0 bottom-0 w-2.5 z-30 cursor-col-resize flex items-center justify-center transition-colors group/edge ${
+                              isAltPressed || activeEditTool === 'stretch'
+                                ? 'hover:bg-amber-400/50 bg-amber-400/20'
+                                : 'hover:bg-emerald-400/50 bg-emerald-500/10'
+                            }`}
+                            title={
+                              isAltPressed || activeEditTool === 'stretch'
+                                ? 'ESTIRAR / COMPRIMIR (Time Stretch): Arrastra para cambiar tempo sin cambiar tono'
+                                : 'RECORTAR / EXTENDER (Trim): Arrastra para recortar o revelar audio (Mantén Alt para estirar)'
+                            }
+                          >
+                            <div className="w-0.5 h-4 bg-zinc-200/70 rounded group-hover/edge:bg-white" />
+                          </div>
+                        )}
+
                         {/* Left Drag or Lock Indicator */}
                         <div
-                          className="ml-2 mr-1.5 flex flex-col gap-0.5 shrink-0"
+                          className="ml-2.5 mr-1.5 flex flex-col gap-0.5 shrink-0"
                           title={clip.isLocked ? 'Toma con Seguro (Hold) activado' : 'Arrastrar para desplazar en el tiempo'}
                         >
                           {clip.isLocked ? (
@@ -1326,6 +1543,12 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
                             {clip.isLocked && (
                               <span className="px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[7px] border border-amber-500/30 shrink-0">
                                 HOLD
+                              </span>
+                            )}
+                            {clip.timeStretchRatio && Math.abs(clip.timeStretchRatio - 1.0) >= 0.01 && (
+                              <span className="px-1 py-0.2 rounded bg-amber-500/30 text-amber-300 text-[7px] border border-amber-500/40 font-mono font-bold flex items-center gap-0.5">
+                                <Zap className="w-2 h-2" />
+                                {clip.timeStretchRatio.toFixed(2)}x
                               </span>
                             )}
                           </span>
@@ -1425,9 +1648,70 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               ) : null}
             </div>
 
-            {/* Quick Actions: Duplicate & Delete */}
+            {/* Quick Actions: Duplicate, Move & Delete */}
             {activeSelectedClip && (
               <div className="flex items-center gap-2 flex-wrap">
+                {/* Tool Mode: Trim vs Stretch */}
+                {onResizeClipEdge && (
+                  <div className="flex items-center rounded-lg bg-black/60 p-0.5 border border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => setActiveEditTool('trim')}
+                      className={`px-2 py-1 rounded text-[11px] font-mono font-semibold transition-all ${
+                        activeEditTool === 'trim'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                      title="Modo Recortar/Extender: Arrastra bordes para recortar u ocultar/revelar audio"
+                    >
+                      ✂️ Recortar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveEditTool('stretch')}
+                      className={`px-2 py-1 rounded text-[11px] font-mono font-semibold transition-all flex items-center gap-1 ${
+                        activeEditTool === 'stretch'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                      title="Modo Time Stretch: Arrastra bordes para acelerar/desacelerar preservando el tono (WSOLA)"
+                    >
+                      <Zap className="w-3 h-3 text-amber-400" />
+                      Estirar
+                    </button>
+                  </div>
+                )}
+
+                {/* Move to another track dropdown */}
+                {onMoveClipToTrack && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] font-mono text-zinc-400">Mover a:</span>
+                    <select
+                      aria-label="Mover toma a otra pista"
+                      disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          onMoveClipToTrack(selectedClipTrack.id, e.target.value as VocalTrackId, activeSelectedClip.id);
+                          e.target.value = '';
+                        }
+                      }}
+                      defaultValue=""
+                      className="bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 focus:outline-none focus:border-amber-400 disabled:opacity-40"
+                    >
+                      <option value="" disabled>
+                        Elegir pista...
+                      </option>
+                      {tracks
+                        .filter((t) => t.id !== selectedClipTrack.id)
+                        .map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* Duplicate to another track dropdown */}
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] font-mono text-zinc-400">Duplicar a:</span>
@@ -1621,6 +1905,167 @@ export const TimelineWorkspace: React.FC<TimelineWorkspaceProps> = ({
               >
                 Mover al Cabezal ({formatTime(currentTime)})
               </button>
+            </div>
+          )}
+
+          {/* Non-Destructive Editing Row: Fades & Time Stretch Controls */}
+          {activeSelectedClip && (
+            <div className="mt-2.5 pt-2 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+              {/* Fades Group */}
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Fade In */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-zinc-400 text-[11px]">Fade In:</span>
+                  <input
+                    key={`fade-in-${activeSelectedClip.id}-${activeSelectedClip.fadeInSec}`}
+                    type="number"
+                    step={0.01}
+                    min={0}
+                    max={activeSelectedClip.duration * 0.48}
+                    defaultValue={(activeSelectedClip.fadeInSec || 0).toFixed(2)}
+                    disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
+                    onBlur={(e) => {
+                      const val = Math.max(0, parseFloat(e.currentTarget.value) || 0);
+                      if (onSetClipFades && selectedClipTrack) {
+                        onSetClipFades(selectedClipTrack.id, activeSelectedClip.id, val, activeSelectedClip.fadeOutSec || 0);
+                      }
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    className="w-16 px-1.5 py-0.5 rounded bg-black/50 border border-zinc-700 text-zinc-100 text-xs disabled:opacity-40"
+                  />
+                  <div className="flex items-center gap-0.5">
+                    {[0, 0.05, 0.2].map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
+                        onClick={() => {
+                          if (onSetClipFades && selectedClipTrack) {
+                            onSetClipFades(selectedClipTrack.id, activeSelectedClip.id, f, activeSelectedClip.fadeOutSec || 0);
+                          }
+                        }}
+                        className={`px-1 py-0.5 rounded text-[10px] border ${
+                          Math.abs((activeSelectedClip.fadeInSec || 0) - f) < 0.005
+                            ? 'bg-amber-400 text-black border-amber-300 font-bold'
+                            : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                        }`}
+                      >
+                        {f === 0 ? '0s' : `${f}s`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-4 w-px bg-zinc-800" />
+
+                {/* Fade Out */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-zinc-400 text-[11px]">Fade Out:</span>
+                  <input
+                    key={`fade-out-${activeSelectedClip.id}-${activeSelectedClip.fadeOutSec}`}
+                    type="number"
+                    step={0.01}
+                    min={0}
+                    max={activeSelectedClip.duration * 0.48}
+                    defaultValue={(activeSelectedClip.fadeOutSec || 0).toFixed(2)}
+                    disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
+                    onBlur={(e) => {
+                      const val = Math.max(0, parseFloat(e.currentTarget.value) || 0);
+                      if (onSetClipFades && selectedClipTrack) {
+                        onSetClipFades(selectedClipTrack.id, activeSelectedClip.id, activeSelectedClip.fadeInSec || 0, val);
+                      }
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    className="w-16 px-1.5 py-0.5 rounded bg-black/50 border border-zinc-700 text-zinc-100 text-xs disabled:opacity-40"
+                  />
+                  <div className="flex items-center gap-0.5">
+                    {[0, 0.05, 0.2].map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
+                        onClick={() => {
+                          if (onSetClipFades && selectedClipTrack) {
+                            onSetClipFades(selectedClipTrack.id, activeSelectedClip.id, activeSelectedClip.fadeInSec || 0, f);
+                          }
+                        }}
+                        className={`px-1 py-0.5 rounded text-[10px] border ${
+                          Math.abs((activeSelectedClip.fadeOutSec || 0) - f) < 0.005
+                            ? 'bg-amber-400 text-black border-amber-300 font-bold'
+                            : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                        }`}
+                      >
+                        {f === 0 ? '0s' : `${f}s`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-4 w-px bg-zinc-800" />
+
+                {/* Time Stretch Group */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-zinc-400 text-[11px] flex items-center gap-1">
+                    <Zap className="w-3 h-3 text-amber-400" />
+                    Stretch:
+                  </span>
+                  <input
+                    key={`stretch-${activeSelectedClip.id}-${activeSelectedClip.timeStretchRatio}`}
+                    type="number"
+                    step={0.05}
+                    min={0.25}
+                    max={4.0}
+                    defaultValue={(activeSelectedClip.timeStretchRatio || 1.0).toFixed(2)}
+                    disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
+                    onBlur={(e) => {
+                      const val = Math.max(0.25, Math.min(4.0, parseFloat(e.currentTarget.value) || 1.0));
+                      if (onSetClipStretch && selectedClipTrack) {
+                        onSetClipStretch(selectedClipTrack.id, activeSelectedClip.id, val);
+                      }
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    className="w-16 px-1.5 py-0.5 rounded bg-black/50 border border-zinc-700 text-zinc-100 text-xs disabled:opacity-40"
+                  />
+                  <div className="flex items-center gap-0.5">
+                    {[0.9, 1.0, 1.1].map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        disabled={isRecording || Boolean(activeSelectedClip.isLocked)}
+                        onClick={() => {
+                          if (onSetClipStretch && selectedClipTrack) {
+                            onSetClipStretch(selectedClipTrack.id, activeSelectedClip.id, r);
+                          }
+                        }}
+                        className={`px-1 py-0.5 rounded text-[10px] border ${
+                          Math.abs((activeSelectedClip.timeStretchRatio || 1.0) - r) < 0.005
+                            ? 'bg-amber-400 text-black border-amber-300 font-bold'
+                            : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
+                        }`}
+                      >
+                        {r === 1.0 ? '1x' : `${r}x`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Source info (non-destructive status) */}
+              <div className="text-[10px] text-zinc-400 flex items-center gap-1.5">
+                <span className="text-zinc-500">Audio original:</span>
+                <span className="text-zinc-300">
+                  {(activeSelectedClip.sourceDurationSec || activeSelectedClip.duration).toFixed(1)}s
+                </span>
+                {(activeSelectedClip.sourceOffsetSec || 0) > 0.001 && (
+                  <>
+                    <span className="text-zinc-500">· Offset:</span>
+                    <span className="text-zinc-300">
+                      {(activeSelectedClip.sourceOffsetSec || 0).toFixed(2)}s
+                    </span>
+                  </>
+                )}
+                <span className="text-emerald-400/80 font-semibold">(No destructivo)</span>
+              </div>
             </div>
           )}
         </div>

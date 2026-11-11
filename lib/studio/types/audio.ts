@@ -88,13 +88,19 @@ export interface BeatFX {
 
 export interface VocalClip {
   id: string;
-  buffer: AudioBuffer;
-  tunedBuffer?: AudioBuffer | null;
+  buffer: AudioBuffer;              // Active rendered playback buffer
+  tunedBuffer?: AudioBuffer | null; // Cached pitch-corrected buffer
+  sourceBuffer?: AudioBuffer;       // Pristine uncut source audio for non-destructive extension
+  sourceOffsetSec?: number;        // Start offset inside sourceBuffer (seconds, default 0)
+  sourceDurationSec?: number;      // Total duration of sourceBuffer in seconds
   duration: number;                 // duration in seconds
   startBeatOffset: number;          // start position in seconds relative to timeline 0
   waveformSample?: number[];
   name?: string;
   isLocked?: boolean;               // Seguro/Hold: Protegido contra desplazamientos accidentales
+  timeStretchRatio?: number;        // 1.0 = normal, >1.0 = longer/slower, <1.0 = shorter/faster
+  fadeInSec?: number;               // Fade-in duration in seconds (default 0)
+  fadeOutSec?: number;              // Fade-out duration in seconds (default 0)
 }
 
 export interface VocalTrack {

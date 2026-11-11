@@ -25,7 +25,15 @@ import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 import { analyzeBeatAudio } from '@/lib/studio/audio/beatAnalyzer';
 import { punchInClips, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from '@/lib/studio/audio/wavEncoder';
 import { consumePendingGalleryBeat } from '@/lib/studio/audio/pendingGalleryBeat';
-import { getTrackClips, splitClip, trimClip, withTrackClips } from '@/lib/studio/audio/clipEditing';
+import {
+  getTrackClips,
+  splitClip,
+  trimClip,
+  withTrackClips,
+  resizeClipEdge,
+  setClipFades,
+  setClipTimeStretch,
+} from '@/lib/studio/audio/clipEditing';
 import { MAIN_SCALES } from '@/lib/studio/audio/pitchCorrection';
 import {
   saveBeatToDatabase,
@@ -1001,9 +1009,20 @@ export default function App() {
         const ctx = audioEngine.getAudioContext();
         if (!ctx) return;
         const clip: VocalClip = {
-          id: takeId || `clip-${trackId}-${crypto.randomUUID()}`, buffer, tunedBuffer: null,
-          startBeatOffset: start, duration: buffer.duration, waveformSample: waveform,
-          name: 'Toma', isLocked: false,
+          id: takeId || `clip-${trackId}-${crypto.randomUUID()}`,
+          buffer,
+          sourceBuffer: buffer,
+          sourceOffsetSec: 0,
+          sourceDurationSec: buffer.duration,
+          timeStretchRatio: 1,
+          fadeInSec: 0,
+          fadeOutSec: 0,
+          tunedBuffer: null,
+          startBeatOffset: start,
+          duration: buffer.duration,
+          waveformSample: waveform,
+          name: 'Toma',
+          isLocked: false,
         };
         const updated = tracksRef.current.map(track => track.id === trackId
           ? withTrackClips(track, punchInClips(ctx, getTrackClips(track), clip)) : track);
@@ -1981,6 +2000,12 @@ export default function App() {
     const duplicatedClip: VocalClip = {
       id: `clip-${targetTrackId}-${Date.now()}`,
       buffer: targetClip.buffer,
+      sourceBuffer: targetClip.sourceBuffer || targetClip.buffer,
+      sourceOffsetSec: targetClip.sourceOffsetSec ?? 0,
+      sourceDurationSec: targetClip.sourceDurationSec ?? (targetClip.sourceBuffer?.duration || targetClip.buffer.duration),
+      timeStretchRatio: targetClip.timeStretchRatio ?? 1,
+      fadeInSec: targetClip.fadeInSec ?? 0,
+      fadeOutSec: targetClip.fadeOutSec ?? 0,
       tunedBuffer: null,
       startBeatOffset: targetClip.startBeatOffset,
       duration: targetClip.duration,
@@ -2036,6 +2061,12 @@ export default function App() {
       const testClip: VocalClip = {
         id: `clip-${trackId}-${Date.now()}`,
         buffer,
+        sourceBuffer: buffer,
+        sourceOffsetSec: 0,
+        sourceDurationSec: buffer.duration,
+        timeStretchRatio: 1,
+        fadeInSec: 0,
+        fadeOutSec: 0,
         tunedBuffer: null,
         startBeatOffset: startOffset,
         duration: buffer.duration,
@@ -2293,6 +2324,114 @@ export default function App() {
     if (!trimmed) return;
     applyClipEdit(trackId, clips.map(c => c.id === clip.id ? trimmed : c), 'Recortar toma');
     showToast('Toma recortada al cabezal. Puedes deshacer.', 'success');
+  };
+
+  const handleResizeClipEdge = async (
+    trackId: VocalTrackId,
+    clipId: string,
+    edge: 'start' | 'end',
+    deltaSec: number,
+    mode: 'trim' | 'stretch' = 'trim'
+  ) => {
+    if (!engine || isRecordingRef.current) return;
+    const ctx = await engine.ensureAudioContext();
+    const track = tracksRef.current.find(t => t.id === trackId);
+    if (!track) return;
+    const clips = getTrackClips(track);
+    const clip = clips.find(c => c.id === clipId);
+    if (!clip || clip.isLocked) return;
+
+    const resized = resizeClipEdge(ctx, clip, edge, deltaSec, mode);
+    if (!resized) return;
+
+    applyClipEdit(
+      trackId,
+      clips.map(c => (c.id === clipId ? resized : c)),
+      mode === 'stretch' ? 'Estirar / Comprimir toma' : 'Ajustar borde de toma'
+    );
+  };
+
+  const handleSetClipFades = async (
+    trackId: VocalTrackId,
+    clipId: string,
+    fadeInSec?: number,
+    fadeOutSec?: number
+  ) => {
+    if (!engine || isRecordingRef.current) return;
+    const ctx = await engine.ensureAudioContext();
+    const track = tracksRef.current.find(t => t.id === trackId);
+    if (!track) return;
+    const clips = getTrackClips(track);
+    const clip = clips.find(c => c.id === clipId);
+    if (!clip) return;
+
+    const updatedClip = setClipFades(
+      ctx,
+      clip,
+      fadeInSec !== undefined ? fadeInSec : (clip.fadeInSec || 0),
+      fadeOutSec !== undefined ? fadeOutSec : (clip.fadeOutSec || 0)
+    );
+    applyClipEdit(trackId, clips.map(c => (c.id === clipId ? updatedClip : c)), 'Ajustar fundido (Fade)');
+  };
+
+  const handleSetClipStretch = async (
+    trackId: VocalTrackId,
+    clipId: string,
+    ratio: number
+  ) => {
+    if (!engine || isRecordingRef.current) return;
+    const ctx = await engine.ensureAudioContext();
+    const track = tracksRef.current.find(t => t.id === trackId);
+    if (!track) return;
+    const clips = getTrackClips(track);
+    const clip = clips.find(c => c.id === clipId);
+    if (!clip || clip.isLocked) return;
+
+    const stretched = setClipTimeStretch(ctx, clip, ratio);
+    applyClipEdit(trackId, clips.map(c => (c.id === clipId ? stretched : c)), `Time stretch ${ratio.toFixed(2)}x`);
+  };
+
+  const handleMoveClipToTrack = (
+    sourceTrackId: VocalTrackId,
+    targetTrackId: VocalTrackId,
+    clipId: string,
+    newOffsetSec?: number
+  ) => {
+    if (isRecordingRef.current) return;
+    const sourceTrack = tracksRef.current.find(t => t.id === sourceTrackId);
+    if (!sourceTrack) return;
+    const sourceClips = getTrackClips(sourceTrack);
+    const clipToMove = sourceClips.find(c => c.id === clipId);
+    if (!clipToMove || clipToMove.isLocked) return;
+
+    pushUndoSnapshot(`Mover toma a ${targetTrackId}`);
+
+    const targetOffset = newOffsetSec !== undefined
+      ? Math.max(-Math.max(0, clipToMove.duration - 0.05), newOffsetSec)
+      : clipToMove.startBeatOffset;
+    const movedClip = { ...clipToMove, startBeatOffset: targetOffset };
+
+    const remainingSourceClips = sourceClips.filter(c => c.id !== clipId);
+    const targetTrack = tracksRef.current.find(t => t.id === targetTrackId);
+    const existingTargetClips = targetTrack ? getTrackClips(targetTrack) : [];
+    const newTargetClips = [...existingTargetClips, movedClip].sort((a, b) => a.startBeatOffset - b.startBeatOffset);
+
+    const updated = tracksRef.current.map(t => {
+      if (t.id === sourceTrackId) {
+        return withTrackClips(t, remainingSourceClips);
+      }
+      if (t.id === targetTrackId) {
+        return withTrackClips(t, newTargetClips);
+      }
+      return t;
+    });
+
+    tracksRef.current = updated;
+    setTracks(updated);
+    void saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
+    if (engine?.getIsPlaying()) {
+      engine.seek(engine.getCurrentPlaybackPosition(), updated);
+    }
   };
 
   // Update Vocal FX (including Pitch Tune) and persist channel template
@@ -3141,6 +3280,10 @@ export default function App() {
               onSplitTake={handleSplitTake}
               onTrimTake={handleTrimTake}
               onToggleLockTake={handleToggleLockTake}
+              onResizeClipEdge={handleResizeClipEdge}
+              onSetClipFades={handleSetClipFades}
+              onSetClipStretch={handleSetClipStretch}
+              onMoveClipToTrack={handleMoveClipToTrack}
             />
             </div>
           </div>

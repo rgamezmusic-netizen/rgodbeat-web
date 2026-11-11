@@ -18,6 +18,12 @@ export interface StoredClipData {
   duration: number;
   waveformSample?: number[];
   audioWavData: ArrayBuffer;
+  sourceWavData?: ArrayBuffer;
+  sourceOffsetSec?: number;
+  sourceDurationSec?: number;
+  timeStretchRatio?: number;
+  fadeInSec?: number;
+  fadeOutSec?: number;
   isLocked?: boolean;
 }
 
@@ -289,6 +295,10 @@ async function persistStudioSession(
         try {
           // Convert audio buffer to WAV binary ArrayBuffer for lossless persistent storage
           const audioWavData = await encodeStoredAudio(clip.buffer, 32);
+          let sourceWavData: ArrayBuffer | undefined = undefined;
+          if (clip.sourceBuffer && clip.sourceBuffer !== clip.buffer) {
+            sourceWavData = await encodeStoredAudio(clip.sourceBuffer, 32);
+          }
 
           storedClips.push({
             id: clip.id,
@@ -297,6 +307,12 @@ async function persistStudioSession(
             duration: clip.buffer.duration,
             waveformSample: clip.waveformSample,
             audioWavData,
+            sourceWavData,
+            sourceOffsetSec: clip.sourceOffsetSec,
+            sourceDurationSec: clip.sourceDurationSec,
+            timeStretchRatio: clip.timeStretchRatio,
+            fadeInSec: clip.fadeInSec,
+            fadeOutSec: clip.fadeOutSec,
             isLocked: Boolean(clip.isLocked),
           });
         } catch (clipErr) {
@@ -533,6 +549,12 @@ export async function restoreLastStudioSession(
           try {
             // Decode WAV array buffer back to native WebAudio AudioBuffer
             const decoded = await audioCtx.decodeAudioData(sc.audioWavData.slice(0));
+            let sourceBuffer = decoded;
+            if (sc.sourceWavData && sc.sourceWavData.byteLength > 0) {
+              try {
+                sourceBuffer = await audioCtx.decodeAudioData(sc.sourceWavData.slice(0));
+              } catch {}
+            }
             restoredClips.push({
               id: sc.id,
               name: sc.name || 'Toma',
@@ -540,6 +562,12 @@ export async function restoreLastStudioSession(
               duration: decoded.duration,
               waveformSample: extractWaveformPeaks(decoded, WAVEFORM_SAMPLE_COUNT),
               buffer: decoded,
+              sourceBuffer,
+              sourceOffsetSec: sc.sourceOffsetSec ?? 0,
+              sourceDurationSec: sc.sourceDurationSec ?? sourceBuffer.duration,
+              timeStretchRatio: sc.timeStretchRatio ?? 1,
+              fadeInSec: sc.fadeInSec ?? 0,
+              fadeOutSec: sc.fadeOutSec ?? 0,
               tunedBuffer: null,
               isLocked: Boolean(sc.isLocked),
             });
@@ -743,6 +771,12 @@ export interface RGODBeatExportFile {
         duration: number;
         waveformSample?: number[];
         audioWavBase64: string;
+        sourceWavBase64?: string;
+        sourceOffsetSec?: number;
+        sourceDurationSec?: number;
+        timeStretchRatio?: number;
+        fadeInSec?: number;
+        fadeOutSec?: number;
         isLocked?: boolean;
       }>;
     }>;
@@ -790,6 +824,11 @@ export async function exportProjectToDeviceFile(
         try {
           const buf = await encodeStoredAudio(clip.buffer, 32);
           const base64 = await arrayBufferToBase64(buf);
+          let sourceWavBase64: string | undefined = undefined;
+          if (clip.sourceBuffer && clip.sourceBuffer !== clip.buffer) {
+            const sBuf = await encodeStoredAudio(clip.sourceBuffer, 32);
+            sourceWavBase64 = await arrayBufferToBase64(sBuf);
+          }
           storedClips.push({
             id: clip.id,
             name: clip.name,
@@ -797,6 +836,12 @@ export async function exportProjectToDeviceFile(
             duration: clip.buffer.duration,
             waveformSample: clip.waveformSample,
             audioWavBase64: base64,
+            sourceWavBase64,
+            sourceOffsetSec: clip.sourceOffsetSec,
+            sourceDurationSec: clip.sourceDurationSec,
+            timeStretchRatio: clip.timeStretchRatio,
+            fadeInSec: clip.fadeInSec,
+            fadeOutSec: clip.fadeOutSec,
             isLocked: clip.isLocked !== undefined ? Boolean(clip.isLocked) : true,
           });
         } catch (e) {
@@ -954,13 +999,28 @@ export async function importProjectFromDeviceFile(
         try {
           const rawBuf = base64ToArrayBuffer(sc.audioWavBase64);
           const decoded = await audioCtx.decodeAudioData(rawBuf);
+          let sourceBuffer = decoded;
+          if (sc.sourceWavBase64) {
+            try {
+              const srcBuf = base64ToArrayBuffer(sc.sourceWavBase64);
+              sourceBuffer = await audioCtx.decodeAudioData(srcBuf);
+            } catch {
+              sourceBuffer = decoded;
+            }
+          }
           restoredClips.push({
             id: sc.id,
             name: sc.name || 'Toma',
             startBeatOffset: sc.startBeatOffset,
-            duration: decoded.duration,
+            duration: sc.duration || decoded.duration,
             waveformSample: extractWaveformPeaks(decoded, WAVEFORM_SAMPLE_COUNT),
             buffer: decoded,
+            sourceBuffer,
+            sourceOffsetSec: sc.sourceOffsetSec ?? 0,
+            sourceDurationSec: sc.sourceDurationSec ?? sourceBuffer.duration,
+            timeStretchRatio: sc.timeStretchRatio ?? 1,
+            fadeInSec: sc.fadeInSec ?? 0,
+            fadeOutSec: sc.fadeOutSec ?? 0,
             tunedBuffer: null,
             isLocked: sc.isLocked !== undefined ? Boolean(sc.isLocked) : true,
           });
