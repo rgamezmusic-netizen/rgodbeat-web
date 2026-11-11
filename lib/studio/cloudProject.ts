@@ -50,7 +50,7 @@ export function hasConfirmedCloudProject(projectId: string) {
 }
 export function getCloudProjectSelection() { return { slot: cloudSlot, revision }; }
 export function confirmCloudProject(projectId: string, confirmedRevision: string | null = revision ?? null) {
-  if (!cloudOwner || !confirmedRevision) return;
+  if (!cloudOwner || confirmedRevision === null || confirmedRevision === undefined) return;
   try { localStorage.setItem(confirmedKey(), JSON.stringify({ projectId, revision: confirmedRevision, slot: cloudSlot })); } catch { /* Device storage may be unavailable. */ }
 }
 export function selectCloudProjectSlot(slot: CloudProjectSlot, selectedRevision?: string | null) {
@@ -370,6 +370,11 @@ async function uploadProject(
         name?: string;
         startBeatOffset: number;
         duration: number;
+        sourceOffsetSec?: number;
+        sourceDurationSec?: number;
+        timeStretchRatio?: number;
+        fadeInSec?: number;
+        fadeOutSec?: number;
         waveformSample?: number[];
         isLocked?: boolean;
         audioHash?: string;
@@ -408,8 +413,13 @@ async function uploadProject(
             name: clip.name,
             startBeatOffset: clip.startBeatOffset,
             duration: clip.buffer.duration,
+            sourceOffsetSec: clip.sourceOffsetSec,
+            sourceDurationSec: clip.sourceDurationSec,
+            timeStretchRatio: clip.timeStretchRatio,
+            fadeInSec: clip.fadeInSec,
+            fadeOutSec: clip.fadeOutSec,
             waveformSample: clip.waveformSample,
-            isLocked: clip.isLocked,
+            isLocked: Boolean(clip.isLocked),
           });
         } catch (clipErr) {
           throw clipErr;
@@ -432,8 +442,8 @@ async function uploadProject(
     }
 
     let beatHash: string | undefined;
-    // Process custom beat if uploaded
-    if (currentBeat?.buffer) {
+    // Process custom beat if uploaded (skip 1-sample gallery placeholder buffers)
+    if (currentBeat?.buffer && currentBeat.buffer.length > 1) {
       try {
         const { blob: beatBlob, hash } = await encode(currentBeat.buffer);
         beatHash = hash; nextHashes.add(hash);
@@ -585,6 +595,7 @@ export async function loadProjectFromCloud(
     // 1. Download and decode custom beat if present
     let customBeatBuffer: AudioBuffer | undefined = undefined;
     if (project.beat?.customBeatKey || project.beat?.downloadUrl) customBeatBuffer = await download(project.beat.downloadUrl, 'beat');
+    if (customBeatBuffer && customBeatBuffer.length <= 1) customBeatBuffer = undefined;
     const missingBeat = losses.includes('beat');
     // 2. Download and decode vocal takes
     const restoredTracks: VocalTrack[] = [];
@@ -609,8 +620,14 @@ export async function loadProjectFromCloud(
                 duration: decoded.duration,
                 waveformSample,
                 buffer: decoded,
+                sourceBuffer: decoded,
+                sourceOffsetSec: c.sourceOffsetSec ?? 0,
+                sourceDurationSec: c.sourceDurationSec ?? decoded.duration,
+                timeStretchRatio: c.timeStretchRatio ?? 1,
+                fadeInSec: c.fadeInSec ?? 0,
+                fadeOutSec: c.fadeOutSec ?? 0,
                 tunedBuffer: null,
-                isLocked: c.isLocked ?? true,
+                isLocked: Boolean(c.isLocked),
               });
               latestBuffer = decoded;
               latestWaveform = waveformSample;

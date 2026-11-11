@@ -246,6 +246,42 @@ const initialTracks: VocalTrack[] = [
   },
 ];
 
+async function fetchCatalogBeatById(audioCtx: AudioContext, catalogId: string | null | undefined): Promise<BeatData | null> {
+  if (!catalogId) return null;
+  try {
+    const res = await fetch('/api/beats/ranking');
+    if (!res.ok) return null;
+    const data = await res.json();
+    const match = Array.isArray(data?.beats)
+      ? data.beats.find((b: { id?: string; previewUrl?: string }) => b?.id === catalogId && b?.previewUrl)
+      : null;
+    if (!match?.previewUrl) return null;
+    const audioRes = await fetch(match.previewUrl);
+    if (!audioRes.ok) return null;
+    const arrayBuffer = await audioRes.arrayBuffer();
+    const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    if (decodedBuffer.length <= 1) return null;
+    return {
+      id: `catalog-${match.id}`,
+      catalogBeatId: match.id,
+      title: match.title || 'Beat RG',
+      producer: 'RGODBEAT',
+      genre: match.genre,
+      bpm: match.bpm || 140,
+      key: match.key || 'C minor',
+      scale: typeof match.key === 'string' && match.key.toLowerCase().includes('m') && !match.key.toLowerCase().includes('maj') ? 'Menor' : 'Mayor',
+      duration: decodedBuffer.duration,
+      buffer: decodedBuffer,
+      waveformSample: extractWaveformPeaks(decodedBuffer, WAVEFORM_SAMPLE_COUNT),
+      artworkGradient: 'linear-gradient(135deg, #1d102e 0%, #121018 50%, #09080d 100%)',
+      coverUrl: match.coverUrl || undefined,
+      isLocked: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function App() {
   const [engine, setEngine] = useState<AudioEngine | null>(null);
   const [savedCustomBeats, setSavedCustomBeats] = useState<BeatSummary[]>([]);
@@ -883,6 +919,10 @@ export default function App() {
 
   // Two retained cloud projects per account: current and previous.
   const [cloudProjectInfo, setCloudProjectInfo] = useState<CloudProjectCheckResult | null>(null);
+  const cloudProjectInfoRef = useRef<CloudProjectCheckResult | null>(null);
+  useEffect(() => {
+    cloudProjectInfoRef.current = cloudProjectInfo;
+  }, [cloudProjectInfo]);
   const [isSavingCloud, setIsSavingCloud] = useState<boolean>(false);
   const [showCloudSaveDialog, setShowCloudSaveDialog] = useState(false);
   const [showCloudGallery, setShowCloudGallery] = useState(false);
@@ -1037,12 +1077,29 @@ export default function App() {
           void (async () => {
             const saved = await saveStudioSession(updated, currentBeatRef.current, settings.loopSettings,
               settings.currentTime, settings.beatVolume, activeViewRef.current);
-            if (saved) return;
             if (owner !== sessionOwnerRef.current || projectId !== activeProjectIdRef.current || replacingProjectRef.current) return;
-            if (accessStatusRef.current.isLoggedIn && !cloudConflictRef.current) {
-              const result = await saveProjectToCloud(tracksRef.current, currentBeatRef.current, sessionSettingsRef.current.loopSettings);
-              if (result.success) return;
+            if (accessStatusRef.current.isLoggedIn && !cloudWorkPausedRef.current && !cloudVerificationPendingRef.current) {
+              const info = cloudProjectInfoRef.current;
+              if (!hasConfirmedCloudProject(projectId) && info && !info.unavailable) {
+                if (!info.hasActiveProject && !info.hasProject) {
+                  selectCloudProjectSlot('active', null);
+                  confirmCloudProject(projectId, '');
+                  cloudConflictRef.current = false;
+                } else if (!info.hasPreviousProject) {
+                  selectCloudProjectSlot('previous', null);
+                  confirmCloudProject(projectId, '');
+                  cloudConflictRef.current = false;
+                }
+              }
+              if (hasConfirmedCloudProject(projectId) && !cloudConflictRef.current) {
+                const result = await saveProjectToCloud(tracksRef.current, currentBeatRef.current, sessionSettingsRef.current.loopSettings);
+                if (result.success) {
+                  void refreshCloudProjectStatus();
+                  return;
+                }
+              }
             }
+            if (saved) return;
             showToast('La toma quedó en Studio, pero no se pudo respaldar. Descarga el archivo del proyecto antes de cerrar o recargar.', 'error');
           })();
         }
@@ -1078,6 +1135,7 @@ export default function App() {
         const openStartupProject = async (session: {
           tracks: VocalTrack[];
           beat: BeatData | null;
+          catalogBeatId?: string | null;
           beatVolume?: number;
           loopSettings?: LoopSettings;
           beatFX?: BeatFX;
@@ -1085,7 +1143,16 @@ export default function App() {
           currentTime?: number;
           activeView?: 'studio' | 'editor';
         }) => {
-          const defaults = applyUserFXTemplatesToTracks(initialTracks, session.beat, owner);
+          let resolvedBeat = session.beat;
+          if ((!resolvedBeat || !resolvedBeat.buffer || resolvedBeat.buffer.length <= 1) && !pendingGalleryBeat) {
+            const catId = getCatalogBeatId(resolvedBeat?.id, resolvedBeat?.catalogBeatId ?? session.catalogBeatId);
+            if (catId) {
+              const fetched = await fetchCatalogBeatById(audioCtx, catId);
+              if (cancelled) return;
+              if (fetched) resolvedBeat = fetched;
+            }
+          }
+          const defaults = applyUserFXTemplatesToTracks(initialTracks, resolvedBeat, owner);
           const mergedTracks = defaults.map(track => session.tracks.find(saved => saved.id === track.id) || track);
           const customTracks = session.tracks.filter(track => !initialTracks.some(initial => initial.id === track.id));
           // Saved project FX take precedence over templates from other sessions.
@@ -1097,9 +1164,9 @@ export default function App() {
           };
           const nextTime = session.currentTime ?? 0;
           const nextView = pendingGalleryBeat ? 'studio' : (session.activeView || 'studio');
-          setCurrentBeat(session.beat);
-          currentBeatRef.current = session.beat;
-          audioEngine.setBeat(session.beat);
+          setCurrentBeat(resolvedBeat);
+          currentBeatRef.current = resolvedBeat;
+          audioEngine.setBeat(resolvedBeat);
           setBeatFX(nextMix.beatFX);
           setIsBeatMuted(nextMix.isBeatMuted);
           beatMixRef.current = nextMix;
@@ -1114,10 +1181,10 @@ export default function App() {
           activeViewRef.current = nextView;
           sessionSettingsRef.current = { loopSettings: nextLoop, currentTime: nextTime, beatVolume: nextMix.beatFX.volume };
           // Commit interrupted-take recovery using the restored mix, never stale UI state.
-          await saveStudioSession(finalTracks, session.beat, nextLoop, nextTime,
+          await saveStudioSession(finalTracks, resolvedBeat, nextLoop, nextTime,
             nextMix.beatFX.volume, nextView, owner, nextMix);
           if (cancelled) return;
-          if (!session.beat && !pendingGalleryBeat) setShowLoadBeatModal(true);
+          if (!resolvedBeat && !pendingGalleryBeat) setShowLoadBeatModal(true);
         };
 
         // Restore the verified owner's project without a startup confirmation.
@@ -1158,9 +1225,27 @@ export default function App() {
               if (remote.hasProject && localTimestamp !== undefined && !canResumeCloudProject(remote, projectId)) {
                 // A late account response must never replace the open local audio.
                 cloudConflictRef.current = true;
-                setCloudBackupStatus('Hay una copia más reciente en tu cuenta. Tu proyecto local se conserva.');
+                const remoteIsOlder = Boolean(remote.projectMeta?.savedAt && remote.projectMeta.savedAt < localTimestamp);
+                setCloudBackupStatus(
+                  remoteIsOlder
+                    ? 'Tu proyecto local es más reciente que la copia en tu cuenta. Tu proyecto local se conserva.'
+                    : 'Hay una copia más reciente en tu cuenta. Tu proyecto local se conserva.'
+                );
               } else if (!cloudConflictRef.current) {
                 setCloudBackupStatus('Cuenta conectada');
+                const localHasClips = Boolean(lastSession?.tracks?.some(t => getTrackClips(t).length > 0));
+                if (!remote.hasProject && !remote.hasActiveProject && !remote.hasPreviousProject && localHasClips && !hasConfirmedCloudProject(projectId)) {
+                  selectCloudProjectSlot('active', null);
+                  confirmCloudProject(projectId, '');
+                  cloudDirtyRef.current = true;
+                  setTimeout(() => {
+                    if (!cancelled && !cloudWorkPausedRef.current && projectId === activeProjectIdRef.current) {
+                      void saveProjectToCloud(tracksRef.current, currentBeatRef.current, sessionSettingsRef.current.loopSettings).then(res => {
+                        if (res.success) void refreshCloudProjectStatus();
+                      }).catch(() => {});
+                    }
+                  }, 300);
+                }
               }
               return remote;
             } catch (error) {
@@ -1240,11 +1325,19 @@ export default function App() {
                   cloudBeat = await loadSavedBeat(audioCtx, cloudData.beatData.id);
                   if (cancelled) return;
                 }
+                if (!cloudBeat && cloudData.beatData) {
+                  const catId = getCatalogBeatId(cloudData.beatData.id, cloudData.beatData.catalogBeatId);
+                  if (catId) {
+                    cloudBeat = await fetchCatalogBeatById(audioCtx, catId);
+                    if (cancelled) return;
+                  }
+                }
                 if (cloudTakes > 0 || cloudBeat) {
                   hasPreviousSession = true;
                   await openStartupProject({
                     tracks: cloudData.tracks || [],
                     beat: cloudBeat,
+                    catalogBeatId: getCatalogBeatId(cloudData.beatData?.id, cloudData.beatData?.catalogBeatId),
                     loopSettings: cloudData.loopSettings,
                     beatFX: cloudData.beatFX,
                     isBeatMuted: cloudData.isBeatMuted,
@@ -1277,6 +1370,8 @@ export default function App() {
               if (archived.success) {
                 setHasLocalPrevious(Boolean(archived.hasPrevious));
                 await clearActiveProjectBackup();
+                activeProjectIdRef.current = crypto.randomUUID();
+                alignCloudProjectSelection(activeProjectIdRef.current);
                 const cleanTracks = applyUserFXTemplatesToTracks(
                   initialTracks.map(track => ({
                     ...track,
@@ -1293,6 +1388,7 @@ export default function App() {
                 setTracks(cleanTracks);
                 tracksRef.current = cleanTracks;
                 setCurrentTime(0);
+                showToast('Tu grabación anterior quedó protegida en "Abrir grabación anterior".', 'info');
               }
             }
             const initialGalleryBeat: BeatData = {
@@ -1581,6 +1677,14 @@ export default function App() {
       const ctx = await engine.ensureAudioContext({ resume: false });
       const restored = await restoreLastStudioSession(ctx, owner, 'previous');
       if (!restored) { setHasLocalPrevious(false); showToast('La copia local anterior ya no está disponible.', 'info'); return; }
+      if ((!restored.beat || !restored.beat.buffer || restored.beat.buffer.length <= 1) && restored.catalogBeatId) {
+        const fetchedBeat = await fetchCatalogBeatById(ctx, restored.catalogBeatId);
+        if (fetchedBeat) {
+          restored.beat = fetchedBeat;
+          const missingIdx = restored.losses.indexOf('beat');
+          if (missingIdx >= 0) restored.losses.splice(missingIdx, 1);
+        }
+      }
       const settings = sessionSettingsRef.current;
       if (!await saveStudioSession(tracksRef.current, currentBeatRef.current, settings.loopSettings,
         settings.currentTime, settings.beatVolume, activeViewRef.current)) throw new Error('No se pudo proteger el proyecto actual.');
@@ -1601,9 +1705,27 @@ export default function App() {
       setCurrentBeat(restored.beat || null); currentBeatRef.current = restored.beat || null;
       restoreBeatMix(restored); setLoopSettings(nextLoop); setCurrentTime(0); setIsPlaying(false);
       setUndoStack([]); setRedoStack([]);
-      cloudVerificationPendingRef.current = accessStatusRef.current.isLoggedIn;
-      setCloudNeedsCheck(accessStatusRef.current.isLoggedIn);
-      cloudConflictRef.current = accessStatusRef.current.isLoggedIn;
+      const emptyVerifiedCloud = Boolean(
+        accessStatusRef.current.isLoggedIn
+        && !cloudWorkPausedRef.current
+        && cloudProjectInfoRef.current
+        && !cloudProjectInfoRef.current.unavailable
+        && !cloudProjectInfoRef.current.hasProject
+        && !cloudProjectInfoRef.current.hasActiveProject
+        && !cloudProjectInfoRef.current.hasPreviousProject
+      );
+      if (emptyVerifiedCloud) {
+        selectCloudProjectSlot('active', null);
+        confirmCloudProject(projectId, '');
+        cloudVerificationPendingRef.current = false;
+        setCloudNeedsCheck(false);
+        cloudConflictRef.current = false;
+        cloudDirtyRef.current = true;
+      } else {
+        cloudVerificationPendingRef.current = accessStatusRef.current.isLoggedIn;
+        setCloudNeedsCheck(accessStatusRef.current.isLoggedIn);
+        cloudConflictRef.current = accessStatusRef.current.isLoggedIn;
+      }
       setRecoveryNotice(restored.losses.length ? `Se perdió audio local (${restored.losses.length}). Se recuperó lo disponible.` : '');
       if (!restored.beat) setShowLoadBeatModal(true);
       showToast('Copia local anterior recuperada.', 'success');
@@ -1759,9 +1881,24 @@ export default function App() {
 
   // Transport Handlers
   const handlePlayPause = async () => {
-    if (!engine || !currentBeat || !currentBeat.buffer || currentBeat.buffer.length <= 1) return;
-    if (!engine.getBeat() && currentBeat) {
+    const hasPlayableBeat = Boolean(currentBeat?.buffer && currentBeat.buffer.length > 1);
+    const hasVocalClips = tracksRef.current.some(t => getTrackClips(t).length > 0);
+    if (!engine || (!hasPlayableBeat && !hasVocalClips)) return;
+    if (!engine.getBeat() && currentBeat && hasPlayableBeat) {
       engine.setBeat(currentBeat);
+    }
+    if (!hasPlayableBeat && currentBeat) {
+      const catId = getCatalogBeatId(currentBeat.id, currentBeat.catalogBeatId);
+      const ctx = engine.getAudioContext();
+      if (catId && ctx) {
+        void fetchCatalogBeatById(ctx, catId).then(fetched => {
+          if (fetched && currentBeatRef.current?.id === currentBeat.id) {
+            currentBeatRef.current = fetched;
+            setCurrentBeat(fetched);
+            engine.setBeat(fetched);
+          }
+        }).catch(() => {});
+      }
     }
     if (isRecording) {
       handleStopRecord();
@@ -2768,6 +2905,10 @@ export default function App() {
         } else if (beat.id) {
           loadedBeat = await loadSavedBeat(audioCtx, beat.id);
         }
+        if (!loadedBeat) {
+          const catId = getCatalogBeatId(beat.id, beat.catalogBeatId);
+          if (catId) loadedBeat = await fetchCatalogBeatById(audioCtx, catId);
+        }
         if (!loadedBeat) cloudData.losses.push('beat');
       }
       const cloudTracks = applyUserFXTemplatesToTracks(cloudData.tracks, loadedBeat, accessStatusRef.current.email);
@@ -3134,6 +3275,26 @@ export default function App() {
             </div>
           </div>
         )}
+
+      {/* Local Previous Recording Available Banner (when current project has no takes) */}
+      {hasLocalPrevious && !hasRecordings && (
+        <div className="bg-amber-950/50 border-b border-amber-500/30 px-3 sm:px-6 py-2 flex items-center justify-between text-xs text-amber-200 z-20 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="truncate">
+              Tienes una <strong>grabación anterior guardada en este dispositivo</strong>.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleRestoreLocalPrevious}
+            disabled={isRecording || !isStartupResolved}
+            className="px-3 py-1 rounded-lg bg-amber-500 text-black font-bold hover:bg-amber-400 active:scale-95 text-xs transition-all shrink-0 ml-3 cursor-pointer"
+          >
+            Abrir grabación anterior
+          </button>
+        </div>
+      )}
 
       {/* Cloud Project Available Notification Banner (if saved project exists and workspace is fresh) */}
       {cloudProjectInfo?.hasProject && !hasRecordings && (

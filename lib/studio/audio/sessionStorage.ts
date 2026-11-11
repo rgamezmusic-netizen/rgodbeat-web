@@ -239,13 +239,15 @@ async function persistStudioSession(
       resolvedBeatId = beat.id;
       let audioWavData: ArrayBuffer | undefined = undefined;
 
-      // If existing session already has audio data for the same beat, reuse it to avoid re-encoding
-      if (beat.buffer) {
+      // If existing session already has audio data for the same beat, reuse it when a placeholder buffer is passed
+      if (beat.buffer && beat.buffer.length > 1) {
         try {
           audioWavData = await encodeStoredAudio(beat.buffer);
         } catch (wavErr) {
           throw wavErr;
         }
+      } else if (existingSession?.beatData?.id === beat.id && existingSession.beatData.audioWavData) {
+        audioWavData = existingSession.beatData.audioWavData;
       }
 
       storedBeatData = {
@@ -386,12 +388,14 @@ export async function saveLastProjectBeat(
     const existingSession = await readSession(db, sessionKey);
 
     let audioWavData: ArrayBuffer | undefined = undefined;
-    if (beat.buffer) {
+    if (beat.buffer && beat.buffer.length > 1) {
       try {
         audioWavData = await encodeStoredAudio(beat.buffer);
       } catch (wavErr) {
         console.warn('Could not encode beat buffer for session:', wavErr);
       }
+    } else if (existingSession?.beatData?.id === beat.id && existingSession.beatData.audioWavData) {
+      audioWavData = existingSession.beatData.audioWavData;
     }
 
     const storedBeatData: StoredBeatData = {
@@ -455,6 +459,7 @@ export async function restoreLastStudioSession(
   tracks: VocalTrack[];
   beat?: BeatData | null;
   beatId?: string | null;
+  catalogBeatId?: string | null;
   beatVolume?: number;
   beatFX?: BeatFX;
   isBeatMuted?: boolean;
@@ -493,7 +498,7 @@ export async function restoreLastStudioSession(
         losses.push('beat');
       }
 
-      if (beatBuffer) {
+      if (beatBuffer && beatBuffer.length > 1) {
         restoredBeat = {
           id: session.beatData.id,
           catalogBeatId: getCatalogBeatId(session.beatData.id, session.beatData.catalogBeatId),
@@ -604,6 +609,7 @@ export async function restoreLastStudioSession(
       tracks: restoredTracks,
       beat: restoredBeat,
       beatId: losses.includes('beat') ? null : session.beatId || restoredBeat?.id,
+      catalogBeatId: getCatalogBeatId(session.beatData?.id || session.beatId, session.beatData?.catalogBeatId),
       beatVolume: session.beatVolume,
       beatFX: session.beatFX,
       isBeatMuted: session.isBeatMuted,

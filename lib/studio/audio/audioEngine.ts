@@ -744,7 +744,7 @@ export class AudioEngine {
       }
       nodes.reverbMix.gain.setTargetAtTime(Math.max(0, Math.min(1, track.fx.reverb.mix)), t, 0.05);
 
-      const hasAnySolo = allTracks.some((tr) => tr.isSolo);
+      const hasAnySolo = allTracks.some((tr) => tr.isSolo && getTrackClips(tr).length > 0);
       let effectiveVolume = track.volume;
       if (track.isMuted || (this.isRecording && this.recordingTrackId === track.id)) {
         effectiveVolume = 0;
@@ -765,7 +765,8 @@ export class AudioEngine {
   public async play(vocalTracks: VocalTrack[] = this.latestVocalTracks) {
     const requestId = ++this.playbackRequestId;
     this.latestVocalTracks = vocalTracks;
-    if (!this.beatData) {
+    const hasVocalClips = vocalTracks.some(track => getTrackClips(track).length > 0);
+    if (!this.beatData && !hasVocalClips) {
       console.warn('AudioEngine: cannot play, no beatData loaded');
       return;
     }
@@ -808,8 +809,24 @@ export class AudioEngine {
       }
     }
 
-    // If playhead was at or beyond duration, restart from loop start or 0
-    if (this.currentPlaybackPosition >= getProjectDuration(this.beatData.duration, vocalTracks) - 0.001) {
+    const hasPlayableBeat = Boolean(this.beatData?.buffer && this.beatData.buffer.length > 1);
+    const beatDur = hasPlayableBeat ? this.beatData!.buffer.duration : (this.beatData?.duration || 0);
+    const projectDur = getProjectDuration(beatDur, vocalTracks);
+
+    let maxVocalEnd = 0;
+    for (const track of vocalTracks) {
+      for (const clip of getTrackClips(track)) {
+        const end = (clip.startBeatOffset || 0) + (clip.buffer?.duration || clip.duration || 0);
+        if (end > maxVocalEnd) maxVocalEnd = end;
+      }
+    }
+
+    // If playhead was at or beyond duration (or past all recorded vocals when starting normal playback),
+    // restart from loop start or 0 so the artist immediately hears their recorded vocals.
+    if (
+      (projectDur > 0 && this.currentPlaybackPosition >= projectDur - 0.001) ||
+      (!this.isRecording && maxVocalEnd > 0 && this.currentPlaybackPosition >= maxVocalEnd - 0.05)
+    ) {
       this.currentPlaybackPosition = this.loopSettings.enabled ? this.loopSettings.startSec : 0;
     }
 
@@ -823,7 +840,9 @@ export class AudioEngine {
     this.playbackScheduledCtxTime = startTime;
     this.playbackStartCtxTime = startTime - startPos;
     this.playbackDisplayOrigin = this.playbackStartCtxTime;
-    const loopEnd = Math.min(this.loopSettings.endSec, this.beatData.buffer.duration);
+    const loopEnd = hasPlayableBeat
+      ? Math.min(this.loopSettings.endSec, this.beatData!.buffer.duration)
+      : this.loopSettings.endSec;
     const looping = this.loopSettings.enabled && loopEnd > this.loopSettings.startSec;
     if (looping && !this.isRecording) {
       this.playbackLoop = {
@@ -833,9 +852,9 @@ export class AudioEngine {
     }
 
     // 1. Start Beat Source (with multi-stage routing fallback)
-    if (this.beatData.buffer && startPos < this.beatData.buffer.duration) {
+    if (hasPlayableBeat && startPos < this.beatData!.buffer.duration) {
       this.beatSource = this.ctx.createBufferSource();
-      this.beatSource.buffer = this.beatData.buffer;
+      this.beatSource.buffer = this.beatData!.buffer;
       if (this.playbackLoop) {
         // Repeat on the audio rendering clock, even when screen animation stalls.
         this.beatSource.loop = true;
@@ -1060,7 +1079,7 @@ export class AudioEngine {
     this.latestVocalTracks = vocalTracks;
     let lastUpdate = -Infinity;
     const trackLoop = (timestamp: number) => {
-      if (!this.isPlaying || !this.ctx || !this.beatData) return;
+      if (!this.isPlaying || !this.ctx) return;
       const elapsed = this.readPlaybackPosition();
       this.currentPlaybackPosition = elapsed;
       if (timestamp - lastUpdate >= 1000 / 30) {
@@ -1078,7 +1097,11 @@ export class AudioEngine {
         return;
       }
 
-      if (elapsed >= (this.isRecording ? getProjectDuration(this.beatData.duration, this.latestVocalTracks) : getRenderDuration(this.beatData.duration, this.latestVocalTracks, this.beatData.bpm))) {
+      const beatDur = this.beatData?.buffer && this.beatData.buffer.length > 1
+        ? this.beatData.buffer.duration
+        : (this.beatData?.duration || 0);
+      const beatBpm = this.beatData?.bpm || 120;
+      if (elapsed >= (this.isRecording ? getProjectDuration(beatDur, this.latestVocalTracks) : getRenderDuration(beatDur, this.latestVocalTracks, beatBpm))) {
         if (this.loopSettings.enabled) {
           this.seek(this.loopSettings.startSec, this.latestVocalTracks);
         } else {
