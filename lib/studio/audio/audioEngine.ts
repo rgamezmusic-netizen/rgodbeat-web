@@ -11,6 +11,12 @@ import { audioBufferToWav, extractWaveformPeaks, WAVEFORM_SAMPLE_COUNT } from '.
 import { processVocalTune } from './pitchCorrection';
 import { getProjectDuration, getRenderDuration, getTrackClips } from './clipEditing';
 import type { RecordingCheckpoint } from './recordingRecovery';
+import {
+  analyzeAudioBufferRms,
+  computeVocalCalibrationGain,
+  enhanceVocalAudioBuffer,
+  type AudioRmsAnalysis,
+} from './vocalEnhance';
 
 export interface AudioEngineCallbacks {
   onTimeUpdate: (currentTime: number) => void;
@@ -60,13 +66,16 @@ export class AudioEngine {
   private beatGainNode: GainNode | null = null;
   private isBeatMuted: boolean = false;
 
-  // Master Chain with 90 Hz Crossover & Dynamic Glue
+  // Master Chain with 80 Hz LR4 Sidechain Crossover & Dynamic Glue
   private masterGainNode: GainNode | null = null;
   private masterBassFilter: BiquadFilterNode | null = null;
+  private masterBassFilter2: BiquadFilterNode | null = null;
   private masterMidHighFilter: BiquadFilterNode | null = null;
+  private masterMidHighFilter2: BiquadFilterNode | null = null;
   private masterCompressorNode: DynamicsCompressorNode | null = null;
   private masterLimiterNode: DynamicsCompressorNode | null = null;
   private masterAnalyserNode: AnalyserNode | null = null;
+  private rmsAnalysisCache: WeakMap<AudioBuffer, AudioRmsAnalysis> = new WeakMap();
 
   // Vocal Track Source Nodes (keyed by `${trackId}-${clipId}`)
   private vocalSources: Map<string, AudioBufferSourceNode> = new Map();
@@ -78,18 +87,21 @@ export class AudioEngine {
       mudCut: BiquadFilterNode;
       lowEq: BiquadFilterNode;
       midEq: BiquadFilterNode;
+      intimacyBoost: BiquadFilterNode;
       presenceBoost: BiquadFilterNode;
       deEsser: BiquadFilterNode;
       deEsser2: BiquadFilterNode;
       highEq: BiquadFilterNode;
       airSheen: BiquadFilterNode;
       compressor: DynamicsCompressorNode;
+      levelerCompressor: DynamicsCompressorNode;
       saturation: WaveShaperNode;
       delay: DelayNode;
       delayFeedback: GainNode;
       delayMix: GainNode;
       delayFilterHp: BiquadFilterNode;
       delayFilterLp: BiquadFilterNode;
+      reverbPreDelay: DelayNode;
       reverbConvolver: ConvolverNode;
       reverbFilterHp: BiquadFilterNode;
       reverbFilterLp: BiquadFilterNode;
@@ -302,30 +314,50 @@ export class AudioEngine {
     return this.ctx;
   }
 
+  private getCachedBufferAnalysis(buffer: AudioBuffer): AudioRmsAnalysis {
+    let cached = this.rmsAnalysisCache.get(buffer);
+    if (!cached) {
+      cached = analyzeAudioBufferRms(buffer);
+      this.rmsAnalysisCache.set(buffer, cached);
+    }
+    return cached;
+  }
+
   private setupMasterGraph() {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     this.masterGainNode = this.ctx.createGain();
     this.masterGainNode.gain.setValueAtTime(0.92, t); // -0.7 dB clean output headroom
 
-    // 1. Master Low-End Crossover (< 90 Hz): Sub-bass & 808 pass clean and UNCOMPRESSED so the low-end never ducks the mix
+    // 1. Master Low-End Sidechain Filter at 80 Hz (4th-order Linkwitz-Riley: 24 dB/oct, phase-flat sum):
+    //    Sub-bass & kick fundamentals <= 80 Hz bypass masterCompressor so low-end never pumps the vocal.
     this.masterBassFilter = this.ctx.createBiquadFilter();
     this.masterBassFilter.type = 'lowpass';
-    this.masterBassFilter.frequency.setValueAtTime(90, t);
+    this.masterBassFilter.frequency.setValueAtTime(80, t);
     this.masterBassFilter.Q.setValueAtTime(0.7071, t);
 
-    // 2. Master Mids & Highs (> 90 Hz): Studio Glue Compressor (strictly max 2.5 - 3 dB reduction)
+    this.masterBassFilter2 = this.ctx.createBiquadFilter();
+    this.masterBassFilter2.type = 'lowpass';
+    this.masterBassFilter2.frequency.setValueAtTime(80, t);
+    this.masterBassFilter2.Q.setValueAtTime(0.7071, t);
+
+    // 2. Master Mids & Highs (> 80 Hz): Studio Glue Compressor (sidechained from 80 Hz)
     this.masterMidHighFilter = this.ctx.createBiquadFilter();
     this.masterMidHighFilter.type = 'highpass';
-    this.masterMidHighFilter.frequency.setValueAtTime(90, t);
+    this.masterMidHighFilter.frequency.setValueAtTime(80, t);
     this.masterMidHighFilter.Q.setValueAtTime(0.7071, t);
 
+    this.masterMidHighFilter2 = this.ctx.createBiquadFilter();
+    this.masterMidHighFilter2.type = 'highpass';
+    this.masterMidHighFilter2.frequency.setValueAtTime(80, t);
+    this.masterMidHighFilter2.Q.setValueAtTime(0.7071, t);
+
     this.masterCompressorNode = this.ctx.createDynamicsCompressor();
-    this.masterCompressorNode.threshold.setValueAtTime(-2.5, t);
+    this.masterCompressorNode.threshold.setValueAtTime(-3.5, t);
     this.masterCompressorNode.knee.setValueAtTime(6.0, t);
-    this.masterCompressorNode.ratio.setValueAtTime(2.0, t); // 2:1 smooth mastering ratio: caps reduction to max 3 dB
-    this.masterCompressorNode.attack.setValueAtTime(0.025, t); // 25ms lets drum punch and consonants through
-    this.masterCompressorNode.release.setValueAtTime(0.090, t); // 90ms musical release
+    this.masterCompressorNode.ratio.setValueAtTime(2.2, t);
+    this.masterCompressorNode.attack.setValueAtTime(0.022, t); // 22ms lets drum punch and consonants through
+    this.masterCompressorNode.release.setValueAtTime(0.095, t); // 95ms musical release
 
     // 3. True-Peak Safety Ceiling Limiter (-0.4 dBFS)
     this.masterLimiterNode = this.ctx.createDynamicsCompressor();
@@ -333,18 +365,20 @@ export class AudioEngine {
     this.masterLimiterNode.knee.setValueAtTime(2.0, t);
     this.masterLimiterNode.ratio.setValueAtTime(20.0, t);
     this.masterLimiterNode.attack.setValueAtTime(0.001, t);
-    this.masterLimiterNode.release.setValueAtTime(0.040, t);
+    this.masterLimiterNode.release.setValueAtTime(0.045, t);
 
     this.masterAnalyserNode = this.ctx.createAnalyser();
     this.masterAnalyserNode.fftSize = 128;
     this.masterAnalyserNode.smoothingTimeConstant = 0.8;
 
-    // Routing: Low-end bypasses compressor; Mids/Highs receive max 3 dB glue; both sum to safety limiter
+    // Routing: <= 80 Hz bypasses masterCompressor; > 80 Hz receives glue; LR4 branches recombine in-phase into limiter
     this.masterGainNode.connect(this.masterBassFilter);
-    this.masterGainNode.connect(this.masterMidHighFilter);
-    this.masterMidHighFilter.connect(this.masterCompressorNode);
+    this.masterBassFilter.connect(this.masterBassFilter2);
+    this.masterBassFilter2.connect(this.masterLimiterNode);
 
-    this.masterBassFilter.connect(this.masterLimiterNode);
+    this.masterGainNode.connect(this.masterMidHighFilter);
+    this.masterMidHighFilter.connect(this.masterMidHighFilter2);
+    this.masterMidHighFilter2.connect(this.masterCompressorNode);
     this.masterCompressorNode.connect(this.masterLimiterNode);
 
     this.masterLimiterNode.connect(this.masterAnalyserNode);
@@ -529,9 +563,9 @@ export class AudioEngine {
         // Studio Mud Cleanup: clears cardboard/boxiness bedroom resonances
         const mudCut = this.ctx.createBiquadFilter();
         mudCut.type = 'peaking';
-        mudCut.frequency.setValueAtTime(350, t);
-        mudCut.Q.setValueAtTime(1.3, t);
-        mudCut.gain.setValueAtTime(-2.2, t);
+        mudCut.frequency.setValueAtTime(320, t);
+        mudCut.Q.setValueAtTime(1.2, t);
+        mudCut.gain.setValueAtTime(-2.4, t);
 
         const lowEq = this.ctx.createBiquadFilter();
         lowEq.type = 'lowshelf';
@@ -542,25 +576,32 @@ export class AudioEngine {
         midEq.frequency.setValueAtTime(2400, t);
         midEq.Q.setValueAtTime(1.0, t);
 
+        // Vocal Intimacy / Chest Closeness: brings voice right in the listener's face
+        const intimacyBoost = this.ctx.createBiquadFilter();
+        intimacyBoost.type = 'peaking';
+        intimacyBoost.frequency.setValueAtTime(1550, t);
+        intimacyBoost.Q.setValueAtTime(0.9, t);
+        intimacyBoost.gain.setValueAtTime(1.6, t);
+
         // Vocal Articulation & Presence Boost: guarantees vocals cut clearly through the beat
         const presenceBoost = this.ctx.createBiquadFilter();
         presenceBoost.type = 'peaking';
-        presenceBoost.frequency.setValueAtTime(3400, t);
-        presenceBoost.Q.setValueAtTime(1.1, t);
-        presenceBoost.gain.setValueAtTime(2.5, t);
+        presenceBoost.frequency.setValueAtTime(3300, t);
+        presenceBoost.Q.setValueAtTime(1.0, t);
+        presenceBoost.gain.setValueAtTime(3.2, t);
 
-        // High-Precision Dual-Stage De-Esser: Stage 1 targeted sibilance notch (6.8 kHz) + Stage 2 harshness tamer (8.2 kHz)
+        // Adaptive Dual-Stage De-Esser: 6.8 kHz sibilance notch + 8.2 kHz harshness tamer
         const deEsser = this.ctx.createBiquadFilter();
         deEsser.type = 'peaking';
         deEsser.frequency.setValueAtTime(6800, t);
         deEsser.Q.setValueAtTime(2.6, t);
-        deEsser.gain.setValueAtTime(-4.2, t);
+        deEsser.gain.setValueAtTime(-2.4, t);
 
         const deEsser2 = this.ctx.createBiquadFilter();
         deEsser2.type = 'peaking';
         deEsser2.frequency.setValueAtTime(8200, t);
         deEsser2.Q.setValueAtTime(1.8, t);
-        deEsser2.gain.setValueAtTime(-2.2, t);
+        deEsser2.gain.setValueAtTime(-1.2, t);
 
         const highEq = this.ctx.createBiquadFilter();
         highEq.type = 'highshelf';
@@ -570,12 +611,20 @@ export class AudioEngine {
         const airSheen = this.ctx.createBiquadFilter();
         airSheen.type = 'highshelf';
         airSheen.frequency.setValueAtTime(12000, t);
-        airSheen.gain.setValueAtTime(2.0, t);
+        airSheen.gain.setValueAtTime(2.2, t);
 
+        // Two-Stage Serial Vocal Compression:
+        // Stage 1: Fast FET-style transient catcher
         const compressor = this.ctx.createDynamicsCompressor();
-        compressor.knee.setValueAtTime(10, t);
-        compressor.attack.setValueAtTime(0.006, t);
-        compressor.release.setValueAtTime(0.085, t);
+        compressor.knee.setValueAtTime(8, t);
+        compressor.attack.setValueAtTime(0.0025, t);
+        compressor.release.setValueAtTime(0.045, t);
+
+        // Stage 2: Smooth optical-style syllable leveler
+        const levelerCompressor = this.ctx.createDynamicsCompressor();
+        levelerCompressor.knee.setValueAtTime(12, t);
+        levelerCompressor.attack.setValueAtTime(0.018, t);
+        levelerCompressor.release.setValueAtTime(0.130, t);
 
         const saturation = this.ctx.createWaveShaper();
         saturation.oversample = '2x';
@@ -603,6 +652,10 @@ export class AudioEngine {
         // Wet send to mix
         delayFilterLp.connect(delayMix);
 
+        // Pre-delay separates dry vocal consonants from wet reverb wash so voice stays upfront
+        const reverbPreDelay = this.ctx.createDelay(0.1);
+        reverbPreDelay.delayTime.setValueAtTime(track.fx.reverb?.preset === 'ROOM' ? 0.018 : 0.030, t);
+
         const reverbConvolver = this.ctx.createConvolver();
         const initialImpulse = this.getReverbImpulse(track.fx.reverb?.preset || 'ROOM');
         if (initialImpulse) {
@@ -620,6 +673,7 @@ export class AudioEngine {
         reverbFilterLp.frequency.setValueAtTime(5500, t);
         reverbFilterLp.Q.setValueAtTime(0.707, t);
 
+        reverbPreDelay.connect(reverbConvolver);
         reverbConvolver.connect(reverbFilterHp);
         reverbFilterHp.connect(reverbFilterLp);
 
@@ -632,18 +686,20 @@ export class AudioEngine {
         lowCut.connect(mudCut);
         mudCut.connect(lowEq);
         lowEq.connect(midEq);
-        midEq.connect(presenceBoost);
+        midEq.connect(intimacyBoost);
+        intimacyBoost.connect(presenceBoost);
         presenceBoost.connect(deEsser);
         deEsser.connect(deEsser2);
         deEsser2.connect(highEq);
         highEq.connect(airSheen);
         airSheen.connect(compressor);
-        compressor.connect(saturation);
+        compressor.connect(levelerCompressor);
+        levelerCompressor.connect(saturation);
 
         saturation.connect(trackGain);
         saturation.connect(delay);
         delayMix.connect(trackGain);
-        saturation.connect(reverbConvolver);
+        saturation.connect(reverbPreDelay);
         reverbMix.connect(trackGain);
 
         trackGain.connect(panner);
@@ -654,18 +710,21 @@ export class AudioEngine {
           mudCut,
           lowEq,
           midEq,
+          intimacyBoost,
           presenceBoost,
           deEsser,
           deEsser2,
           highEq,
           airSheen,
           compressor,
+          levelerCompressor,
           saturation,
           delay,
           delayFeedback,
           delayMix,
           delayFilterHp,
           delayFilterLp,
+          reverbPreDelay,
           reverbConvolver,
           reverbFilterHp,
           reverbFilterLp,
@@ -685,13 +744,47 @@ export class AudioEngine {
       nodes.midEq.gain.setTargetAtTime(track.fx.eq.mid, t, 0.05);
       nodes.highEq.gain.setTargetAtTime(track.fx.eq.high, t, 0.05);
 
+      const clips = getTrackClips(track).filter(c => c.buffer && c.buffer.length > 1);
+      const beatRms = this.beatData?.buffer && this.beatData.buffer.length > 1
+        ? this.getCachedBufferAnalysis(this.beatData.buffer).activeRms
+        : 0.16;
+      let trackAutoGain = 1.0;
+      let deEsser6800Db = -2.4;
+      let deEsser8200Db = -1.2;
+      if (clips.length > 0) {
+        let rmsSum = 0;
+        let maxPeak = 0;
+        let sib6800Sum = 0;
+        let sib8200Sum = 0;
+        for (const c of clips) {
+          const a = this.getCachedBufferAnalysis(c.buffer);
+          rmsSum += a.activeRms;
+          if (a.peak > maxPeak) maxPeak = a.peak;
+          sib6800Sum += a.deEsser6800Db;
+          sib8200Sum += a.deEsser8200Db;
+        }
+        trackAutoGain = computeVocalCalibrationGain(rmsSum / clips.length, maxPeak, beatRms);
+        deEsser6800Db = sib6800Sum / clips.length;
+        deEsser8200Db = sib8200Sum / clips.length;
+      }
+
+      nodes.deEsser.gain.setTargetAtTime(deEsser6800Db, t, 0.05);
+      nodes.deEsser2.gain.setTargetAtTime(deEsser8200Db, t, 0.05);
+
       const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
-      // Fast, smooth optical-style vocal leveling compressor: keeps voice sitting right up front
-      nodes.compressor.threshold.setTargetAtTime(-18 - compAmount * 18, t, 0.05);
-      nodes.compressor.ratio.setTargetAtTime(2.8 + compAmount * 4.5, t, 0.05);
-      nodes.compressor.knee.setTargetAtTime(10, t, 0.05);
-      nodes.compressor.attack.setTargetAtTime(0.006, t, 0.05);
-      nodes.compressor.release.setTargetAtTime(0.085, t, 0.05);
+      // Stage 1: Fast peak catcher
+      nodes.compressor.threshold.setTargetAtTime(-14 - compAmount * 14, t, 0.05);
+      nodes.compressor.ratio.setTargetAtTime(3.2 + compAmount * 2.5, t, 0.05);
+      nodes.compressor.knee.setTargetAtTime(8, t, 0.05);
+      nodes.compressor.attack.setTargetAtTime(0.0025, t, 0.05);
+      nodes.compressor.release.setTargetAtTime(0.045, t, 0.05);
+
+      // Stage 2: Smooth optical syllable leveler
+      nodes.levelerCompressor.threshold.setTargetAtTime(-22 - compAmount * 14, t, 0.05);
+      nodes.levelerCompressor.ratio.setTargetAtTime(2.2 + compAmount * 2.0, t, 0.05);
+      nodes.levelerCompressor.knee.setTargetAtTime(12, t, 0.05);
+      nodes.levelerCompressor.attack.setTargetAtTime(0.018, t, 0.05);
+      nodes.levelerCompressor.release.setTargetAtTime(0.130, t, 0.05);
 
       nodes.saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
 
@@ -727,11 +820,12 @@ export class AudioEngine {
         nodes.delayFeedback.gain.setTargetAtTime(0, t, 0.03);
       }
 
+      nodes.reverbPreDelay.delayTime.setTargetAtTime(track.fx.reverb.preset === 'ROOM' ? 0.018 : 0.030, t, 0.04);
       const impulse = this.getReverbImpulse(track.fx.reverb.preset);
       if (impulse && nodes.reverbConvolver.buffer !== impulse) {
         // Replace the convolver when changing presets; keep its wet output routing.
         try {
-          nodes.saturation.disconnect(nodes.reverbConvolver);
+          nodes.reverbPreDelay.disconnect(nodes.reverbConvolver);
           nodes.reverbConvolver.disconnect();
         } catch {
           // ignore
@@ -739,7 +833,7 @@ export class AudioEngine {
         const freshConvolver = this.ctx.createConvolver();
         freshConvolver.buffer = impulse;
         freshConvolver.connect(nodes.reverbFilterHp);
-        nodes.saturation.connect(freshConvolver);
+        nodes.reverbPreDelay.connect(freshConvolver);
         nodes.reverbConvolver = freshConvolver;
       }
       nodes.reverbMix.gain.setTargetAtTime(Math.max(0, Math.min(1, track.fx.reverb.mix)), t, 0.05);
@@ -751,11 +845,10 @@ export class AudioEngine {
       } else if (hasAnySolo && !track.isSolo) {
         effectiveVolume = 0;
       }
-      // Standard studio vocal calibration: balances recorded vocals naturally on top of commercial beats
-      const VOCAL_PLAYBACK_CALIBRATION = 1.50;
-      // Pro vocal makeup compensation: restores dynamic presence and body lost during compression
-      const compMakeupGain = 1.25 + compAmount * 0.50;
-      nodes.trackGain.gain.setTargetAtTime(effectiveVolume * VOCAL_PLAYBACK_CALIBRATION * compMakeupGain, t, 0.05);
+      // Beat-referenced RMS vocal calibration keeps vocals sitting upfront on commercial beats
+      const VOCAL_PLAYBACK_CALIBRATION = 1.35;
+      const compMakeupGain = 1.25 + compAmount * 0.45;
+      nodes.trackGain.gain.setTargetAtTime(effectiveVolume * trackAutoGain * VOCAL_PLAYBACK_CALIBRATION * compMakeupGain, t, 0.05);
       nodes.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, track.pan ?? 0)), t, 0.05);
     } catch (err) {
       console.warn('Error in updateVocalFX, handled gracefully:', err);
@@ -1904,7 +1997,6 @@ export class AudioEngine {
     }
   }
 
-  private dolbyStatusCache: { configured: boolean; checkedAt: number } | null = null;
   private lastExportDolbyEnhanced = false;
 
   public getPreferPhoneMic(): boolean {
@@ -1913,56 +2005,6 @@ export class AudioEngine {
 
   public wasLastExportDolbyEnhanced(): boolean {
     return this.lastExportDolbyEnhanced;
-  }
-
-  private async isDolbyServerAvailable(): Promise<boolean> {
-    return false;
-  }
-
-  /**
-   * Optimal Signal Chain Position for Dolby.io Media Enhance:
-   * Takes the pitch-corrected (Auto-Tuned) vocal clips for a track and cleans them via Dolby.io
-   * BEFORE the studio EQ, Compressor, Saturation, Delay, Reverb, and Beat Sidechain Mix.
-   * This prevents room noise from being amplified by compression/reverb and keeps the Beat 100% untouched.
-   */
-  private async enhanceVocalStemViaDolby(
-    resolvedClips: Array<{ startSec: number; buffer: AudioBuffer }>,
-    duration: number,
-    sampleRate: number,
-    decodeCtx: BaseAudioContext
-  ): Promise<AudioBuffer | null> {
-    if (!resolvedClips.length) return null;
-    try {
-      const length = Math.max(1, Math.ceil(sampleRate * duration));
-      const stemCtx = new OfflineAudioContext(1, length, sampleRate);
-      for (const item of resolvedClips) {
-        const src = stemCtx.createBufferSource();
-        src.buffer = item.buffer;
-        src.connect(stemCtx.destination);
-        src.start(item.startSec);
-      }
-      const dryStemBuffer = await stemCtx.startRendering();
-      const wavBlob = audioBufferToWav(dryStemBuffer, 16);
-
-      const response = await fetch('/api/studio/audio/enhance?mode=vocal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'audio/wav' },
-        body: wavBlob,
-        cache: 'no-store',
-        signal: AbortSignal.timeout(55_000),
-      });
-
-      if (response.status !== 200 || response.headers.get('X-Dolby-Enhanced') !== 'true') {
-        return null;
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      if (arrayBuffer.byteLength < 1024) return null;
-
-      return await decodeCtx.decodeAudioData(arrayBuffer.slice(0));
-    } catch {
-      return null;
-    }
   }
 
   /** Target 48 kHz standard for video, YouTube and mobile broadcast performance. */
@@ -1976,6 +2018,7 @@ export class AudioEngine {
       sidechainDb?: number;
       enableSidechain?: boolean;
       enableDolbyEnhance?: boolean;
+      enableNativeEnhance?: boolean;
       onStageChange?: (label: string) => void;
     }
   ): Promise<Blob> {
@@ -1992,38 +2035,51 @@ export class AudioEngine {
 
     const offlineCtx = new OfflineAudioContext(2, length, TARGET_SAMPLE_RATE);
 
-    // 1. Master Crossover at 90 Hz, Sub-bass DC Cut, Glue Compressor (Max 3 dB) & True-Peak Limiter
+    // 1. Master Bus with Sub-DC Cut (24 Hz), 80 Hz LR4 Sidechain Crossover on Master Compressor & Limiter
     const masterGain = offlineCtx.createGain();
     masterGain.gain.setValueAtTime(0.92, 0);
 
-    // Sub-audio filter: cuts inaudible DC/sub rumble (< 24 Hz) to preserve maximum headroom
     const masterSubCut = offlineCtx.createBiquadFilter();
     masterSubCut.type = 'highpass';
     masterSubCut.frequency.setValueAtTime(24, 0);
     masterSubCut.Q.setValueAtTime(0.7071, 0);
     masterGain.connect(masterSubCut);
 
-    // Branch A: Low-End (< 90 Hz) - 100% UNTOUCHED & UNCOMPRESSED sub-bass & 808
-    const masterBassLowPass = offlineCtx.createBiquadFilter();
-    masterBassLowPass.type = 'lowpass';
-    masterBassLowPass.frequency.setValueAtTime(90, 0);
-    masterBassLowPass.Q.setValueAtTime(0.7071, 0);
-    masterSubCut.connect(masterBassLowPass);
+    // Branch A: Sub-bass & Kick fundamental (<= 80 Hz, Linkwitz-Riley 24 dB/oct) bypasses masterCompressor
+    const masterBassLp1 = offlineCtx.createBiquadFilter();
+    masterBassLp1.type = 'lowpass';
+    masterBassLp1.frequency.setValueAtTime(80, 0);
+    masterBassLp1.Q.setValueAtTime(0.7071, 0);
 
-    // Branch B: Mids & Highs (> 90 Hz) - Studio Glue Compressor (strictly max 2.5 - 3 dB reduction)
-    const masterMidHighPass = offlineCtx.createBiquadFilter();
-    masterMidHighPass.type = 'highpass';
-    masterMidHighPass.frequency.setValueAtTime(90, 0);
-    masterMidHighPass.Q.setValueAtTime(0.7071, 0);
-    masterSubCut.connect(masterMidHighPass);
+    const masterBassLp2 = offlineCtx.createBiquadFilter();
+    masterBassLp2.type = 'lowpass';
+    masterBassLp2.frequency.setValueAtTime(80, 0);
+    masterBassLp2.Q.setValueAtTime(0.7071, 0);
+
+    masterSubCut.connect(masterBassLp1);
+    masterBassLp1.connect(masterBassLp2);
+
+    // Branch B: Mids & Highs (> 80 Hz, Linkwitz-Riley 24 dB/oct) feed the Master Glue Compressor (80 Hz HP sidechain)
+    const masterMidHp1 = offlineCtx.createBiquadFilter();
+    masterMidHp1.type = 'highpass';
+    masterMidHp1.frequency.setValueAtTime(80, 0);
+    masterMidHp1.Q.setValueAtTime(0.7071, 0);
+
+    const masterMidHp2 = offlineCtx.createBiquadFilter();
+    masterMidHp2.type = 'highpass';
+    masterMidHp2.frequency.setValueAtTime(80, 0);
+    masterMidHp2.Q.setValueAtTime(0.7071, 0);
+
+    masterSubCut.connect(masterMidHp1);
+    masterMidHp1.connect(masterMidHp2);
 
     const masterCompressor = offlineCtx.createDynamicsCompressor();
-    masterCompressor.threshold.value = -2.5;
+    masterCompressor.threshold.value = -3.5;
     masterCompressor.knee.value = 6.0;
-    masterCompressor.ratio.value = 2.0; // 2:1 smooth mastering ratio: caps reduction to max 3 dB
-    masterCompressor.attack.value = 0.025; // 25ms lets drum punch and consonants through
-    masterCompressor.release.value = 0.090; // 90ms smooth musical glue
-    masterMidHighPass.connect(masterCompressor);
+    masterCompressor.ratio.value = 2.2;
+    masterCompressor.attack.value = 0.022;
+    masterCompressor.release.value = 0.095;
+    masterMidHp2.connect(masterCompressor);
 
     // True-Peak Safety Ceiling Limiter (-0.4 dBFS)
     const limiter = offlineCtx.createDynamicsCompressor();
@@ -2031,15 +2087,97 @@ export class AudioEngine {
     limiter.knee.value = 2.0;
     limiter.ratio.value = 20.0;
     limiter.attack.value = 0.001;
-    limiter.release.value = 0.040;
+    limiter.release.value = 0.045;
 
-    masterBassLowPass.connect(limiter);
+    masterBassLp2.connect(limiter);
     masterCompressor.connect(limiter);
     limiter.connect(offlineCtx.destination);
 
-    // 2. Beat Chain with Frequency Crossover:
-    // Sub-bass & 808 (< 175 Hz) remain 100% UNTOUCHED (Zero bass compression).
-    // Mid/high frequencies (> 175 Hz) receive the sidechain ducking curve for vocal clarity.
+    // 2. Analyze Beat RMS + Pre-condition & Auto-Calibrate Every Active Vocal Track (Native DSP Enhance)
+    const beatAnalysis = this.beatData.buffer && this.beatData.buffer.length > 1
+      ? this.getCachedBufferAnalysis(this.beatData.buffer)
+      : { activeRms: 0.16, peak: 0.9, activeRmsDb: -15.9, peakDb: -0.9, noiseFloor: 0, noiseFloorDb: -120, sibilanceRatio: 0.4, deEsser6800Db: -2.0, deEsser8200Db: -1.0 };
+
+    const enableNativeEnhance = options?.enableNativeEnhance ?? options?.enableDolbyEnhance ?? true;
+    const hasAnySolo = vocalTracks.some((tr) => tr.isSolo && getTrackClips(tr).length > 0);
+
+    interface PreparedTrackExport {
+      track: VocalTrack;
+      effectiveVol: number;
+      deEsser6800Db: number;
+      deEsser8200Db: number;
+      clips: Array<{ startSec: number; buffer: AudioBuffer }>;
+    }
+    const preparedTracks: PreparedTrackExport[] = [];
+    const activeClipsForEnvelope: Array<{ isLead: boolean; startSec: number; endSec: number; buffer: AudioBuffer }> = [];
+
+    if (vocalTracks.some((t) => !t.isMuted && getTrackClips(t).length > 0)) {
+      options?.onStageChange?.('Analizando RMS y limpiando voces…');
+    }
+
+    for (const track of vocalTracks) {
+      const clips = getTrackClips(track);
+      if (clips.length === 0) continue;
+
+      let effectiveVol = track.volume;
+      if (track.isMuted) effectiveVol = 0;
+      else if (hasAnySolo && !track.isSolo) effectiveVol = 0;
+      if (effectiveVol <= 0.001) continue;
+
+      const resolvedClips: Array<{ startSec: number; buffer: AudioBuffer }> = [];
+      let sib6800Sum = 0;
+      let sib8200Sum = 0;
+
+      for (const clip of clips) {
+        if (!clip.buffer || clip.buffer.length <= 1) continue;
+        let playBuffer = clip.buffer;
+        if (track.fx.tune?.enabled && track.fx.tune.speed > 0.01) {
+          if (clip.tunedBuffer) {
+            playBuffer = clip.tunedBuffer;
+          } else {
+            try {
+              playBuffer = await processVocalTune(this.ctx || (offlineCtx as unknown as AudioContext), clip.buffer, track.fx.tune);
+            } catch {
+              playBuffer = clip.buffer;
+            }
+          }
+        }
+
+        if (enableNativeEnhance) {
+          const enhanced = enhanceVocalAudioBuffer(offlineCtx, playBuffer, beatAnalysis.activeRms);
+          playBuffer = enhanced.buffer;
+          sib6800Sum += enhanced.calibration.analysis.deEsser6800Db;
+          sib8200Sum += enhanced.calibration.analysis.deEsser8200Db;
+        } else {
+          const a = this.getCachedBufferAnalysis(playBuffer);
+          sib6800Sum += a.deEsser6800Db;
+          sib8200Sum += a.deEsser8200Db;
+        }
+
+        resolvedClips.push({ startSec: clip.startBeatOffset, buffer: playBuffer });
+        activeClipsForEnvelope.push({
+          isLead: track.id === 'lead1' || track.id === 'lead2',
+          startSec: clip.startBeatOffset,
+          endSec: clip.startBeatOffset + playBuffer.duration,
+          buffer: playBuffer,
+        });
+      }
+
+      if (resolvedClips.length > 0) {
+        preparedTracks.push({
+          track,
+          effectiveVol,
+          deEsser6800Db: sib6800Sum / resolvedClips.length,
+          deEsser8200Db: sib8200Sum / resolvedClips.length,
+          clips: resolvedClips,
+        });
+      }
+    }
+
+    // 3. Beat Chain: -1.5 dB Headroom + LR4 175 Hz Crossover + Dynamic Vocal-Pocket EQ (2.85 kHz) + Sidechain
+    const BEAT_MIX_HEADROOM = 0.84; // -1.5 dB leaves breathing room so mastered beats don't crush vocals in limiter
+    const beatEffectiveVol = this.isBeatMuted ? 0 : this.beatFX.volume * BEAT_MIX_HEADROOM;
+
     const beatHighPass = offlineCtx.createBiquadFilter();
     beatHighPass.type = 'highpass';
     beatHighPass.frequency.setValueAtTime(this.beatFX.highPass, 0);
@@ -2050,115 +2188,115 @@ export class AudioEngine {
 
     beatHighPass.connect(beatLowPass);
 
-    const bassCrossoverFreq = 175; // Hz
+    const bassCrossoverFreq = 175;
 
-    // Branch A: Graves / Sub-bass / 808 (Untouched, punchy and uncompressed)
-    const beatBassFilter = offlineCtx.createBiquadFilter();
-    beatBassFilter.type = 'lowpass';
-    beatBassFilter.frequency.setValueAtTime(bassCrossoverFreq, 0);
-    beatBassFilter.Q.setValueAtTime(0.7071, 0);
+    // Branch A: Sub-bass & 808 (<= 175 Hz, LR4 24 dB/oct, untouched)
+    const beatBassLp1 = offlineCtx.createBiquadFilter();
+    beatBassLp1.type = 'lowpass';
+    beatBassLp1.frequency.setValueAtTime(bassCrossoverFreq, 0);
+    beatBassLp1.Q.setValueAtTime(0.7071, 0);
+
+    const beatBassLp2 = offlineCtx.createBiquadFilter();
+    beatBassLp2.type = 'lowpass';
+    beatBassLp2.frequency.setValueAtTime(bassCrossoverFreq, 0);
+    beatBassLp2.Q.setValueAtTime(0.7071, 0);
 
     const beatBassGain = offlineCtx.createGain();
-    beatBassGain.gain.setValueAtTime(this.isBeatMuted ? 0 : this.beatFX.volume, 0);
+    beatBassGain.gain.setValueAtTime(beatEffectiveVol, 0);
 
-    beatLowPass.connect(beatBassFilter);
-    beatBassFilter.connect(beatBassGain);
+    beatLowPass.connect(beatBassLp1);
+    beatBassLp1.connect(beatBassLp2);
+    beatBassLp2.connect(beatBassGain);
     beatBassGain.connect(masterGain);
 
-    // Branch B: Medios & Agudos (Vocal clash pocket, ducked smoothly when vocal sings)
+    // Branch B: Mids & Highs (> 175 Hz, LR4 24 dB/oct) with Dynamic Vocal-Pocket EQ (2.85 kHz) + Sidechain Gain
+    const beatMidHp1 = offlineCtx.createBiquadFilter();
+    beatMidHp1.type = 'highpass';
+    beatMidHp1.frequency.setValueAtTime(bassCrossoverFreq, 0);
+    beatMidHp1.Q.setValueAtTime(0.7071, 0);
+
+    const beatMidHp2 = offlineCtx.createBiquadFilter();
+    beatMidHp2.type = 'highpass';
+    beatMidHp2.frequency.setValueAtTime(bassCrossoverFreq, 0);
+    beatMidHp2.Q.setValueAtTime(0.7071, 0);
+
+    const beatVocalPocketEq = offlineCtx.createBiquadFilter();
+    beatVocalPocketEq.type = 'peaking';
+    beatVocalPocketEq.frequency.setValueAtTime(2850, 0);
+    beatVocalPocketEq.Q.setValueAtTime(0.85, 0);
+    beatVocalPocketEq.gain.setValueAtTime(0, 0);
+
     const beatMidHighGain = offlineCtx.createGain();
-    const invertedBass = offlineCtx.createGain();
-    invertedBass.gain.value = -1;
-    beatLowPass.connect(beatMidHighGain);
-    beatBassFilter.connect(invertedBass);
-    invertedBass.connect(beatMidHighGain);
+    beatMidHighGain.gain.setValueAtTime(beatEffectiveVol, 0);
+
+    beatLowPass.connect(beatMidHp1);
+    beatMidHp1.connect(beatMidHp2);
+    beatMidHp2.connect(beatVocalPocketEq);
+    beatVocalPocketEq.connect(beatMidHighGain);
     beatMidHighGain.connect(masterGain);
 
-    // 3. Dynamic Sidechain Ducking Calculation on the Mid/High Branch
-    const sidechainDb = options?.sidechainDb ?? 3.0;
+    // Compute calibrated vocal presence envelope (10ms steps) used for:
+    // a) Beat mid-high ducking (-2.5 dB) + Beat vocal-pocket 2.85 kHz dip (-3.5 dB)
+    // b) Vocal Reverb/Delay wet-send ducking (-3.6 dB while singing, blooms in pauses)
+    const stepSec = 0.01;
+    const numSteps = Math.max(2, Math.ceil(duration / stepSec));
+    const activityEnvelope = new Float32Array(numSteps);
     const enableSidechain = options?.enableSidechain ?? true;
 
-    if (enableSidechain && vocalTracks.some((t) => (t.buffer || (t.clips && t.clips.length > 0)) && !t.isMuted)) {
-      const stepSec = 0.01; // 10ms sampling interval
-      const numSteps = Math.max(2, Math.ceil(duration / stepSec));
-      const curve = new Float32Array(numSteps);
-      const targetGainDucked = Math.pow(10, -Math.abs(sidechainDb) / 20); // ~0.7079
-
-      interface ActiveClipRef {
-        isLead: boolean;
-        startSec: number;
-        endSec: number;
-        buffer: AudioBuffer;
-      }
-      const activeClips: ActiveClipRef[] = [];
-      const hasSolo = vocalTracks.some((tr) => tr.isSolo);
-
-      for (const track of vocalTracks) {
-        if (track.isMuted || (hasSolo && !track.isSolo)) continue;
-        const isLead = track.id === 'lead1' || track.id === 'lead2';
-        const clips = getTrackClips(track);
-
-        for (const c of clips) {
-          if (!c.buffer) continue;
-          activeClips.push({
-            isLead,
-            startSec: c.startBeatOffset,
-            endSec: c.startBeatOffset + c.duration,
-            buffer: c.buffer,
-          });
-        }
-      }
-
-      // Compute presence envelope
-      const rawDucking = new Float32Array(numSteps);
+    if (activeClipsForEnvelope.length > 0) {
+      const rawActivity = new Float32Array(numSteps);
       for (let s = 0; s < numSteps; s++) {
         const t = s * stepSec;
         let vocalActivity = 0;
 
-        for (const clip of activeClips) {
+        for (const clip of activeClipsForEnvelope) {
           if (t >= clip.startSec && t <= clip.endSec) {
             const clipSampleIdx = Math.floor((t - clip.startSec) * clip.buffer.sampleRate);
             if (clipSampleIdx >= 0 && clipSampleIdx < clip.buffer.length) {
               const chData = clip.buffer.getChannelData(0);
-              let maxVal = 0;
+              let sqSum = 0;
               const maxInspect = Math.min(256, clip.buffer.length - clipSampleIdx);
-              for (let j = 0; j < maxInspect; j += 4) {
-                const absVal = Math.abs(chData[clipSampleIdx + j]);
-                if (absVal > maxVal) maxVal = absVal;
+              for (let j = 0; j < maxInspect; j++) {
+                const sample = chData[clipSampleIdx + j];
+                sqSum += sample * sample;
               }
+              const rmsVal = Math.sqrt(sqSum / Math.max(1, maxInspect));
               const weight = clip.isLead ? 1.0 : 0.65;
-              vocalActivity = Math.max(vocalActivity, maxVal * weight);
+              vocalActivity = Math.max(vocalActivity, rmsVal * weight);
             }
           }
         }
 
-        // If vocal presence detected (> -38 dBFS ~ 0.012 peak), duck mids down smoothly
-        if (vocalActivity > 0.012) {
-          const ratio = Math.min(1.0, (vocalActivity - 0.012) / 0.06);
-          rawDucking[s] = 1.0 - (1.0 - targetGainDucked) * ratio;
-        } else {
-          rawDucking[s] = 1.0;
-        }
+        // Normalize vocal activity into [0..1] over -36 dBFS (0.015) .. -18 dBFS (0.125)
+        rawActivity[s] = vocalActivity > 0.015 ? Math.min(1.0, (vocalActivity - 0.015) / 0.11) : 0;
       }
 
-      // Smooth envelope with musical attack (~15ms) and release (~180ms)
-      const attackCoeff = Math.exp(-stepSec / 0.015);
-      const releaseCoeff = Math.exp(-stepSec / 0.180);
-      let currentVal = 1.0;
-
+      const attackCoeff = Math.exp(-stepSec / 0.012);
+      const releaseCoeff = Math.exp(-stepSec / 0.155);
+      let env = 0;
       for (let s = 0; s < numSteps; s++) {
-        const target = rawDucking[s];
-        if (target < currentVal) {
-          currentVal = attackCoeff * currentVal + (1 - attackCoeff) * target;
-        } else {
-          currentVal = releaseCoeff * currentVal + (1 - releaseCoeff) * target;
-        }
-        curve[s] = currentVal * (this.isBeatMuted ? 0 : this.beatFX.volume);
+        const target = rawActivity[s];
+        env = target > env
+          ? attackCoeff * env + (1 - attackCoeff) * target
+          : releaseCoeff * env + (1 - releaseCoeff) * target;
+        activityEnvelope[s] = env;
       }
 
-      beatMidHighGain.gain.setValueCurveAtTime(curve, 0, duration);
-    } else {
-      beatMidHighGain.gain.setValueAtTime(this.isBeatMuted ? 0 : this.beatFX.volume, 0);
+      if (enableSidechain) {
+        const sidechainDb = options?.sidechainDb ?? 2.5;
+        const targetGainDucked = Math.pow(10, -Math.abs(sidechainDb) / 20);
+        const midGainCurve = new Float32Array(numSteps);
+        const pocketDbCurve = new Float32Array(numSteps);
+
+        for (let s = 0; s < numSteps; s++) {
+          const e = activityEnvelope[s];
+          midGainCurve[s] = (1.0 - (1.0 - targetGainDucked) * e) * beatEffectiveVol;
+          pocketDbCurve[s] = -3.5 * e;
+        }
+
+        beatMidHighGain.gain.setValueCurveAtTime(midGainCurve, 0, duration);
+        beatVocalPocketEq.gain.setValueCurveAtTime(pocketDbCurve, 0, duration);
+      }
     }
 
     const beatSource = offlineCtx.createBufferSource();
@@ -2170,55 +2308,49 @@ export class AudioEngine {
     const vocalBus = offlineCtx.createGain();
     vocalBus.gain.setValueAtTime(1.0, 0);
 
-    // Direct clean vocal path: preserves natural transients and spatial separation
     const vocalDirectGain = offlineCtx.createGain();
     vocalDirectGain.gain.setValueAtTime(1.0, 0);
     vocalBus.connect(vocalDirectGain);
     vocalDirectGain.connect(masterGain);
 
-    // Parallel smash path: heavy compression + harmonic tape saturation blended at 26% (-11.5 dB)
-    // Pulls forward subtle syllables, breathes and whispers so the voice stays locked up front
     const vocalParallelComp = offlineCtx.createDynamicsCompressor();
-    vocalParallelComp.threshold.setValueAtTime(-22, 0);
-    vocalParallelComp.ratio.setValueAtTime(8.0, 0);
-    vocalParallelComp.knee.setValueAtTime(5.0, 0);
+    vocalParallelComp.threshold.setValueAtTime(-20, 0);
+    vocalParallelComp.ratio.setValueAtTime(6.0, 0);
+    vocalParallelComp.knee.setValueAtTime(6.0, 0);
     vocalParallelComp.attack.setValueAtTime(0.003, 0);
     vocalParallelComp.release.setValueAtTime(0.060, 0);
 
     const vocalParallelSat = offlineCtx.createWaveShaper();
-    vocalParallelSat.curve = this.makeSaturationCurve(0.20);
+    vocalParallelSat.curve = this.makeSaturationCurve(0.18);
     vocalParallelSat.oversample = '2x';
 
     const vocalParallelGain = offlineCtx.createGain();
-    vocalParallelGain.gain.setValueAtTime(0.26, 0);
+    vocalParallelGain.gain.setValueAtTime(0.28, 0);
 
     vocalBus.connect(vocalParallelComp);
     vocalParallelComp.connect(vocalParallelSat);
     vocalParallelSat.connect(vocalParallelGain);
     vocalParallelGain.connect(masterGain);
 
-    const hasAnySolo = vocalTracks.some((tr) => tr.isSolo);
+    // Build shared FX ducking curve (ducks reverb & delay wet tails by -3.6 dB during singing, opens in pauses)
+    const fxDuckCurve = new Float32Array(numSteps);
+    for (let s = 0; s < numSteps; s++) {
+      fxDuckCurve[s] = 1.0 - 0.34 * activityEnvelope[s];
+    }
 
-    for (const track of vocalTracks) {
-      if (!track.buffer && (!track.clips || track.clips.length === 0)) continue;
-
-      let effectiveVol = track.volume;
-      if (track.isMuted) effectiveVol = 0;
-      else if (hasAnySolo && !track.isSolo) effectiveVol = 0;
-
-      if (effectiveVol <= 0.001) continue;
+    for (const prepared of preparedTracks) {
+      const { track, effectiveVol, deEsser6800Db, deEsser8200Db, clips } = prepared;
 
       const lowCut = offlineCtx.createBiquadFilter();
       lowCut.type = 'highpass';
       lowCut.frequency.setValueAtTime(track.fx.eq.lowCut ? track.fx.eq.lowCutFreq || 120 : 100, 0);
       lowCut.Q.setValueAtTime(0.7071, 0);
 
-      // Studio Mud Cleanup: clears cardboard/boxiness room resonances
       const mudCut = offlineCtx.createBiquadFilter();
       mudCut.type = 'peaking';
-      mudCut.frequency.setValueAtTime(350, 0);
-      mudCut.Q.setValueAtTime(1.3, 0);
-      mudCut.gain.setValueAtTime(-2.2, 0);
+      mudCut.frequency.setValueAtTime(320, 0);
+      mudCut.Q.setValueAtTime(1.2, 0);
+      mudCut.gain.setValueAtTime(-2.4, 0);
 
       const lowEq = offlineCtx.createBiquadFilter();
       lowEq.type = 'lowshelf';
@@ -2230,66 +2362,85 @@ export class AudioEngine {
       midEq.frequency.setValueAtTime(2400, 0);
       midEq.gain.setValueAtTime(track.fx.eq.mid, 0);
 
-      // Vocal Articulation & Presence Boost: guarantees vocals cut clearly through the beat
+      const intimacyBoost = offlineCtx.createBiquadFilter();
+      intimacyBoost.type = 'peaking';
+      intimacyBoost.frequency.setValueAtTime(1550, 0);
+      intimacyBoost.Q.setValueAtTime(0.9, 0);
+      intimacyBoost.gain.setValueAtTime(1.6, 0);
+
       const presenceBoost = offlineCtx.createBiquadFilter();
       presenceBoost.type = 'peaking';
-      presenceBoost.frequency.setValueAtTime(3400, 0);
-      presenceBoost.Q.setValueAtTime(1.1, 0);
-      presenceBoost.gain.setValueAtTime(2.5, 0);
+      presenceBoost.frequency.setValueAtTime(3300, 0);
+      presenceBoost.Q.setValueAtTime(1.0, 0);
+      presenceBoost.gain.setValueAtTime(3.2, 0);
 
-      // High-Precision Dual-Stage De-Esser: Stage 1 targeted sibilance notch (6.8 kHz) + Stage 2 harshness tamer (8.2 kHz)
       const deEsser = offlineCtx.createBiquadFilter();
       deEsser.type = 'peaking';
       deEsser.frequency.setValueAtTime(6800, 0);
       deEsser.Q.setValueAtTime(2.6, 0);
-      deEsser.gain.setValueAtTime(-4.2, 0);
+      deEsser.gain.setValueAtTime(deEsser6800Db, 0);
 
       const deEsser2 = offlineCtx.createBiquadFilter();
       deEsser2.type = 'peaking';
       deEsser2.frequency.setValueAtTime(8200, 0);
       deEsser2.Q.setValueAtTime(1.8, 0);
-      deEsser2.gain.setValueAtTime(-2.2, 0);
+      deEsser2.gain.setValueAtTime(deEsser8200Db, 0);
 
       const highEq = offlineCtx.createBiquadFilter();
       highEq.type = 'highshelf';
       highEq.frequency.setValueAtTime(10000, 0);
       highEq.gain.setValueAtTime(track.fx.eq.high, 0);
 
-      // High-end Air Sheen: adds crystalline, modern studio sparkle
       const airSheen = offlineCtx.createBiquadFilter();
       airSheen.type = 'highshelf';
       airSheen.frequency.setValueAtTime(12000, 0);
-      airSheen.gain.setValueAtTime(2.0, 0);
+      airSheen.gain.setValueAtTime(2.2, 0);
 
-      const compressor = offlineCtx.createDynamicsCompressor();
       const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
-      compressor.threshold.setValueAtTime(-18 - compAmount * 18, 0);
-      compressor.ratio.setValueAtTime(2.8 + compAmount * 4.5, 0);
-      compressor.knee.setValueAtTime(10, 0);
-      compressor.attack.setValueAtTime(0.006, 0);
-      compressor.release.setValueAtTime(0.085, 0);
+
+      // Stage 1: Fast FET Peak Catcher
+      const compressor = offlineCtx.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-14 - compAmount * 14, 0);
+      compressor.ratio.setValueAtTime(3.2 + compAmount * 2.5, 0);
+      compressor.knee.setValueAtTime(8, 0);
+      compressor.attack.setValueAtTime(0.0025, 0);
+      compressor.release.setValueAtTime(0.045, 0);
+
+      // Stage 2: Smooth Optical Syllable Leveler
+      const levelerCompressor = offlineCtx.createDynamicsCompressor();
+      levelerCompressor.threshold.setValueAtTime(-22 - compAmount * 14, 0);
+      levelerCompressor.ratio.setValueAtTime(2.2 + compAmount * 2.0, 0);
+      levelerCompressor.knee.setValueAtTime(12, 0);
+      levelerCompressor.attack.setValueAtTime(0.018, 0);
+      levelerCompressor.release.setValueAtTime(0.130, 0);
 
       const saturation = offlineCtx.createWaveShaper();
       saturation.curve = this.makeSaturationCurve(track.fx.saturation.amount);
       saturation.oversample = '2x';
 
-      // Standard studio vocal calibration: balances recorded vocals naturally on top of commercial beats
-      const VOCAL_PLAYBACK_CALIBRATION = 1.50;
-      const compMakeupGain = 1.28 + compAmount * 0.50;
+      // Calibrated with pre-conditioned vocal RMS + -1.5 dB beat headroom
+      const VOCAL_EXPORT_CALIBRATION = 1.32;
+      const compMakeupGain = 1.25 + compAmount * 0.45;
       const trackGain = offlineCtx.createGain();
-      trackGain.gain.setValueAtTime(effectiveVol * VOCAL_PLAYBACK_CALIBRATION * compMakeupGain, 0);
+      trackGain.gain.setValueAtTime(effectiveVol * VOCAL_EXPORT_CALIBRATION * compMakeupGain, 0);
 
       lowCut.connect(mudCut);
       mudCut.connect(lowEq);
       lowEq.connect(midEq);
-      midEq.connect(presenceBoost);
+      midEq.connect(intimacyBoost);
+      intimacyBoost.connect(presenceBoost);
       presenceBoost.connect(deEsser);
       deEsser.connect(deEsser2);
       deEsser2.connect(highEq);
       highEq.connect(airSheen);
       airSheen.connect(compressor);
-      compressor.connect(saturation);
+      compressor.connect(levelerCompressor);
+      levelerCompressor.connect(saturation);
       saturation.connect(trackGain);
+
+      const fxSendDuckGain = offlineCtx.createGain();
+      fxSendDuckGain.gain.setValueCurveAtTime(fxDuckCurve, 0, duration);
+      fxSendDuckGain.connect(trackGain);
 
       if (track.fx.delay.division !== 'OFF' && track.fx.delay.mix > 0) {
         const secPerBeat = 60 / Math.max(30, this.beatData.bpm);
@@ -2325,10 +2476,13 @@ export class AudioEngine {
         delayFilterLp.connect(delayFeedback);
         delayFeedback.connect(delay);
         delayFilterLp.connect(delayMix);
-        delayMix.connect(trackGain);
+        delayMix.connect(fxSendDuckGain);
       }
 
       if (track.fx.reverb.mix > 0) {
+        const reverbPreDelay = offlineCtx.createDelay(0.1);
+        reverbPreDelay.delayTime.setValueAtTime(track.fx.reverb.preset === 'ROOM' ? 0.018 : 0.030, 0);
+
         const reverbConvolver = offlineCtx.createConvolver();
         reverbConvolver.buffer = createReverbImpulse(offlineCtx, track.fx.reverb.preset);
 
@@ -2342,15 +2496,16 @@ export class AudioEngine {
         reverbFilterLp.frequency.setValueAtTime(5500, 0);
         reverbFilterLp.Q.setValueAtTime(0.707, 0);
 
+        reverbPreDelay.connect(reverbConvolver);
         reverbConvolver.connect(reverbFilterHp);
         reverbFilterHp.connect(reverbFilterLp);
 
         const reverbMix = offlineCtx.createGain();
         reverbMix.gain.setValueAtTime(track.fx.reverb.mix, 0);
 
-        saturation.connect(reverbConvolver);
+        saturation.connect(reverbPreDelay);
         reverbFilterLp.connect(reverbMix);
-        reverbMix.connect(trackGain);
+        reverbMix.connect(fxSendDuckGain);
       }
 
       const panner = offlineCtx.createStereoPanner ? offlineCtx.createStereoPanner() : null;
@@ -2362,57 +2517,17 @@ export class AudioEngine {
         trackGain.connect(vocalBus);
       }
 
-      // Render all clips on this track line (1. Pitch Correction -> 2. Dolby.io Vocal Stem Enhance -> 3. EQ/Comp/Sat/Reverb/Delay)
-      const clips = getTrackClips(track);
-      const resolvedClips: Array<{ startSec: number; buffer: AudioBuffer }> = [];
-
-      for (const clip of clips) {
-        if (!clip.buffer) continue;
-        let playBuffer = clip.buffer;
-        if (track.fx.tune?.enabled && track.fx.tune.speed > 0.01) {
-          if (clip.tunedBuffer) {
-            playBuffer = clip.tunedBuffer;
-          } else {
-            try {
-              playBuffer = await processVocalTune(this.ctx || (offlineCtx as unknown as AudioContext), clip.buffer, track.fx.tune);
-            } catch {
-              playBuffer = clip.buffer;
-            }
-          }
-        }
-        resolvedClips.push({ startSec: clip.startBeatOffset, buffer: playBuffer });
-      }
-
-      let enhancedTrackStem: AudioBuffer | null = null;
-      if (resolvedClips.length > 0 && options?.enableDolbyEnhance !== false && (await this.isDolbyServerAvailable())) {
-        options?.onStageChange?.('Mejorando tu voz con IA Dolby.io…');
-        enhancedTrackStem = await this.enhanceVocalStemViaDolby(
-          resolvedClips,
-          duration,
-          TARGET_SAMPLE_RATE,
-          this.ctx || offlineCtx
-        );
-      }
-
-      if (enhancedTrackStem) {
-        this.lastExportDolbyEnhanced = true;
+      for (const item of clips) {
         const vSource = offlineCtx.createBufferSource();
-        vSource.buffer = enhancedTrackStem;
+        vSource.buffer = item.buffer;
         vSource.connect(lowCut);
-        vSource.start(0);
-      } else {
-        for (const item of resolvedClips) {
-          const vSource = offlineCtx.createBufferSource();
-          vSource.buffer = item.buffer;
-          vSource.connect(lowCut);
-          if (item.startSec < 0) {
-            const offsetInClip = -item.startSec;
-            if (offsetInClip < item.buffer.duration) {
-              vSource.start(0, offsetInClip);
-            }
-          } else {
-            vSource.start(item.startSec);
+        if (item.startSec < 0) {
+          const offsetInClip = -item.startSec;
+          if (offsetInClip < item.buffer.duration) {
+            vSource.start(0, offsetInClip);
           }
+        } else {
+          vSource.start(item.startSec);
         }
       }
     }
