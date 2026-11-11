@@ -3358,6 +3358,7 @@ export default function App() {
               onToggleLoop={handleToggleLoop}
               onOpenLoopSettings={() => setShowLoopModal(true)}
               onOpenBeatFX={() => setShowBeatFXModal(true)}
+              onOpenLoadBeat={() => setShowLoadBeatModal(true)}
               beatVolume={beatFX.volume}
               onChangeBeatVolume={(vol) => setBeatFX({ ...beatFX, volume: vol })}
               onDetectKeyAndBpm={handleDetectCurrentBeat}

@@ -86,12 +86,9 @@ export const VocalPresetModal: React.FC<VocalPresetModalProps> = ({
                           : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                       }`}
                     >
-                      {preset.role}
+                      {preset.role === 'Efecto' ? 'FX' : 'Principal'}
                     </span>
                   </div>
-                  <p className="text-[10px] font-mono text-zinc-400 truncate mt-0.5">
-                    {preset.summary}
-                  </p>
                 </div>
 
                 {isActive && (
@@ -149,7 +146,7 @@ export const VocalPresetStrip: React.FC<VocalPresetStripProps> = ({
               type="button"
               onClick={() => onSelectPreset(preset.id)}
               aria-pressed={isActive}
-              title={`${preset.label}: ${preset.summary}`}
+              title={preset.label}
               className={`py-1.5 px-1 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer truncate ${
                 isActive
                   ? 'bg-amber-500 text-black shadow'

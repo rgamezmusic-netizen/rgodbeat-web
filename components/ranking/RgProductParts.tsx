@@ -116,50 +116,30 @@ export function RgStudioTrophyIcon({
 
 export function ArtistMedalStrip({
   medals,
-  liveRank,
-  showZeroState = false,
 }: {
   medals?: RgArtistMedalTally | null;
-  liveRank?: number | null;
-  showZeroState?: boolean;
 }) {
-  const hasHistorical = Boolean(medals && medals.total > 0);
-  const isLiveTop3 = liveRank === 1 || liveRank === 2 || liveRank === 3;
-  if (!hasHistorical && !isLiveTop3 && !showZeroState) return null;
+  if (!medals || medals.total <= 0) return null;
 
   return (
     <div className={styles.medalStrip} aria-label="Medallas y trofeos RG Studio">
-      {isLiveTop3 && (
-        <span
-          className={`${styles.medalBadge} ${
-            liveRank === 1 ? styles.medalBadgeGold : liveRank === 2 ? styles.medalBadgeSilver : styles.medalBadgeBronze
-          }`}
-        >
-          <RgStudioTrophyIcon place={liveRank as RgMedalPlace} size="sm" />
-          <span>{medalPlaceLabel(liveRank)} · #{liveRank}</span>
+      {medals.gold > 0 && (
+        <span className={`${styles.medalBadge} ${styles.medalBadgeGold}`} title="Trofeos Pieza de RG Studio (#1) ganados">
+          <RgStudioTrophyIcon place={1} size="sm" />
+          <span>×{formatRg(medals.gold)} TROFEO RG</span>
         </span>
       )}
-      {hasHistorical && medals && (
-        <>
-          {medals.gold > 0 && (
-            <span className={`${styles.medalBadge} ${styles.medalBadgeGold}`} title="Trofeos Pieza de RG Studio (#1) ganados">
-              <RgStudioTrophyIcon place={1} size="sm" />
-              <span>×{formatRg(medals.gold)} TROFEO RG</span>
-            </span>
-          )}
-          {medals.silver > 0 && (
-            <span className={`${styles.medalBadge} ${styles.medalBadgeSilver}`} title="Medallas de Plata (#2) ganadas">
-              <RgStudioTrophyIcon place={2} size="sm" />
-              <span>×{formatRg(medals.silver)} PLATA</span>
-            </span>
-          )}
-          {medals.bronze > 0 && (
-            <span className={`${styles.medalBadge} ${styles.medalBadgeBronze}`} title="Medallas de Bronce (#3) ganadas">
-              <RgStudioTrophyIcon place={3} size="sm" />
-              <span>×{formatRg(medals.bronze)} BRONCE</span>
-            </span>
-          )}
-        </>
+      {medals.silver > 0 && (
+        <span className={`${styles.medalBadge} ${styles.medalBadgeSilver}`} title="Medallas de Plata (#2) ganadas">
+          <RgStudioTrophyIcon place={2} size="sm" />
+          <span>×{formatRg(medals.silver)} PLATA</span>
+        </span>
+      )}
+      {medals.bronze > 0 && (
+        <span className={`${styles.medalBadge} ${styles.medalBadgeBronze}`} title="Medallas de Bronce (#3) ganadas">
+          <RgStudioTrophyIcon place={3} size="sm" />
+          <span>×{formatRg(medals.bronze)} BRONCE</span>
+        </span>
       )}
     </div>
   );
@@ -267,11 +247,8 @@ export function ChartRow({ entry, kind }: { entry: ChartEntry; kind: 'tracks' | 
     <div className={styles.identity}>
       <strong>{title}</strong>
       <p>{entry.rank === 1 ? 'LIDERA LA TEMPORADA · ' : ''}{detail}</p>
-      {(isTop3 || (entry.medals && entry.medals.total > 0)) && (
-        <ArtistMedalStrip
-          medals={entry.medals}
-          liveRank={isTop3 ? entry.rank : null}
-        />
+      {entry.medals && entry.medals.total > 0 && (
+        <ArtistMedalStrip medals={entry.medals} />
       )}
       <InteractionStrip stats={entry.interactions ?? { recordedCount: defaultRecorded, viewCount: 0, likeCount: 0, commentCount: 0 }} kind={kind} />
     </div>

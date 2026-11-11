@@ -32,6 +32,7 @@ interface ArtworkPlayerProps {
   onToggleLoop: () => void;
   onOpenLoopSettings: () => void;
   onOpenBeatFX: () => void;
+  onOpenLoadBeat?: () => void;
   onNextBeat?: () => void;
   onPrevBeat?: () => void;
   beatVolume: number;
@@ -69,6 +70,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   onPlayPause,
   onSeek,
   onOpenBeatFX,
+  onOpenLoadBeat,
   beatVolume,
   onChangeBeatVolume,
   onDetectKeyAndBpm,
@@ -221,7 +223,26 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
 
           {/* Outer Vinyl Disc (Negro Carbón) */}
           <div
-            className={`relative w-full h-full rounded-full p-2 sm:p-2.5 shadow-2xl border-2 border-zinc-800/90 bg-[#121216] transition-transform ${
+            role={!beat && onOpenLoadBeat ? 'button' : undefined}
+            tabIndex={!beat && onOpenLoadBeat ? 0 : undefined}
+            aria-label={!beat && onOpenLoadBeat ? 'Seleccionar un beat' : undefined}
+            onClick={!beat && onOpenLoadBeat ? onOpenLoadBeat : undefined}
+            onKeyDown={
+              !beat && onOpenLoadBeat
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onOpenLoadBeat();
+                    }
+                  }
+                : undefined
+            }
+            title={!beat && onOpenLoadBeat ? 'Toca el disco para elegir un beat' : undefined}
+            className={`relative w-full h-full rounded-full p-2 sm:p-2.5 shadow-2xl border-2 transition-all ${
+              !beat && onOpenLoadBeat
+                ? 'border-amber-500/60 hover:border-amber-400 hover:scale-[1.02] active:scale-95 cursor-pointer'
+                : 'border-zinc-800/90'
+            } bg-[#121216] ${
               isPlaying ? 'animate-vinyl-spin' : 'animate-vinyl-spin-paused'
             }`}
             style={{
@@ -250,9 +271,9 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                   RGODBEAT
                 </p>
               </div>
-              <div className="absolute bottom-3 sm:bottom-4 text-center px-4 pointer-events-none">
+              <div className="absolute bottom-3 sm:bottom-4 text-center px-3 pointer-events-none">
                 <p className="text-[8px] sm:text-[9px] tracking-wider uppercase font-mono text-amber-400 font-extrabold drop-shadow">
-                  {currentBpm} BPM
+                  {beat ? `${currentBpm} BPM` : '+ BEAT'}
                 </p>
               </div>
             </div>
@@ -261,7 +282,10 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
           {/* Quick Beat FX Floating Pill */}
           <button
             type="button"
-            onClick={onOpenBeatFX}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenBeatFX();
+            }}
             title="Ajustes de filtro y volumen del Beat"
             className="absolute -bottom-1 -right-1 flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-zinc-950 hover:bg-zinc-900 text-zinc-200 hover:text-white border border-zinc-750 shadow-xl text-[9px] sm:text-[10px] font-mono backdrop-blur-md transition-all active:scale-95 cursor-pointer"
           >
@@ -283,9 +307,19 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
 
       {/* 2. Beat Title */}
       <div className="w-full text-center my-0.5 px-4">
-        <h2 className="text-sm sm:text-base md:text-lg font-black tracking-tight text-zinc-950 truncate drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)]">
-          {beat ? beat.title : 'Selecciona un Beat'}
-        </h2>
+        {beat ? (
+          <h2 className="text-sm sm:text-base md:text-lg font-black tracking-tight text-zinc-950 truncate drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)]">
+            {beat.title}
+          </h2>
+        ) : (
+          <button
+            type="button"
+            onClick={onOpenLoadBeat}
+            className="text-sm sm:text-base md:text-lg font-black tracking-tight text-zinc-950 truncate drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)] hover:opacity-75 transition-opacity cursor-pointer"
+          >
+            Selecciona un Beat
+          </button>
+        )}
       </div>
 
       {/* 3. THE "TEMPO & ESCALAS" HUD CARD (Simple, crystal-clear, functional) */}
