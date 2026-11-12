@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Sparkles, Check, Clock, UserCheck, Shield, Plus, RefreshCw, AlertCircle, Ban } from "lucide-react";
+import React, { useState, useEffect, useCallback } from "react";
+import { Sparkles, Check, Plus, RefreshCw, AlertCircle, Ban } from "lucide-react";
 
 interface CustomerPass {
   id: string;
@@ -29,7 +29,7 @@ export default function AdminStudioPassesPage() {
   const [selectedDays, setSelectedDays] = useState<number>(3);
   const [customDays, setCustomDays] = useState<string>("");
 
-  const fetchPasses = async () => {
+  const fetchPasses = useCallback(async () => {
     try {
       setIsLoading(true);
       const res = await fetch("/api/admin/studio-passes");
@@ -42,10 +42,27 @@ export default function AdminStudioPassesPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchPasses();
+    let active = true;
+    const loadInitial = async () => {
+      try {
+        const res = await fetch("/api/admin/studio-passes");
+        if (res.ok && active) {
+          const data = await res.json();
+          setCustomers(data.customers || []);
+        }
+      } catch (err) {
+        console.error("Error loading studio passes:", err);
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+    void loadInitial();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleGrantPass = async (emailToGrant?: string, daysToGrant?: number) => {
@@ -79,8 +96,9 @@ export default function AdminStudioPassesPage() {
         setCustomDays("");
       }
       await fetchPasses();
-    } catch (err: any) {
-      setStatusMsg({ text: err.message || "Error al otorgar pase.", type: "error" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : null;
+      setStatusMsg({ text: message || "Error al otorgar pase.", type: "error" });
     } finally {
       setIsSubmitting(false);
     }
@@ -97,12 +115,11 @@ export default function AdminStudioPassesPage() {
         body: JSON.stringify({ email, action: "revoke" }),
       });
 
-      const data = await res.json();
       if (res.ok) {
         setStatusMsg({ text: `Pase revocado para ${email}.`, type: "success" });
         await fetchPasses();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
     } finally {
       setIsSubmitting(false);

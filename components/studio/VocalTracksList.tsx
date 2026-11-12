@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, Square, Sliders, Trash2, CheckCircle2, Radio, Plus, Volume2 } from 'lucide-react';
+import { Mic, Square, Sliders, Trash2, Plus } from 'lucide-react';
 import { VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 
 interface VocalTracksListProps {

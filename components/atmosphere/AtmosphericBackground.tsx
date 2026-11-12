@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useMemo, useSyncExternalStore } from "react";
 import { useOptionalPlayerState } from "@/contexts/PlayerContext";
 import { useAtmosphere } from "./AtmosphereContext";
 import { ProceduralStarfield } from "./ProceduralStarfield";
@@ -12,6 +12,37 @@ import {
   AtmosphereIntensity,
   AtmosphereAccent,
 } from "./types";
+
+const INTENSITY_MAP: Record<
+  AtmosphereIntensity,
+  { lightOpacity: string; dotOpacity: string; particleOpacity: string }
+> = {
+  subtle: {
+    lightOpacity: "opacity-40",
+    dotOpacity: "opacity-25",
+    particleOpacity: "opacity-30",
+  },
+  medium: {
+    lightOpacity: "opacity-70",
+    dotOpacity: "opacity-45",
+    particleOpacity: "opacity-60",
+  },
+  high: {
+    lightOpacity: "opacity-100",
+    dotOpacity: "opacity-75",
+    particleOpacity: "opacity-90",
+  },
+};
+
+function subscribeReducedMotion(callback: () => void) {
+  const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+  motionQuery.addEventListener?.("change", callback);
+  return () => motionQuery.removeEventListener?.("change", callback);
+}
+
+function getReducedMotionSnapshot() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 /**
  * Curated Atmosphere Themes
@@ -107,9 +138,6 @@ export function AtmosphericBackground({
   playing: explicitPlaying,
   audioLevel = 0,
   bassLevel,
-  kickLevel,
-  midLevel,
-  highLevel,
   hoverState: explicitHoverState,
   className = "",
 }: AtmosphericBackgroundProps) {
@@ -133,46 +161,28 @@ export function AtmosphericBackground({
   const atmosphereCtx = useAtmosphere();
   const activeHover = explicitHoverState !== undefined ? explicitHoverState : atmosphereCtx.hoverState;
 
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const prefersReducedMotion = useSyncExternalStore(
+    subscribeReducedMotion,
+    getReducedMotionSnapshot,
+    () => false
+  );
 
   // Selected Theme & Palette
   const currentTheme = THEME_CONFIG[theme] || THEME_CONFIG.beats;
-  const effectiveAccent = accentColor || currentTheme.defaultAccent;
+  void accentColor;
 
-  // Intensity multipliers
-  const intensityMap: Record<
-    AtmosphereIntensity,
-    { lightOpacity: string; dotOpacity: string; particleOpacity: string }
-  > = {
-    subtle: {
-      lightOpacity: "opacity-40",
-      dotOpacity: "opacity-25",
-      particleOpacity: "opacity-30",
-    },
-    medium: {
-      lightOpacity: "opacity-70",
-      dotOpacity: "opacity-45",
-      particleOpacity: "opacity-60",
-    },
-    high: {
-      lightOpacity: "opacity-100",
-      dotOpacity: "opacity-75",
-      particleOpacity: "opacity-90",
-    },
-  };
-
-  const selectedIntensity = intensityMap[intensity];
+  const selectedIntensity = INTENSITY_MAP[intensity];
 
   // Resolve granular intensity overrides if provided
   const resolvedLightOpacity = useMemo(() => {
     if (typeof ambientIntensity === "number") return { opacity: ambientIntensity };
-    if (typeof ambientIntensity === "string") return { className: intensityMap[ambientIntensity]?.lightOpacity || selectedIntensity.lightOpacity };
+    if (typeof ambientIntensity === "string") return { className: INTENSITY_MAP[ambientIntensity]?.lightOpacity || selectedIntensity.lightOpacity };
     return { className: selectedIntensity.lightOpacity };
   }, [ambientIntensity, selectedIntensity.lightOpacity]);
 
   const resolvedSoundfieldOpacity = useMemo(() => {
     if (typeof soundFieldIntensity === "number") return { opacity: soundFieldIntensity };
-    if (typeof soundFieldIntensity === "string") return { className: intensityMap[soundFieldIntensity]?.dotOpacity || selectedIntensity.dotOpacity };
+    if (typeof soundFieldIntensity === "string") return { className: INTENSITY_MAP[soundFieldIntensity]?.dotOpacity || selectedIntensity.dotOpacity };
     return { className: selectedIntensity.dotOpacity };
   }, [soundFieldIntensity, selectedIntensity.dotOpacity]);
 
@@ -188,27 +198,12 @@ export function AtmosphericBackground({
   // DESKTOP SUBTLE PARALLAX SYSTEM
   // -------------------------------------------------------------
   useEffect(() => {
-    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setPrefersReducedMotion(motionQuery.matches);
-
-    const handleMotionChange = (e: MediaQueryListEvent) => {
-      setPrefersReducedMotion(e.matches);
-    };
-
-    if (motionQuery.addEventListener) {
-      motionQuery.addEventListener("change", handleMotionChange);
-    }
-
-    if (!isAnimateActive || motionQuery.matches) {
-      return () => {
-        if (motionQuery.removeEventListener) {
-          motionQuery.removeEventListener("change", handleMotionChange);
-        }
-      };
+    if (!isAnimateActive || prefersReducedMotion) {
+      return;
     }
 
     const isFinePointer = window.matchMedia("(pointer: fine)").matches;
-    if (!isFinePointer) return () => motionQuery.removeEventListener?.("change", handleMotionChange);
+    if (!isFinePointer) return;
 
     let targetX = 0;
     let targetY = 0;
@@ -271,11 +266,8 @@ export function AtmosphericBackground({
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
       if (rafId) cancelAnimationFrame(rafId);
-      if (motionQuery.removeEventListener) {
-        motionQuery.removeEventListener("change", handleMotionChange);
-      }
     };
-  }, [isAnimateActive]);
+  }, [isAnimateActive, prefersReducedMotion]);
 
   const shouldAnimate = isAnimateActive && !prefersReducedMotion;
 

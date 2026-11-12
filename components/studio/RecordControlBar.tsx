@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Mic, Square, Timer, AlertTriangle, Headphones, Radio, Smartphone, Undo2, Redo2 } from 'lucide-react';
+import { Square, Timer, AlertTriangle, Headphones, Radio, Smartphone, Undo2, Redo2 } from 'lucide-react';
 import { VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 
 interface RecordControlBarProps {
@@ -53,36 +53,34 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
   onRedo,
   tracks,
   onSelectTrack,
-  undoCount = 0,
-  redoCount = 0,
 }) => {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [micLevel, setMicLevel] = useState(0);
   const [isSaturated, setIsSaturated] = useState(false);
-  const [gainReductionDb, setGainReductionDb] = useState(0);
 
   const getMicStatusRef = useRef(getMicStatus);
-  getMicStatusRef.current = getMicStatus;
   const getMicLevelRef = useRef(getMicLevel);
-  getMicLevelRef.current = getMicLevel;
+  useEffect(() => {
+    getMicStatusRef.current = getMicStatus;
+    getMicLevelRef.current = getMicLevel;
+  }, [getMicStatus, getMicLevel]);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     let animId: number | null = null;
 
     if (isRecording) {
-      setElapsedSec(0);
       const start = Date.now();
       interval = setInterval(() => {
         setElapsedSec(Math.floor((Date.now() - start) / 1000));
       }, 200);
 
       const trackStatus = () => {
+        setElapsedSec(Math.floor((Date.now() - start) / 1000));
         if (getMicStatusRef.current) {
           const status = getMicStatusRef.current();
           setMicLevel(status.level);
           setIsSaturated(status.isSaturated);
-          setGainReductionDb(status.gainReductionDb);
         } else if (getMicLevelRef.current) {
           const lvl = getMicLevelRef.current();
           setMicLevel(lvl);
@@ -92,10 +90,12 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
       };
       animId = requestAnimationFrame(trackStatus);
     } else {
-      setElapsedSec(0);
-      setMicLevel(0);
-      setIsSaturated(false);
-      setGainReductionDb(0);
+      const resetTimer = setTimeout(() => {
+        setElapsedSec(0);
+        setMicLevel(0);
+        setIsSaturated(false);
+      }, 0);
+      return () => clearTimeout(resetTimer);
     }
 
     return () => {

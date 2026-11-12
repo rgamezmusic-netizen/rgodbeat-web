@@ -329,8 +329,8 @@ async function runE2E() {
       const res = await fetch(`http://localhost:3001/beats/${updatedSlug}`, { method: "GET" });
       pageStatus = res.status;
       step12Pass = res.status === 200;
-    } catch (e: any) {
-      console.warn("Could not reach localhost:3001:", e.message);
+    } catch (e: unknown) {
+      console.warn("Could not reach localhost:3001:", e instanceof Error ? e.message : e);
     }
     record(12, "Confirm public beat page loads (HTTP 200)", step12Pass, `GET /beats/${updatedSlug} -> HTTP ${pageStatus}`);
 
@@ -389,7 +389,7 @@ async function runE2E() {
     // -------------------------------------------------------------
     // STEP 17: Confirm original 12 seed beats remain untouched
     // -------------------------------------------------------------
-    const { data: seedBeats, count } = await adminClient
+    const { count } = await adminClient
       .from("beats")
       .select("id, slug", { count: "exact" });
 
@@ -406,7 +406,7 @@ async function runE2E() {
     if (!allPassed) {
       process.exit(1);
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("FATAL ERROR DURING E2E TEST:", err);
     process.exit(1);
   }

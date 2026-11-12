@@ -4,8 +4,6 @@ import {
   Pause,
   Square,
   MicOff,
-  RotateCcw,
-  RotateCw,
   ChevronLeft,
   ChevronRight,
   Sliders,

@@ -221,7 +221,7 @@ export function NewBeatForm({ categories, licenseTypes }: NewBeatFormProps) {
         setUploadPercent(98);
 
         const licensesPayload = Object.entries(selectedLicenses)
-          .filter(([_, conf]) => conf.enabled)
+          .filter((entry) => entry[1].enabled)
           .map(([id, conf]) => ({
             licenseTypeId: id,
             priceOverride: conf.overridePrice ? parseFloat(conf.overridePrice) : null,

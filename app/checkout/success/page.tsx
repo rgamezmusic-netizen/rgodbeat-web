@@ -114,8 +114,19 @@ export default async function CheckoutSuccessPage({ searchParams }: SuccessPageP
     }
   }
 
-  const customer = order?.customers as any;
-  const purchases = (order?.purchases as any[]) || [];
+  interface SuccessCustomer {
+    email?: string | null;
+  }
+
+  interface SuccessPurchase {
+    id: string;
+    license_tier: string;
+    beats?: { title?: string | null } | null;
+    license_types?: { name?: string | null } | null;
+  }
+
+  const customer = order?.customers as unknown as SuccessCustomer | null;
+  const purchases = (order?.purchases as unknown as SuccessPurchase[] | null) || [];
   const paymentConfirmed = order?.status === "completed" && order?.payment_status === "paid";
 
   return (

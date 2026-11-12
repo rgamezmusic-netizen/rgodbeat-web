@@ -85,9 +85,9 @@ export async function uploadToR2(params: {
 
     await client.send(command);
     return { success: true, key: params.key };
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[R2 Storage] Upload error:", err);
-    return { success: false, key: params.key, error: err?.message || "Upload failed" };
+    return { success: false, key: params.key, error: err instanceof Error ? err.message : "Upload failed" };
   }
 }
 

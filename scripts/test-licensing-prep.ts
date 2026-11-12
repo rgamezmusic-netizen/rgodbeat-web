@@ -1,10 +1,8 @@
 import assert from "assert";
-import { LICENSE_OPTIONS } from "@/lib/mock-data";
 import {
   CONTRACT_VERSIONS,
   TIER_CONTRACT_CONFIGS,
   formatLicenseId,
-  generateDeterministicLicenseId,
   generateLicenseContract,
   generateContractPdfBuffer,
   extractLicenseMetadata,

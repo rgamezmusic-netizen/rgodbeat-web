@@ -63,10 +63,11 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ url: session.url, sessionId: session.id }, { status: 200 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[Studio Checkout API Error]:", err);
+    const message = err instanceof Error ? err.message : null;
     return NextResponse.json(
-      { error: err.message || "Error al generar sesión de checkout para el pase de estudio." },
+      { error: message || "Error al generar sesión de checkout para el pase de estudio." },
       { status: 500 }
     );
   }

@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
 import { isYouTubeChannelAdmin, youtubeConfig } from "@/lib/youtube/config";
 import { signOAuthState } from "@/lib/youtube/credentials";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   const user = await getCurrentUser();
   if (!isYouTubeChannelAdmin(user?.email)) return NextResponse.json({ error: "No autorizado." }, { status: 403 });
   const config = youtubeConfig();

@@ -188,6 +188,6 @@ export interface BeatRankingHistory {
   conversion_rate: number;
   window_started_at: string | null;
   window_ended_at: string | null;
-  raw_metrics?: Record<string, any>;
+  raw_metrics?: Record<string, unknown>;
   recorded_at: string;
 }

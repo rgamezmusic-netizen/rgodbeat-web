@@ -99,7 +99,6 @@ export interface SignedUrlResponse {
  */
 export async function resolvePrivateDownloadUrl({
   purchaseId,
-  beatId,
   fileType,
   expiresInSeconds = 60,
   ipAddress,
@@ -144,7 +143,7 @@ export async function resolvePrivateDownloadUrl({
     throw new Error(`This purchase is no longer active (status: ${purchase.status}).`);
   }
 
-  const order = purchase.orders as any;
+  const order = purchase.orders as unknown as { status?: string; payment_status?: string } | null;
   if (!order || order.payment_status !== "paid") {
     throw new Error("Order payment has not been verified.");
   }
@@ -166,7 +165,7 @@ export async function resolvePrivateDownloadUrl({
   // 3. Locate the file in storage
   let targetStoragePath = "";
   let targetBucket = PRIVATE_STORAGE_BUCKET;
-  const beat = purchase.beats as any;
+  const beat = purchase.beats as unknown as { id?: string; title?: string; preview_path?: string } | null;
 
   if (fileType === "contract") {
     // Generate virtual or stored contract

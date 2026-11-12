@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { Beat, Genre, Mood, LicenseTier, BeatEditData, PerformanceMetrics } from "@/types";
+import { Beat, Genre, Mood, LicenseTier, BeatEditData, PerformanceMetrics, RankingStatus } from "@/types";
 import { getPublicStorageUrl } from "@/lib/storage";
 
 export type { BeatEditData };
@@ -23,7 +23,44 @@ function formatDuration(seconds: number | null): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function mapBeatRowToBeat(row: any): Beat {
+interface BeatLicenseQueryRow {
+  license_type_id?: string;
+  price_override: number | string | null;
+  active?: boolean;
+  license_type?: { slug?: string | null; price: number | string } | null;
+}
+
+interface BeatQueryRow {
+  id: string;
+  slug: string;
+  title: string;
+  description?: string | null;
+  mood?: string | null;
+  bpm?: number | null;
+  musical_key?: string | null;
+  duration_seconds?: number | null;
+  cover_path?: string | null;
+  preview_path?: string | null;
+  featured?: boolean | null;
+  published?: boolean | null;
+  created_at?: string | null;
+  ranking_status?: RankingStatus | null;
+  current_rank?: number | string | null;
+  previous_rank?: number | string | null;
+  ranking_period?: string | null;
+  pool_entry_date?: string | null;
+  days_in_pool?: number | null;
+  performance_score?: number | string | null;
+  performance_metrics?: PerformanceMetrics | null;
+  local_sync_status?: Beat["localSyncStatus"] | null;
+  local_archive_path?: string | null;
+  last_synced_at?: string | null;
+  online_asset_status?: Beat["onlineAssetStatus"] | null;
+  category?: { slug?: string | null } | null;
+  beat_licenses?: BeatLicenseQueryRow[] | null;
+}
+
+function mapBeatRowToBeat(row: BeatQueryRow): Beat {
   const genreSlug = (row.category?.slug || "trap").toLowerCase() as Genre;
   const regularPricing: Record<LicenseTier, number> = {
     mp3: 29,
@@ -34,8 +71,8 @@ function mapBeatRowToBeat(row: any): Beat {
   };
 
   if (row.beat_licenses && Array.isArray(row.beat_licenses)) {
-    row.beat_licenses.forEach((bl: any) => {
-      const slug = bl.license_type?.slug as LicenseTier;
+    row.beat_licenses.forEach((bl) => {
+      const slug = bl.license_type?.slug as LicenseTier | undefined;
       if (slug && regularPricing[slug] !== undefined) {
         regularPricing[slug] = bl.price_override !== null && bl.price_override !== undefined
           ? Number(bl.price_override)
@@ -48,7 +85,7 @@ function mapBeatRowToBeat(row: any): Beat {
   // Discount presentation must never change the amount that is actually charged.
   const pricing = { ...regularPricing };
 
-  const durationStr = formatDuration(row.duration_seconds);
+  const durationStr = formatDuration(row.duration_seconds ?? null);
   const coverStyle = GENRE_GRADIENTS[genreSlug] || "from-[#1d102e] via-[#121018] to-[#09080d]";
 
   // Generate tags from description / title / mood / genre
@@ -59,8 +96,8 @@ function mapBeatRowToBeat(row: any): Beat {
     "Studio Master",
   ];
 
-  const resolvedCoverUrl = getPublicStorageUrl(row.cover_path);
-  const resolvedPreviewUrl = getPublicStorageUrl(row.preview_path);
+  const resolvedCoverUrl = getPublicStorageUrl(row.cover_path ?? null);
+  const resolvedPreviewUrl = getPublicStorageUrl(row.preview_path ?? null);
 
   return {
     id: row.id,
@@ -141,9 +178,9 @@ export async function getPublishedBeats(): Promise<Beat[]> {
       throw new Error(`Failed to load beats: ${error.message}`);
     }
 
-    return (data || []).map(mapBeatRowToBeat);
-  } catch (err: any) {
-    console.error("[Beats] Unexpected error:", err.message);
+    return ((data as unknown as BeatQueryRow[]) || []).map(mapBeatRowToBeat);
+  } catch (err: unknown) {
+    console.error("[Beats] Unexpected error:", err instanceof Error ? err.message : err);
     throw err;
   }
 }
@@ -186,9 +223,9 @@ export async function getBeatBySlug(slug: string): Promise<Beat | null> {
     }
 
     if (!data) return null;
-    return mapBeatRowToBeat(data);
-  } catch (err: any) {
-    console.error("[Beats] Unexpected error:", err.message);
+    return mapBeatRowToBeat(data as unknown as BeatQueryRow);
+  } catch (err: unknown) {
+    console.error("[Beats] Unexpected error:", err instanceof Error ? err.message : err);
     throw err;
   }
 }
@@ -239,9 +276,9 @@ export async function getFeaturedBeats(limit = 6): Promise<Beat[]> {
       throw new Error(`Failed to load featured beats: ${error.message}`);
     }
 
-    return (data || []).map(mapBeatRowToBeat);
-  } catch (err: any) {
-    console.error("[Beats] Unexpected error:", err.message);
+    return ((data as unknown as BeatQueryRow[]) || []).map(mapBeatRowToBeat);
+  } catch (err: unknown) {
+    console.error("[Beats] Unexpected error:", err instanceof Error ? err.message : err);
     throw err;
   }
 }
@@ -292,9 +329,9 @@ export async function getTopRankingBeats(limit = 23): Promise<Beat[]> {
       return [];
     }
 
-    return (data || []).map(mapBeatRowToBeat);
-  } catch (err: any) {
-    console.error("[Beats] Unexpected error in getTopRankingBeats:", err.message);
+    return ((data as unknown as BeatQueryRow[]) || []).map(mapBeatRowToBeat);
+  } catch (err: unknown) {
+    console.error("[Beats] Unexpected error in getTopRankingBeats:", err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -342,9 +379,9 @@ export async function getAllBeats(): Promise<Beat[]> {
       throw new Error(`Failed to load admin beats: ${error.message}`);
     }
 
-    return (data || []).map(mapBeatRowToBeat);
-  } catch (err: any) {
-    console.error("[Beats] Unexpected error in getAllBeats:", err.message);
+    return ((data as unknown as BeatQueryRow[]) || []).map(mapBeatRowToBeat);
+  } catch (err: unknown) {
+    console.error("[Beats] Unexpected error in getAllBeats:", err instanceof Error ? err.message : err);
     throw err;
   }
 }
@@ -394,16 +431,24 @@ export async function getBeatForEdit(id: string): Promise<BeatEditData | null> {
       return null;
     }
 
+    interface BeatFileEditRow {
+      id: string;
+      file_type: string;
+      storage_path: string;
+      file_name: string;
+      file_size: number | null;
+    }
+
     const wavFileRow = Array.isArray(data.beat_files)
-      ? data.beat_files.find((f: any) => f.file_type === "wav")
+      ? (data.beat_files as unknown as BeatFileEditRow[]).find((f) => f.file_type === "wav")
       : null;
 
     const licenses = Array.isArray(data.beat_licenses)
-      ? data.beat_licenses.map((bl: any) => ({
-          license_type_id: bl.license_type_id,
+      ? (data.beat_licenses as unknown as BeatLicenseQueryRow[]).map((bl) => ({
+          license_type_id: bl.license_type_id || "",
           slug: bl.license_type?.slug || "",
           price_override: bl.price_override !== null ? Number(bl.price_override) : null,
-          active: bl.active,
+          active: Boolean(bl.active),
         }))
       : [];
 
@@ -445,8 +490,8 @@ export async function getBeatForEdit(id: string): Promise<BeatEditData | null> {
         : null,
       licenses,
     };
-  } catch (err: any) {
-    console.error("[Beats] Unexpected error in getBeatForEdit:", err.message);
+  } catch (err: unknown) {
+    console.error("[Beats] Unexpected error in getBeatForEdit:", err instanceof Error ? err.message : err);
     throw err;
   }
 }

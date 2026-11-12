@@ -10,7 +10,7 @@ try {
     filename: serverOnlyPath,
     loaded: true,
     exports: {},
-  } as any;
+  } as unknown as NodeJS.Module;
 } catch {}
 
 // Load environment variables safely

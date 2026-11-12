@@ -60,7 +60,15 @@ export async function getLicenseTypes(): Promise<LicenseOption[]> {
       throw new Error(`Failed to load license types: ${error.message}`);
     }
 
-    const rows = (data as any[]) || [];
+    interface LicenseTypeRow {
+      id: string;
+      slug: string;
+      name: string;
+      description?: string | null;
+      price: number | string;
+    }
+
+    const rows = (data as unknown as LicenseTypeRow[]) || [];
     return rows.map((lt) => {
       const tier = lt.slug as LicenseTier;
       const meta = TIER_METADATA[tier] || {
@@ -78,8 +86,8 @@ export async function getLicenseTypes(): Promise<LicenseOption[]> {
         recommended: meta.recommended,
       };
     });
-  } catch (err: any) {
-    console.error("[Licenses] Unexpected error:", err.message);
+  } catch (err: unknown) {
+    console.error("[Licenses] Unexpected error:", err instanceof Error ? err.message : err);
     throw err;
   }
 }
@@ -106,7 +114,12 @@ export async function getBeatLicenses(beatId: string): Promise<Record<LicenseTie
 
     const pricing: Partial<Record<LicenseTier, number>> = {};
 
-    (data || []).forEach((row: any) => {
+    interface BeatLicenseRow {
+      price_override: number | string | null;
+      license_type: { slug?: string; price: number | string } | null;
+    }
+
+    ((data as unknown as BeatLicenseRow[]) || []).forEach((row) => {
       const lt = row.license_type;
       if (!lt || !lt.slug) return;
       const tier = lt.slug as LicenseTier;
@@ -117,8 +130,8 @@ export async function getBeatLicenses(beatId: string): Promise<Record<LicenseTie
     });
 
     return pricing as Record<LicenseTier, number>;
-  } catch (err: any) {
-    console.error("[Licenses] Unexpected error:", err.message);
+  } catch (err: unknown) {
+    console.error("[Licenses] Unexpected error:", err instanceof Error ? err.message : err);
     throw err;
   }
 }

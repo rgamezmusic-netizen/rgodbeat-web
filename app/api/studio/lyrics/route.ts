@@ -103,10 +103,11 @@ export async function POST(request: NextRequest) {
       },
       { headers: { 'Cache-Control': 'private, no-store' } }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[API Lyrics] Error procesando transcripción:', err);
+    const message = err instanceof Error ? err.message : null;
     return NextResponse.json(
-      { error: err?.message || 'Error interno procesando la lírica.' },
+      { error: message || 'Error interno procesando la lírica.' },
       { status: 500 }
     );
   }

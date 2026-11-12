@@ -6,6 +6,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { useInstalledApp } from '@/hooks/useAppInstallation';
 import {
   BeatAnalysisResult,
@@ -286,9 +287,9 @@ async function fetchCatalogBeatById(audioCtx: AudioContext, catalogId: string | 
 }
 
 export default function App() {
+  const router = useRouter();
   const [engine, setEngine] = useState<AudioEngine | null>(null);
   const [savedCustomBeats, setSavedCustomBeats] = useState<BeatSummary[]>([]);
-  const [isBeatLocked, setIsBeatLocked] = useState<boolean>(false);
   const [currentBeat, setCurrentBeat] = useState<BeatData | null>(null);
   const currentBeatRef = useRef<BeatData | null>(null);
 
@@ -469,6 +470,11 @@ export default function App() {
     showToast(`Rehecho: ${nextEntry.description}`, 'info');
   };
 
+  const undoRedoRef = useRef({ undo: handleUndo, redo: handleRedo });
+  useEffect(() => {
+    undoRedoRef.current = { undo: handleUndo, redo: handleRedo };
+  });
+
   // Global Keyboard shortcuts for Undo (Ctrl+Z) and Redo (Ctrl+Y / Ctrl+Shift+Z)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -483,20 +489,20 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         if (e.shiftKey) {
           e.preventDefault();
-          handleRedo();
+          undoRedoRef.current.redo();
         } else {
           e.preventDefault();
-          handleUndo();
+          undoRedoRef.current.undo();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
         e.preventDefault();
-        handleRedo();
+        undoRedoRef.current.redo();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undoStack, redoStack]);
+  }, []);
 
   // Settings & FX
   const [loopSettings, setLoopSettings] = useState<LoopSettings>({
@@ -1017,6 +1023,13 @@ export default function App() {
     tracksRef.current = tracks;
   }, [tracks]);
 
+  const startupCallbacksRef = useRef<{
+    clearActiveProjectBackup: () => Promise<boolean>;
+    handleSelectBeat: (beat: BeatData) => Promise<void>;
+    pushUndoSnapshot: (description: string) => void;
+    refreshCloudProjectStatus: () => Promise<void>;
+  } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     const audioEngine = new AudioEngine({
@@ -1048,7 +1061,7 @@ export default function App() {
         isRecordingRef.current = stillRecording;
         setActiveRecordingTrackId(audioEngine.getRecordingTrackId());
         setIsPlaying(audioEngine.getIsPlaying());
-        pushUndoSnapshot('Grabación de voz');
+        startupCallbacksRef.current?.pushUndoSnapshot('Grabación de voz');
         const start = Math.max(0, explicitOffset ?? audioEngine.getRecordingStartBeatTime());
         const ctx = audioEngine.getAudioContext();
         if (!ctx) return;
@@ -1098,7 +1111,7 @@ export default function App() {
               if (hasConfirmedCloudProject(projectId) && !cloudConflictRef.current) {
                 const result = await saveProjectToCloud(tracksRef.current, currentBeatRef.current, sessionSettingsRef.current.loopSettings);
                 if (result.success) {
-                  void refreshCloudProjectStatus();
+                  void startupCallbacksRef.current?.refreshCloudProjectStatus();
                   return;
                 }
               }
@@ -1245,7 +1258,7 @@ export default function App() {
                   setTimeout(() => {
                     if (!cancelled && !cloudWorkPausedRef.current && projectId === activeProjectIdRef.current) {
                       void saveProjectToCloud(tracksRef.current, currentBeatRef.current, sessionSettingsRef.current.loopSettings).then(res => {
-                        if (res.success) void refreshCloudProjectStatus();
+                        if (res.success) void startupCallbacksRef.current?.refreshCloudProjectStatus();
                       }).catch(() => {});
                     }
                   }, 300);
@@ -1373,7 +1386,7 @@ export default function App() {
               const archived = await archiveSavedStudioSession(owner, true);
               if (archived.success) {
                 setHasLocalPrevious(Boolean(archived.hasPrevious));
-                await clearActiveProjectBackup();
+                await startupCallbacksRef.current?.clearActiveProjectBackup();
                 activeProjectIdRef.current = crypto.randomUUID();
                 alignCloudProjectSelection(activeProjectIdRef.current);
                 const cleanTracks = applyUserFXTemplatesToTracks(
@@ -1430,7 +1443,7 @@ export default function App() {
                     buffer: decodedBuffer,
                     waveformSample: waveform,
                   };
-                  await handleSelectBeat(galleryBeat);
+                  await startupCallbacksRef.current?.handleSelectBeat(galleryBeat);
                 } catch (err) {
                   console.warn('Could not auto-load gallery beat audio:', err);
                 }
@@ -1751,8 +1764,8 @@ export default function App() {
           // Finalize and save active vocal take cleanly to prevent data corruption or loss
           await engine.stopRecording();
           setIsRecording(false);
-        } else if (engine && engine.getIsPlaying()) {
-          // Pause cleanly keeping playback position locked
+        } else if (engine && engine.getIsPlaying() && (event.type === 'pagehide' || event.type === 'beforeunload')) {
+          // Only pause non-recording beat playback on actual page exit so artists can switch apps/notes while listening
           engine.pause();
           setIsPlaying(false);
         }
@@ -1885,36 +1898,61 @@ export default function App() {
 
   // Transport Handlers
   const handlePlayPause = async () => {
-    const hasPlayableBeat = Boolean(currentBeat?.buffer && currentBeat.buffer.length > 1);
-    const hasVocalClips = tracksRef.current.some(t => getTrackClips(t).length > 0);
-    if (!engine || (!hasPlayableBeat && !hasVocalClips)) return;
-    if (!engine.getBeat() && currentBeat && hasPlayableBeat) {
-      engine.setBeat(currentBeat);
-    }
-    if (!hasPlayableBeat && currentBeat) {
-      const catId = getCatalogBeatId(currentBeat.id, currentBeat.catalogBeatId);
-      const ctx = engine.getAudioContext();
-      if (catId && ctx) {
-        void fetchCatalogBeatById(ctx, catId).then(fetched => {
-          if (fetched && currentBeatRef.current?.id === currentBeat.id) {
-            currentBeatRef.current = fetched;
-            setCurrentBeat(fetched);
-            engine.setBeat(fetched);
-          }
-        }).catch(() => {});
-      }
-    }
+    if (!engine) return;
     if (isRecording) {
-      handleStopRecord();
+      await handleStopRecord();
       return;
     }
     if (isPlaying) {
       engine.pause();
       setIsPlaying(false);
-    } else {
-      await engine.play(tracksRef.current);
-      setIsPlaying(engine.getIsPlaying());
+      return;
     }
+
+    let activeBeat = currentBeatRef.current;
+    let hasPlayableBeat = Boolean(activeBeat?.buffer && activeBeat.buffer.length > 1);
+    const hasVocalClips = tracksRef.current.some(t => getTrackClips(t).length > 0);
+
+    if (!activeBeat && !hasVocalClips) {
+      setShowLoadBeatModal(true);
+      return;
+    }
+
+    // Unlock audio hardware immediately within user gesture before any beat audio fetch
+    try {
+      await engine.unlockAudio();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Toca Play nuevamente para activar el audio.', 'error');
+      return;
+    }
+
+    if (!hasPlayableBeat && activeBeat) {
+      const ctx = engine.getAudioContext();
+      if (ctx) {
+        const catId = getCatalogBeatId(activeBeat.id, activeBeat.catalogBeatId);
+        const restoredAudio = catId
+          ? await fetchCatalogBeatById(ctx, catId).catch(() => null)
+          : await loadSavedBeat(ctx, activeBeat.id).catch(() => null);
+        if (restoredAudio && restoredAudio.buffer.length > 1 && currentBeatRef.current?.id === activeBeat.id) {
+          activeBeat = restoredAudio;
+          currentBeatRef.current = restoredAudio;
+          setCurrentBeat(restoredAudio);
+          engine.setBeat(restoredAudio);
+          hasPlayableBeat = true;
+        }
+      }
+    } else if (!engine.getBeat() && activeBeat && hasPlayableBeat) {
+      engine.setBeat(activeBeat);
+    }
+
+    if (!hasPlayableBeat && !hasVocalClips) {
+      showToast('Selecciona o vuelve a cargar el beat para reproducirlo.', 'info');
+      setShowLoadBeatModal(true);
+      return;
+    }
+
+    await engine.play(tracksRef.current);
+    setIsPlaying(engine.getIsPlaying());
   };
 
   const handleSeek = async (timeSec: number) => {
@@ -1926,10 +1964,19 @@ export default function App() {
   };
 
   const handleToggleLoop = () => {
-    setLoopSettings((prev) => ({
-      ...prev,
-      enabled: !prev.enabled,
-    }));
+    setLoopSettings((prev) => {
+      const nextEnabled = !prev.enabled;
+      if (!nextEnabled || !currentBeat || prev.endSec > prev.startSec) {
+        return { ...prev, enabled: nextEnabled };
+      }
+      const secPerBeat = 60 / Math.max(30, currentBeat.bpm || 140);
+      const secPerBar = secPerBeat * 4;
+      const startSec = prev.bars === 'all' ? 0 : Math.max(0, prev.startBar * secPerBar);
+      const endSec = prev.bars === 'all'
+        ? currentBeat.duration
+        : Math.min(currentBeat.duration, startSec + prev.bars * secPerBar);
+      return { ...prev, enabled: true, startSec, endSec };
+    });
   };
 
   const handleToggleBeatMute = useCallback(() => {
@@ -2190,56 +2237,6 @@ export default function App() {
     saveStudioSession(updated, currentBeatRef.current, loopSettings, currentTime, beatFX.volume, activeViewRef.current);
     if (engine?.getIsPlaying()) engine.seek(engine.getCurrentPlaybackPosition(), updated);
     showToast(`Toma de ${source.name} duplicada a ${target?.name || targetTrackId}`, 'success');
-  };
-
-  // Synthetic Test Take Generator for zero-friction testing without mic
-  const handleGenerateTestTake = (trackId: VocalTrackId) => {
-    if (!engine) return;
-    try {
-      pushUndoSnapshot('Generar toma de prueba');
-      const { buffer, waveform } = engine.generateTestVocalTake(trackId);
-      const startOffset = 0;
-      const testClip: VocalClip = {
-        id: `clip-${trackId}-${Date.now()}`,
-        buffer,
-        sourceBuffer: buffer,
-        sourceOffsetSec: 0,
-        sourceDurationSec: buffer.duration,
-        timeStretchRatio: 1,
-        fadeInSec: 0,
-        fadeOutSec: 0,
-        tunedBuffer: null,
-        startBeatOffset: startOffset,
-        duration: buffer.duration,
-        waveformSample: waveform,
-        name: 'Toma de Prueba',
-        isLocked: false,
-      };
-      setTracks((prev) => {
-        const next = prev.map((t) =>
-          t.id === trackId
-            ? {
-                ...t,
-                buffer,
-                duration: buffer.duration,
-                startBeatOffset: startOffset,
-                waveformSample: waveform,
-                tunedBuffer: null,
-                clips: [testClip],
-              }
-            : t
-        );
-        tracksRef.current = next;
-
-        // The shared tuning effect applies results only to clips that still exist.
-        return next;
-      });
-      const targetName = tracksRef.current.find((t) => t.id === trackId)?.name || trackId;
-      showToast(`¡Toma de prueba generada en ${targetName}! Presiona PLAY para escuchar.`, 'success');
-    } catch (e) {
-      console.error(e);
-      showToast('Error al generar la toma de prueba', 'error');
-    }
   };
 
   // Track Mixer actions
@@ -2609,26 +2606,6 @@ export default function App() {
     applyTrackFXUpdate(trackId, (prevFX) => resetVocalFXToNatural(prevFX));
   };
 
-  // Toggle Lock Beat status (Prevents beat from ever changing accidentally)
-  const handleToggleLockBeat = () => {
-    const nextLocked = !isBeatLocked;
-    setIsBeatLocked(nextLocked);
-    if (currentBeat) {
-      saveActiveBeatId(currentBeat.id, nextLocked);
-    }
-    showToast(
-      nextLocked
-        ? '🔒 Beat fijado: no se cambiará accidentalmente al grabar o navegar'
-        : '🔓 Beat libre: ahora puedes cambiar de beat',
-      nextLocked ? 'success' : 'info'
-    );
-  };
-
-  // Beat Cycle / Switching
-  const handleCycleBeat = (dir: 1 | -1) => {
-    showToast('Abre "Beats" para seleccionar o subir otro beat.', 'info');
-  };
-
   // Explicitly select only the requested library/catalog beat
   const handleSelectBeat = async (beat: BeatData) => {
     if (isRecordingRef.current) await handleStopRecord();
@@ -2646,6 +2623,15 @@ export default function App() {
     showToast(`Beat seleccionado: "${beat.title}"`, 'info');
   };
 
+  useEffect(() => {
+    startupCallbacksRef.current = {
+      clearActiveProjectBackup,
+      handleSelectBeat,
+      pushUndoSnapshot,
+      refreshCloudProjectStatus,
+    };
+  });
+
   // Handle uploaded beat with persistent storage and auto-lock
   const handleUploadBeat = async (
     uploadedBeat: BeatData,
@@ -2661,7 +2647,6 @@ export default function App() {
 
     // 1. Mark as locked by default so it stays protected
     uploadedBeat.isLocked = true;
-    setIsBeatLocked(true);
 
     // 2. Set ref and current state immediately
     currentBeatRef.current = uploadedBeat;
@@ -3056,7 +3041,7 @@ export default function App() {
       showToast(cloudPending ? 'Guardado en este dispositivo. Nube pendiente.' : 'Proyecto guardado.', cloudPending ? 'info' : 'success');
 
       setTimeout(() => {
-        window.location.href = '/';
+        router.push('/');
       }, 500);
     } catch (err) {
       console.error('Error in handleSaveAndExit:', err);

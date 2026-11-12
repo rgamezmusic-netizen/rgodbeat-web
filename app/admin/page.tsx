@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminDashboardPage() {
   const user = await getCurrentUser();
 
-  let allBeats: any[] = [];
+  let allBeats: Awaited<ReturnType<typeof getAllBeats>> = [];
   let categoryCount = 0;
   let licenseCount = 0;
 

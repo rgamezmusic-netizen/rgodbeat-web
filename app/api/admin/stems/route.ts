@@ -3,21 +3,24 @@ import { requireAdminAuth } from "@/lib/auth/server";
 import {
   updateStemRequestStatus,
   attachStemFile,
-  getStemRequestByTicketId,
   listAllStemRequests,
 } from "@/lib/stems/tickets";
-import { StemTicketStatus, STEM_TICKET_STATUSES, ExpectedStemGroup, EXPECTED_STEM_GROUPS } from "@/lib/stems/types";
+import { STEM_TICKET_STATUSES, ExpectedStemGroup, EXPECTED_STEM_GROUPS } from "@/lib/stems/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
 
 export async function GET() {
   try {
     await requireAdminAuth("/admin/stem-requests");
     const tickets = await listAllStemRequests();
     return NextResponse.json({ tickets });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 401 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error, "Unauthorized") }, { status: 401 });
   }
 }
 
@@ -40,9 +43,9 @@ export async function PATCH(req: NextRequest) {
 
     const updated = await updateStemRequestStatus(ticketId, status, adminNotes);
     return NextResponse.json({ success: true, ticket: updated });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Admin Stem Update Error]:", error);
-    return NextResponse.json({ error: error?.message || "Failed to update ticket" }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error, "Failed to update ticket") }, { status: 500 });
   }
 }
 
@@ -66,7 +69,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let storagePath = `stems/${ticketId}/${groupKey}.wav`;
+    const storagePath = `stems/${ticketId}/${groupKey}.wav`;
     let sizeBytes = 0;
 
     if (file && typeof file === "object" && "arrayBuffer" in file) {
@@ -96,8 +99,8 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, ticket: updated });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Admin Stem File Upload Error]:", error);
-    return NextResponse.json({ error: error?.message || "Failed to attach stem file" }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error, "Failed to attach stem file") }, { status: 500 });
   }
 }

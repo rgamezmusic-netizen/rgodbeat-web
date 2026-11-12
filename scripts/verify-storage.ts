@@ -90,8 +90,8 @@ async function runStorageVerification() {
       fileType: "wav",
       storagePath: wavPath,
     });
-  } catch (err: any) {
-    if (err.message && err.message.includes("Security Exception")) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message.includes("Security Exception")) {
       threwExpectedSecurityError = true;
     }
   }

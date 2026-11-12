@@ -6,8 +6,55 @@ import { grantStudioAccess } from "@/lib/commerce/fulfillment";
 
 export const dynamic = "force-dynamic";
 
+interface AuthListUser {
+  id: string;
+  email?: string;
+  user_metadata?: { full_name?: string; name?: string };
+  created_at?: string;
+  last_sign_in_at?: string | null;
+}
+
+interface CustomerPassRow {
+  id: string;
+  email: string | null;
+  name: string | null;
+  studio_access_until: string | null;
+  created_at?: string | null;
+}
+
+interface StudioPassCustomerItem {
+  id: string;
+  authId: string | null;
+  email: string;
+  name: string;
+  studioAccessUntil: string | null;
+  isActive: boolean;
+  daysRemaining: number;
+  isRegistered: boolean;
+  createdAt?: string | null;
+  lastSignInAt: string | null;
+}
+
+interface CustomersTableClient {
+  from(table: "customers"): {
+    select(columns: string): Promise<{ data: CustomerPassRow[] | null; error: { message: string } | null }> & {
+      eq(column: string, value: string): {
+        maybeSingle(): Promise<{ data: { id: string; studio_access_until: string | null } | null; error: { message: string } | null }>;
+      };
+    };
+    insert(row: { email: string; name: string }): {
+      select(columns: string): {
+        single(): Promise<{ data: { id: string } | null; error: { message: string } | null }>;
+      };
+    };
+    update(patch: { studio_access_until: string | null }): {
+      eq(column: string, value: string): Promise<{ error: { message: string } | null }>;
+    };
+  };
+}
+
 // GET: List all registered users and customers with their studio access status
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const user = await getCurrentUser();
     if (!isSiteAdmin(user)) {
@@ -15,23 +62,24 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = createAdminClient();
+    const customersClient = supabase as unknown as CustomersTableClient;
 
     // 1. Fetch registered users from Supabase Auth
-    let authUsers: any[] = [];
+    let authUsers: AuthListUser[] = [];
     try {
       const { data: authData, error: authError } = await supabase.auth.admin.listUsers({
         page: 1,
         perPage: 1000,
       });
       if (!authError && authData?.users) {
-        authUsers = authData.users;
+        authUsers = authData.users as AuthListUser[];
       }
     } catch (authErr) {
       console.warn("[Admin Studio Passes] Could not list auth users:", authErr);
     }
 
     // 2. Fetch customers table
-    const { data: customers, error } = await (supabase as any)
+    const { data: customers, error } = await customersClient
       .from("customers")
       .select("id, email, name, studio_access_until, created_at");
 
@@ -40,14 +88,14 @@ export async function GET(req: NextRequest) {
     }
 
     const now = new Date();
-    const customerMap = new Map<string, any>();
-    (customers || []).forEach((c: any) => {
+    const customerMap = new Map<string, CustomerPassRow>();
+    (customers || []).forEach((c) => {
       if (c.email) {
         customerMap.set(c.email.toLowerCase().trim(), c);
       }
     });
 
-    const combinedList: any[] = [];
+    const combinedList: StudioPassCustomerItem[] = [];
     const processedEmails = new Set<string>();
 
     // Add all registered auth users first
@@ -113,9 +161,9 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ customers: combinedList }, { status: 200 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[Admin Studio Passes GET Error]:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Error inesperado" }, { status: 500 });
   }
 }
 
@@ -137,10 +185,11 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createAdminClient();
+    const customersClient = supabase as unknown as CustomersTableClient;
 
     // 1. Find or create customer
     let customerId: string;
-    const { data: existingCustomer } = await (supabase as any)
+    const { data: existingCustomer } = await customersClient
       .from("customers")
       .select("id, studio_access_until")
       .eq("email", cleanEmail)
@@ -149,7 +198,7 @@ export async function POST(req: NextRequest) {
     if (existingCustomer) {
       customerId = existingCustomer.id;
     } else {
-      const { data: newCustomer, error: createErr } = await (supabase as any)
+      const { data: newCustomer, error: createErr } = await customersClient
         .from("customers")
         .insert({
           email: cleanEmail,
@@ -166,7 +215,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Perform action
     if (action === "revoke") {
-      await (supabase as any)
+      await customersClient
         .from("customers")
         .update({ studio_access_until: null })
         .eq("id", customerId);
@@ -188,8 +237,8 @@ export async function POST(req: NextRequest) {
       daysGranted: validDays,
       studioAccessUntil: newExpiry,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[Admin Studio Passes POST Error]:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Error inesperado" }, { status: 500 });
   }
 }

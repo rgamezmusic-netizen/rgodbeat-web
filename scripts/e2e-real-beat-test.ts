@@ -1,6 +1,5 @@
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import { createClient } from "@supabase/supabase-js";
 import { runSync, MASTER_LIBRARY_ROOT } from "./sync-companion";
 
@@ -386,12 +385,13 @@ async function runRealBeatEndToEndTest() {
     if (!pass) {
       process.exit(1);
     }
-  } catch (err: any) {
-    console.error("❌ Fatal error during test execution:", err.message);
-    report.errors.push(err.message);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("❌ Fatal error during test execution:", message);
+    report.errors.push(message);
     fs.writeFileSync(
       path.join(__dirname, "step9-report.json"),
-      JSON.stringify({ pass: false, report, fatal: err.message }, null, 2)
+      JSON.stringify({ pass: false, report, fatal: message }, null, 2)
     );
     process.exit(1);
   }

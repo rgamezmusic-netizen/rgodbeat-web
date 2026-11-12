@@ -128,16 +128,22 @@ REGLAS OBLIGATORIAS:
         continue; // Try next model
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{ text?: unknown }>;
+          };
+        }>;
+      };
       const textPart = data.candidates?.[0]?.content?.parts?.find(
-        (p: any) => typeof p.text === 'string' && p.text.trim().length > 0
+        (p): p is { text: string } => typeof p.text === 'string' && p.text.trim().length > 0
       );
       const rawText = textPart?.text?.trim();
       if (!rawText) continue;
 
       // Clean possible Markdown fence blocks
       const cleanJson = rawText.replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
-      let parsed: any[] = [];
+      let parsed: unknown = [];
       try {
         parsed = JSON.parse(cleanJson);
       } catch {
@@ -149,11 +155,14 @@ REGLAS OBLIGATORIAS:
 
       const safeOffset = Math.max(0, startOffsetSec || 0);
       const segments: LyricSegment[] = parsed
-        .map((item: any) => ({
-          start: Math.max(0, (Number(item.start) || 0) + safeOffset),
-          end: Math.max(0, (Number(item.end) || 0) + safeOffset),
-          text: String(item.text || '').trim(),
-        }))
+        .map((raw) => {
+          const item = raw as { start?: unknown; end?: unknown; text?: unknown };
+          return {
+            start: Math.max(0, (Number(item?.start) || 0) + safeOffset),
+            end: Math.max(0, (Number(item?.end) || 0) + safeOffset),
+            text: String(item?.text || '').trim(),
+          };
+        })
         .filter((s) => s.text.length > 0 && s.end >= s.start);
 
       const fullLyrics = segments.map((s) => s.text).join('\n');

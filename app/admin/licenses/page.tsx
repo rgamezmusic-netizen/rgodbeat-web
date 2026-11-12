@@ -47,7 +47,7 @@ export default async function AdminLicensesPage() {
             <div>
               <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
                 <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-                  TIER 0{index + 1} // {lic.id}
+                  TIER 0{index + 1} {"//"} {lic.id}
                 </span>
                 <span className="text-xl font-mono font-extrabold text-white">
                   {formatCurrency(lic.price)}

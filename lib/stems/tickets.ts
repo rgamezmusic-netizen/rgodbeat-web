@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractLicenseMetadata } from "@/lib/commerce/contracts";
+import type { Database, Json } from "@/types/database";
 import {
   StemRequestTicket,
   StemTicketStatus,
@@ -89,7 +90,27 @@ function writeLocalCache(data: Record<string, StemRequestTicket>) {
   } catch {}
 }
 
-function rowToTicket(row: any): StemRequestTicket {
+interface StemRequestRow {
+  id: string;
+  ticket_id: string;
+  purchase_id: string;
+  customer_id?: string | null;
+  customer_name?: string | null;
+  customer_email: string;
+  beat_id?: string | null;
+  beat_title: string;
+  license_id: string;
+  license_tier?: string | null;
+  order_id?: string | null;
+  contract_version: string;
+  status?: string | null;
+  admin_notes?: string | null;
+  stem_files?: Json | StemFilesCollection | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+function rowToTicket(row: StemRequestRow): StemRequestTicket {
   return {
     id: row.id,
     ticketId: row.ticket_id,
@@ -105,7 +126,7 @@ function rowToTicket(row: any): StemRequestTicket {
     contractVersion: row.contract_version,
     status: (row.status || "Pending") as StemTicketStatus,
     adminNotes: row.admin_notes || "",
-    stemFiles: (row.stem_files || {}) as StemFilesCollection,
+    stemFiles: ((row.stem_files as unknown as StemFilesCollection | null) || {}),
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString(),
   };
@@ -172,10 +193,14 @@ export async function createStemRequest(purchaseId: string): Promise<StemRequest
   const now = new Date();
   const ticketId = generateDeterministicStemTicketId(purchase.id, purchase.created_at || now);
 
-  const customerName = (purchase.customers as any)?.name || "Customer";
-  const customerEmail = (purchase.customers as any)?.email || "rgodbeat@gmail.com";
-  const beatTitle = (purchase.beats as any)?.title || "Licensed Beat";
-  const orderId = (purchase.orders as any)?.id || purchase.order_id || `ord_${purchase.id.slice(0, 8)}`;
+  const customerRelation = purchase.customers as unknown as { name?: string | null; email?: string | null } | null;
+  const beatRelation = purchase.beats as unknown as { title?: string | null } | null;
+  const orderRelation = purchase.orders as unknown as { id?: string | null } | null;
+
+  const customerName = customerRelation?.name || "Customer";
+  const customerEmail = customerRelation?.email || "rgodbeat@gmail.com";
+  const beatTitle = beatRelation?.title || "Licensed Beat";
+  const orderId = orderRelation?.id || purchase.order_id || `ord_${purchase.id.slice(0, 8)}`;
 
   const ticketData: StemRequestTicket = {
     id: purchase.id, // Or crypto.randomUUID()
@@ -353,7 +378,7 @@ export async function updateStemRequestStatus(
   const now = new Date().toISOString();
 
   try {
-    const updatePayload: any = {
+    const updatePayload: Database["public"]["Tables"]["stem_requests"]["Update"] = {
       status,
       updated_at: now,
     };
@@ -423,7 +448,7 @@ export async function attachStemFile(
     const { data, error } = await supabase
       .from("stem_requests")
       .update({
-        stem_files: updatedFiles as any,
+        stem_files: updatedFiles as unknown as Json,
         updated_at: new Date().toISOString(),
       })
       .eq("ticket_id", ticketId)

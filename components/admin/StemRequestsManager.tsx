@@ -82,8 +82,8 @@ export function StemRequestsManager({ initialTickets }: StemRequestsManagerProps
       setEditStatus(updated.status);
       setTickets((prev) => prev.map((t) => (t.ticketId === updated.ticketId ? updated : t)));
       setMessage({ type: "success", text: `Ticket actualizado: Estado ${newStatus}` });
-    } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "Error al actualizar ticket" });
+    } catch (err: unknown) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Error al actualizar ticket" });
     } finally {
       setSaving(false);
     }
@@ -116,8 +116,8 @@ export function StemRequestsManager({ initialTickets }: StemRequestsManagerProps
       setSelectedTicket(updated);
       setTickets((prev) => prev.map((t) => (t.ticketId === updated.ticketId ? updated : t)));
       setMessage({ type: "success", text: `Archivo ${STEM_GROUP_FILE_NAMES[groupKey]} subido con éxito.` });
-    } catch (err: any) {
-      setMessage({ type: "error", text: err.message || "Error al subir archivo" });
+    } catch (err: unknown) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Error al subir archivo" });
     } finally {
       setUploadingGroup(null);
       e.target.value = "";

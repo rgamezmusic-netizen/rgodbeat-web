@@ -41,7 +41,7 @@ export interface Order {
   currency: string;
   subtotalAmount: number;
   totalAmount: number;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
   items?: OrderItem[];

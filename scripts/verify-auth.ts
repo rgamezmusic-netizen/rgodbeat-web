@@ -90,8 +90,8 @@ async function runAuthVerification() {
       "Middleware intercepts unauthenticated request to /admin and redirects to /login",
       location || `status: ${adminRes.status}`
     );
-  } catch (err: any) {
-    assert(false, "Middleware unauthenticated /admin test", err.message);
+  } catch (err: unknown) {
+    assert(false, "Middleware unauthenticated /admin test", err instanceof Error ? err.message : String(err));
   }
 
   // 5. Test Middleware Route Protection: Unauthenticated request to /admin/nested redirects to /login
@@ -105,8 +105,8 @@ async function runAuthVerification() {
       "Middleware preserves original destination in redirect query parameter (/login?redirect=...)",
       location || `status: ${nestedAdminRes.status}`
     );
-  } catch (err: any) {
-    assert(false, "Middleware nested /admin redirect query test", err.message);
+  } catch (err: unknown) {
+    assert(false, "Middleware nested /admin redirect query test", err instanceof Error ? err.message : String(err));
   }
 
   // 6. Test Middleware Public Pass-through: Public route /beats is NOT redirected
@@ -119,8 +119,8 @@ async function runAuthVerification() {
       !location || !location.includes("/login"),
       "Public route /beats passes through without redirect"
     );
-  } catch (err: any) {
-    assert(false, "Middleware public route pass-through test", err.message);
+  } catch (err: unknown) {
+    assert(false, "Middleware public route pass-through test", err instanceof Error ? err.message : String(err));
   }
 
   // 7. Test Middleware Public Pass-through: Homepage / is NOT redirected
@@ -133,8 +133,8 @@ async function runAuthVerification() {
       !location || !location.includes("/login"),
       "Homepage / passes through without redirect"
     );
-  } catch (err: any) {
-    assert(false, "Middleware homepage pass-through test", err.message);
+  } catch (err: unknown) {
+    assert(false, "Middleware homepage pass-through test", err instanceof Error ? err.message : String(err));
   }
 
   console.log("==================================================================");

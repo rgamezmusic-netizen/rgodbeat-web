@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Download, Mic, Sliders, Music, Sparkles, Check, Lock, Video, ImagePlus, Loader2, ExternalLink, ArrowLeft, ArrowRight, Trophy, Coins, Send } from 'lucide-react';
+import { X, Download, Mic, Sliders, Music, Sparkles, Check, Lock, Video, Loader2, ExternalLink, ArrowLeft, ArrowRight, Trophy, Coins, Send } from 'lucide-react';
 import { BeatData, VocalTrack } from '@/lib/studio/types/audio';
 import { AudioEngine } from '@/lib/studio/audio/audioEngine';
 import { StemDeliveryForm } from './StemDeliveryForm';

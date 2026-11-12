@@ -9,7 +9,7 @@ try {
     filename: serverOnlyPath,
     loaded: true,
     exports: {},
-  } as any;
+  } as unknown as NodeJS.Module;
 } catch {
   // Ignore if server-only is not present
 }
@@ -30,7 +30,6 @@ if (serviceMatch) process.env.SUPABASE_SERVICE_ROLE_KEY = serviceMatch[1].trim()
 import { resolveAuthoritativeCart, fulfillStripeCheckoutSession } from "../lib/commerce/fulfillment";
 import { resolvePrivateDownloadUrl } from "../lib/storage/private";
 import { generateLicenseContract } from "../lib/commerce/contracts";
-import type Stripe from "stripe";
 
 if (!urlMatch || !serviceMatch) {
   console.error("❌ Missing Supabase credentials in .env.local");
@@ -39,7 +38,6 @@ if (!urlMatch || !serviceMatch) {
 
 const supabaseUrl = urlMatch[1].trim();
 const serviceKey = serviceMatch[1].trim();
-const anonKey = anonMatch ? anonMatch[1].trim() : "";
 
 const adminClient = createClient(supabaseUrl, serviceKey, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -58,6 +56,10 @@ function assert(condition: boolean, testName: string, detail?: string) {
     if (detail) console.error(`   ${detail}`);
     failed++;
   }
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 async function runCommerceVerification() {
@@ -94,8 +96,8 @@ async function runCommerceVerification() {
         cartResult.totalAmount === 29,
         "Authoritative total amount matches sum of authoritative items ($29.00)"
       );
-    } catch (err: any) {
-      assert(false, "Authoritative pricing resolution for MP3", err.message);
+    } catch (err: unknown) {
+      assert(false, "Authoritative pricing resolution for MP3", errMsg(err));
     }
 
     // 1.2 Multi-license Cart Calculation
@@ -110,8 +112,8 @@ async function runCommerceVerification() {
         "Authoritative multi-license calculation: MP3 ($29) + WAV ($49) = $78.00",
         `Resolved total: $${multiCart.totalAmount}`
       );
-    } catch (err: any) {
-      assert(false, "Authoritative multi-license cart resolution", err.message);
+    } catch (err: unknown) {
+      assert(false, "Authoritative multi-license cart resolution", errMsg(err));
     }
 
     // 1.3 Invalid/Non-existent Beat ID Rejected
@@ -120,8 +122,8 @@ async function runCommerceVerification() {
       await resolveAuthoritativeCart([
         { beatId: "00000000-0000-0000-0000-000000000000", licenseTier: "mp3" },
       ]);
-    } catch (err: any) {
-      if (err.message.includes("not found")) {
+    } catch (err: unknown) {
+      if (errMsg(err).includes("not found")) {
         rejectedInvalidBeat = true;
       }
     }
@@ -131,10 +133,13 @@ async function runCommerceVerification() {
     let rejectedInvalidTier = false;
     try {
       await resolveAuthoritativeCart([
-        { beatId: testBeat.id, licenseTier: "nonexistent_license" as any },
+        {
+          beatId: testBeat.id,
+          licenseTier: "nonexistent_license" as unknown as Parameters<typeof resolveAuthoritativeCart>[0][number]["licenseTier"],
+        },
       ]);
-    } catch (err: any) {
-      if (err.message.includes("invalid or inactive")) {
+    } catch (err: unknown) {
+      if (errMsg(err).includes("invalid or inactive")) {
         rejectedInvalidTier = true;
       }
     }
@@ -178,7 +183,7 @@ async function runCommerceVerification() {
     assert(true, "Commerce tables (orders, customers, order_items, purchases) exist in Supabase");
 
     const testSessionId = `cs_test_idempotent_${Date.now()}`;
-    const testSessionMock: any = {
+    const testSessionMock = {
       id: testSessionId,
       payment_status: "paid",
       currency: "usd",
@@ -194,7 +199,7 @@ async function runCommerceVerification() {
           { beatId: testBeat?.id, licenseTier: "wav" },
         ]),
       },
-    };
+    } as unknown as Parameters<typeof fulfillStripeCheckoutSession>[0];
 
     // 3.1 First Webhook Execution
     let firstOrderId = "";
@@ -202,8 +207,8 @@ async function runCommerceVerification() {
       const res1 = await fulfillStripeCheckoutSession(testSessionMock);
       assert(res1.status === "fulfilled", "First webhook arrival fulfills order and creates entitlements");
       firstOrderId = res1.orderId;
-    } catch (err: any) {
-      assert(false, "First webhook fulfillment execution", err.message);
+    } catch (err: unknown) {
+      assert(false, "First webhook fulfillment execution", errMsg(err));
     }
 
     // 3.2 Duplicate Webhook Execution (Idempotency Test)
@@ -214,8 +219,8 @@ async function runCommerceVerification() {
         "Idempotency: Replaying exact same webhook does NOT duplicate order or entitlements",
         `Safely recognized existing order ID: ${res2.orderId}`
       );
-    } catch (err: any) {
-      assert(false, "Duplicate webhook idempotency check", err.message);
+    } catch (err: unknown) {
+      assert(false, "Duplicate webhook idempotency check", errMsg(err));
     }
 
     // 3.3 Verify Database Records Created
@@ -254,8 +259,8 @@ async function runCommerceVerification() {
           purchaseId: mp3Purchase.id,
           fileType: "wav",
         });
-      } catch (err: any) {
-        if (err.message.includes("License Security Violation")) {
+      } catch (err: unknown) {
+        if (errMsg(err).includes("License Security Violation")) {
           threwWavViolation = true;
         }
       }
@@ -271,8 +276,8 @@ async function runCommerceVerification() {
           purchaseId: mp3Purchase.id,
           fileType: "stems",
         });
-      } catch (err: any) {
-        if (err.message.includes("License Security Violation")) {
+      } catch (err: unknown) {
+        if (errMsg(err).includes("License Security Violation")) {
           threwStemsViolation = true;
         }
       }
@@ -290,8 +295,8 @@ async function runCommerceVerification() {
           purchaseId: wavPurchase.id,
           fileType: "stems",
         });
-      } catch (err: any) {
-        if (err.message.includes("License Security Violation")) {
+      } catch (err: unknown) {
+        if (errMsg(err).includes("License Security Violation")) {
           threwWavStemsViolation = true;
         }
       }
@@ -308,7 +313,7 @@ async function runCommerceVerification() {
         purchaseId: "00000000-0000-0000-0000-000000000000",
         fileType: "mp3",
       });
-    } catch (err: any) {
+    } catch {
       threwInvalidPurchase = true;
     }
     assert(threwInvalidPurchase, "Invalid purchase ID returns entitlement not found / access denied");

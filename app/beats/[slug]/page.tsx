@@ -31,8 +31,11 @@ export default async function BeatDetailPage({ params }: PageProps) {
         .filter((b) => b.id !== beat!.id && (b.genre === beat!.genre || b.featured))
         .slice(0, 4);
     }
-  } catch (err: any) {
-    console.error(`[BeatDetailPage] Error loading beat "${slug}" from Supabase:`, err.message);
+  } catch (err: unknown) {
+    console.error(
+      `[BeatDetailPage] Error loading beat "${slug}" from Supabase:`,
+      err instanceof Error ? err.message : err
+    );
     errorMsg = "Unable to retrieve instrumental details from the database at this moment.";
   }
 

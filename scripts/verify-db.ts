@@ -48,8 +48,8 @@ async function runVerification() {
       const slugs = data.map((c) => c.slug).sort();
       console.log(`   Categories found: ${slugs.join(", ")}`);
     }
-  } catch (err: any) {
-    assert(false, "Table 'categories' query", err.message);
+  } catch (err: unknown) {
+    assert(false, "Table 'categories' query", err instanceof Error ? err.message : String(err));
   }
 
   // 2. Verify license_types table exists & returns 5 active license types
@@ -65,8 +65,8 @@ async function runVerification() {
     if (data) {
       console.log(`   License tiers found: ${data.map((l) => `${l.slug} ($${l.price})`).join(", ")}`);
     }
-  } catch (err: any) {
-    assert(false, "Table 'license_types' query", err.message);
+  } catch (err: unknown) {
+    assert(false, "Table 'license_types' query", err instanceof Error ? err.message : String(err));
   }
 
   // 3. Verify beats table exists & returns 12 published beats
@@ -81,8 +81,8 @@ async function runVerification() {
     assert(data?.length === 12, `Published beats seed count is 12 (found ${data?.length})`);
     const featuredCount = data?.filter((b) => b.featured).length || 0;
     assert(featuredCount === 6, `Featured beats count is 6 (found ${featuredCount})`);
-  } catch (err: any) {
-    assert(false, "Table 'beats' query", err.message);
+  } catch (err: unknown) {
+    assert(false, "Table 'beats' query", err instanceof Error ? err.message : String(err));
   }
 
   // 4. Verify beat_licenses table exists & contains relationships
@@ -94,13 +94,13 @@ async function runVerification() {
 
     assert(!error && !!data, "Table 'beat_licenses' exists and is readable", error?.message);
     assert((data?.length || 0) >= 60, `Beat licenses seed count is at least 60 (found ${data?.length})`);
-  } catch (err: any) {
-    assert(false, "Table 'beat_licenses' query", err.message);
+  } catch (err: unknown) {
+    assert(false, "Table 'beat_licenses' query", err instanceof Error ? err.message : String(err));
   }
 
   // 5. Verify RLS denies public write on beats
   try {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("beats")
       .insert({
         title: "Unauthorized Beat",
@@ -109,13 +109,13 @@ async function runVerification() {
       });
 
     assert(!!error, "RLS Security: Public INSERT on 'beats' is rejected", error ? error.message : "Allowed unexpectedly!");
-  } catch (err: any) {
+  } catch {
     assert(true, "RLS Security: Public INSERT rejected via exception");
   }
 
   // 6. Verify RLS denies public write on categories
   try {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("categories")
       .insert({
         name: "Unauthorized Category",
@@ -123,7 +123,7 @@ async function runVerification() {
       });
 
     assert(!!error, "RLS Security: Public INSERT on 'categories' is rejected", error ? error.message : "Allowed unexpectedly!");
-  } catch (err: any) {
+  } catch {
     assert(true, "RLS Security: Public INSERT on 'categories' rejected via exception");
   }
 
@@ -135,7 +135,7 @@ async function runVerification() {
 
     // With RLS enabled and no select policy, data is empty or error returned
     assert((!error && data?.length === 0) || !!error, "RLS Security: Public access to 'beat_files' returns 0 rows / denied");
-  } catch (err: any) {
+  } catch {
     assert(true, "RLS Security: Access to beat_files protected");
   }
 
@@ -157,9 +157,10 @@ async function runVerification() {
       .limit(1)
       .single();
 
-    assert(!error && !!data && !!(data as any).category?.slug, "Relational JOIN (Beats -> Category -> Beat Licenses) works cleanly");
-  } catch (err: any) {
-    assert(false, "Relational JOIN query", err.message);
+    const joinedRow = data as unknown as { category?: { slug?: string | null } | null } | null;
+    assert(!error && !!joinedRow && !!joinedRow.category?.slug, "Relational JOIN (Beats -> Category -> Beat Licenses) works cleanly");
+  } catch (err: unknown) {
+    assert(false, "Relational JOIN query", err instanceof Error ? err.message : String(err));
   }
 
   console.log("==================================================================");

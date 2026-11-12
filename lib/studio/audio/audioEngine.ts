@@ -531,6 +531,40 @@ export class AudioEngine {
     this.syncBeatVolume(0.03);
   }
 
+  private syncMediaSession(state: 'playing' | 'paused' | 'none') {
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
+    try {
+      const ms = navigator.mediaSession;
+      ms.playbackState = state;
+      if (state === 'playing' && this.beatData && typeof window !== 'undefined' && 'MediaMetadata' in window) {
+        ms.metadata = new MediaMetadata({
+          title: this.beatData.title || 'Beat RG',
+          artist: this.beatData.producer || 'RGodbeat Studio',
+          album: 'RGODBEAT STUDIO',
+        });
+      }
+      ms.setActionHandler('play', () => {
+        if (!this.isPlaying && !this.isRecording) void this.play(this.latestVocalTracks);
+      });
+      ms.setActionHandler('pause', () => {
+        if (this.isPlaying && !this.isRecording) this.pause();
+      });
+      ms.setActionHandler('seekbackward', (details) => {
+        if (!this.isRecording) {
+          this.seek(Math.max(0, this.getCurrentPlaybackPosition() - (details.seekOffset || 5)), this.latestVocalTracks);
+        }
+      });
+      ms.setActionHandler('seekforward', (details) => {
+        if (!this.isRecording) {
+          const maxDur = getProjectDuration(this.beatData?.duration ?? 0, this.latestVocalTracks);
+          this.seek(Math.min(maxDur, this.getCurrentPlaybackPosition() + (details.seekOffset || 5)), this.latestVocalTracks);
+        }
+      });
+    } catch {
+      // Unsupported browser mediaSession action handlers are safely ignored.
+    }
+  }
+
   public setBeatFX(fx: BeatFX) {
     this.beatFX = fx;
     if (!this.ctx) return;
@@ -1138,6 +1172,7 @@ export class AudioEngine {
 
     this.scheduleVocalRange(startPos, this.playbackLoop ? loopEnd : Infinity, this.playbackStartCtxTime, vocalTracks);
     this.isPlaying = true;
+    this.syncMediaSession('playing');
     this.scheduleLoopVocals();
     this.startPositionTracker(vocalTracks);
   }
@@ -1253,6 +1288,7 @@ export class AudioEngine {
     this.callbacks.onTimeUpdate(this.currentPlaybackPosition);
     this.stopSources();
     this.isPlaying = false;
+    this.syncMediaSession('paused');
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
@@ -2181,6 +2217,7 @@ export class AudioEngine {
 
   /** Target 48 kHz standard for video, YouTube and mobile broadcast performance. */
   public getExportSampleRate(vocalTracks: VocalTrack[] = []): number {
+    void vocalTracks;
     return 48000;
   }
 

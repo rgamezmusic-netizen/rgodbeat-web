@@ -228,7 +228,7 @@ export function EditBeatForm({ beat, categories, licenseTypes }: EditBeatFormPro
         setUploadPercent(100);
 
         const licensesPayload = Object.entries(selectedLicenses)
-          .filter(([_, conf]) => conf.enabled)
+          .filter((entry) => entry[1].enabled)
           .map(([id, conf]) => ({
             licenseTypeId: id,
             priceOverride: conf.overridePrice ? parseFloat(conf.overridePrice) : null,

@@ -7,7 +7,6 @@ import {
   Plus,
   Undo2,
   Redo2,
-  Music2,
   ChevronDown,
   Sparkles,
 } from 'lucide-react';

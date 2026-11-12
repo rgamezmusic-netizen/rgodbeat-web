@@ -3,6 +3,7 @@
 import React, { memo, useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Heart, Pause, Play, ShoppingBag } from "lucide-react";
 import { Beat } from "@/types";
 import { Button } from "@/components/ui/Button";
@@ -62,6 +63,7 @@ const BeatSleeve = memo(function BeatSleeve({ beat, index, offset, playing, onSe
 });
 
 export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
+  const router = useRouter();
   const [selection, setSelection] = useState({ beats, index: 0 });
   const [voteCounts, setVoteCounts] = useState<Record<string, number>>({});
   const [votedBeatIds, setVotedBeatIds] = useState<Set<string>>(() => new Set());
@@ -125,7 +127,7 @@ export function BeatGrid({ beats, onResetFilters }: BeatGridProps) {
       } else if (data.alreadyVoted) {
         setVotedBeatIds((current) => new Set(current).add(selected.id));
       } else if (data.requireLogin) {
-        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+        router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
       }
     } catch (error) {
       console.error("[BeatCarousel Vote Error]:", error);

@@ -3,9 +3,7 @@ import assert from 'node:assert/strict';
 import { loadSource } from './helpers/rg-fixtures.mjs';
 
 const {
-  renderNonDestructiveClip,
   splitClip,
-  trimClip,
   computeClipEdgeResizePreview,
   resizeClipEdge,
   setClipFades,
@@ -13,8 +11,6 @@ const {
   withTrackClips,
   getTrackClips,
 } = loadSource('lib/studio/audio/clipEditing.ts');
-const { timeStretchAudioBuffer } = loadSource('lib/studio/audio/timeStretch.ts');
-const { applyFadesToBuffer } = loadSource('lib/studio/audio/fades.ts');
 
 function createMockAudioBuffer(channels, length, sampleRate = 48000) {
   const data = Array.from({ length: channels }, () => new Float32Array(length));

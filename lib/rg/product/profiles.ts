@@ -205,7 +205,7 @@ export async function getTrackProfile(id: string): Promise<TrackProfile | null> 
       .eq('status', 'uploaded').eq('privacy', 'public').eq('youtube_video_id', link.youtube_video_id).maybeSingle();
     if (job.error) throw new Error('Publication privacy unavailable.');
     if (!job.data) continue;
-    let [metrics, milestones] = await Promise.all([
+    const [metrics, milestones] = await Promise.all([
       db.from('rg_youtube_metric_snapshots').select('*').eq('publication_id', link.id).order('captured_at', { ascending: false }).limit(1),
       db.from('rg_score_events').select('id').eq('publication_id', link.id).eq('event_type', 'YOUTUBE_VIEW_MILESTONE').limit(100),
     ]);

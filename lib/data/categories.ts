@@ -1,5 +1,4 @@
 import { createClient } from "@/lib/supabase/server";
-import { CategoryRow } from "@/types/database";
 
 export interface CategoryItem {
   id: string;
@@ -25,8 +24,8 @@ export async function getCategories(): Promise<CategoryItem[]> {
     }
 
     return (data as CategoryItem[]) || [];
-  } catch (err: any) {
-    console.error("[Categories] Unexpected error:", err.message);
+  } catch (err: unknown) {
+    console.error("[Categories] Unexpected error:", err instanceof Error ? err.message : err);
     throw err;
   }
 }

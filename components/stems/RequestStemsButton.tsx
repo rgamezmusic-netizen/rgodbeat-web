@@ -12,7 +12,6 @@ interface RequestStemsButtonProps {
 
 export function RequestStemsButton({
   purchaseId,
-  beatTitle = "Beat",
   initialTicketId,
   initialStatus,
 }: RequestStemsButtonProps) {
@@ -67,8 +66,8 @@ export function RequestStemsButton({
         router.push(`/account/stems/${data.ticket.ticketId}`);
         router.refresh();
       }
-    } catch (err: any) {
-      setError(err.message || "Error al solicitar stems.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error al solicitar stems.");
     } finally {
       setLoading(false);
     }

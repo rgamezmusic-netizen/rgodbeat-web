@@ -29,7 +29,7 @@ export function getStripe(): Stripe {
 
   if (!stripeInstance || lastKeyUsed !== stripeSecretKey) {
     stripeInstance = new Stripe(stripeSecretKey, {
-      apiVersion: "2025-02-24.acacia" as any,
+      apiVersion: "2025-02-24.acacia" as Stripe.LatestApiVersion,
       appInfo: {
         name: "RGODBEAT 2.0 Commerce",
         version: "2.0.0",

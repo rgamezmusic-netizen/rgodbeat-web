@@ -3,7 +3,7 @@
 import Image from "next/image";
 
 import React, { useRef } from 'react';
-import { Play, Sparkles, Music, Mic, Clock, ShieldCheck, X, FolderOpen, Smartphone } from 'lucide-react';
+import { Sparkles, Music, X, FolderOpen } from 'lucide-react';
 
 interface StartupProjectModalProps {
   isOpen: boolean;
@@ -20,7 +20,6 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
   isOpen,
   beatTitle = 'Mi Beat',
   takesCount = 0,
-  savedTimeText,
   onContinueLastProject,
   onStartNewProject,
   onOpenDeviceProject,

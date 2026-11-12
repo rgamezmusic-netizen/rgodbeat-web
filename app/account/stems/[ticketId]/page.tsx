@@ -62,7 +62,6 @@ export default async function CustomerStemTicketPage({ params }: CustomerTicketP
   const isDelivered = ticket.status === "Delivered";
   const isPending = ticket.status === "Pending";
   const isContacted = ticket.status === "Contacted";
-  const isClosed = ticket.status === "Closed";
 
   const statusColors: Record<string, string> = {
     Pending: "bg-amber-500/20 border-amber-500/30 text-amber-300",
@@ -206,8 +205,6 @@ export default async function CustomerStemTicketPage({ params }: CustomerTicketP
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {EXPECTED_STEM_GROUPS.map((groupKey) => {
                 const fileName = STEM_GROUP_FILE_NAMES[groupKey];
-                const fileEntry = ticket.stemFiles?.[groupKey];
-                const hasFile = Boolean(fileEntry);
 
                 return (
                   <div

@@ -3,14 +3,10 @@ import Link from 'next/link';
 import React, { useRef, useState, useEffect } from 'react';
 import type { CloudProjectSlotInfo } from '@/lib/studio/cloudProject';
 import {
-  Download,
-  Upload,
-  Mic,
   Layers,
   Disc3,
   Undo2,
   Redo2,
-  HardDrive,
   Smartphone,
   Cloud,
   CloudUpload,
@@ -19,12 +15,10 @@ import {
   FolderOpen,
   Save,
   FolderKanban,
-  X,
   LogOut,
   ChevronDown,
   Music,
   User,
-  ShieldCheck,
   Settings,
 } from 'lucide-react';
 
@@ -78,8 +72,6 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({
   onOpenLoadBeat,
-  onExport,
-  isExporting,
   hasRecordings,
   isRecording,
   activeView,
@@ -88,10 +80,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   canRedo = false,
   onUndo,
   onRedo,
-  undoCount = 0,
-  redoCount = 0,
   currentBeatTitle,
-  currentBeatBpm,
   accessStatus,
   onOpenUnlockModal,
   onLogout,
@@ -112,7 +101,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   hasPreviousCloudProject = false,
   cloudSlots,
   onSaveAndExit,
-  isSavingAndExiting = false,
 }) => {
   const deviceFileInputRef = useRef<HTMLInputElement>(null);
   const [showProjectMenu, setShowProjectMenu] = useState(false);

@@ -5,6 +5,28 @@ import { formatCurrency } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+interface AdminOrderItem {
+  id: string;
+  unit_price?: number | null;
+  beats?: { id?: string; title?: string | null; slug?: string | null } | null;
+  license_types?: { name?: string | null; slug?: string | null } | null;
+}
+
+interface AdminOrderRow {
+  id: string;
+  stripe_checkout_session_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  status?: string | null;
+  payment_status?: string | null;
+  currency?: string | null;
+  subtotal_amount?: number | string | null;
+  total_amount?: number | string | null;
+  created_at: string;
+  customers?: { id?: string; email?: string | null; name?: string | null } | null;
+  order_items?: AdminOrderItem[] | null;
+  purchases?: Array<{ id: string; license_tier?: string | null; status?: string | null }> | null;
+}
+
 export default async function AdminOrdersPage() {
   await requireAdminAuth("/admin/orders");
   const supabase = createAdminClient();
@@ -47,7 +69,11 @@ export default async function AdminOrdersPage() {
     `)
     .order("created_at", { ascending: false });
 
-  const ordersList = (orders as any[]) || [];
+  if (error) {
+    console.error("[AdminOrders] Error loading orders:", error);
+  }
+
+  const ordersList = (orders as unknown as AdminOrderRow[] | null) || [];
 
   const totalRevenue = ordersList
     .filter((o) => o.payment_status === "paid")
@@ -143,7 +169,7 @@ export default async function AdminOrdersPage() {
                       {/* Items */}
                       <td className="py-4 px-4">
                         <div className="space-y-1 max-w-xs">
-                          {items.map((oi: any) => (
+                          {items.map((oi) => (
                             <div key={oi.id} className="text-zinc-300 truncate">
                               <strong>{oi.beats?.title || "Beat"}</strong>
                               <span className="text-[10px] text-purple-400 ml-1.5 px-1 py-0.5 rounded bg-purple-500/10">
@@ -193,7 +219,7 @@ export default async function AdminOrdersPage() {
 
                       {/* Stripe Reference */}
                       <td className="py-4 px-4 whitespace-nowrap text-zinc-500 text-[10px]">
-                        <div>SESS: {order.stripe_checkout_session_id.slice(0, 14)}...</div>
+                        <div>SESS: {order.stripe_checkout_session_id ? `${order.stripe_checkout_session_id.slice(0, 14)}...` : "—"}</div>
                         {order.stripe_payment_intent_id && (
                           <div>PI: {order.stripe_payment_intent_id.slice(0, 14)}...</div>
                         )}

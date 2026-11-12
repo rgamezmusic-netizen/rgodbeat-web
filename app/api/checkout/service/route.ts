@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { getStripe, isStripeConfigured } from "@/lib/stripe/server";
 import { getCurrentUser } from "@/lib/auth/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createCommerceAdminClient } from "@/lib/commerce/admin-client";
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid service ID" }, { status: 400 });
     }
 
-    const admin = createAdminClient() as any;
+    const admin = createCommerceAdminClient();
     const { data: intent, error: intentError } = await admin.from("commerce_checkout_intents").insert({
       buyer_auth_user_id: user.id,
       buyer_email: customerEmail,
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     }).select("id").single();
     if (intentError || !intent) throw new Error("CHECKOUT_INTENT_COULD_NOT_BE_SAVED");
 
-    const sessionParams: any = {
+    const sessionParams: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ["card"],
       line_items: [
         {
@@ -85,10 +86,10 @@ export async function POST(req: NextRequest) {
     if (sessionLinkError) throw new Error("CHECKOUT_SESSION_LINK_PENDING_WEBHOOK_RECOVERY");
 
     return NextResponse.json({ url: session.url }, { status: 200 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("[Checkout Service API Error]:", err);
     return NextResponse.json(
-      { error: err.message || "An error occurred while creating checkout session." },
+      { error: err instanceof Error ? err.message : "An error occurred while creating checkout session." },
       { status: 400 }
     );
   }

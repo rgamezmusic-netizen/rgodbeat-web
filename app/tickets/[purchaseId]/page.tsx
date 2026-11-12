@@ -76,11 +76,35 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
     notFound();
   }
 
-  const beat = purchase.beats as any;
-  const customer = purchase.customers as any;
-  const order = purchase.orders as any;
-  const orderItem = purchase.order_items as any;
-  const licenseType = purchase.license_types as any;
+  interface TicketBeat {
+    title?: string | null;
+    cover_path?: string | null;
+    bpm?: number | null;
+    musical_key?: string | null;
+  }
+
+  interface TicketCustomer {
+    name?: string | null;
+    email?: string | null;
+  }
+
+  interface TicketOrder {
+    total_amount?: number | null;
+  }
+
+  interface TicketOrderItem {
+    unit_price?: number | null;
+  }
+
+  interface TicketLicenseType {
+    price?: number | null;
+  }
+
+  const beat = purchase.beats as unknown as TicketBeat | null;
+  const customer = purchase.customers as unknown as TicketCustomer | null;
+  const order = purchase.orders as unknown as TicketOrder | null;
+  const orderItem = purchase.order_items as unknown as TicketOrderItem | null;
+  const licenseType = purchase.license_types as unknown as TicketLicenseType | null;
 
   const tier = purchase.license_tier;
   const isPremium = ["stems", "unlimited", "exclusive"].includes(tier);
@@ -111,7 +135,7 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
   }
 
   const { extractLicenseMetadata } = await import("@/lib/commerce/contracts");
-  const { licenseId, contractVersion } = extractLicenseMetadata(purchase);
+  const { licenseId } = extractLicenseMetadata(purchase);
   const ticketFolio = licenseId;
   const purchaseDate = new Date(purchase.created_at).toLocaleDateString("es-ES", {
     year: "numeric",
@@ -183,7 +207,7 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
                   sizes="64px"
                   loading="lazy"
                   src={getPublicStorageUrl(beat.cover_path)!}
-                  alt={beat.title}
+                  alt={beat.title || "Beat"}
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -248,7 +272,7 @@ export default async function LicenseTicketPage({ params }: TicketPageProps) {
               </div>
               <RequestStemsButton
                 purchaseId={purchase.id}
-                beatTitle={beat?.title}
+                beatTitle={beat?.title || undefined}
                 initialTicketId={stemTicket?.ticketId}
                 initialStatus={stemTicket?.status}
               />

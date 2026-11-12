@@ -10,7 +10,7 @@ try {
     filename: serverOnlyPath,
     loaded: true,
     exports: {},
-  } as any;
+  } as unknown as NodeJS.Module;
 } catch {}
 
 // Load environment variables safely
@@ -31,7 +31,6 @@ import {
   EXPECTED_STEM_GROUPS,
   STEM_GROUP_FILE_NAMES,
   StemTicketStatus,
-  ExpectedStemGroup,
 } from "../lib/stems/types";
 
 async function runStemRequestTests() {
@@ -39,10 +38,7 @@ async function runStemRequestTests() {
     isTierEligibleForStems,
     formatStemTicketId,
     generateDeterministicStemTicketId,
-    createStemRequest,
-    getStemRequestByPurchase,
     getStemRequestByTicketId,
-    listAllStemRequests,
     updateStemRequestStatus,
     attachStemFile,
   } = await import("../lib/stems/tickets");
@@ -231,7 +227,7 @@ async function runStemRequestTests() {
   console.log("\n[TEST 8] Testing Rejection of Invalid Statuses...");
   let invalidStatusRejected = false;
   try {
-    await updateStemRequestStatus(unlTicketId, "In_Progress" as any);
+    await updateStemRequestStatus(unlTicketId, "In_Progress" as unknown as StemTicketStatus);
   } catch {
     invalidStatusRejected = true;
   }

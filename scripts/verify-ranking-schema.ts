@@ -45,7 +45,7 @@ async function runVerification() {
 
   try {
     // 1. Check all new columns on public.beats
-    const { data: beatsSample, error: sampleErr } = await adminClient
+    const { error: sampleErr } = await adminClient
       .from("beats")
       .select("id, ranking_status, current_rank, previous_rank, ranking_period, pool_entry_date, days_in_pool, performance_window_started_at, performance_window_ended_at, performance_score, performance_metrics, local_sync_status, local_archive_path, last_synced_at, online_asset_status")
       .limit(1);
@@ -219,7 +219,7 @@ async function runVerification() {
     }
     assert(!serviceKeyLeaked, "Client Bundle Security: Zero service_role credentials in client components", "Checked client components and browser libraries");
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("FATAL ERROR IN RANKING VERIFICATION:", err);
     failed++;
   }
