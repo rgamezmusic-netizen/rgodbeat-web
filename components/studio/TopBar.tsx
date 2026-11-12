@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from 'next/link';
 import React, { useRef, useState, useEffect } from 'react';
 import type { CloudProjectSlotInfo } from '@/lib/studio/cloudProject';
+import { useStudioI18n } from '@/lib/studio/i18n';
 import {
   Layers,
   Disc3,
@@ -9,7 +10,6 @@ import {
   Redo2,
   Smartphone,
   Cloud,
-  CloudUpload,
   Plus,
   Loader2,
   FolderOpen,
@@ -20,6 +20,7 @@ import {
   Music,
   User,
   Settings,
+  Globe,
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -88,20 +89,16 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenSettings,
   projectMenuTriggerRef,
   onSaveCloudProject,
-  onLoadCloudProject,
   onOpenCloudGallery,
-  onLoadPreviousCloudProject,
   onNewProject,
   onSaveDeviceProject,
   onLoadDeviceProject,
   isSavingDevice = false,
   isSavingCloud = false,
   isLoadingCloud = false,
-  hasCloudProject = false,
-  hasPreviousCloudProject = false,
-  cloudSlots,
   onSaveAndExit,
 }) => {
+  const { locale, toggleLocale, t } = useStudioI18n();
   const deviceFileInputRef = useRef<HTMLInputElement>(null);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -131,12 +128,12 @@ export const TopBar: React.FC<TopBarProps> = ({
     accessStatus?.email?.toLowerCase() || ''
   );
   const daysText = isSuperAdmin
-    ? 'Pase VIP'
+    ? t.topBar.vipPass
     : accessStatus?.daysRemaining && accessStatus.daysRemaining > 0
-    ? `${accessStatus.daysRemaining} ${accessStatus.daysRemaining === 1 ? 'día' : 'días'}`
+    ? `${accessStatus.daysRemaining} ${accessStatus.daysRemaining === 1 ? t.common.day : t.common.days}`
     : accessStatus?.hasActivePass
-    ? 'Pase Activo'
-    : 'Conectado';
+    ? t.topBar.activePass
+    : t.topBar.connected;
 
   return (
     <>
@@ -213,7 +210,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               title="Ventana de Edición: Multitrack & Tomas"
             >
               <Layers className="w-4 h-4 sm:w-4.5 sm:h-4.5 shrink-0" />
-              <span className="hidden min-[480px]:inline font-bold whitespace-nowrap text-[11px] sm:text-xs">Edición</span>
+              <span className="hidden min-[480px]:inline font-bold whitespace-nowrap text-[11px] sm:text-xs">{t.topBar.edit}</span>
               {hasRecordings && (
                 <span className="hidden sm:block w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               )}
@@ -229,7 +226,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               aria-controls={showProjectMenu ? 'studio-project-menu' : undefined}
               onClick={() => setShowProjectMenu(!showProjectMenu)}
               className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 hover:bg-zinc-850 text-zinc-300 hover:text-white transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
-              title="Opciones de Proyecto (Guardar en Nube, Archivo, Nuevo)"
+              title={t.topBar.projectOptions}
             >
               <FolderKanban className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400 shrink-0" />
             </button>
@@ -252,7 +249,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     ) : (
                       <Cloud className="w-4 h-4 text-amber-400" />
                     )}
-                    <span>{isSavingCloud ? 'Guardando...' : 'Guardar en la Nube'}</span>
+                    <span>{isSavingCloud ? t.topBar.savingCloud : t.topBar.saveCloud}</span>
                   </button>
                 )}
 
@@ -261,40 +258,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   onClick={() => { setShowProjectMenu(false); onOpenCloudGallery(); }}
                   disabled={isRecording || isLoadingCloud}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-emerald-300 hover:bg-emerald-500/15 transition-all text-left cursor-pointer disabled:opacity-40"
-                ><FolderOpen className="w-4 h-4 shrink-0" /><span>Mis proyectos en la nube</span></button>}
-
-                {/* Load Cloud */}
-                {hasCloudProject && onLoadCloudProject && (
-                  <button
-                    onClick={() => {
-                      setShowProjectMenu(false);
-                      onLoadCloudProject();
-                    }}
-                    disabled={isLoadingCloud}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-emerald-300 hover:bg-emerald-500/15 transition-all text-left cursor-pointer"
-                  >
-                    {isLoadingCloud ? (
-                      <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-                    ) : (
-                      <CloudUpload className="w-4 h-4 text-emerald-400" />
-                    )}
-                    <span>{isLoadingCloud ? 'Cargando...' : 'Abrir espacio 1'}<span className="block max-w-52 truncate text-zinc-400">{cloudSlots?.find(slot => slot.slot === 'active')?.name}</span></span>
-                  </button>
-                )}
-
-                {hasPreviousCloudProject && onLoadPreviousCloudProject && (
-                  <button
-                    onClick={() => {
-                      setShowProjectMenu(false);
-                      onLoadPreviousCloudProject();
-                    }}
-                    disabled={isLoadingCloud}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-sky-300 hover:bg-sky-500/15 transition-all text-left cursor-pointer"
-                  >
-                    {isLoadingCloud ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4 text-sky-400" />}
-                    <span>{isLoadingCloud ? 'Cargando...' : 'Abrir espacio 2'}<span className="block max-w-52 truncate text-zinc-400">{cloudSlots?.find(slot => slot.slot === 'previous')?.name}</span></span>
-                  </button>
-                )}
+                ><FolderOpen className="w-4 h-4 shrink-0" /><span>{t.topBar.myProjects}</span></button>}
 
                 <div className="h-[1px] bg-zinc-800 my-1" />
 
@@ -309,7 +273,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-zinc-300 hover:bg-zinc-800 transition-all text-left cursor-pointer"
                   >
                     <Save className="w-4 h-4 text-zinc-400" />
-                    <span>Descargar archivo (.rgodbeat)</span>
+                    <span>{t.topBar.downloadFile}</span>
                   </button>
                 )}
 
@@ -323,7 +287,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-purple-300 hover:bg-purple-950/30 transition-all text-left cursor-pointer"
                   >
                     <FolderOpen className="w-4 h-4 text-purple-400" />
-                    <span>Abrir archivo (.rgodbeat)</span>
+                    <span>{t.topBar.openFile}</span>
                   </button>
                 )}
 
@@ -337,7 +301,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-zinc-300 hover:bg-zinc-800 transition-all text-left cursor-pointer"
                   >
                     <Plus className="w-4 h-4 text-zinc-400" />
-                    <span>Nuevo Proyecto</span>
+                    <span>{t.topBar.newProject}</span>
                   </button>
                 )}
 
@@ -350,7 +314,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     onOpenSettings();
                   }} className="w-full min-h-11 flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-zinc-300 hover:bg-zinc-800 transition-all text-left cursor-pointer">
                     <Settings className="w-4 h-4 text-amber-400" />
-                    <span>Ajustes de la app</span>
+                    <span>{t.topBar.appSettings}</span>
                   </button>
                 )}
                 {onOpenInstallModal && (
@@ -362,7 +326,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-zinc-300 hover:bg-zinc-800 transition-all text-left cursor-pointer"
                   >
                     <Smartphone className="w-4 h-4 text-amber-400" />
-                    <span>Instalar App</span>
+                    <span>{t.topBar.installApp}</span>
                   </button>
                 )}
 
@@ -376,7 +340,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono text-red-300 hover:bg-red-950/30 transition-all text-left cursor-pointer"
                   >
                     <LogOut className="w-4 h-4 text-red-400" />
-                    <span>Guardar y Salir</span>
+                    <span>{t.topBar.saveAndExit}</span>
                   </button>
                 )}
               </div>
@@ -462,7 +426,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       </p>
                       <p className="text-[11px] font-mono text-emerald-400 flex items-center gap-1 font-semibold mt-0.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                        <span className="truncate">{daysText.includes('día') ? `${daysText} restantes` : daysText}</span>
+                        <span className="truncate">{daysText.includes(t.common.day) || daysText.includes(t.common.days) ? `${daysText} ${t.common.remaining}` : daysText}</span>
                       </p>
                     </div>
                   </div>
@@ -477,7 +441,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                       className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-mono font-bold bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 hover:border-red-400 transition-all cursor-pointer shadow-sm active:scale-95"
                     >
                       <LogOut className="w-3.5 h-3.5 text-red-400" />
-                      <span>Cerrar Sesión</span>
+                      <span>{t.topBar.logout}</span>
                     </button>
                   )}
                 </div>
@@ -489,14 +453,28 @@ export const TopBar: React.FC<TopBarProps> = ({
                 type="button"
                 onClick={onOpenUnlockModal}
                 className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-mono font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 hover:border-amber-400 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
-                title="Iniciar Sesión en RGODBEAT Studio"
+                title={t.topBar.login}
               >
                 <User className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden xs:inline">Iniciar Sesión</span>
-                <span className="xs:hidden">Login</span>
+                <span className="hidden xs:inline">{t.topBar.login}</span>
+                <span className="xs:hidden">{t.topBar.login}</span>
               </button>
             )
           )}
+
+          {/* Language Switcher ES | EN */}
+          <button
+            type="button"
+            onClick={toggleLocale}
+            className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-mono font-bold bg-zinc-900 border border-zinc-800 hover:border-amber-400/50 text-zinc-300 hover:text-white transition-all shrink-0 cursor-pointer shadow-sm active:scale-95"
+            title={locale === 'es' ? 'Switch to English' : 'Cambiar a Español'}
+            aria-label={locale === 'es' ? 'Switch to English' : 'Cambiar a Español'}
+          >
+            <Globe className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className={locale === 'es' ? 'text-amber-400 font-black' : 'text-zinc-500'}>ES</span>
+            <span className="text-zinc-650">/</span>
+            <span className={locale === 'en' ? 'text-amber-400 font-black' : 'text-zinc-500'}>EN</span>
+          </button>
         </div>
       </header>
     </>

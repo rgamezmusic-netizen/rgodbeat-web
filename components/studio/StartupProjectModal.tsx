@@ -1,9 +1,9 @@
 "use client";
 
 import Image from "next/image";
-
 import React, { useRef } from 'react';
 import { Sparkles, Music, X, FolderOpen } from 'lucide-react';
+import { useStudioI18n } from '@/lib/studio/i18n';
 
 interface StartupProjectModalProps {
   isOpen: boolean;
@@ -25,6 +25,7 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
   onOpenDeviceProject,
   onClose,
 }) => {
+  const { t } = useStudioI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -57,16 +58,16 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
           <div className="space-y-0.5">
             <span className="text-[10px] font-mono tracking-widest uppercase text-amber-400 font-bold flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              RGODBEAT STUDIO SESIÓN
+              {t.startup.sessionHeader}
             </span>
             <h2 className="text-xl font-bold font-sans tracking-tight text-white">
-              ¿Cómo deseas comenzar?
+              {t.startup.howToStart}
             </h2>
           </div>
           <button
             onClick={onClose}
             className="p-1 rounded-full text-zinc-500 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-            aria-label="Cerrar"
+            aria-label={t.common.close}
           >
             <X className="w-4 h-4" />
           </button>
@@ -93,7 +94,7 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
                 />
                 <div>
                   <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors">
-                    Continuar Sesión
+                    {t.startup.continueSession}
                   </h3>
                 </div>
               </div>
@@ -109,7 +110,7 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
                 <strong className="truncate text-white">{beatTitle}</strong>
               </span>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 ml-auto shrink-0 font-bold">
-                {takesCount === 0 ? 'Beat listo' : `${takesCount} ${takesCount === 1 ? 'toma' : 'tomas'}`}
+                {takesCount === 0 ? t.startup.beatReady : `${takesCount} ${takesCount === 1 ? t.common.take : t.common.takes}`}
               </span>
             </div>
           </button>
@@ -139,7 +140,7 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-zinc-200 group-hover:text-white transition-colors flex items-center gap-1.5">
-                      Abrir Archivo
+                      {t.startup.openFile}
                       <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-900/60 text-purple-300 font-mono">
                         .rgodbeat
                       </span>
@@ -166,7 +167,7 @@ export const StartupProjectModal: React.FC<StartupProjectModalProps> = ({
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-zinc-200 group-hover:text-white transition-colors">
-                    Nuevo Proyecto
+                    {t.startup.newProject}
                   </h3>
                 </div>
               </div>

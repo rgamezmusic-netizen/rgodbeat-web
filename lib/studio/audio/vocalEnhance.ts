@@ -242,17 +242,21 @@ export function enhanceVocalChannelsDsp(
   }
 
   // 2. Envelope parameters:
-  //    - Noise gate downward expander: attenuates room hiss up to -13 dB (0.22) below noise floor
+  //    - Noise gate downward expander: attenuates room hiss up to -29 dB (0.035) below noise floor
+  //      with a 55 ms hold window so soft vocal tails never chop before compression
   //    - Plosive LP filter at 115 Hz: detects isolated sub puffs and attenuates excessive low burst
   //    - Micro-AGC follower: smooth 140ms vocal phrase leveling (+4.5 dB boost on quiet lines, -3.5 dB on shouts)
   const lpAlpha = 1 - Math.exp((-2 * Math.PI * 115) / fs);
   const envAttack = Math.exp(-1 / (fs * 0.008));  // 8 ms fast attack
-  const envRelease = Math.exp(-1 / (fs * 0.160)); // 160 ms natural vocal tail release
+  const envRelease = Math.exp(-1 / (fs * 0.185)); // 185 ms natural vocal tail release
   const agcAttack = Math.exp(-1 / (fs * 0.035));  // 35 ms AGC attack
   const agcRelease = Math.exp(-1 / (fs * 0.220)); // 220 ms AGC release
 
-  const gateOpenThresh = Math.max(0.0035, analysis.noiseFloor * 1.85, analysis.activeRms * 0.10);
-  const gateFloorThresh = Math.max(0.001, gateOpenThresh * 0.35);
+  const gateOpenThresh = Math.max(0.0055, analysis.noiseFloor * 2.15, analysis.activeRms * 0.115);
+  const gateFloorThresh = Math.max(0.0014, gateOpenThresh * 0.36);
+  const gateFloorGain = 0.035; // -29 dB attenuation floor
+  const holdSamples = Math.round(fs * 0.055);
+  let holdCounter = 0;
 
   const lpStates = new Float32Array(outChannels.length);
   let fastEnv = analysis.noiseFloor;
@@ -269,16 +273,24 @@ export function enhanceVocalChannelsDsp(
     }
     monoAbs /= outChannels.length;
 
-    // Fast vocal envelope for noise expander
-    const coeff = monoAbs > fastEnv ? envAttack : envRelease;
-    fastEnv = coeff * fastEnv + (1 - coeff) * monoAbs;
+    // Fast vocal envelope with hold so consonants/breath endings stay open
+    if (monoAbs >= gateOpenThresh) {
+      holdCounter = holdSamples;
+      fastEnv = envAttack * fastEnv + (1 - envAttack) * monoAbs;
+    } else if (holdCounter > 0) {
+      holdCounter--;
+      fastEnv = Math.max(fastEnv, gateOpenThresh);
+    } else {
+      const coeff = monoAbs > fastEnv ? envAttack : envRelease;
+      fastEnv = coeff * fastEnv + (1 - coeff) * monoAbs;
+    }
 
     let gateGain = 1.0;
     if (fastEnv < gateOpenThresh) {
       const ratio = clamp((fastEnv - gateFloorThresh) / Math.max(EPSILON, gateOpenThresh - gateFloorThresh), 0, 1);
-      // Smooth S-curve downward expansion down to 0.22 (-13 dB)
+      // Smooth S-curve downward expansion down to 0.035 (-29 dB)
       const smooth = ratio * ratio * (3 - 2 * ratio);
-      gateGain = 0.22 + 0.78 * smooth;
+      gateGain = gateFloorGain + (1 - gateFloorGain) * (smooth * smooth);
     }
 
     // Slow phrase-level micro-AGC only while gate is meaningfully active
@@ -359,4 +371,104 @@ export function enhanceVocalAudioBuffer(
     out.copyToChannel(new Float32Array(channels[ch]), ch);
   }
   return { buffer: out, calibration };
+}
+
+const GATE_CONTROL_RATE_HZ = 100;
+const GATE_FLOOR_GAIN = 0.035;
+const cachedGateCurves = new WeakMap<AudioBuffer, Float32Array>();
+
+/**
+ * Computes a deterministic 100 Hz control-rate noise gate gain curve [0.035..1.0]
+ * so live playback & un-enhanced exports suppress background noise before compression.
+ */
+export function computeNoiseGateCurve(
+  channels: ReadonlyArray<Float32Array>,
+  sampleRate: number
+): Float32Array {
+  const length = channels[0]?.length ?? 0;
+  const fs = Math.max(8000, sampleRate);
+  const step = Math.max(1, Math.round(fs / GATE_CONTROL_RATE_HZ));
+  const frameCount = Math.max(2, Math.ceil(length / step));
+  const curve = new Float32Array(frameCount);
+
+  if (!channels.length || length === 0) {
+    curve.fill(1);
+    return curve;
+  }
+
+  const analysis = analyzeChannelsRms(channels, fs);
+  if (analysis.activeRms <= 0.0005) {
+    curve.fill(GATE_FLOOR_GAIN);
+    return curve;
+  }
+
+  const gateOpenThresh = Math.max(0.0055, analysis.noiseFloor * 2.15, analysis.activeRms * 0.115);
+  const gateFloorThresh = Math.max(0.0014, gateOpenThresh * 0.36);
+  const frameDt = step / fs;
+  const envAttack = Math.exp(-frameDt / 0.008);
+  const envRelease = Math.exp(-frameDt / 0.110);
+  const holdFrames = Math.max(1, Math.round(0.055 / frameDt));
+  let holdCounter = 0;
+  let fastEnv = analysis.noiseFloor;
+
+  for (let f = 0; f < frameCount; f++) {
+    const start = f * step;
+    const end = Math.min(length, start + step);
+    const count = Math.max(1, (end - start) * channels.length);
+    let absSum = 0;
+    for (let ch = 0; ch < channels.length; ch++) {
+      const data = channels[ch];
+      for (let i = start; i < end; i++) {
+        absSum += data[i] < 0 ? -data[i] : data[i];
+      }
+    }
+    const frameLevel = absSum / count;
+
+    if (frameLevel >= gateOpenThresh) {
+      holdCounter = holdFrames;
+      fastEnv = envAttack * fastEnv + (1 - envAttack) * frameLevel;
+    } else if (holdCounter > 0) {
+      holdCounter--;
+      fastEnv = Math.max(fastEnv, gateOpenThresh);
+    } else {
+      const coeff = frameLevel > fastEnv ? envAttack : envRelease;
+      fastEnv = coeff * fastEnv + (1 - coeff) * frameLevel;
+    }
+
+    let gain = 1.0;
+    if (fastEnv < gateOpenThresh) {
+      const ratio = clamp((fastEnv - gateFloorThresh) / Math.max(EPSILON, gateOpenThresh - gateFloorThresh), 0, 1);
+      const smooth = ratio * ratio * (3 - 2 * ratio);
+      gain = GATE_FLOOR_GAIN + (1 - GATE_FLOOR_GAIN) * (smooth * smooth);
+    }
+    curve[f] = gain;
+  }
+
+  return curve;
+}
+
+/**
+ * Returns the sliced 100 Hz noise-gate curve for a clip playback/export window.
+ */
+export function computeNoiseGateCurveSlice(
+  buffer: AudioBuffer,
+  offsetSec: number,
+  durationSec: number
+): Float32Array | null {
+  if (!buffer || buffer.length <= 1 || durationSec <= 0.02) return null;
+
+  let fullCurve = cachedGateCurves.get(buffer);
+  if (!fullCurve) {
+    const channels: Float32Array[] = [];
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+      channels.push(buffer.getChannelData(ch));
+    }
+    fullCurve = computeNoiseGateCurve(channels, buffer.sampleRate);
+    cachedGateCurves.set(buffer, fullCurve);
+  }
+
+  if (fullCurve.length < 2) return null;
+  const startIdx = clamp(Math.floor(offsetSec * GATE_CONTROL_RATE_HZ), 0, fullCurve.length - 2);
+  const endIdx = clamp(Math.ceil((offsetSec + durationSec) * GATE_CONTROL_RATE_HZ) + 1, startIdx + 2, fullCurve.length);
+  return fullCurve.slice(startIdx, endIdx);
 }

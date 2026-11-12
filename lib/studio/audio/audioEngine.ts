@@ -14,6 +14,7 @@ import { getProjectDuration, getRenderDuration, getTrackClips } from './clipEdit
 import type { RecordingCheckpoint } from './recordingRecovery';
 import {
   analyzeAudioBufferRms,
+  computeNoiseGateCurveSlice,
   computeVocalCalibrationGain,
   enhanceVocalAudioBuffer,
   type AudioRmsAnalysis,
@@ -666,13 +667,13 @@ export class AudioEngine {
     // Stage 2: Two-Stage Serial Vocal Compression + Preset Saturation
     const compressor = ctx.createDynamicsCompressor();
     compressor.knee.setValueAtTime(8, t);
-    compressor.attack.setValueAtTime(0.0025, t);
-    compressor.release.setValueAtTime(0.045, t);
+    compressor.attack.setValueAtTime(0.004, t);
+    compressor.release.setValueAtTime(0.065, t);
 
     const levelerCompressor = ctx.createDynamicsCompressor();
     levelerCompressor.knee.setValueAtTime(12, t);
-    levelerCompressor.attack.setValueAtTime(0.018, t);
-    levelerCompressor.release.setValueAtTime(0.130, t);
+    levelerCompressor.attack.setValueAtTime(0.022, t);
+    levelerCompressor.release.setValueAtTime(0.160, t);
 
     const saturation = ctx.createWaveShaper();
     saturation.oversample = '2x';
@@ -919,12 +920,12 @@ export class AudioEngine {
     setParam(nodes.highCut2.frequency, bp.highCut2Freq);
     setParam(nodes.highCut2.Q, bp.highCutQ);
 
-    // Stage 2: 2-Stage Compression & Character Saturation
+    // Stage 2: 2-Stage Compression & Character Saturation (tuned to control vocals without lifting room hiss)
     const compAmount = Math.max(0, Math.min(1, track.fx.comp.amount));
-    setParam(nodes.compressor.threshold, -14 - compAmount * 14);
-    setParam(nodes.compressor.ratio, 3.2 + compAmount * 2.5);
-    setParam(nodes.levelerCompressor.threshold, -22 - compAmount * 14);
-    setParam(nodes.levelerCompressor.ratio, 2.2 + compAmount * 2.0);
+    setParam(nodes.compressor.threshold, -12 - compAmount * 11);
+    setParam(nodes.compressor.ratio, 2.8 + compAmount * 2.2);
+    setParam(nodes.levelerCompressor.threshold, -16 - compAmount * 10);
+    setParam(nodes.levelerCompressor.ratio, 1.8 + compAmount * 1.5);
     nodes.saturation.curve = makeVocalSaturationCurve(track.fx.saturation.amount, profile.saturationMode);
 
     // Stage 3: Post-FX 3-Band General User Voice Balance
@@ -1177,6 +1178,32 @@ export class AudioEngine {
     this.startPositionTracker(vocalTracks);
   }
 
+  private connectVocalClipWithNoiseGate(
+    ctx: BaseAudioContext,
+    source: AudioBufferSourceNode,
+    buffer: AudioBuffer,
+    destination: AudioNode,
+    startTime: number,
+    offsetSec: number,
+    durationSec: number
+  ): GainNode | null {
+    const curve = computeNoiseGateCurveSlice(buffer, offsetSec, durationSec);
+    if (!curve || curve.length < 2 || durationSec <= 0.02) {
+      source.connect(destination);
+      return null;
+    }
+
+    const gateGain = ctx.createGain();
+    try {
+      gateGain.gain.setValueCurveAtTime(curve, Math.max(0, startTime), durationSec);
+    } catch {
+      gateGain.gain.setValueAtTime(1, Math.max(0, startTime));
+    }
+    source.connect(gateGain);
+    gateGain.connect(destination);
+    return gateGain;
+  }
+
   private scheduleVocalRange(from: number, to: number, origin: number, vocalTracks: VocalTrack[]) {
     if (!this.ctx) return;
     for (const track of vocalTracks) {
@@ -1211,9 +1238,18 @@ export class AudioEngine {
           const sourceKey = `${track.id}-${clip.id}-${++this.vocalSourceId}`;
           const source = this.ctx.createBufferSource();
           source.buffer = playBuffer;
-          source.connect(trackNodes.lowCut);
+          const gateNode = this.connectVocalClipWithNoiseGate(
+            this.ctx,
+            source,
+            playBuffer,
+            trackNodes.lowCut,
+            origin + begin,
+            begin - trackOffset,
+            end - begin
+          );
           source.onended = () => {
             source.disconnect();
+            gateNode?.disconnect();
             if (this.vocalSources.get(sourceKey) === source) this.vocalSources.delete(sourceKey);
           };
           source.start(origin + begin, begin - trackOffset, end - begin);
@@ -1916,17 +1952,17 @@ export class AudioEngine {
         this.monitoringPresenceFilter.Q.setValueAtTime(1.0, this.ctx.currentTime);
         this.monitoringPresenceFilter.gain.setValueAtTime(3.5, this.ctx.currentTime);
 
-        // 3. Ultra-fast studio vocal compressor: evens out vocal dynamics, lifts whispers and controls peaks (BandLab style)
+        // 3. Studio vocal compressor: evens out vocal dynamics without pulling up room hiss
         this.monitoringCompressor = this.ctx.createDynamicsCompressor();
-        this.monitoringCompressor.threshold.setValueAtTime(-24, this.ctx.currentTime);
+        this.monitoringCompressor.threshold.setValueAtTime(-18, this.ctx.currentTime);
         this.monitoringCompressor.knee.setValueAtTime(10, this.ctx.currentTime);
-        this.monitoringCompressor.ratio.setValueAtTime(4.0, this.ctx.currentTime);
-        this.monitoringCompressor.attack.setValueAtTime(0.003, this.ctx.currentTime);
+        this.monitoringCompressor.ratio.setValueAtTime(3.2, this.ctx.currentTime);
+        this.monitoringCompressor.attack.setValueAtTime(0.004, this.ctx.currentTime);
         this.monitoringCompressor.release.setValueAtTime(0.14, this.ctx.currentTime);
 
         // 4. Monitoring makeup gain & user volume node
         this.monitoringGainNode = this.ctx.createGain();
-        const initialGain = this.isMonitoringEnabled ? this.monitoringVolume * 1.6 : 0;
+        const initialGain = this.isMonitoringEnabled ? this.monitoringVolume * 1.35 : 0;
         this.monitoringGainNode.gain.setValueAtTime(initialGain, this.ctx.currentTime);
 
         // Connect the monitoring graph in series into master output
@@ -2584,9 +2620,15 @@ export class AudioEngine {
       for (const item of clips) {
         const vSource = offlineCtx.createBufferSource();
         vSource.buffer = item.buffer;
-        vSource.connect(trackNodes.lowCut);
+        const startAt = item.startSec < 0 ? 0 : item.startSec;
+        const offsetInClip = item.startSec < 0 ? -item.startSec : 0;
+        const playDur = Math.max(0, item.buffer.duration - offsetInClip);
+        if (!enableNativeEnhance && playDur > 0.02) {
+          this.connectVocalClipWithNoiseGate(offlineCtx, vSource, item.buffer, trackNodes.lowCut, startAt, offsetInClip, playDur);
+        } else {
+          vSource.connect(trackNodes.lowCut);
+        }
         if (item.startSec < 0) {
-          const offsetInClip = -item.startSec;
           if (offsetInClip < item.buffer.duration) {
             vSource.start(0, offsetInClip);
           }
@@ -2739,9 +2781,15 @@ export class AudioEngine {
 
         const vSource = offlineCtx.createBufferSource();
         vSource.buffer = playBuffer;
-        vSource.connect(trackNodes.lowCut);
+        const startAt = clip.startBeatOffset < 0 ? 0 : clip.startBeatOffset;
+        const offsetInClip = clip.startBeatOffset < 0 ? -clip.startBeatOffset : 0;
+        const playDur = Math.max(0, playBuffer.duration - offsetInClip);
+        if (playDur > 0.02) {
+          this.connectVocalClipWithNoiseGate(offlineCtx, vSource, playBuffer, trackNodes.lowCut, startAt, offsetInClip, playDur);
+        } else {
+          vSource.connect(trackNodes.lowCut);
+        }
         if (clip.startBeatOffset < 0) {
-          const offsetInClip = -clip.startBeatOffset;
           if (offsetInClip < playBuffer.duration) {
             vSource.start(0, offsetInClip);
           }

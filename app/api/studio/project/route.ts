@@ -190,14 +190,18 @@ export async function DELETE(req: NextRequest) {
     if (!(typeof body.baseRevision === "string" || body.baseRevision === null)) {
       return NextResponse.json({ error: "Falta la revisión del proyecto." }, { status: 400 });
     }
+    const slot = req.nextUrl.searchParams.get('slot') === 'previous' ? 'previous' : 'active';
+    const manifestName = slot === 'previous' ? 'previous-project.json' : 'project.json';
     // A small tombstone prevents a delayed save from recreating the previous workspace.
     const result = await replaceCloudProject(r2ProjectStorage, `studio/projects/${user.id}/`,
-      body.baseRevision, { deleted: true, beat: null, tracks: [], userId: user.id }, new Map());
-    try {
-      const supabase = createAdminClient();
-      await projectIndex(supabase).delete().eq("user_id", user.id);
-    } catch { /* Optional index. */ }
-    return NextResponse.json({ success: true, ...result });
+      body.baseRevision, { deleted: true, beat: null, tracks: [], userId: user.id }, new Map(), new Map(), manifestName);
+    if (manifestName === 'project.json') {
+      try {
+        const supabase = createAdminClient();
+        await projectIndex(supabase).delete().eq("user_id", user.id);
+      } catch { /* Optional index. */ }
+    }
+    return NextResponse.json({ success: true, slot, ...result });
   } catch (error) {
     if (error instanceof ProjectConflict) return NextResponse.json({ error: error.message, conflict: true }, { status: 409 });
     return NextResponse.json({ error: "No se pudo reemplazar el proyecto anterior. Inténtalo de nuevo." }, { status: 503 });

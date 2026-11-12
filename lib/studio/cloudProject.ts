@@ -53,6 +53,20 @@ export function confirmCloudProject(projectId: string, confirmedRevision: string
   if (!cloudOwner || confirmedRevision === null || confirmedRevision === undefined) return;
   try { localStorage.setItem(confirmedKey(), JSON.stringify({ projectId, revision: confirmedRevision, slot: cloudSlot })); } catch { /* Device storage may be unavailable. */ }
 }
+export function forgetConfirmedCloudProject(match?: { slot?: CloudProjectSlot; projectId?: string }) {
+  if (!cloudOwner) return;
+  try {
+    const confirmed = JSON.parse(localStorage.getItem(confirmedKey()) || 'null');
+    if (!confirmed) return;
+    if (!match || (match.slot && confirmed.slot === match.slot) || (match.projectId && confirmed.projectId === match.projectId)) {
+      if (typeof localStorage.removeItem === 'function') {
+        localStorage.removeItem(confirmedKey());
+      } else {
+        localStorage.setItem(confirmedKey(), 'null');
+      }
+    }
+  } catch { /* Device storage may be unavailable. */ }
+}
 export function selectCloudProjectSlot(slot: CloudProjectSlot, selectedRevision?: string | null) {
   cloudSlot = slot; revision = selectedRevision; knownAudio = new Set();
 }
@@ -681,30 +695,52 @@ export async function loadProjectFromCloud(
 }
 
 /**
- * Deletes the saved project from the cloud.
+ * Deletes a saved project slot from the cloud and detaches matching local cloud confirmation
+ * so background autosave never resurrects a deleted slot.
  */
-export async function deleteProjectFromCloud(): Promise<boolean> {
+export async function deleteProjectFromCloud(
+  slot: CloudProjectSlot = 'active',
+  baseRevision?: string | null,
+  deletedProjectId?: string
+): Promise<boolean> {
   // A barrier after all earlier saves; subsequent saves use the tombstone revision.
   const owner = cloudOwner;
+  if (pendingSave && pendingSave.owner === owner && pendingSave.slot === slot) {
+    const cancelled = pendingSave;
+    pendingSave = null;
+    cancelled.resolve.forEach(fn => fn({ success: false, error: 'Proyecto eliminado.' }));
+  }
   const deletion = queue.then(async () => {
     const originalRevision = revision;
     const originalAudio = knownAudio;
     const confirmDeletion = async () => {
       try {
-        const data = await readCloudState();
-        if (!data.hasProject) return true;
-        revision = originalRevision; knownAudio = originalAudio;
+        const data = await readCloudState(slot, cloudSlot === slot);
+        if (!data.hasProject) {
+          forgetConfirmedCloudProject({ slot, projectId: deletedProjectId });
+          return true;
+        }
+        if (cloudSlot === slot) {
+          revision = originalRevision; knownAudio = originalAudio;
+        }
       } catch { /* Keep the previous revision on an unavailable response. */ }
       return false;
     };
     try {
       if (owner !== cloudOwner) return false;
-      if (revision === undefined) await readCloudState();
-      const { response: res, data } = await requestCloudJson(projectUrl(), { method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baseRevision: revision, ownerEmail: owner }) });
+      let resolvedBaseRevision = baseRevision;
+      if (resolvedBaseRevision === undefined) {
+        const current = await readCloudState(slot, cloudSlot === slot);
+        resolvedBaseRevision = current.revision ?? null;
+      }
+      const { response: res, data } = await requestCloudJson(projectUrl(slot), { method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baseRevision: resolvedBaseRevision ?? null, ownerEmail: owner }) });
       if (!res.ok) return res.status >= 500 ? confirmDeletion() : false;
       if (data.success !== true) return false;
-      if (owner === cloudOwner) { revision = data.revision ?? null; knownAudio.clear(); }
+      if (owner === cloudOwner) {
+        if (cloudSlot === slot) { revision = data.revision ?? null; knownAudio.clear(); }
+        forgetConfirmedCloudProject({ slot, projectId: deletedProjectId });
+      }
       return true;
     } catch { return confirmDeletion(); }
   });

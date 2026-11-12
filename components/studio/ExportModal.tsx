@@ -8,6 +8,7 @@ import { studioVideoMetadata } from '@/lib/youtube/metadata';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { publicationRewardMessages, type PublicationRewards } from '@/lib/rg/publication-rewards';
+import { useStudioI18n } from '@/lib/studio/i18n';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -71,6 +72,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
   onOpenUnlockModal,
   accountArtistName = '',
 }) => {
+  const { t } = useStudioI18n();
   const [isExportingMaster, setIsExportingMaster] = useState(false);
   const [isExportingRawStems, setIsExportingRawStems] = useState(false);
   const [isExportingWetStems, setIsExportingWetStems] = useState(false);
@@ -358,16 +360,20 @@ const ExportDialog: React.FC<ExportModalProps> = ({
       setYoutubeProgress({ stage: 'publish', label: 'Publicando en YouTube…' });
       const response = await fetch('/api/studio/youtube/publish', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ uploadId, artistName: artistName.trim(), videoTitle: youtubeTitle.trim(), videoDescription: youtubeDescription.trim(), beatTitle: beat.title, beatGenre: beat.genre, beatBpm: beat.bpm, beatKey: beat.key, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null,
-          rgLink, dolbyEnhanced, useStageBackground, lyricsSrt: lyricsSrt.trim(), lyricsText: lyricsText.trim() }),
+        body: JSON.stringify({
+          uploadId, artistName: artistName.trim(), videoTitle: youtubeTitle.trim(), videoDescription: youtubeDescription.trim(), beatTitle: beat.title, beatGenre: beat.genre, beatBpm: beat.bpm, beatKey: beat.key, privacy: youtubePrivacy, madeForKids, hasRights, coverUrl: coverImage ? null : beat.coverUrl || null,
+          rgLink, dolbyEnhanced, useStageBackground, lyricsSrt: lyricsSrt.trim(), lyricsText: lyricsText.trim()
+        }),
       });
       const result = await response.json();
       if (!response.ok || result.success !== true || !result.videoId || !result.videoUrl) {
         throw new Error(result.error || 'YouTube no confirmó la publicación.');
       }
-      setYoutubeResult({ videoId: result.videoId, videoUrl: result.videoUrl, privacy: result.privacy, uploadId,
+      setYoutubeResult({
+        videoId: result.videoId, videoUrl: result.videoUrl, privacy: result.privacy, uploadId,
         rgLink,
-        rgPublicationLinked: result.rgPublicationLinked, rgPublicationError: result.rgPublicationError, rewards: result.rgRewards });
+        rgPublicationLinked: result.rgPublicationLinked, rgPublicationError: result.rgPublicationError, rewards: result.rgRewards
+      });
       window.dispatchEvent(new Event('rg-wallet-updated'));
       window.dispatchEvent(new Event('rg-publication-updated'));
       router.refresh();
@@ -376,7 +382,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
       onShowToast(result.rgPublicationLinked === true
         ? '¡Tu vídeo ya se cargó en YouTube! Participación vinculada al Top 23.'
         : '¡Tu vídeo ya se cargó en YouTube! La participación en el Top quedó pendiente.',
-      result.rgPublicationLinked === true ? 'success' : 'info');
+        result.rgPublicationLinked === true ? 'success' : 'info');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'No se pudo publicar en YouTube.';
       setYoutubeProgress(null);
@@ -395,8 +401,10 @@ const ExportDialog: React.FC<ExportModalProps> = ({
     if (!youtubeResult?.rgLink) return;
     setRgLoading(true);
     try {
-      const response = await fetch('/api/rg/publications', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...youtubeResult.rgLink, youtubeExportJobId: youtubeResult.uploadId }) });
+      const response = await fetch('/api/rg/publications', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...youtubeResult.rgLink, youtubeExportJobId: youtubeResult.uploadId })
+      });
       const data = await response.json();
       if (!response.ok || !data.linked) throw new Error(data.error || 'No se pudo vincular el RG Track.');
       setYoutubeResult(previous => previous ? { ...previous, rgPublicationLinked: true, rgPublicationError: undefined, rewards: data.rewards } : previous);
@@ -532,7 +540,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
             <h2 id="export-title" className="text-lg font-bold">{title}</h2>
             <p className="truncate text-xs text-zinc-400">{view === 'youtube' ? 'Canal RGODBEAT' : beat?.title || 'Tu canción'}</p>
           </div>
-          <button type="button" aria-label="Cerrar exportación" disabled={isBusy} onClick={handleClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-40"><X size={22} /></button>
+          <button type="button" aria-label={t.common.close} disabled={isBusy} onClick={handleClose} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-zinc-400 hover:bg-white/10 hover:text-white disabled:opacity-40"><X size={22} /></button>
         </header>
 
         <div ref={content} className="min-h-0 overflow-y-auto overscroll-contain p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
@@ -548,23 +556,23 @@ const ExportDialog: React.FC<ExportModalProps> = ({
                 <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.16em] text-amber-300"><Sparkles size={14} /> RG REWARDS</span>
                 <Trophy className="text-amber-400" size={24} />
               </div>
-              <h3 className="text-2xl font-bold leading-tight tracking-tight">Lleva tu canción al Top.</h3>
+              <h3 className="text-2xl font-bold leading-tight tracking-tight">{t.export.takeToTop}</h3>
               <div className="my-5 flex flex-wrap gap-x-4 gap-y-2 text-xs font-medium text-amber-200">
-                <span className="flex items-center gap-1.5"><Trophy size={15} /> Puntos para el Top 23</span>
-                <span className="flex items-center gap-1.5"><Coins size={15} /> Premios en RG</span>
+                <span className="flex items-center gap-1.5"><Trophy size={15} /> {t.export.topPoints}</span>
+                <span className="flex items-center gap-1.5"><Coins size={15} /> {t.export.rgRewards}</span>
               </div>
-              <button type="button" onClick={openYouTube} disabled={!beat || !engine || isBusy} className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}><Video size={19} /> Publicar en YouTube <ArrowRight className="ml-auto" size={18} /></button>
+              <button type="button" onClick={openYouTube} disabled={!beat || !engine || isBusy} className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}><Video size={19} /> {t.export.publishYouTube} <ArrowRight className="ml-auto" size={18} /></button>
             </section>
             <button type="button" onClick={() => void handleExportMaster()} disabled={!beat || !engine || isBusy} className={`${buttonClass} justify-start border border-white/15 bg-white/[0.04] text-white hover:bg-white/[0.08]`}>
               {isExportingMaster ? <Loader2 size={19} className="animate-spin" /> : <Download size={19} className="text-zinc-300" />}
-              {isExportingMaster ? 'Preparando canción…' : 'Descargar canción'}
+              {isExportingMaster ? t.export.preparingSong : t.export.downloadSong}
             </button>
-            <button type="button" onClick={() => setView('advanced')} disabled={isBusy} className={`${buttonClass} min-h-11 text-zinc-400 hover:bg-white/5 hover:text-white`}>Más opciones</button>
+            <button type="button" onClick={() => setView('advanced')} disabled={isBusy} className={`${buttonClass} min-h-11 text-zinc-400 hover:bg-white/5 hover:text-white`}>{t.export.moreOptions}</button>
           </div> : view === 'youtube' ? youtubeResult ? <div className="space-y-5 py-3 text-center" role="status" aria-live="polite">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400/10 text-emerald-300"><Check size={30} /></div>
-            <h3 tabIndex={-1} className="text-xl font-bold outline-none">Tu vídeo está en YouTube</h3>
-            <p className="text-sm text-emerald-200">Carga completada y confirmada por YouTube.</p>
-            <p className="text-sm text-zinc-400">{youtubeResult.privacy === 'private' ? 'Privado' : youtubeResult.privacy === 'public' ? 'Público' : 'No listado'}</p>
+            <h3 tabIndex={-1} className="text-xl font-bold outline-none">{t.export.videoOnYouTube}</h3>
+            <p className="text-sm text-emerald-200">{t.export.uploadCompleted}</p>
+            <p className="text-sm text-zinc-400">{youtubeResult.privacy === 'private' ? 'Privado' : youtubeResult.privacy === 'public' ? t.export.public : t.export.unlisted}</p>
             <div className="rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-relaxed text-amber-100">
               <Trophy size={22} className="mx-auto mb-2 text-amber-300" />
               <p>{youtubeResult.rgPublicationLinked === true ? 'Tu publicación quedó vinculada al Top 23.' : 'Tu vídeo se publicó. Falta vincular tu participación al Top 23.'}</p>
@@ -578,25 +586,25 @@ const ExportDialog: React.FC<ExportModalProps> = ({
             </div>
             <Link href="/rg/wallet" prefetch={false} className={`${buttonClass} border border-amber-300/20 text-amber-200`}>Ver mi wallet RG <ArrowRight size={17} /></Link>
             <a href={youtubeResult.videoUrl} target="_blank" rel="noreferrer" className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}>Ver en YouTube <ExternalLink size={17} /></a>
-            <button type="button" onClick={handleClose} disabled={isBusy} className={`${buttonClass} bg-white/5 hover:bg-white/10`}>Volver al Studio</button>
+            <button type="button" onClick={handleClose} disabled={isBusy} className={`${buttonClass} bg-white/5 hover:bg-white/10`}>{t.export.returnToStudio}</button>
           </div> : <form id="youtube-publish-form" className="space-y-4" onSubmit={event => { event.preventDefault(); void handlePublishToYouTube(); }}>
             <h3 tabIndex={-1} className="sr-only outline-none">Publica y entra al Top</h3>
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-200"><Trophy size={18} className="mt-0.5 shrink-0" /><p>Suma puntos para el Top 23 y compite por premios en RG.</p></div>
-            <label className="block text-sm text-zinc-300">Nombre artístico
+            <label className="block text-sm text-zinc-300">{t.export.artistName}
               <input value={artistName} maxLength={80} required autoComplete="nickname" onChange={event => setArtistName(event.target.value)} disabled={isBusy} placeholder="Tu nombre de artista" className={inputClass} />
             </label>
-            <label className="block text-sm text-zinc-300">Título de la canción
+            <label className="block text-sm text-zinc-300">{t.export.songTitle}
               <input value={youtubeTitle} maxLength={100} onChange={event => setYoutubeTitle(event.target.value)} disabled={isBusy} placeholder={beat?.title || 'Tu canción'} className={inputClass} />
             </label>
-            <label className="block text-sm text-zinc-300">Visibilidad
-              <select aria-label="Visibilidad" value={youtubePrivacy} onChange={event => setYoutubePrivacy(event.target.value as 'unlisted' | 'public')} disabled={isBusy} className={`${inputClass} bg-[#17171c]`}>
-                <option value="public">Público · visible para todos</option>
-                <option value="unlisted">No listado · solo con enlace</option>
+            <label className="block text-sm text-zinc-300">{t.export.visibility}
+              <select aria-label={t.export.visibility} value={youtubePrivacy} onChange={event => setYoutubePrivacy(event.target.value as 'unlisted' | 'public')} disabled={isBusy} className={`${inputClass} bg-[#17171c]`}>
+                <option value="public">{t.export.public}</option>
+                <option value="unlisted">{t.export.unlisted}</option>
               </select>
             </label>
             <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
               <label className="flex items-center justify-between text-xs font-medium text-zinc-200 cursor-pointer">
-                <span>Video Lyric en pantalla</span>
+                <span>{t.export.lyricVideo}</span>
                 <input
                   type="checkbox"
                   checked={includeLyrics}
@@ -607,7 +615,7 @@ const ExportDialog: React.FC<ExportModalProps> = ({
               </label>
 
               <label className="flex items-center justify-between text-xs font-medium text-zinc-200 cursor-pointer">
-                <span>Escenario oficial</span>
+                <span>{t.export.stageBackground}</span>
                 <input
                   type="checkbox"
                   checked={useStageBackground}
@@ -695,20 +703,20 @@ const ExportDialog: React.FC<ExportModalProps> = ({
           </div> : beat && hasRecordings ? <div><h3 tabIndex={-1} className="sr-only outline-none">Enviar voces a RGODBEAT</h3><StemDeliveryForm key={beat.id} engine={engine} beat={beat} tracks={tracks} disabled={isBusy} onBusyChange={setIsSendingStems} /></div> : null}
         </div>
         {!isDemo && view === 'youtube' && !youtubeResult && <footer className="shrink-0 space-y-3 border-t border-white/[0.07] bg-[#101014] px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            {youtubeLoading && youtubeProgress && <div role="status" aria-live="polite" className="space-y-2 rounded-xl bg-white/5 p-3">
-              <p className="flex items-center justify-between gap-2 text-xs text-zinc-300"><span>{youtubeProgress.label}</span>{youtubeUploadPercent !== null && <span>{youtubeUploadPercent}%</span>}</p>
-              <div role="progressbar" aria-label={youtubeProgress.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={youtubeUploadPercent ?? undefined} aria-valuetext={youtubeProgress.label} className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className={`h-full rounded-full bg-amber-400 ${youtubeUploadPercent === null ? 'animate-pulse' : ''}`} style={{ width: youtubeUploadPercent === null ? '35%' : `${youtubeUploadPercent}%` }} /></div>
-            </div>}
-            {!youtubeLoading && (youtubeStatus && !youtubeStatus.available || participationBlocked) && <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-100" role="alert">
-              <p>{rgError || (rgArtist && rgArtist.status !== 'active' ? 'Tu perfil de artista no está activo para participar.' : youtubeStatus?.code && youtubeStatus.error || 'YouTube no está disponible ahora. Puedes descargar tu canción y volver a intentarlo.')}</p>
-              {youtubeStatus?.canReconnect && ['channelAuthorization', 'insufficientPermissions', 'channelMismatch'].includes(youtubeStatus.code || '') && <a href="/admin/youtube" target="_blank" rel="noreferrer" className="mt-2 flex min-h-11 items-center gap-2 font-semibold underline">Volver a autorizar canal <ExternalLink size={14} /></a>}
-              <button type="button" disabled={isBusy} onClick={retryConnection} className="mt-1 min-h-11 font-semibold underline">Volver a comprobar</button>
-            </div>}
-            {publishError && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-sm text-red-200">{publishError}</p>}
-            <button type="submit" form="youtube-publish-form" disabled={isBusy || !youtubeStatus?.available || !rgIdentityReady || participationBlocked || !artistName.trim() || !hasRights || youtubeDescriptionBytes > 5000} className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}>
-              {youtubeLoading || connectionPending ? <Loader2 size={18} className="animate-spin" /> : <Video size={18} />}
-              {youtubeLoading ? 'Publicando…' : connectionPending ? 'Comprobando conexión…' : 'Publicar y participar'}
-            </button>
+          {youtubeLoading && youtubeProgress && <div role="status" aria-live="polite" className="space-y-2 rounded-xl bg-white/5 p-3">
+            <p className="flex items-center justify-between gap-2 text-xs text-zinc-300"><span>{youtubeProgress.label}</span>{youtubeUploadPercent !== null && <span>{youtubeUploadPercent}%</span>}</p>
+            <div role="progressbar" aria-label={youtubeProgress.label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={youtubeUploadPercent ?? undefined} aria-valuetext={youtubeProgress.label} className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className={`h-full rounded-full bg-amber-400 ${youtubeUploadPercent === null ? 'animate-pulse' : ''}`} style={{ width: youtubeUploadPercent === null ? '35%' : `${youtubeUploadPercent}%` }} /></div>
+          </div>}
+          {!youtubeLoading && (youtubeStatus && !youtubeStatus.available || participationBlocked) && <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-xs leading-relaxed text-amber-100" role="alert">
+            <p>{rgError || (rgArtist && rgArtist.status !== 'active' ? 'Tu perfil de artista no está activo para participar.' : youtubeStatus?.code && youtubeStatus.error || 'YouTube no está disponible ahora. Puedes descargar tu canción y volver a intentarlo.')}</p>
+            {youtubeStatus?.canReconnect && ['channelAuthorization', 'insufficientPermissions', 'channelMismatch'].includes(youtubeStatus.code || '') && <a href="/admin/youtube" target="_blank" rel="noreferrer" className="mt-2 flex min-h-11 items-center gap-2 font-semibold underline">Volver a autorizar canal <ExternalLink size={14} /></a>}
+            <button type="button" disabled={isBusy} onClick={retryConnection} className="mt-1 min-h-11 font-semibold underline">Volver a comprobar</button>
+          </div>}
+          {publishError && <p role="alert" className="rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-sm text-red-200">{publishError}</p>}
+          <button type="submit" form="youtube-publish-form" disabled={isBusy || !youtubeStatus?.available || !rgIdentityReady || participationBlocked || !artistName.trim() || !hasRights || youtubeDescriptionBytes > 5000} className={`${buttonClass} bg-red-600 text-white hover:bg-red-500`}>
+            {youtubeLoading || connectionPending ? <Loader2 size={18} className="animate-spin" /> : <Video size={18} />}
+            {youtubeLoading ? 'Publicando…' : connectionPending ? 'Comprobando conexión…' : 'Publicar y participar'}
+          </button>
         </footer>}
       </div>
     </div>

@@ -82,6 +82,7 @@ import { AlertCircle, CheckCircle, Info, AlertTriangle, Cloud, Download } from '
 import {
   saveProjectToCloud as persistCloudProject,
   loadProjectFromCloud,
+  deleteProjectFromCloud,
   checkCloudProject,
   CloudProjectCheckResult,
   setCloudProjectUser,
@@ -95,6 +96,7 @@ import {
   rememberCloudProjectName,
   hasConfirmedCloudProject,
   getCloudProjectSelection,
+  CloudProjectSlot,
   CloudProjectSlotInfo,
 } from '@/lib/studio/cloudProject';
 import { verifyStudioAccount, shouldRetryCloud } from '@/lib/studio/accountConnection';
@@ -532,6 +534,8 @@ export default function App() {
   const replacingProjectRef = useRef(false);
   const startingNewProjectRef = useRef(false);
   const [isStartingNewProject, setIsStartingNewProject] = useState(false);
+  const [deletingCloudSlot, setDeletingCloudSlot] = useState<CloudProjectSlot | null>(null);
+  const cloudAutoClaimSuppressedRef = useRef<string | null>(null);
   const cloudDirtyRef = useRef(false);
   const cloudConflictRef = useRef(false);
   const cloudVerificationPendingRef = useRef(false);
@@ -1097,7 +1101,8 @@ export default function App() {
             if (owner !== sessionOwnerRef.current || projectId !== activeProjectIdRef.current || replacingProjectRef.current) return;
             if (accessStatusRef.current.isLoggedIn && !cloudWorkPausedRef.current && !cloudVerificationPendingRef.current) {
               const info = cloudProjectInfoRef.current;
-              if (!hasConfirmedCloudProject(projectId) && info && !info.unavailable) {
+              const autoClaimSuppressed = cloudAutoClaimSuppressedRef.current === projectId;
+              if (!autoClaimSuppressed && !hasConfirmedCloudProject(projectId) && info && !info.unavailable) {
                 if (!info.hasActiveProject && !info.hasProject) {
                   selectCloudProjectSlot('active', null);
                   confirmCloudProject(projectId, '');
@@ -1608,6 +1613,7 @@ export default function App() {
         showToast('No se pudo limpiar la memoria local. Tu proyecto sigue abierto.', 'error'); return false;
       }
       activeProjectIdRef.current = crypto.randomUUID();
+      cloudAutoClaimSuppressedRef.current = null;
       if (cloudWorkPausedRef.current) setDeviceWorkingMode(true);
       cloudDirtyRef.current = false;
       cloudConflictRef.current = false;
@@ -2795,6 +2801,7 @@ export default function App() {
         throw new Error(result.error || 'No se pudo guardar. Tu copia local se conserva.');
       }
       setDeviceWorkingMode(false);
+      cloudAutoClaimSuppressedRef.current = null;
       cloudDirtyRef.current = false;
       cloudConflictRef.current = false;
       cloudVerificationPendingRef.current = false;
@@ -2814,10 +2821,71 @@ export default function App() {
 
   // Load Saved Project from User Account Cloud
   const closeCloudGallery = () => {
-    if (replacingProjectRef.current) return;
+    if (replacingProjectRef.current || deletingCloudSlot) return;
     ++cloudGalleryRequestRef.current;
     cloudGalleryOpenRef.current = false;
     setShowCloudGallery(false);
+  };
+
+  const handleDeleteCloudProject = async (slotInfo: CloudProjectSlotInfo) => {
+    if (isRecordingRef.current || replacingProjectRef.current || deletingCloudSlot) return;
+    const owner = accessStatusRef.current.email;
+    if (!owner) {
+      setCloudGalleryRequiresSignIn(true);
+      setCloudGalleryError('Inicia sesión para administrar tus proyectos en la nube.');
+      return;
+    }
+
+    setDeletingCloudSlot(slotInfo.slot);
+    setCloudGalleryError('');
+    try {
+      await cloudCheckRequestRef.current;
+      await verifyStudioAccount(owner);
+      const ok = await deleteProjectFromCloud(slotInfo.slot, slotInfo.revision, slotInfo.projectId);
+      if (!ok) {
+        throw new Error('No se pudo eliminar el proyecto de la nube. Revisa tu conexión o actualiza la galería.');
+      }
+
+      const deletedOpenProject = Boolean(slotInfo.projectId && slotInfo.projectId === activeProjectIdRef.current);
+      const hasOpenContent = Boolean(currentBeatRef.current) || tracksRef.current.some(t => getTrackClips(t).length > 0);
+      if (deletedOpenProject) {
+        cloudAutoClaimSuppressedRef.current = activeProjectIdRef.current;
+        cloudDirtyRef.current = false;
+        cloudConflictRef.current = false;
+        setCloudBackupStatus('Eliminado de la nube · Copia abierta en este dispositivo');
+        showToast('Proyecto eliminado de la nube. Tu sesión local sigue abierta hasta que inicies un proyecto nuevo.', 'success');
+      } else if (hasOpenContent && !hasConfirmedCloudProject(activeProjectIdRef.current) && !cloudWorkPausedRef.current) {
+        cloudAutoClaimSuppressedRef.current = null;
+        selectCloudProjectSlot(slotInfo.slot, null);
+        confirmCloudProject(activeProjectIdRef.current, '');
+        cloudConflictRef.current = false;
+        const autoName = getCloudProjectName(activeProjectIdRef.current) || currentBeatRef.current?.title || 'Mi Proyecto';
+        rememberCloudProjectName(activeProjectIdRef.current, autoName);
+        const saved = await saveProjectToCloud(
+          tracksRef.current,
+          currentBeatRef.current,
+          sessionSettingsRef.current.loopSettings,
+          beatMixRef.current,
+          activeProjectIdRef.current,
+          autoName
+        );
+        showToast(
+          saved.success
+            ? `Proyecto eliminado y el actual quedó guardado en Espacio ${slotInfo.slot === 'active' ? 1 : 2}.`
+            : 'Proyecto eliminado de la nube. Ya puedes guardar el actual en ese espacio.',
+          'success'
+        );
+      } else {
+        showToast('Proyecto eliminado de la nube.', 'success');
+      }
+      await Promise.all([refreshCloudProjectStatus(), loadCloudGallery()]);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'No se pudo eliminar el proyecto de la nube.';
+      setCloudGalleryError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setDeletingCloudSlot(null);
+    }
   };
 
   const loadCloudGallery = async () => {
@@ -3569,6 +3637,7 @@ export default function App() {
         slots={cloudGallerySlots}
         loading={cloudGalleryLoading}
         opening={isLoadingCloud}
+        deletingSlot={deletingCloudSlot}
         error={cloudGalleryError}
         requiresSignIn={cloudGalleryRequiresSignIn}
         owner={accessStatus.email}
@@ -3577,6 +3646,7 @@ export default function App() {
         onRefresh={() => void loadCloudGallery()}
         onSignIn={() => { closeCloudGallery(); setCloudRequiresSignIn(true); setUnlockModalReason('general'); setIsUnlockModalOpen(true); }}
         onOpen={(slot) => void handleLoadCloudProject(slot)}
+        onDelete={(slotInfo) => void handleDeleteCloudProject(slotInfo)}
       />}
 
       {/* Export and YouTube publication */}

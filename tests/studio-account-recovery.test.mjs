@@ -167,7 +167,7 @@ test('reconnection to another account cannot resume the previous account project
 async function clientEnvironment(run) {
   const originalFetch = globalThis.fetch, originalStorage = globalThis.localStorage;
   const values = new Map();
-  globalThis.localStorage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
+  globalThis.localStorage = { getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
   const cloud = loadSource('lib/studio/cloudProject.ts');
   cloud.setCloudProjectUser(owner.email);
   try { await run(cloud); } finally { globalThis.fetch = originalFetch; globalThis.localStorage = originalStorage; }
@@ -285,5 +285,36 @@ test('listing slots cannot grant autosave a newer revision when the chooser is c
     assert.deepEqual(cloud.getCloudProjectSelection(),{slot:'active',revision:'confirmed-old'});
     const result=await cloud.saveProjectToCloud([],null,undefined,undefined,'open-project','Mi canción');
     assert.equal(sentRevision,'confirmed-old');assert.equal(result.conflict,true);
+  });
+});
+
+test('deleting one cloud slot preserves the other slot and detaches local confirmation', async () => {
+  const {storage,seed,objects} = memoryStorage();
+  seed('project.json',{projectId:'one',projectName:'Primero',beat:null,tracks:[]});
+  seed('previous-project.json',{projectId:'two',projectName:'Segundo',beat:null,tracks:[]});
+  const activeBefore = objects.get(prefix+'project.json').body;
+  const {DELETE,GET} = projectRoute(storage);
+  const delPrev = await DELETE(new NextRequest('https://local.invalid/api/studio/project?slot=previous',{
+    method:'DELETE',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({baseRevision:'previous-project.json',ownerEmail:owner.email}),
+  }));
+  assert.equal(delPrev.status,200);
+  assert.deepEqual(objects.get(prefix+'project.json').body,activeBefore);
+  const {slots} = await (await GET(new NextRequest('https://local.invalid/api/studio/project'))).json();
+  assert.deepEqual(slots.map(s=>[s.slot,s.hasProject]),[['active',true],['previous',false]]);
+
+  await clientEnvironment(async cloud => {
+    cloud.selectCloudProjectSlot('previous','previous-project.json');
+    cloud.confirmCloudProject('two','previous-project.json');
+    assert.equal(cloud.hasConfirmedCloudProject('two'),true);
+    globalThis.fetch = async (url,init) => {
+      assert.ok(String(url).includes('slot=previous'));
+      assert.equal(init?.method,'DELETE');
+      return Response.json({success:true,slot:'previous',revision:'tombstone-rev'});
+    };
+    const ok = await cloud.deleteProjectFromCloud('previous','previous-project.json','two');
+    assert.equal(ok,true);
+    assert.equal(cloud.hasConfirmedCloudProject('two'),false);
   });
 });

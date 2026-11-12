@@ -18,6 +18,7 @@ import {
 import { BeatData, LoopSettings, MusicalKey, ScaleMode, VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
 import { parseKeyAndGetRelative, getRelativeKey, NOTE_NAMES } from '@/lib/studio/audio/beatAnalyzer';
 import { MAIN_SCALES } from '@/lib/studio/audio/pitchCorrection';
+import { useStudioI18n } from '@/lib/studio/i18n';
 
 interface ArtworkPlayerProps {
   lightVisuals?: boolean;
@@ -93,6 +94,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
   getMicLevel,
   getMicStatus,
 }) => {
+  const { t } = useStudioI18n();
   const progressBarRef = useRef<HTMLDivElement>(null);
   const [isEditingBpm, setIsEditingBpm] = useState(false);
   const [tempBpm, setTempBpm] = useState('');
@@ -235,7 +237,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                   }
                 : undefined
             }
-            title={!beat && onOpenLoadBeat ? 'Toca el disco para elegir un beat' : undefined}
+            title={!beat && onOpenLoadBeat ? t.player.tapDisc : undefined}
             className={`relative w-full h-full rounded-full p-2 sm:p-2.5 shadow-2xl border-2 transition-all ${
               !beat && onOpenLoadBeat
                 ? 'border-amber-500/60 hover:border-amber-400 hover:scale-[1.02] active:scale-95 cursor-pointer'
@@ -284,7 +286,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
               e.stopPropagation();
               onOpenBeatFX();
             }}
-            title="Ajustes de filtro y volumen del Beat"
+            title={t.player.beatFx}
             className="absolute -bottom-1 -right-1 flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-zinc-950 hover:bg-zinc-900 text-zinc-200 hover:text-white border border-zinc-750 shadow-xl text-[9px] sm:text-[10px] font-mono backdrop-blur-md transition-all active:scale-95 cursor-pointer"
           >
             <Sliders className="w-3 h-3 text-amber-400" />
@@ -297,7 +299,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
           type="button"
           onClick={() => onSeek(Math.min(duration, currentTime + 5))}
           className="w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-zinc-600 hover:text-zinc-950 hover:bg-black/10 active:scale-90 transition-all cursor-pointer shrink-0"
-          title="Avanzar 5 segundos"
+          title="Avanzar 5s"
         >
           <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
         </button>
@@ -315,7 +317,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             onClick={onOpenLoadBeat}
             className="text-sm sm:text-base md:text-lg font-black tracking-tight text-zinc-950 truncate drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)] hover:opacity-75 transition-opacity cursor-pointer"
           >
-            Selecciona un Beat
+            {t.player.selectABeat}
           </button>
         )}
       </div>
@@ -326,7 +328,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
           {/* LEFT: TEMPO (BPM) WITH SMOOTH DRAGGABLE SLIDER */}
           <div className="flex flex-col items-center justify-center px-1 space-y-1.5">
             <span className="text-[10px] font-mono text-zinc-400 font-bold tracking-wider uppercase">
-              TEMPO
+              {t.player.tempo}
             </span>
 
             {/* BPM Value & Precision Steppers */}
@@ -440,7 +442,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
           {/* RIGHT: AFINACIÓN */}
           <div className="flex flex-col items-center justify-center px-1 space-y-1.5">
             <span className="text-[10px] font-mono text-zinc-400 font-bold tracking-wider uppercase">
-              AFINACIÓN
+              {t.player.tuning}
             </span>
 
             {/* Note & Scale Mode Selector (Encuadrado proporcional sin desborde) */}
@@ -455,7 +457,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                       onChangeTonality(newRoot, keyInfo.scaleMode);
                     }}
                     className="w-14 bg-zinc-800 text-amber-300 font-extrabold font-mono text-xs px-1.5 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer text-center shrink-0 shadow-sm"
-                    title="Nota fundamental para afinación"
+                    title="Fundamental"
                   >
                     {NOTE_NAMES.map((n) => (
                       <option key={n} value={n}>
@@ -472,7 +474,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                       onChangeTonality(keyInfo.rootKey, newMode);
                     }}
                     className="flex-1 min-w-0 bg-zinc-800 text-zinc-200 font-bold font-mono text-xs px-2 py-1 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-400 cursor-pointer truncate shadow-sm"
-                    title="Escala de afinación vocal (Auto-Tune)"
+                    title="Scale"
                   >
                     {MAIN_SCALES.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -484,7 +486,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
 
                 {/* Subtitle with relative key */}
                 <span className="text-[9px] font-mono text-zinc-400 tracking-tight truncate">
-                  Relativa: <strong className="text-amber-400">{getRelativeKey(keyInfo.rootKey, keyInfo.scaleMode).relativeRoot}</strong>
+                  {t.player.relative}: <strong className="text-amber-400">{getRelativeKey(keyInfo.rootKey, keyInfo.scaleMode).relativeRoot}</strong>
                 </span>
               </div>
             ) : (
@@ -498,10 +500,10 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 onClick={onDetectKeyAndBpm}
                 disabled={isAnalyzingBeat || isRecording}
                 className="text-[9px] font-mono text-zinc-500 hover:text-amber-400 flex items-center gap-1 transition-colors cursor-pointer"
-                title="Re-analizar tempo y escala con el motor DSP"
+                title="DSP Analyzer"
               >
                 <Sparkles className={`w-2.5 h-2.5 ${isAnalyzingBeat ? 'animate-spin text-amber-400' : ''}`} />
-                <span>{isAnalyzingBeat ? 'Analizando...' : 'Auto-detectar'}</span>
+                <span>{isAnalyzingBeat ? t.player.analyzing : t.player.autoDetect}</span>
               </button>
             )}
           </div>
@@ -583,8 +585,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 }`}
                 title={
                   monitoringEnabled
-                    ? 'Monitoreo compensado ACTIVO: Voz con compresión y presencia optimizada'
-                    : 'Activar monitoreo en vivo compensado (estilo BandLab)'
+                    ? t.player.monitoringActive
+                    : t.player.monitoringInactive
                 }
               >
                 <Headphones className="w-4 h-4" />
@@ -604,8 +606,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 }`}
                 title={
                   bluetoothSyncEnabled
-                    ? `Bluetooth Sync Activo (-${bluetoothOffsetMs}ms)`
-                    : 'Activar compensación fija para audífonos Bluetooth'
+                    ? `${t.player.btSyncActive} (-${bluetoothOffsetMs}ms)`
+                    : t.player.btSyncInactive
                 }
               >
                 <Radio className="w-4 h-4" />
@@ -624,7 +626,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                   ? 'bg-amber-400 text-zinc-950 shadow-amber-400/20'
                   : 'bg-white text-zinc-950 hover:bg-amber-300 shadow-[0_4px_20px_rgba(255,255,255,0.18)]'
               }`}
-              title={isPlaying ? 'Pausar (Espacio)' : 'Reproducir (Espacio)'}
+              title={isPlaying ? t.player.pause : t.player.play}
             >
               {isPlaying ? (
                 <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
@@ -640,10 +642,10 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                   type="button"
                   onClick={onStopRecord}
                   className="h-12 sm:h-14 px-3 sm:px-4 rounded-full flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-extrabold shadow-[0_0_20px_rgba(239,68,68,0.6)] border border-red-300 animate-pulse active:scale-95 transition-all cursor-pointer select-none"
-                  title="Detener grabación"
+                  title={t.player.stop}
                 >
                   <Square className="w-4 h-4 fill-current shrink-0" />
-                  <span className="truncate">STOP ({formatElapsed(elapsedSec)})</span>
+                  <span className="truncate">{t.player.stop} ({formatElapsed(elapsedSec)})</span>
                 </button>
               ) : (
                 <div className="relative flex items-center">
@@ -663,8 +665,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                     }`}
                     title={
                       isRecArmed
-                        ? `Grabar en ${selectedTrack?.name || 'Vocal'}`
-                        : 'Micrófono en reposo. Toca para grabar.'
+                        ? `${t.player.rec}: ${selectedTrack?.name || 'Vocal'}`
+                        : t.player.rec
                     }
                   >
                     {isRecArmed ? (
@@ -693,8 +695,8 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                 }`}
                 title={
                   preferPhoneMic
-                    ? 'Micrófono del teléfono ACTIVO (canta al móvil aunque tengas audífonos)'
-                    : 'Activar micrófono del teléfono (forzar micro del móvil con audífonos puestos)'
+                    ? t.player.phoneMicActive
+                    : t.player.phoneMicInactive
                 }
               >
                 <Smartphone className="w-4 h-4" />
@@ -711,7 +713,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
                     : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
                 }`}
-                title={countInEnabled ? 'Conteo previo activo (1 compás)' : 'Activar conteo previo de 1 compás'}
+                title={countInEnabled ? t.player.countInActive : t.player.countInInactive}
               >
                 <Timer className="w-4 h-4" />
               </button>
@@ -735,7 +737,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
             {isSaturated && (
               <div className="text-center text-[9px] font-mono text-red-400 font-bold animate-pulse flex items-center justify-center gap-1">
                 <AlertTriangle className="w-2.5 h-2.5" />
-                <span>¡Saturando! Auto-reduciendo ganancia</span>
+                <span>{t.player.saturating}</span>
               </div>
             )}
           </div>
@@ -753,7 +755,7 @@ export const ArtworkPlayer: React.FC<ArtworkPlayerProps> = ({
           value={beatVolume}
           onChange={(e) => onChangeBeatVolume(parseFloat(e.target.value))}
           className="w-full accent-zinc-950 cursor-pointer h-1.5 bg-black/25 rounded-lg appearance-none"
-          title="Volumen del Beat"
+          title={t.player.beatVolume}
         />
         <span className="text-[10px] font-mono text-zinc-950 font-bold w-8 text-right tabular-nums">
           {Math.round(beatVolume * 100)}%

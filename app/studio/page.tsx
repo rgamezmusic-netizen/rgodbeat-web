@@ -2,6 +2,7 @@
 
 import React, { useSyncExternalStore } from "react";
 import { StudioApp } from "@/components/studio/StudioApp";
+import { StudioI18nProvider } from "@/lib/studio/i18n";
 
 const emptySubscribe = () => () => {};
 
@@ -22,7 +23,9 @@ export default function StudioPage() {
       }}
     >
       {mounted ? (
-        <StudioApp />
+        <StudioI18nProvider>
+          <StudioApp />
+        </StudioI18nProvider>
       ) : (
         <div
           style={{

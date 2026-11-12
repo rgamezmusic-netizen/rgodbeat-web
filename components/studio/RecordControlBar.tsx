@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Square, Timer, AlertTriangle, Headphones, Radio, Smartphone, Undo2, Redo2 } from 'lucide-react';
 import { VocalTrack, VocalTrackId } from '@/lib/studio/types/audio';
+import { useStudioI18n } from '@/lib/studio/i18n';
 
 interface RecordControlBarProps {
   selectedTrack: VocalTrack;
@@ -54,6 +55,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
   tracks,
   onSelectTrack,
 }) => {
+  const { t } = useStudioI18n();
   const [elapsedSec, setElapsedSec] = useState(0);
   const [micLevel, setMicLevel] = useState(0);
   const [isSaturated, setIsSaturated] = useState(false);
@@ -167,8 +169,8 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                 }`}
                 title={
                   monitoringEnabled
-                    ? 'Monitoreo compensado ACTIVO: Voz con compresión y presencia optimizada'
-                    : 'Activar monitoreo en vivo compensado (estilo BandLab)'
+                    ? t.player.monitoringActive
+                    : t.player.monitoringInactive
                 }
               >
                 <Headphones className="w-3.5 h-3.5" />
@@ -186,8 +188,8 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                 }`}
                 title={
                   bluetoothSyncEnabled
-                    ? `Bluetooth Sync Activo (-${bluetoothOffsetMs}ms)`
-                    : 'Calibrar audífonos Bluetooth (AirPods, etc.)'
+                    ? `${t.player.btSyncActive} (-${bluetoothOffsetMs}ms)`
+                    : t.player.btSyncInactive
                 }
               >
                 <Radio className="w-3.5 h-3.5" />
@@ -206,8 +208,8 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                 }`}
                 title={
                   preferPhoneMic
-                    ? 'Micrófono del teléfono ACTIVO (canta al móvil aunque tengas audífonos)'
-                    : 'Activar micrófono del teléfono (forzar micro del móvil con audífonos puestos)'
+                    ? t.player.phoneMicActive
+                    : t.player.phoneMicInactive
                 }
               >
                 <Smartphone className="w-3.5 h-3.5" />
@@ -222,7 +224,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                   ? 'text-amber-300 bg-amber-500/15 border border-amber-500/30'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
-              title={countInEnabled ? 'Conteo de 1 compás activo' : 'Activar conteo previo de 1 compás'}
+              title={countInEnabled ? t.player.countInActive : t.player.countInInactive}
             >
               <Timer className="w-3.5 h-3.5" />
             </button>
@@ -238,7 +240,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                       ? 'text-amber-300 hover:text-amber-200 cursor-pointer'
                       : 'text-zinc-650 opacity-30 cursor-not-allowed'
                   }`}
-                  title="Deshacer (Ctrl+Z)"
+                  title={t.topBar.undo}
                 >
                   <Undo2 className="w-3.5 h-3.5" />
                 </button>
@@ -251,7 +253,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                       ? 'text-amber-300 hover:text-amber-200 cursor-pointer'
                       : 'text-zinc-650 opacity-30 cursor-not-allowed'
                   }`}
-                  title="Rehacer (Ctrl+Y)"
+                  title={t.topBar.redo}
                 >
                   <Redo2 className="w-3.5 h-3.5" />
                 </button>
@@ -270,7 +272,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
                 className="px-5 py-2 rounded-full bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold flex items-center justify-center gap-2 shadow-[0_0_16px_rgba(239,68,68,0.5)] active:scale-95 transition-all animate-pulse cursor-pointer border border-red-400/50"
               >
                 <Square className="w-3.5 h-3.5 fill-current" />
-                <span>DETENER ({formatElapsed(elapsedSec)}) · {selectedTrack.name.toUpperCase()}</span>
+                <span>{t.player.stop} ({formatElapsed(elapsedSec)}) · {selectedTrack.name.toUpperCase()}</span>
               </button>
 
               {/* Sleek audio level meter line */}
@@ -288,7 +290,7 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
               {isSaturated && (
                 <div className="text-center text-[9px] font-mono text-red-400 font-bold animate-pulse flex items-center justify-center gap-1">
                   <AlertTriangle className="w-2.5 h-2.5" />
-                  <span>¡Saturando! Auto-reduciendo ganancia</span>
+                  <span>{t.player.saturating}</span>
                 </div>
               )}
             </div>
@@ -297,10 +299,10 @@ export const RecordControlBar: React.FC<RecordControlBarProps> = ({
               type="button"
               onClick={() => onStartRecord(selectedTrack.id)}
               className="px-5 py-2 rounded-full font-mono text-xs font-bold inline-flex items-center justify-center gap-2 active:scale-95 transition-all shadow-md bg-red-600 hover:bg-red-500 text-white shadow-red-600/30 cursor-pointer border border-red-500/40"
-              title="Grabar en esta pista (Punch-in automático)"
+              title="Punch-in REC"
             >
               <span className="w-2 h-2 rounded-full bg-white shadow-inner animate-pulse" />
-              <span>REC · {selectedTrack.name.toUpperCase()}</span>
+              <span>{t.player.rec} · {selectedTrack.name.toUpperCase()}</span>
             </button>
           )}
         </div>

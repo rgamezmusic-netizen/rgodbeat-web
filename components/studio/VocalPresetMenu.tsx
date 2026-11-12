@@ -2,6 +2,7 @@ import React from 'react';
 import { Check, Radio, RotateCcw, Sparkles, X } from 'lucide-react';
 import type { VocalPresetId, VocalTrack } from '@/lib/studio/types/audio';
 import { VOCAL_FX_PRESETS } from '@/lib/studio/audio/vocalPresets';
+import { useStudioI18n } from '@/lib/studio/i18n';
 
 interface VocalPresetModalProps {
   track: VocalTrack | null;
@@ -19,9 +20,21 @@ export const VocalPresetModal: React.FC<VocalPresetModalProps> = ({
   onSelectPreset,
   onResetNatural,
 }) => {
+  const { t } = useStudioI18n();
   if (!track) return null;
 
   const activePresetId = track.fx.presetId;
+
+  const getPresetLabel = (id: VocalPresetId, defaultLabel: string) => {
+    switch (id) {
+      case 'lead_pro': return t.presets.pro;
+      case 'urban_air': return t.presets.urbanAir;
+      case 'radio': return t.presets.radio;
+      case 'space_hall': return t.presets.spaceEcho;
+      case 'slap_tape': return t.presets.intimateDry;
+      default: return defaultLabel;
+    }
+  };
 
   return (
     <div
@@ -29,7 +42,7 @@ export const VocalPresetModal: React.FC<VocalPresetModalProps> = ({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label={`Presets de ${track.name}`}
+      aria-label={`${t.presets.title}: ${track.name}`}
     >
       <div
         className="w-full max-w-sm bg-[#111116] border border-zinc-800 rounded-t-2xl sm:rounded-2xl shadow-2xl p-4 text-white"
@@ -39,14 +52,14 @@ export const VocalPresetModal: React.FC<VocalPresetModalProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
             <h3 className="text-sm font-bold font-display uppercase tracking-wide truncate">
-              {track.name} · Presets
+              {track.name} · {t.presets.title}
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="p-1 rounded-full text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-            aria-label="Cerrar presets"
+            aria-label={t.common.close}
           >
             <X className="w-4 h-4" />
           </button>
@@ -56,6 +69,7 @@ export const VocalPresetModal: React.FC<VocalPresetModalProps> = ({
           {VOCAL_FX_PRESETS.map((preset) => {
             const isActive = activePresetId === preset.id;
             const isRadio = preset.id === 'radio';
+            const displayLabel = getPresetLabel(preset.id, preset.label);
             return (
               <button
                 key={preset.id}
@@ -77,7 +91,7 @@ export const VocalPresetModal: React.FC<VocalPresetModalProps> = ({
                       <Radio className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     )}
                     <span className="text-xs font-bold font-display tracking-wide truncate">
-                      {preset.label}
+                      {displayLabel}
                     </span>
                     <span
                       className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${
@@ -86,7 +100,7 @@ export const VocalPresetModal: React.FC<VocalPresetModalProps> = ({
                           : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                       }`}
                     >
-                      {preset.role === 'Efecto' ? 'FX' : 'Principal'}
+                      {preset.role === 'Efecto' ? t.presets.fx : t.presets.main}
                     </span>
                   </div>
                 </div>
@@ -109,7 +123,7 @@ export const VocalPresetModal: React.FC<VocalPresetModalProps> = ({
             className="mt-3 w-full py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-mono text-zinc-400 hover:text-zinc-200 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Natural (sin preset)</span>
+            <span>{t.presets.naturalNoPreset}</span>
           </button>
         )}
       </div>
@@ -129,12 +143,13 @@ export const VocalPresetStrip: React.FC<VocalPresetStripProps> = ({
   activePresetId,
   onSelectPreset,
 }) => {
+  const { t } = useStudioI18n();
   return (
     <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] font-bold font-mono uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5" />
-          Presets rápidos
+          {t.presets.quickPresets}
         </span>
       </div>
       <div className="grid grid-cols-5 gap-1.5">
