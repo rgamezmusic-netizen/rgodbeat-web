@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 export function SignupPromotion() {
   const [endsAt, setEndsAt] = useState<string | null>(null);
-  const [grantDays, setGrantDays] = useState<number>(14);
+  const [grantDays, setGrantDays] = useState<number>(21);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -38,7 +38,7 @@ export function SignupPromotion() {
       <p className="font-bold">{grantDays} días gratis de RG Studio</p>
       <p className="mt-1 text-xs leading-relaxed text-purple-200/80">
         Crea una cuenta nueva antes del {new Date(endsAt).toLocaleString("es", { dateStyle: "long", timeStyle: "short" })} y confirma tu correo.
-        Tu acceso se activa automáticamente al confirmar, una sola vez por cuenta y correo.
+        Tu acceso Premium se activa automáticamente al confirmar (una sola vez por cuenta y correo). Después podrás continuar adquiriendo un pase o ganando Premium al publicar en el ranking.
       </p>
     </div>
   );

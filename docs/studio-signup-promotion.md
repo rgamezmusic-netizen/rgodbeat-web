@@ -1,7 +1,7 @@
-# Promoción de nuevas cuentas de RG Studio (Pausada — preparada para 14 días / 1 temporada)
+# Promoción de nuevas cuentas de RG Studio (21 días — 14 días + 1 semana extra)
 
-- **Estado actual (29 de octubre de 2026)**: **PAUSADA** (`enabled = false`, `active = false`, trigger `studio_signup_access` retirado mediante `supabase/migrations/20261029010000_pause_studio_signup_promotion.sql`). Las cuentas nuevas se registran sin días gratis y requieren adquirir su pase de Studio para activar el acceso completo. La columna `grant_days` quedó preconfigurada en `14` días (1 temporada) para cuando se decida reactivar en el futuro.
-- **Historial previo**: Activada originalmente por 90 días el 10 de octubre de 2026 a las 03:58:34 UTC y cerrada/pausada por instrucción del propietario el 29 de octubre de 2026 a las 23:28:19 UTC. Los accesos ya otorgados y `public.studio_signup_grants` se conservan intactos.
+- **Estado en código (13 de noviembre de 2026)**: Migración `supabase/migrations/20261113000000_enable_studio_signup_trial_21d.sql` preparada para reactivar el acceso gratuito de bienvenida con `enabled = true`, `grant_days = 21` (14 días base + 7 días extra) y restauración del trigger `studio_signup_access` en `auth.users`. Al vencer los 21 días, la cuenta pasa a requerir un pase de Studio o premios de publicación/ranking (`rg_season_rewards.premium_days`) para volver a tener acceso Premium. *(Pendiente aplicar la migración en Supabase de producción).*
+- **Historial previo**: Activada originalmente por 90 días el 10 de octubre de 2026 a las 03:58:34 UTC y cerrada/pausada por instrucción del propietario el 29 de octubre de 2026 a las 23:28:19 UTC mediante `supabase/migrations/20261029010000_pause_studio_signup_promotion.sql`. Los accesos ya otorgados y `public.studio_signup_grants` se conservan intactos.
 
 La migración de esta promoción se aplicó individualmente con `supabase db query --linked --file …`. El historial remoto ya tenía diferencias con los archivos locales; no se ejecutó `db push --include-all` ni se reaplicaron migraciones anteriores.
 

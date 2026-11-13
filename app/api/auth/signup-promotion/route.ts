@@ -13,6 +13,7 @@ export async function GET() {
       active: campaign.active === true,
       endsAt: campaign.ends_at,
       serverTime: campaign.server_time,
+      grantDays: typeof campaign.grant_days === "number" ? campaign.grant_days : 21,
     }, { headers });
   } catch {
     // Do not advertise an offer that the database cannot confirm is active.
